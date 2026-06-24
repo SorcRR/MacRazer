@@ -4,7 +4,7 @@ All notable changes to this project. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/). The project is **pre-release** (0.x) —
 expect rough edges until 1.0.
 
-## [Unreleased]
+## [0.1.3] — 2026-06-24
 
 ### Added
 - **Bluetooth-mode detection.** When a Razer mouse is connected over Bluetooth (where Razer's
