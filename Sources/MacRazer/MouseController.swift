@@ -36,6 +36,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     @Published private(set) var deviceID: Int?
     /// Stable per-unit key (serial number if available, else PID) — drives per-device settings.
     @Published private(set) var deviceKey: String?
+    /// Name of a Razer mouse seen on Bluetooth while we can't reach one over USB. Bluetooth
+    /// doesn't expose Razer's control protocol, so this drives a "switch to 2.4GHz / USB" hint.
+    @Published private(set) var bluetoothMouseName: String?
     private var ioHasBattery = true // io-queue mirror of deviceHasBattery
 
     /// User preference: show the battery % beside the menu bar icon (persisted).
@@ -228,6 +231,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 self.charging = isCharging
                 self.timeEstimate = estimate
                 self.lastError = nil
+                self.bluetoothMouseName = nil
                 self.updateStatusText()
                 if self.hasBaseline && !wasConnected { Self.playSound(connected: true) }
                 self.hasBaseline = true
@@ -246,10 +250,14 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             let gone: Bool = { if case HIDDevice.HIDError.notFound = error { return true }; return false }()
             FileHandle.standardError.write(Data("[MacRazer] battery read failed (\(consecutiveFailures)): \(errText)\n".utf8))
             guard declareOffline else { return }
+            // Can't reach a Razer mouse over USB — is one sitting on Bluetooth instead? (Razer's
+            // control protocol isn't exposed over BT, so that's the likely cause of "offline".)
+            let btName = HIDDevice.bluetoothRazerMouseName()
             publish {
                 let wasConnected = self.connected
                 self.connected = false
                 self.lastError = errText
+                self.bluetoothMouseName = btName
                 if gone { self.deviceName = nil; self.deviceID = nil; self.deviceKey = nil }
                 self.updateStatusText()
                 if self.hasBaseline && wasConnected { Self.playSound(connected: false) }
@@ -336,6 +344,16 @@ final class MouseController: ObservableObject, @unchecked Sendable {
 
     /// For the `render-ui offline` preview: keep last-known values but mark disconnected.
     func setPreviewOffline() { connected = false; updateStatusText() }
+
+    /// For the `render-ui bluetooth` preview: a Razer mouse is on Bluetooth, so no USB control
+    /// (dongle present, name known, but no live battery/DPI readings).
+    func setPreviewBluetooth() {
+        connected = false
+        batteryPercent = nil
+        timeEstimate = nil
+        bluetoothMouseName = "Cobra HS"
+        updateStatusText()
+    }
 
     // MARK: - Helpers
 

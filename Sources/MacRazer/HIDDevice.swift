@@ -68,6 +68,36 @@ final class HIDDevice {
         return Array(set)
     }
 
+    /// Razer mouse model keywords — used to recognise a Bluetooth-connected Razer mouse, which
+    /// reports a generic (non-Razer) vendor id and a shortened product name (e.g. "Cobra HS").
+    private static let razerMouseKeywords = [
+        "razer", "cobra", "basilisk", "deathadder", "naga", "viper", "mamba",
+        "lancehead", "orochi", "atheris", "hyperspeed",
+    ]
+
+    /// If a Razer mouse is currently connected over **Bluetooth**, returns its product name.
+    /// Razer's control protocol (battery/DPI/lighting) is only exposed over USB — the 2.4GHz
+    /// dongle or a wired cable — so a Bluetooth connection enumerates as a plain HID mouse with
+    /// a non-Razer vendor id and no control interface. We detect it by transport + model name
+    /// so the UI can explain why control is unavailable and prompt switching to 2.4GHz / USB-C.
+    static func bluetoothRazerMouseName() -> String? {
+        let manager = IOHIDManagerCreate(kCFAllocatorDefault, IOOptionBits(kIOHIDOptionsTypeNone))
+        // Generic Desktop (0x01) / Mouse (0x02), any vendor — the BLE mouse isn't VID 0x1532.
+        IOHIDManagerSetDeviceMatching(manager, [
+            kIOHIDDeviceUsagePageKey as String: 0x01,
+            kIOHIDDeviceUsageKey as String: 0x02,
+        ] as CFDictionary)
+        guard let set = IOHIDManagerCopyDevices(manager) as? Set<IOHIDDevice> else { return nil }
+        for dev in set {
+            let transport = strProp(dev, kIOHIDTransportKey) ?? ""
+            guard transport.localizedCaseInsensitiveContains("Bluetooth"),
+                  let name = strProp(dev, kIOHIDProductKey) else { continue }
+            let lower = name.lowercased()
+            if razerMouseKeywords.contains(where: { lower.contains($0) }) { return name }
+        }
+        return nil
+    }
+
     /// One-line description of an interface, for the `info` diagnostic.
     static func describe(_ dev: IOHIDDevice) -> String {
         let pid = intProp(dev, kIOHIDProductIDKey) ?? 0

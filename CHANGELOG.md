@@ -4,6 +4,19 @@ All notable changes to this project. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/). The project is **pre-release** (0.x) —
 expect rough edges until 1.0.
 
+## [Unreleased]
+
+### Added
+- **Bluetooth-mode detection.** When a Razer mouse is connected over Bluetooth (where Razer's
+ control protocol isn't available), the popover now explains it and prompts switching to the
+ 2.4 GHz dongle or USB-C, instead of just showing a bare "offline".
+- **Connection-type indicator.** A small chip beside "Connected" in the popover header shows
+ whether control is running over the **2.4 GHz** dongle or a **wired** USB-C cable.
+
+### Docs
+- README and the first-run setup screen note that the mouse must be connected over 2.4 GHz or
+ USB-C, not Bluetooth.
+
 ## [0.1.2] — 2026-06-24
 
 ### Added

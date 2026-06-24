@@ -51,6 +51,11 @@ Adding a model is a small change to a registry plus on-hardware verification. Se
 
 macOS 14 or later (Apple Silicon).
 
+**Connect over the 2.4 GHz dongle or a USB-C cable — not Bluetooth.** Razer only exposes its
+control protocol (battery, DPI, lighting) over USB; over Bluetooth the mouse is just a plain
+pointer, so MacRazer can't read or change anything. If your mouse has a mode switch, set it to
+2.4 GHz. (MacRazer will tell you when it sees your mouse on Bluetooth.)
+
 ## Install
 
 Download `MacRazer.dmg` from the [latest release](../../releases/latest), open it, and drag

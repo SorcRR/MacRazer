@@ -62,6 +62,7 @@ case "render-ui":
     let controller = MouseController()
     controller.loadPreviewState()
     if args.contains("offline") { controller.setPreviewOffline() }
+    if args.contains("bluetooth") { controller.setPreviewBluetooth() }
     let rootView: AnyView = args.contains("color")
         ? AnyView(ColorPickerPage(color: .constant(.blue), onBack: {}, onApply: { _ in }))
         : AnyView(PopoverView(controller: controller, remapper: ButtonRemapper()))

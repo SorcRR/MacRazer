@@ -103,6 +103,9 @@ struct PopoverView: View {
     private var mainPage: some View {
         VStack(alignment: .leading, spacing: 10) {
             headerCard
+            // A Razer mouse on Bluetooth can't be controlled (no control protocol over BT) —
+            // explain it instead of just showing "offline".
+            if controller.bluetoothMouseName != nil && !controller.connected { bluetoothNotice }
             // Battery stays readable (last-known) but dims when offline; its refresh button
             // stays active so you can retry.
             if controller.deviceHasBattery {
@@ -179,9 +182,12 @@ struct PopoverView: View {
                     Text(controller.deviceName ?? "No mouse connected")
                         .font(.system(size: 13, weight: .semibold))
                         .lineLimit(1)
-                    Text(headerSubtitle)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
+                    HStack(spacing: 5) {
+                        Text(headerSubtitle)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                        if let ct = connectionType { connectionChip(ct) }
+                    }
                 }
                 Spacer()
                 Circle()
@@ -193,8 +199,48 @@ struct PopoverView: View {
 
     private var headerSubtitle: String {
         if controller.connected { return controller.deviceSupported ? "Connected" : "Connected · limited support" }
+        if controller.bluetoothMouseName != nil { return "On Bluetooth" }
         if controller.deviceName != nil { return "Offline" }
         return "Connect a Razer mouse"
+    }
+
+    /// The active control transport, shown as a small chip beside "Connected". `charging` implies
+    /// a USB-C cable is attached (wired); otherwise control is going over the 2.4 GHz dongle.
+    /// (Bluetooth can't carry control, so it never reads "Connected" — it's surfaced separately.)
+    private var connectionType: (symbol: String, label: String)? {
+        guard controller.connected else { return nil }
+        return controller.charging
+            ? ("cable.connector", "Wired")
+            : ("antenna.radiowaves.left.and.right", "2.4 GHz")
+    }
+
+    private func connectionChip(_ ct: (symbol: String, label: String)) -> some View {
+        HStack(spacing: 3) {
+            Image(systemName: ct.symbol).font(.system(size: 8.5, weight: .bold))
+            Text(ct.label).font(.system(size: 9.5, weight: .semibold))
+        }
+        .foregroundStyle(Color.razerGreen)
+        .padding(.horizontal, 5).padding(.vertical, 1.5)
+        .background(Color.razerGreen.opacity(0.15), in: Capsule())
+    }
+
+    /// Shown when a Razer mouse is detected on Bluetooth: control needs USB / the 2.4 GHz dongle.
+    private var bluetoothNotice: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "dot.radiowaves.left.and.right")
+                .foregroundStyle(Color.batteryMid)
+                .font(.system(size: 13, weight: .semibold))
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Connected via Bluetooth").font(.system(size: 12, weight: .semibold))
+                Text("\(controller.bluetoothMouseName ?? "Your Razer mouse") only reports battery, DPI and lighting over the 2.4 GHz dongle or USB-C — not Bluetooth. Switch its mode to use MacRazer.")
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.batteryMid.opacity(0.12), in: RoundedRectangle(cornerRadius: 13))
     }
 
     // MARK: Battery hero
@@ -289,6 +335,7 @@ struct PopoverView: View {
         if controller.charging { return "Charging" }
         if let est = controller.timeEstimate { return est }
         if !controller.connected {
+            if controller.bluetoothMouseName != nil { return "On Bluetooth — use 2.4 GHz or USB-C" }
             if needsPermission { return "Needs Input Monitoring permission" }
             return "Disconnected — wake the mouse and refresh"
         }
