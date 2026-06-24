@@ -40,11 +40,19 @@ EOF
 echo "▸ Generating self-signed code-signing certificate…"
 openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
     -keyout "$TMP/key.pem" -out "$TMP/cert.pem" -config "$TMP/cfg" >/dev/null 2>&1
-openssl pkcs12 -export -inkey "$TMP/key.pem" -in "$TMP/cert.pem" \
-    -out "$TMP/id.p12" -passout pass: -name "${CERT_NAME}" >/dev/null 2>&1
+
+# Apple's `security import` only understands the legacy PKCS#12 algorithms. OpenSSL 3.x
+# defaults to newer ones whose MAC `security` can't verify ("MAC verification failed"), so
+# pass -legacy when the installed openssl supports it. Use a real password too — an empty
+# one trips the same MAC bug on some toolchains.
+P12PASS="macrazer"
+LEGACY=""
+if openssl pkcs12 -help 2>&1 | grep -q -- "-legacy"; then LEGACY="-legacy"; fi
+openssl pkcs12 -export ${LEGACY} -inkey "$TMP/key.pem" -in "$TMP/cert.pem" \
+    -out "$TMP/id.p12" -passout "pass:${P12PASS}" -name "${CERT_NAME}" >/dev/null 2>&1
 
 echo "▸ Importing into the login keychain (allow 'codesign' access if prompted)…"
-security import "$TMP/id.p12" -P "" -T /usr/bin/codesign
+security import "$TMP/id.p12" -P "${P12PASS}" -T /usr/bin/codesign
 
 # Best-effort: trust the cert for code signing in the user domain (may prompt once).
 security add-trusted-cert -r trustRoot -p codeSign "$TMP/cert.pem" 2>/dev/null || \
