@@ -131,4 +131,4 @@ derived from OpenRazer. Full attribution and the trademark notice are in [NOTICE
 ## Support
 
 This is a free, unpaid community project. If it is useful to you, you can leave a tip:
-[ko-fi.com/YOUR_KOFI_USERNAME](https://ko-fi.com/YOUR_KOFI_USERNAME) (replace with your link).
+[ko-fi.com/sorcrr](https://ko-fi.com/sorcrr).
