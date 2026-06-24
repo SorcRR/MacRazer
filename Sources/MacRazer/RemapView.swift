@@ -70,7 +70,7 @@ struct RemapView: View {
             Label("Accessibility permission required", systemImage: "lock.shield")
                 .font(.system(size: 13, weight: .medium))
             Text("Button remapping intercepts mouse events, which needs Accessibility access. "
-                 + "Enable “Razer Cobra” in System Settings, then relaunch the app.")
+                 + "Enable “MacRazer” in System Settings, then relaunch the app.")
                 .font(.system(size: 11)).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             HStack {

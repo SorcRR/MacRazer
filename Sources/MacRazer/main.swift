@@ -89,6 +89,21 @@ case "render-remap":
         try? png.write(to: URL(fileURLWithPath: path)); print("Wrote \(path)")
     } else { print("Render failed") }
 
+case "render-permissions":
+    _ = NSApplication.shared
+    let path = args.dropFirst().first ?? "permissions-preview.png"
+    let controller = MouseController()
+    controller.loadPreviewState()
+    let model = PermissionsModel()
+    model.loadPreviewState()
+    let renderer = ImageRenderer(content: PermissionsView(model: model, controller: controller)
+        .padding(1).background(Color(white: 0.13)))
+    renderer.scale = 2
+    if let img = renderer.nsImage, let tiff = img.tiffRepresentation,
+       let rep = NSBitmapImageRep(data: tiff), let png = rep.representation(using: .png, properties: [:]) {
+        try? png.write(to: URL(fileURLWithPath: path)); print("Wrote \(path)")
+    } else { print("Render failed") }
+
 case "icon":
     // Render the menu bar mark to a PNG for visual inspection.
     let path = args.dropFirst().first ?? "icon-preview.png"

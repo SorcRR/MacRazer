@@ -4,7 +4,6 @@
 import AppKit
 import SwiftUI
 import Combine
-import IOKit.hid
 
 /// Menu bar (accessory) app: an NSStatusItem showing battery %, click opens an NSPopover
 /// hosting the SwiftUI controls. Mirrors the pattern macOS's own Bluetooth/Battery menus use.
@@ -17,12 +16,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var monitor: HIDMonitor?
     private let remapper = ButtonRemapper()
     private lazy var remapWindow = RemapWindowController(remapper: remapper)
+    private lazy var permissions = PermissionsModel(remapper: remapper, controller: controller)
+    private lazy var permissionsWindow = PermissionsWindowController(model: permissions, controller: controller)
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Razer HID devices present as keyboard/mouse, so macOS gates opening them behind
-        // Input Monitoring. Request it explicitly so the system prompts and registers the
-        // app in System Settings (it won't connect without this when launched standalone).
-        requestInputMonitoring()
+        // Razer HID devices enumerate as a keyboard/mouse, so macOS gates opening them behind
+        // Input Monitoring — without it the app can't read anything. Show the setup window
+        // whenever that required permission is missing (and stop the moment it's granted), so a
+        // user without it is always walked through it rather than left with a silently-dead app.
+        // Button remapping additionally needs Accessibility (optional; surfaced in the same window).
+        permissions.recheck()
+        if !permissions.inputMonitoring {
+            DispatchQueue.main.async { [weak self] in self?.permissionsWindow.show() }
+        }
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         let icon = MenuBarIcon.mouse(pointSize: 21, razerCutout: false)
@@ -145,11 +151,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         configure.isEnabled = controller.connected // remapping is for a connected mouse
         menu.addItem(configure)
 
-        if !controller.connected {
-            let perm = NSMenuItem(title: "Input Monitoring Settings…", action: #selector(openSettings), keyEquivalent: "")
-            perm.target = self
-            menu.addItem(perm)
-        }
+        let setup = NSMenuItem(title: "Setup & Permissions…", action: #selector(openPermissions), keyEquivalent: "")
+        setup.target = self
+        menu.addItem(setup)
 
         menu.addItem(.separator())
 
@@ -174,6 +178,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     @objc private func refreshNow() { controller.refreshAll() }
     @objc private func openRemap() { remapWindow.show() }
+    @objc private func openPermissions() { permissionsWindow.show() }
     @objc private func quit() { NSApplication.shared.terminate(nil) }
 
     // MARK: - NSPopoverDelegate
@@ -181,30 +186,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     func popoverDidShow(_ notification: Notification) { controller.setPopoverVisible(true) }
     func popoverDidClose(_ notification: Notification) { controller.setPopoverVisible(false) }
 
-    // MARK: - Input Monitoring permission
+    // MARK: - Foreground
 
-    private func requestInputMonitoring() {
-        let access = IOHIDCheckAccess(kIOHIDRequestTypeListenEvent)
-        switch access {
-        case kIOHIDAccessTypeGranted:
-            return
-        case kIOHIDAccessTypeDenied:
-            FileHandle.standardError.write(Data(
-                "[MacRazer] Input Monitoring is DENIED. Enable 'Razer Cobra' in System Settings → Privacy & Security → Input Monitoring, then relaunch.\n".utf8))
-        default: // not yet determined — this call shows the system prompt and registers the app
-            let granted = IOHIDRequestAccess(kIOHIDRequestTypeListenEvent)
-            if !granted {
-                FileHandle.standardError.write(Data(
-                    "[MacRazer] Input Monitoring not granted yet. Approve the prompt (or enable it in System Settings → Privacy & Security → Input Monitoring) and relaunch.\n".utf8))
-            }
-        }
+    /// Re-check permissions when the app returns to the foreground — e.g. the user just toggled
+    /// a grant in System Settings and switched back, so the setup window reflects it live.
+    func applicationDidBecomeActive(_ notification: Notification) {
+        permissions.recheck()
     }
+
+    // MARK: - Input Monitoring permission
 
     static func openInputMonitoringSettings() {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent") {
             NSWorkspace.shared.open(url)
         }
     }
-
-    @objc private func openSettings() { AppDelegate.openInputMonitoringSettings() }
 }

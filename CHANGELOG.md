@@ -4,6 +4,21 @@ All notable changes to this project. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/). The project is **pre-release** (0.x) —
 expect rough edges until 1.0.
 
+## [Unreleased]
+
+### Added
+- **First-run setup & permissions screen.** A dedicated window (shown automatically whenever the
+ required **Input Monitoring** permission is missing — and reopenable any time from the menu
+ bar's "Setup & Permissions…") explains the two macOS permissions MacRazer needs — Input
+ Monitoring (for talking to the mouse) and **Accessibility** (optional, only for button
+ remapping) — with live status and native grant prompts. Handles the macOS "grant needs a
+ relaunch" gotcha with a **Quit & Relaunch** action and an explanatory tip, and shows the
+ detected mouse as positive confirmation once permissions are right.
+
+### Changed
+- Permission handling is consolidated into a single `PermissionsModel`; the menu's old
+ "Input Monitoring Settings…" item is replaced by the always-available "Setup & Permissions…".
+
 ## [0.1.1] — 2026-06-24
 
 ### Changed
