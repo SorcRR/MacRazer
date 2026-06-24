@@ -4,7 +4,7 @@ All notable changes to this project. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/). The project is **pre-release** (0.x) —
 expect rough edges until 1.0.
 
-## [Unreleased]
+## [0.1.2] — 2026-06-24
 
 ### Added
 - **First-run setup & permissions screen.** A dedicated window (shown automatically whenever the
@@ -18,6 +18,11 @@ expect rough edges until 1.0.
 ### Changed
 - Permission handling is consolidated into a single `PermissionsModel`; the menu's old
  "Input Monitoring Settings…" item is replaced by the always-available "Setup & Permissions…".
+
+### Fixed
+- `Scripts/setup-signing.sh` now works on OpenSSL 3.x (passes `-legacy` and a real PKCS#12
+ password), so the stable code-signing identity can be created without a "MAC verification
+ failed" error.
 
 ## [0.1.1] — 2026-06-24
 
