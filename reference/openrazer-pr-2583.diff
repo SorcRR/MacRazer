@@ -1,0 +1,524 @@
+diff --git a/README.md b/README.md
+index b1a12da23..8428f7270 100644
+--- a/README.md
++++ b/README.md
+@@ -291,6 +291,8 @@ This will output something similar to this:
+ | Razer Basilisk Mobile (Receiver)                              |  1532:00D4  |
+ | Razer Basilisk V3 Pro 35K Phantom Green Edition (Wired)       |  1532:00D6  |
+ | Razer Basilisk V3 Pro 35K Phantom Green Edition (Wireless)    |  1532:00D7  |
++| Razer Cobra Hyperspeed (Wired)                                |  1532:00DA  |
++| Razer Cobra Hyperspeed (Wireless)                             |  1532:00DB  |
+ 
+ ### Mousemats
+ | Device                                                        | USB VID:PID |
+diff --git a/daemon/openrazer_daemon/hardware/mouse.py b/daemon/openrazer_daemon/hardware/mouse.py
+index 39a972c07..0bbff26ff 100644
+--- a/daemon/openrazer_daemon/hardware/mouse.py
++++ b/daemon/openrazer_daemon/hardware/mouse.py
+@@ -1599,6 +1599,41 @@ class RazerCobraProWireless(RazerCobraProWired):
+     USB_PID = 0x00B0
+ 
+ 
++class RazerCobraHyperSpeed(__RazerDevice):
++    """
++    Class for the Razer Cobra HyperSpeed
++    """
++    EVENT_FILE_REGEX = re.compile(r'.*usb-1532_Razer_Cobra_HyperSpeed_000000000000-if0(1|2)-event-kbd')
++
++    USB_VID = 0x1532
++    USB_PID = 0x00DA
++
++    METHODS = ['get_device_type_mouse',
++               'max_dpi', 'get_dpi_xy', 'set_dpi_xy', 'get_dpi_stages', 'set_dpi_stages',
++               'get_poll_rate', 'set_poll_rate',
++               'get_brightness', 'set_brightness',
++               'get_logo_brightness', 'set_logo_brightness',
++               'get_poll_rate', 'set_poll_rate', 'get_supported_poll_rates',
++               # All LEDs (partial support)
++               'set_static_effect', 'set_wave_effect', 'set_spectrum_effect', 'set_none_effect',
++               # Logo (partial support)
++               'set_logo_wave', 'set_logo_static', 'set_logo_spectrum', 'set_logo_none',
++               # Battery
++               'get_battery', 'is_charging', 'get_idle_time', 'set_idle_time', 'get_low_battery_threshold', 'set_low_battery_threshold']
++
++    DEVICE_IMAGE = "https://dl.razerzone.com/src2/15141/15141-1-en-v1.png"
++    POLL_RATES = [125, 500, 1000]
++    DPI_MAX = 26000
++
++
++class RazerCobraHyperSpeedWireless(RazerCobraHyperSpeed):
++    """
++    Class for the Razer Cobra HyperSpeed Receiver
++    """
++    EVENT_FILE_REGEX = re.compile(r'.*usb-Razer_Razer_Cobra_HyperSpeed-event-if0(1|2)-event-kbd')
++    USB_PID = 0x00DB
++
++
+ class RazerDeathAdderV3(__RazerDevice):
+     """
+     Class for the Razer DeathAdder V3
+diff --git a/driver/razerkbd_driver.c b/driver/razerkbd_driver.c
+index 3cdd197e8..b8524a50c 100644
+--- a/driver/razerkbd_driver.c
++++ b/driver/razerkbd_driver.c
+@@ -3039,7 +3039,6 @@ static ssize_t razer_attr_write_matrix_effect_starlight(struct device *dev, stru
+     case USB_DEVICE_ID_RAZER_BLADE_STEALTH_LATE_2017:
+     case USB_DEVICE_ID_RAZER_BLADE_17_PRO_EARLY_2021:
+     case USB_DEVICE_ID_RAZER_BLADE_16_2025:
+-    case USB_DEVICE_ID_RAZER_BLADE_14_2021:
+         if(count == 7) {
+             request = razer_chroma_standard_matrix_effect_starlight_dual(buf[0], (struct razer_rgb*)&buf[1], (struct razer_rgb*)&buf[4]);
+             request.transaction_id.id = 0xFF;
+@@ -3098,6 +3097,7 @@ static ssize_t razer_attr_write_matrix_effect_starlight(struct device *dev, stru
+     case USB_DEVICE_ID_RAZER_BLADE_STUDIO_EDITION_2019:
+     case USB_DEVICE_ID_RAZER_BLADE_15_ADV_2020:
+     case USB_DEVICE_ID_RAZER_BLADE_15_ADV_EARLY_2021:
++    case USB_DEVICE_ID_RAZER_BLADE_14_2021:
+     case USB_DEVICE_ID_RAZER_BLADE_15_ADV_MID_2021:
+     case USB_DEVICE_ID_RAZER_BLADE_17_PRO_MID_2021:
+     case USB_DEVICE_ID_RAZER_BLADE_15_ADV_EARLY_2022:
+diff --git a/driver/razermouse_driver.c b/driver/razermouse_driver.c
+index aa6aef36d..1e6fefd74 100644
+--- a/driver/razermouse_driver.c
++++ b/driver/razermouse_driver.c
+@@ -54,6 +54,8 @@ static int razer_get_report(struct usb_device *usb_dev, struct razer_report *req
+     case USB_DEVICE_ID_RAZER_DEATHADDER_V2_X_HYPERSPEED:
+     case USB_DEVICE_ID_RAZER_VIPER_V2_PRO_WIRELESS:
+     case USB_DEVICE_ID_RAZER_VIPER_V2_PRO_WIRED:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRELESS:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRED:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRELESS:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRED:
+     case USB_DEVICE_ID_RAZER_DEATHADDER_V3_PRO_WIRELESS:
+@@ -676,6 +678,15 @@ static ssize_t razer_attr_read_device_type(struct device *dev, struct device_att
+         device_type = "Razer Cobra Pro (Wired)";
+         break;
+ 
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRED:
++        device_type = "Razer Cobra HyperSpeed (Wired)";
++        break;
++
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRELESS:
++        device_type = "Razer Cobra HyperSpeed (Wireless)";
++        break;
++
++
+     case USB_DEVICE_ID_RAZER_VIPER_V3_HYPERSPEED:
+         device_type = "Razer Viper V3 HyperSpeed";
+         break;
+@@ -783,6 +794,8 @@ static ssize_t razer_attr_read_firmware_version(struct device *dev, struct devic
+     case USB_DEVICE_ID_RAZER_DEATHADDER_V2_X_HYPERSPEED:
+     case USB_DEVICE_ID_RAZER_VIPER_V2_PRO_WIRELESS:
+     case USB_DEVICE_ID_RAZER_VIPER_V2_PRO_WIRED:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRELESS:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRED:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRELESS:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRED:
+     case USB_DEVICE_ID_RAZER_DEATHADDER_V3:
+@@ -927,6 +940,8 @@ static ssize_t razer_attr_write_matrix_effect_none(struct device *dev, struct de
+     struct razer_report response = {0};
+ 
+     switch (device->usb_pid) {
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRELESS:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRED:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRELESS:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRED:
+     case USB_DEVICE_ID_RAZER_BASILISK_V3_PRO_WIRED:
+@@ -1105,6 +1120,8 @@ static ssize_t razer_attr_write_matrix_effect_static(struct device *dev, struct
+         break;
+ 
+     case USB_DEVICE_ID_RAZER_BASILISK_V3:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRELESS:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRED:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRELESS:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRED:
+     case USB_DEVICE_ID_RAZER_BASILISK_V3_PRO_WIRED:
+@@ -1147,6 +1164,8 @@ static ssize_t razer_attr_write_matrix_effect_wave(struct device *dev, struct de
+ 
+     switch (device->usb_pid) {
+     case USB_DEVICE_ID_RAZER_BASILISK_V3:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRELESS:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRED:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRELESS:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRED:
+     case USB_DEVICE_ID_RAZER_BASILISK_V3_PRO_WIRED:
+@@ -1195,6 +1214,8 @@ static ssize_t razer_attr_write_matrix_effect_spectrum(struct device *dev, struc
+         break;
+ 
+     case USB_DEVICE_ID_RAZER_BASILISK_V3:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRELESS:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRED:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRELESS:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRED:
+     case USB_DEVICE_ID_RAZER_BASILISK_V3_PRO_WIRED:
+@@ -1368,6 +1389,8 @@ static ssize_t razer_attr_read_device_serial(struct device *dev, struct device_a
+     case USB_DEVICE_ID_RAZER_DEATHADDER_V2_X_HYPERSPEED:
+     case USB_DEVICE_ID_RAZER_VIPER_V2_PRO_WIRED:
+     case USB_DEVICE_ID_RAZER_VIPER_V2_PRO_WIRELESS:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRELESS:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRED:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRELESS:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRED:
+     case USB_DEVICE_ID_RAZER_DEATHADDER_V3:
+@@ -1506,6 +1529,8 @@ static ssize_t razer_attr_read_charge_level(struct device *dev, struct device_at
+     case USB_DEVICE_ID_RAZER_VIPER_V2_PRO_WIRED:
+     case USB_DEVICE_ID_RAZER_VIPER_MINI_SE_WIRED:
+     case USB_DEVICE_ID_RAZER_VIPER_MINI_SE_WIRELESS:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRELESS:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRED:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRELESS:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRED:
+     case USB_DEVICE_ID_RAZER_DEATHADDER_V3_PRO_WIRELESS:
+@@ -1615,6 +1640,8 @@ static ssize_t razer_attr_read_charge_status(struct device *dev, struct device_a
+     case USB_DEVICE_ID_RAZER_VIPER_V2_PRO_WIRED:
+     case USB_DEVICE_ID_RAZER_VIPER_MINI_SE_WIRED:
+     case USB_DEVICE_ID_RAZER_VIPER_MINI_SE_WIRELESS:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRELESS:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRED:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRELESS:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRED:
+     case USB_DEVICE_ID_RAZER_DEATHADDER_V3_PRO_WIRELESS:
+@@ -1821,6 +1848,8 @@ static ssize_t razer_attr_read_poll_rate(struct device *dev, struct device_attri
+     case USB_DEVICE_ID_RAZER_DEATHADDER_V2_X_HYPERSPEED:
+     case USB_DEVICE_ID_RAZER_VIPER_V2_PRO_WIRED:
+     case USB_DEVICE_ID_RAZER_VIPER_V2_PRO_WIRELESS:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRELESS:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRED:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRELESS:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRED:
+     case USB_DEVICE_ID_RAZER_DEATHADDER_V3_PRO_WIRED:
+@@ -2025,6 +2054,8 @@ static ssize_t razer_attr_write_poll_rate(struct device *dev, struct device_attr
+     case USB_DEVICE_ID_RAZER_DEATHADDER_V2_X_HYPERSPEED:
+     case USB_DEVICE_ID_RAZER_VIPER_V2_PRO_WIRED:
+     case USB_DEVICE_ID_RAZER_VIPER_V2_PRO_WIRELESS:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRELESS:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRED:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRELESS:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRED:
+     case USB_DEVICE_ID_RAZER_DEATHADDER_V3_PRO_WIRED:
+@@ -2171,6 +2202,8 @@ static ssize_t razer_attr_write_matrix_brightness(struct device *dev, struct dev
+     case USB_DEVICE_ID_RAZER_NAGA_PRO_WIRELESS:
+     case USB_DEVICE_ID_RAZER_MAMBA_ELITE:
+     case USB_DEVICE_ID_RAZER_BASILISK_V3:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRELESS:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRED:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRELESS:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRED:
+     case USB_DEVICE_ID_RAZER_BASILISK_V3_PRO_WIRED:
+@@ -2236,6 +2269,8 @@ static ssize_t razer_attr_read_matrix_brightness(struct device *dev, struct devi
+     case USB_DEVICE_ID_RAZER_NAGA_PRO_WIRELESS:
+     case USB_DEVICE_ID_RAZER_MAMBA_ELITE:
+     case USB_DEVICE_ID_RAZER_BASILISK_V3:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRELESS:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRED:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRELESS:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRED:
+     case USB_DEVICE_ID_RAZER_BASILISK_V3_PRO_WIRED:
+@@ -2426,6 +2461,8 @@ static ssize_t razer_attr_write_dpi(struct device *dev, struct device_attribute
+     case USB_DEVICE_ID_RAZER_DEATHADDER_V3:
+     case USB_DEVICE_ID_RAZER_VIPER_MINI_SE_WIRED:
+     case USB_DEVICE_ID_RAZER_VIPER_MINI_SE_WIRELESS:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRELESS:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRED:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRELESS:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRED:
+     case USB_DEVICE_ID_RAZER_DEATHADDER_V3_PRO_WIRELESS:
+@@ -2579,6 +2616,8 @@ static ssize_t razer_attr_read_dpi(struct device *dev, struct device_attribute *
+     case USB_DEVICE_ID_RAZER_DEATHADDER_V3:
+     case USB_DEVICE_ID_RAZER_VIPER_MINI_SE_WIRED:
+     case USB_DEVICE_ID_RAZER_VIPER_MINI_SE_WIRELESS:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRELESS:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRED:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRELESS:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRED:
+     case USB_DEVICE_ID_RAZER_DEATHADDER_V3_PRO_WIRELESS:
+@@ -2958,6 +2997,8 @@ static ssize_t razer_attr_write_dpi_stages(struct device *dev, struct device_att
+     case USB_DEVICE_ID_RAZER_DEATHADDER_V3:
+     case USB_DEVICE_ID_RAZER_VIPER_MINI_SE_WIRED:
+     case USB_DEVICE_ID_RAZER_VIPER_MINI_SE_WIRELESS:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRELESS:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRED:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRELESS:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRED:
+     case USB_DEVICE_ID_RAZER_DEATHADDER_V3_PRO_WIRELESS:
+@@ -3070,6 +3111,8 @@ static ssize_t razer_attr_read_dpi_stages(struct device *dev, struct device_attr
+     case USB_DEVICE_ID_RAZER_DEATHADDER_V3:
+     case USB_DEVICE_ID_RAZER_VIPER_MINI_SE_WIRED:
+     case USB_DEVICE_ID_RAZER_VIPER_MINI_SE_WIRELESS:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRELESS:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRED:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRELESS:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRED:
+     case USB_DEVICE_ID_RAZER_DEATHADDER_V3_PRO_WIRELESS:
+@@ -3195,6 +3238,8 @@ static ssize_t razer_attr_read_device_idle_time(struct device *dev, struct devic
+     case USB_DEVICE_ID_RAZER_VIPER_V2_PRO_WIRELESS:
+     case USB_DEVICE_ID_RAZER_VIPER_MINI_SE_WIRED:
+     case USB_DEVICE_ID_RAZER_VIPER_MINI_SE_WIRELESS:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRELESS:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRED:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRELESS:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRED:
+     case USB_DEVICE_ID_RAZER_DEATHADDER_V3_PRO_WIRED:
+@@ -3292,6 +3337,8 @@ static ssize_t razer_attr_write_device_idle_time(struct device *dev, struct devi
+     case USB_DEVICE_ID_RAZER_VIPER_V2_PRO_WIRELESS:
+     case USB_DEVICE_ID_RAZER_VIPER_MINI_SE_WIRED:
+     case USB_DEVICE_ID_RAZER_VIPER_MINI_SE_WIRELESS:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRELESS:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRED:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRELESS:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRED:
+     case USB_DEVICE_ID_RAZER_DEATHADDER_V3_PRO_WIRED:
+@@ -3439,6 +3486,8 @@ static ssize_t razer_attr_read_charge_low_threshold(struct device *dev, struct d
+     case USB_DEVICE_ID_RAZER_VIPER_V2_PRO_WIRELESS:
+     case USB_DEVICE_ID_RAZER_BASILISK_V3_PRO_WIRED:
+     case USB_DEVICE_ID_RAZER_BASILISK_V3_PRO_WIRELESS:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRELESS:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRED:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRED:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRELESS:
+     case USB_DEVICE_ID_RAZER_HYPERPOLLING_WIRELESS_DONGLE:
+@@ -3534,6 +3583,8 @@ static ssize_t razer_attr_write_charge_low_threshold(struct device *dev, struct
+     case USB_DEVICE_ID_RAZER_VIPER_V2_PRO_WIRELESS:
+     case USB_DEVICE_ID_RAZER_BASILISK_V3_PRO_WIRED:
+     case USB_DEVICE_ID_RAZER_BASILISK_V3_PRO_WIRELESS:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRELESS:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRED:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRED:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRELESS:
+     case USB_DEVICE_ID_RAZER_HYPERPOLLING_WIRELESS_DONGLE:
+@@ -3730,6 +3781,8 @@ static ssize_t razer_attr_write_device_mode(struct device *dev, struct device_at
+     case USB_DEVICE_ID_RAZER_DEATHADDER_V2_X_HYPERSPEED:
+     case USB_DEVICE_ID_RAZER_VIPER_V2_PRO_WIRELESS:
+     case USB_DEVICE_ID_RAZER_VIPER_V2_PRO_WIRED:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRELESS:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRED:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRELESS:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRED:
+     case USB_DEVICE_ID_RAZER_DEATHADDER_V3:
+@@ -3896,6 +3949,8 @@ static ssize_t razer_attr_read_device_mode(struct device *dev, struct device_att
+     case USB_DEVICE_ID_RAZER_PRO_CLICK_WIRED:
+     case USB_DEVICE_ID_RAZER_VIPER_V2_PRO_WIRELESS:
+     case USB_DEVICE_ID_RAZER_VIPER_V2_PRO_WIRED:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRELESS:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRED:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRELESS:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRED:
+     case USB_DEVICE_ID_RAZER_DEATHADDER_V3:
+@@ -4020,6 +4075,8 @@ static ssize_t razer_attr_read_led_brightness(struct device *dev, struct device_
+     case USB_DEVICE_ID_RAZER_BASILISK_V2:
+     case USB_DEVICE_ID_RAZER_BASILISK_V3:
+     case USB_DEVICE_ID_RAZER_COBRA:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRELESS:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRED:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRELESS:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRED:
+     case USB_DEVICE_ID_RAZER_BASILISK_V3_PRO_WIRED:
+@@ -4123,6 +4180,8 @@ static ssize_t razer_attr_write_led_brightness(struct device *dev, struct device
+     case USB_DEVICE_ID_RAZER_BASILISK_V2:
+     case USB_DEVICE_ID_RAZER_BASILISK_V3:
+     case USB_DEVICE_ID_RAZER_COBRA:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRELESS:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRED:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRELESS:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRED:
+     case USB_DEVICE_ID_RAZER_BASILISK_V3_PRO_WIRED:
+@@ -4305,6 +4364,8 @@ static ssize_t razer_attr_write_matrix_effect_wave_common(struct device *dev, st
+     case USB_DEVICE_ID_RAZER_NAGA_PRO_WIRELESS:
+     case USB_DEVICE_ID_RAZER_MAMBA_ELITE:
+     case USB_DEVICE_ID_RAZER_BASILISK_V3:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRELESS:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRED:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRELESS:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRED:
+     case USB_DEVICE_ID_RAZER_BASILISK_V3_PRO_WIRED:
+@@ -4421,6 +4482,8 @@ static ssize_t razer_attr_write_matrix_effect_spectrum_common(struct device *dev
+     case USB_DEVICE_ID_RAZER_BASILISK_V2:
+     case USB_DEVICE_ID_RAZER_BASILISK_V3:
+     case USB_DEVICE_ID_RAZER_COBRA:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRELESS:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRED:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRELESS:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRED:
+     case USB_DEVICE_ID_RAZER_BASILISK_V3_PRO_WIRED:
+@@ -4871,6 +4934,8 @@ static ssize_t razer_attr_write_matrix_effect_static_common(struct device *dev,
+     case USB_DEVICE_ID_RAZER_BASILISK_ULTIMATE_WIRED:
+     case USB_DEVICE_ID_RAZER_BASILISK_V2:
+     case USB_DEVICE_ID_RAZER_BASILISK_V3:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRELESS:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRED:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRELESS:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRED:
+     case USB_DEVICE_ID_RAZER_BASILISK_V3_PRO_WIRED:
+@@ -5077,6 +5142,8 @@ static ssize_t razer_attr_write_matrix_effect_none_common(struct device *dev, st
+     case USB_DEVICE_ID_RAZER_BASILISK_ULTIMATE_RECEIVER:
+     case USB_DEVICE_ID_RAZER_BASILISK_ULTIMATE_WIRED:
+     case USB_DEVICE_ID_RAZER_BASILISK_V2:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRELESS:
++    case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRED:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRELESS:
+     case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRED:
+     case USB_DEVICE_ID_RAZER_BASILISK_V3_PRO_WIRED:
+@@ -6926,6 +6993,7 @@ static int razer_mouse_probe(struct hid_device *hdev, const struct hid_device_id
+             CREATE_DEVICE_FILE(&hdev->dev, &dev_attr_matrix_custom_frame);
+             break;
+ 
++
+         case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRELESS:
+         case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRED:
+             CREATE_DEVICE_FILE(&hdev->dev, &dev_attr_poll_rate);
+@@ -6956,6 +7024,30 @@ static int razer_mouse_probe(struct hid_device *hdev, const struct hid_device_id
+             CREATE_DEVICE_FILE(&hdev->dev, &dev_attr_device_idle_time);
+             break;
+ 
++        case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRELESS:
++        case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRED:
++            CREATE_DEVICE_FILE(&hdev->dev, &dev_attr_poll_rate);
++            CREATE_DEVICE_FILE(&hdev->dev, &dev_attr_dpi);
++            CREATE_DEVICE_FILE(&hdev->dev, &dev_attr_dpi_stages);
++
++            CREATE_DEVICE_FILE(&hdev->dev, &dev_attr_logo_led_brightness);
++            CREATE_DEVICE_FILE(&hdev->dev, &dev_attr_logo_matrix_effect_wave);
++            CREATE_DEVICE_FILE(&hdev->dev, &dev_attr_logo_matrix_effect_spectrum);
++            CREATE_DEVICE_FILE(&hdev->dev, &dev_attr_logo_matrix_effect_static);
++            CREATE_DEVICE_FILE(&hdev->dev, &dev_attr_logo_matrix_effect_none);
++
++            CREATE_DEVICE_FILE(&hdev->dev, &dev_attr_matrix_brightness);
++            CREATE_DEVICE_FILE(&hdev->dev, &dev_attr_matrix_effect_wave);
++            CREATE_DEVICE_FILE(&hdev->dev, &dev_attr_matrix_effect_spectrum);
++            CREATE_DEVICE_FILE(&hdev->dev, &dev_attr_matrix_effect_static);
++            CREATE_DEVICE_FILE(&hdev->dev, &dev_attr_matrix_effect_none);
++
++            CREATE_DEVICE_FILE(&hdev->dev, &dev_attr_charge_level);
++            CREATE_DEVICE_FILE(&hdev->dev, &dev_attr_charge_status);
++            CREATE_DEVICE_FILE(&hdev->dev, &dev_attr_charge_low_threshold);
++            CREATE_DEVICE_FILE(&hdev->dev, &dev_attr_device_idle_time);
++            break;
++
+         case USB_DEVICE_ID_RAZER_VIPER_V3_PRO_WIRELESS:
+             CREATE_DEVICE_FILE(&hdev->dev, &dev_attr_hyperpolling_wireless_dongle_indicator_led_mode);
+             fallthrough;
+@@ -7364,6 +7456,8 @@ static void razer_mouse_disconnect(struct hid_device *hdev)
+             device_remove_file(&hdev->dev, &dev_attr_matrix_custom_frame);
+             break;
+ 
++        case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRELESS:
++        case USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRED:
+         case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRELESS:
+         case USB_DEVICE_ID_RAZER_COBRA_PRO_WIRED:
+             device_remove_file(&hdev->dev, &dev_attr_poll_rate);
+@@ -8356,6 +8450,8 @@ static const struct hid_device_id razer_devices[] = {
+     { HID_USB_DEVICE(USB_VENDOR_ID_RAZER,USB_DEVICE_ID_RAZER_PRO_CLICK_WIRED) },
+     { HID_USB_DEVICE(USB_VENDOR_ID_RAZER,USB_DEVICE_ID_RAZER_VIPER_V2_PRO_WIRED) },
+     { HID_USB_DEVICE(USB_VENDOR_ID_RAZER,USB_DEVICE_ID_RAZER_VIPER_V2_PRO_WIRELESS) },
++    { HID_USB_DEVICE(USB_VENDOR_ID_RAZER,USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRELESS) },
++    { HID_USB_DEVICE(USB_VENDOR_ID_RAZER,USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRED) },
+     { HID_USB_DEVICE(USB_VENDOR_ID_RAZER,USB_DEVICE_ID_RAZER_COBRA_PRO_WIRED) },
+     { HID_USB_DEVICE(USB_VENDOR_ID_RAZER,USB_DEVICE_ID_RAZER_COBRA_PRO_WIRELESS) },
+     { HID_USB_DEVICE(USB_VENDOR_ID_RAZER,USB_DEVICE_ID_RAZER_DEATHADDER_V3) },
+diff --git a/driver/razermouse_driver.h b/driver/razermouse_driver.h
+index 66612ff1a..c29ea934b 100644
+--- a/driver/razermouse_driver.h
++++ b/driver/razermouse_driver.h
+@@ -119,7 +119,8 @@
+ #define USB_DEVICE_ID_RAZER_BASILISK_MOBILE_RECEIVER 0x00D4
+ #define USB_DEVICE_ID_RAZER_BASILISK_V3_PRO_35K_PHANTOM_GREEN_EDITION_WIRED 0x00D6
+ #define USB_DEVICE_ID_RAZER_BASILISK_V3_PRO_35K_PHANTOM_GREEN_EDITION_WIRELESS 0x00D7
+-
++#define USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRED 0x00DA
++#define USB_DEVICE_ID_RAZER_COBRA_HYPERSPEED_WIRELESS 0x00DB
+ /* Each keyboard report has 90 bytes*/
+ #define RAZER_REPORT_LEN 0x5A
+ 
+diff --git a/install_files/appstream/io.github.openrazer.openrazer.metainfo.xml b/install_files/appstream/io.github.openrazer.openrazer.metainfo.xml
+index 4b8e83254..41a31ddb8 100644
+--- a/install_files/appstream/io.github.openrazer.openrazer.metainfo.xml
++++ b/install_files/appstream/io.github.openrazer.openrazer.metainfo.xml
+@@ -135,6 +135,8 @@
+     <modalias>usb:v1532p00D4d*</modalias>
+     <modalias>usb:v1532p00D6d*</modalias>
+     <modalias>usb:v1532p00D7d*</modalias>
++    <modalias>usb:v1532p00DAd*</modalias>
++    <modalias>usb:v1532p00DBd*</modalias>
+     <modalias>usb:v1532p010Dd*</modalias>
+     <modalias>usb:v1532p010Ed*</modalias>
+     <modalias>usb:v1532p010Fd*</modalias>
+diff --git a/install_files/udev/99-razer.rules b/install_files/udev/99-razer.rules
+index ca66a2049..2c27ef4bb 100644
+--- a/install_files/udev/99-razer.rules
++++ b/install_files/udev/99-razer.rules
+@@ -5,7 +5,8 @@ GOTO="razer_end"
+ LABEL="razer_vendor"
+ 
+ # Mice
+-ATTRS{idProduct}=="0013|0015|0016|001f|0020|0024|0025|0029|002e|002f|0032|0034|0036|0037|0038|0039|003e|003f|0040|0041|0042|0043|0044|0045|0046|0048|004c|004f|0050|0053|0054|0059|005a|005b|005c|005e|0060|0062|0064|0065|0067|006a|006b|006c|006e|006f|0070|0071|0072|0073|0077|0078|007a|007b|007c|007d|0080|0083|0084|0085|0086|0088|008a|008c|008d|008f|0090|0091|0094|0095|0096|0098|0099|009a|009c|009e|009f|00a1|00a3|00a5|00a6|00a7|00a8|00aa|00ab|00af|00b0|00b2|00b3|00b4|00b6|00b7|00b8|00b9|00be|00bf|00c0|00c1|00c2|00c3|00c4|00c5|00c7|00c8|00cb|00cc|00cd|00d0|00d1|00d3|00d4|00d6|00d7", \
++ATTRS{idProduct}=="0013|0015|0016|001f|0020|0024|0025|0029|002e|002f|0032|0034|0036|0037|0038|0039|003e|003f|0040|0041|0042|0043|0044|0045|0046|0048|004c|004f|0050|0053|0054|0059|005a|005b|005c|005e|0060|0062|0064|0065|0067|006a|006b|006c|006e|006f|0070|0071|0072|0073|0077|0078|007a|007b|007c|007d|0080|0083|0084|0085|0086|0088|008a|008c|008d|008f|0090|0091|0094|0095|0096|0098|0099|009a|009c|009e|009f|00a1|00a3|00a5|00a6|00a7|00a8|00aa|00ab|00af|00b0|00b2|00b3|00b4|00b6|00b7|00b8|00b9|00be|00bf|00c0|00c1|00c2|00c3|00c4|00c5|00c7|00c8|00cb|00cc|00cd|00d0|00d1|00d3|00d4|00d6|00d7|00da|00db", \
++
+     ATTRS{idVendor}=="1532", \
+     ENV{ID_RAZER_CHROMA}="1", ENV{RAZER_DRIVER}="razermouse"
+ 
+diff --git a/pylib/openrazer/_fake_driver/razercobrahyperspeedwired.cfg b/pylib/openrazer/_fake_driver/razercobrahyperspeedwired.cfg
+new file mode 100644
+index 000000000..8003eaba7
+--- /dev/null
++++ b/pylib/openrazer/_fake_driver/razercobrahyperspeedwired.cfg
+@@ -0,0 +1,27 @@
++# DO NOT EDIT THIS FILE!
++# You can regenerate all fake driver files with ./scripts/generate_all_fake_drivers.sh -f
++[device]
++dir_name = 0003:1532:00DA.0001
++name = Razer Cobra HyperSpeed (Wired)
++files = r,charge_level,255
++        rw,charge_low_threshold,38
++        r,charge_status,1
++        rw,device_idle_time,600
++        rw,device_mode,0x0000
++        r,device_serial,XX00000000DA
++        r,device_type,%(name)s
++        rw,dpi,800:800
++        rw,dpi_stages,0x010320032005dc05dc
++        r,firmware_version,v1.0
++        rw,logo_led_brightness,0
++        w,logo_matrix_effect_none
++        w,logo_matrix_effect_spectrum
++        w,logo_matrix_effect_static
++        w,logo_matrix_effect_wave
++        rw,matrix_brightness,0
++        w,matrix_effect_none
++        w,matrix_effect_spectrum
++        w,matrix_effect_static
++        w,matrix_effect_wave
++        rw,poll_rate,500
++        r,version,1.0.0
+diff --git a/pylib/openrazer/_fake_driver/razercobrahyperspeedwireless.cfg b/pylib/openrazer/_fake_driver/razercobrahyperspeedwireless.cfg
+new file mode 100644
+index 000000000..91f2ea672
+--- /dev/null
++++ b/pylib/openrazer/_fake_driver/razercobrahyperspeedwireless.cfg
+@@ -0,0 +1,27 @@
++# DO NOT EDIT THIS FILE!
++# You can regenerate all fake driver files with ./scripts/generate_all_fake_drivers.sh -f
++[device]
++dir_name = 0003:1532:00DB.0001
++name = Razer Cobra HyperSpeed (Wireless)
++files = r,charge_level,255
++        rw,charge_low_threshold,38
++        r,charge_status,1
++        rw,device_idle_time,600
++        rw,device_mode,0x0000
++        r,device_serial,XX00000000DB
++        r,device_type,%(name)s
++        rw,dpi,800:800
++        rw,dpi_stages,0x010320032005dc05dc
++        r,firmware_version,v1.0
++        rw,logo_led_brightness,0
++        w,logo_matrix_effect_none
++        w,logo_matrix_effect_spectrum
++        w,logo_matrix_effect_static
++        w,logo_matrix_effect_wave
++        rw,matrix_brightness,0
++        w,matrix_effect_none
++        w,matrix_effect_spectrum
++        w,matrix_effect_static
++        w,matrix_effect_wave
++        rw,poll_rate,500
++        r,version,1.0.0

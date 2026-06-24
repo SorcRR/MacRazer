@@ -1,0 +1,8 @@
+# Shows a "Sponsor" button on the GitHub repo. Fill in whichever you set up and delete the
+# rest. Ko-fi / Buy Me a Coffee are the fastest to create; GitHub Sponsors needs Stripe/bank
+# setup and approval.
+
+# github: [YOUR_GITHUB_USERNAME]        # requires GitHub Sponsors enabled
+ko_fi: YOUR_KOFI_USERNAME               # https://ko-fi.com/YOUR_KOFI_USERNAME
+# buy_me_a_coffee: YOUR_BMC_USERNAME    # https://buymeacoffee.com/YOUR_BMC_USERNAME
+# custom: ["https://paypal.me/YOUR_PAYPAL"]

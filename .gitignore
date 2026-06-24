@@ -1,0 +1,18 @@
+# Swift / SwiftPM
+.build/
+.swiftpm/
+*.xcodeproj
+DerivedData/
+
+# Cloned reference source (large, re-cloneable — not part of our codebase)
+reference/openrazer/
+
+# Built app bundle (produced by Scripts/build-app.sh)
+*.app/
+
+# macOS
+.DS_Store
+
+# Local battery history store (generated at runtime)
+battery-history.json
+dist/
