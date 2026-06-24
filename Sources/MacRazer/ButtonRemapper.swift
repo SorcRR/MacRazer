@@ -139,10 +139,9 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
     // MARK: - Event tap
 
     private func installTap() {
-        // otherMouse = middle/wheel-click + extra buttons (what we remap). We also watch
-        // left/right just to LOG them, so we can identify which event a given physical
-        // control (e.g. the wheel click) actually emits.
-        let types: [CGEventType] = [.otherMouseDown, .otherMouseUp, .leftMouseDown, .rightMouseDown]
+        // otherMouse = middle/wheel-click + extra buttons — the only events we remap.
+        // Primary left/right clicks are deliberately never tapped.
+        let types: [CGEventType] = [.otherMouseDown, .otherMouseUp]
         let mask = types.reduce(CGEventMask(0)) { $0 | (CGEventMask(1) << CGEventMask($1.rawValue)) }
         guard let tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap, place: .headInsertEventTap, options: .defaultTap,
@@ -182,12 +181,8 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         }
         let button = Int(event.getIntegerValueField(.mouseEventButtonNumber))
 
-        // Diagnostic: log every button-down so we can see what each physical control emits.
-        if type == .leftMouseDown || type == .rightMouseDown || type == .otherMouseDown {
-            FileHandle.standardError.write(Data("[MacRazer] mouse down: type=\(type.rawValue) button=\(button)\n".utf8))
-        }
-
-        // Only the extra buttons are remappable (never primary left/right clicks).
+        // Only the extra buttons are remappable (the tap is scoped to otherMouse events,
+        // but keep the guard as a defensive net).
         guard type == .otherMouseDown || type == .otherMouseUp else {
             return Unmanaged.passUnretained(event)
         }

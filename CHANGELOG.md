@@ -1,10 +1,22 @@
 # Changelog
 
 All notable changes to this project. Format loosely follows
-[Keep a Changelog](https://keepachangelog.com/). The project is **pre-release**, nothing has
-shipped yet, so everything below lives under **Unreleased**.
+[Keep a Changelog](https://keepachangelog.com/). The project is **pre-release** (0.x) —
+expect rough edges until 1.0.
 
-## [Unreleased]
+## [0.1.1] — 2026-06-24
+
+### Changed
+- **Button-remapping event tap is now scoped to the extra mouse buttons only.** It no longer
+ observes primary left/right clicks — those were tapped purely for a one-off button-detection
+ diagnostic (used to confirm the scroll-wheel click remaps correctly), now removed.
+- Popover footer shows the app's **real bundle version** instead of a hardcoded string, so it
+ stays accurate across releases.
+
+### Docs
+- README: added app screenshots.
+
+## [0.1.0] — 2026-06-24
 
 Native macOS menu bar app to control a Razer Cobra HyperSpeed (and, by design, any Razer
 mouse), a feature Razer's Synapse doesn't provide on macOS. Built by porting OpenRazer's

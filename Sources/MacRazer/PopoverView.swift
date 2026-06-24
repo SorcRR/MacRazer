@@ -538,9 +538,14 @@ struct PopoverView: View {
 
     // MARK: Footer
 
+    /// Real bundle version (e.g. "0.1.1"); falls back for non-bundled dev runs (`swift run`).
+    private var appVersion: String {
+        (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "dev"
+    }
+
     private var footer: some View {
         HStack {
-            Text("v0.1 · unofficial").font(.system(size: 11)).foregroundStyle(.tertiary)
+            Text(verbatim: "v\(appVersion) · unofficial").font(.system(size: 11)).foregroundStyle(.tertiary)
             Spacer()
             Button("Quit") { NSApplication.shared.terminate(nil) }
                 .buttonStyle(.borderless)
