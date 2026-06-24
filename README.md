@@ -10,6 +10,10 @@ Razer mice that use the same HID protocol family, but those are untested, so tre
 "likely to work, not verified" until someone confirms it on real hardware.
 
 > Unofficial. Not affiliated with, authorized by, or endorsed by Razer Inc. See [NOTICE.md](NOTICE.md).
+> 
+> <img width="324" height="624" alt="image" src="https://github.com/user-attachments/assets/a7632668-2d12-4d2f-aa84-7b234bad31dc" />
+> <img width="323" height="290" alt="image" src="https://github.com/user-attachments/assets/c1cf4013-9c1e-40df-ac09-c3e36756df69" />
+
 
 ## Features
 
