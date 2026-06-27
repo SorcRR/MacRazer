@@ -4,6 +4,19 @@ All notable changes to this project. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/). The project is **pre-release** (0.x) —
 expect rough edges until 1.0.
 
+## [Unreleased]
+
+### Added
+- **Battery usage graph.** A chart-icon button beside the battery percentage opens a new page
+ showing the current discharge curve (live, since the last charge), the current discharge
+ rate, time since the last full charge, and a bar chart of the last 10 charge cycles with
+ their average length. Past cycles are persisted per device alongside the existing battery
+ history.
+
+### Changed
+- Time estimates (the battery card's "~Xh Ym left" and the new usage stats) now break down
+ into days once they pass 24 hours, e.g. "~1d 4h", instead of showing raw hour counts.
+
 ## [0.1.3] — 2026-06-24
 
 ### Added

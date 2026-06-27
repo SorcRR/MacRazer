@@ -21,6 +21,12 @@ final class BatteryHistory {
     /// Per-device key (e.g. the PID hex) so each mouse keeps its own history + learned rate.
     private let deviceKey: String
 
+    /// Fired with the about-to-be-cleared samples on every reset (a charge event, or while
+    /// charging continues — each poll tick re-clears `samples`, so this can fire repeatedly with
+    /// a near-empty array during a single charge session). Callers must filter noise themselves;
+    /// `ChargeCycleHistory.recordFinishedCycle` does this via its span/drop thresholds.
+    var onCycleFinished: (([BatterySample]) -> Void)?
+
     init(deviceKey: String) {
         self.deviceKey = deviceKey
         let dir = FileManager.default
@@ -33,14 +39,23 @@ final class BatteryHistory {
 
     func record(percent: Int, charging: Bool) {
         // A charge event invalidates the discharge trend — reset the window on an uptick.
-        if let last = samples.last, percent > last.pct + 1 {
+        let isReset = (samples.last.map { percent > $0.pct + 1 } ?? false) || charging
+        if isReset {
+            if !samples.isEmpty { onCycleFinished?(samples) }
             samples.removeAll()
         }
-        if charging { samples.removeAll() }
         samples.append(BatterySample(t: Date(), pct: percent))
         if samples.count > maxSamples { samples.removeFirst(samples.count - maxSamples) }
         save()
     }
+
+    /// Time the current discharge cycle started (the oldest sample since the last reset), or
+    /// nil if there's no data yet.
+    var cycleStartedAt: Date? { samples.first?.t }
+
+    /// The discharge rate currently in effect (session fit if confident, else the persisted
+    /// learned rate), exposed for display alongside the formatted estimate.
+    var currentRatePerHour: Double? { sessionRatePerHour() ?? learnedRatePerHour }
 
     /// Persisted discharge rate (%/hour), learned across sessions AND charge cycles so the
     /// estimate is available immediately on launch / after a recharge instead of re-deriving
@@ -93,13 +108,20 @@ final class BatteryHistory {
         return ratePerHour
     }
 
-    /// Human-readable "~Xh Ym" string, or nil.
+    /// Human-readable "~Xh Ym" / "~Xd Yh" string, or nil.
     func estimateString(currentPercent: Int) -> String? {
         guard let hours = estimateHoursRemaining(currentPercent: currentPercent) else { return nil }
-        let h = Int(hours)
-        let m = Int((hours - Double(h)) * 60)
-        if h > 0 { return "~\(h)h \(m)m left (est.)" }
-        return "~\(m)m left (est.)"
+        return "~\(Self.formatDuration(hours: hours)) left (est.)"
+    }
+
+    /// "Xd Yh" past a day, "Xh Ym" past an hour, else "Xm" — used for every duration-based stat
+    /// (estimate, time-since-charge, average cycle length) so long spans don't render as e.g. "39h 0m".
+    static func formatDuration(hours: Double) -> String {
+        let totalMinutes = max(0, Int(hours * 60))
+        let d = totalMinutes / 1440, h = (totalMinutes % 1440) / 60, m = totalMinutes % 60
+        if d > 0 { return "\(d)d \(h)h" }
+        if h > 0 { return "\(h)h \(m)m" }
+        return "\(m)m"
     }
 
     private func load() {

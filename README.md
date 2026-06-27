@@ -19,6 +19,9 @@ Razer mice that use the same HID protocol family, but those are untested, so tre
 
 - **Battery** percentage in the menu bar, charging status, and a learned time-until-empty
   estimate. History and the estimate are kept per physical device (by serial number).
+- **Battery usage graph**: a chart button beside the battery percentage opens the current
+  discharge curve, the discharge rate, time since the last full charge, and a trend chart of
+  past charge cycles with their average length.
 - **DPI** with a slider (capped at each model's real maximum), the mouse's own preset stages
   read from the device, and a recallable custom value (per device).
 - **Polling rate**: 125 / 500 / 1000 Hz.

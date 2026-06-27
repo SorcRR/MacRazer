@@ -33,7 +33,7 @@ struct PopoverView: View {
     @ObservedObject var controller: MouseController
     @ObservedObject var remapper: ButtonRemapper
 
-    enum Page { case main, color, buttons }
+    enum Page { case main, color, buttons, usage }
     @State private var page: Page = .main
 
     @State private var dpiValue: Double = 1600
@@ -72,6 +72,7 @@ struct PopoverView: View {
             case .main: mainPage.transition(.move(edge: .leading))
             case .color: colorPage.transition(.move(edge: .trailing))
             case .buttons: buttonsPage.transition(.move(edge: .trailing))
+            case .usage: usagePage.transition(.move(edge: .trailing))
             }
         }
         .frame(width: popoverWidth)
@@ -96,6 +97,13 @@ struct PopoverView: View {
     private var buttonsPage: some View {
         ScrollView {
             RemapView(remapper: remapper, onBack: { page = .main })
+                .frame(maxWidth: .infinity)
+        }
+    }
+
+    private var usagePage: some View {
+        ScrollView {
+            UsageGraphView(controller: controller, onBack: { page = .main })
                 .frame(maxWidth: .infinity)
         }
     }
@@ -154,14 +162,6 @@ struct PopoverView: View {
     private func saveCustomDPI(_ value: Int) {
         customDPI = value
         UserDefaults.standard.set(value, forKey: customDPIKey)
-    }
-
-    /// Control-Center-style tile: a rounded, lightly-frosted card on the dark popover.
-    private func card<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
-        content()
-            .padding(12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.primary.opacity(0.10), in: RoundedRectangle(cornerRadius: 13))
     }
 
     // MARK: Header
@@ -268,6 +268,7 @@ struct PopoverView: View {
                     Text("%").font(.system(size: 17, weight: .medium)).foregroundStyle(.secondary)
                 }
                 Spacer()
+                usageButton
                 refreshButton
             }
             // State-coloured level bar.
@@ -343,6 +344,17 @@ struct PopoverView: View {
         return "Reading battery…"
     }
 
+    private var usageButton: some View {
+        Button { page = .usage } label: {
+            Image(systemName: "chart.line.uptrend.xyaxis")
+                .font(.system(size: 13, weight: .medium))
+                .frame(width: 16, height: 16)
+        }
+        .buttonStyle(.borderless)
+        .foregroundStyle(.secondary)
+        .help("View battery usage history")
+    }
+
     private var refreshButton: some View {
         Button {
             controller.refreshAll()
@@ -360,12 +372,6 @@ struct PopoverView: View {
         .foregroundStyle(.secondary)
         .help("Refresh battery, DPI and polling rate")
         .disabled(controller.isRefreshing)
-    }
-
-    private func sectionLabel(_ text: String, _ symbol: String) -> some View {
-        Label(text, systemImage: symbol)
-            .font(.system(size: 11, weight: .medium))
-            .foregroundStyle(.secondary)
     }
 
     private var dpiCard: some View {

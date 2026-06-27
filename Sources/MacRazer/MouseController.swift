@@ -19,6 +19,12 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     @Published private(set) var brightness: Int = 100 // percent
     @Published private(set) var dpiStages: [Int] = [] // the mouse's configured DPI presets
     @Published private(set) var timeEstimate: String?
+    /// Snapshots of `io`-queue-owned history, republished on the main queue for the usage graph.
+    @Published private(set) var batterySamples: [BatterySample] = []
+    @Published private(set) var dischargeRatePerHour: Double?
+    @Published private(set) var cycleStartedAt: Date?
+    @Published private(set) var pastCycles: [ChargeCycleSummary] = []
+    @Published private(set) var averageCycleHours: Double?
     @Published private(set) var statusText = "…"
     @Published private(set) var lastError: String?
     @Published private(set) var isRefreshing = false
@@ -53,6 +59,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     private var device: HIDDevice?
     private var pollTimer: Timer?
     private var history = BatteryHistory(deviceKey: "default")
+    private var cycleHistory = ChargeCycleHistory(deviceKey: "default")
     private var historyKey: String? // device the current history belongs to
     /// Suppresses connect/disconnect sounds until the first poll establishes a baseline.
     private var hasBaseline = false
@@ -71,8 +78,21 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     private let pollWhenOffline: TimeInterval = 4
 
     func start() {
+        wireHistory()
         refreshAll()
         scheduleNextPoll(after: pollWhenOffline)
+    }
+
+    /// Hooks `history` to log finished discharge cycles into `cycleHistory`, and republishes a
+    /// snapshot for the view. Re-run whenever `history`/`cycleHistory` are swapped for a new device.
+    private func wireHistory() {
+        history.onCycleFinished = { [weak self] samples in
+            self?.cycleHistory.recordFinishedCycle(samples: samples)
+            guard let self else { return }
+            let cycles = self.cycleHistory.cycles
+            let avg = self.cycleHistory.averageCycleDuration.map { $0 / 3600 }
+            self.publish { self.pastCycles = cycles; self.averageCycleHours = avg }
+        }
     }
 
     /// Self-rescheduling poll loop. Scheduled on the common run-loop modes so it keeps firing
@@ -223,6 +243,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             let isCharging = charging
             history.record(percent: pct, charging: isCharging)
             let estimate = isCharging ? "Charging" : history.estimateString(currentPercent: pct)
+            let samples = history.samples
+            let rate = history.currentRatePerHour
+            let cycleStart = history.cycleStartedAt
             batteryReady = true
             publish {
                 let wasConnected = self.connected
@@ -230,6 +253,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 self.batteryPercent = pct
                 self.charging = isCharging
                 self.timeEstimate = estimate
+                self.batterySamples = samples
+                self.dischargeRatePerHour = rate
+                self.cycleStartedAt = cycleStart
                 self.lastError = nil
                 self.bluetoothMouseName = nil
                 self.updateStatusText()
@@ -339,6 +365,18 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         dpi = 1600
         pollRate = 1000
         timeEstimate = "About 3 days remaining"
+        let now = Date()
+        batterySamples = stride(from: 0, through: 28, by: 1).map {
+            BatterySample(t: now.addingTimeInterval(Double($0) * -3600), pct: min(100, 72 + $0))
+        }.reversed()
+        dischargeRatePerHour = 1.0
+        cycleStartedAt = batterySamples.first?.t
+        pastCycles = (1...6).map { i in
+            let end = now.addingTimeInterval(Double(-i) * 86400)
+            return ChargeCycleSummary(start: end.addingTimeInterval(-Double(20 + i) * 3600),
+                                       end: end, startPercent: 100, endPercent: 5)
+        }
+        averageCycleHours = 23
         updateStatusText()
     }
 
@@ -371,6 +409,22 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         if key != historyKey {
             historyKey = key
             history = BatteryHistory(deviceKey: key)
+            cycleHistory = ChargeCycleHistory(deviceKey: key)
+            wireHistory()
+            // Republish everything derived from history immediately so the usage graph doesn't
+            // keep showing the previous mouse's curve until the next poll tick.
+            let samples = history.samples
+            let rate = history.currentRatePerHour
+            let cycleStart = history.cycleStartedAt
+            let cycles = cycleHistory.cycles
+            let avg = cycleHistory.averageCycleDuration.map { $0 / 3600 }
+            publish {
+                self.batterySamples = samples
+                self.dischargeRatePerHour = rate
+                self.cycleStartedAt = cycleStart
+                self.pastCycles = cycles
+                self.averageCycleHours = avg
+            }
         }
         let name = d.productName
         let battery = RazerDevices.hasBattery(pid: pid)
