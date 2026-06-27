@@ -50,6 +50,15 @@ the mouse connects, disconnects, or sleeps.
 Adding a model is a small change to a registry plus on-hardware verification. See
 [CONTRIBUTING.md](CONTRIBUTING.md).
 
+### Known limitation: two identical mice without a hardware serial
+
+Per-device settings (custom DPI, button remaps, battery history) are keyed by the mouse's own
+serial number when it reports one, otherwise by its USB product ID. If you own **two mice of
+the exact same model and that model doesn't expose a serial**, both fall back to the same
+PID-based key and will share one settings/history file — there's no other stable identifier to
+tell them apart. This doesn't affect mixed setups (different models, or models that do report
+a serial).
+
 ## Requirements
 
 macOS 14 or later (Apple Silicon).

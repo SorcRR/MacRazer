@@ -31,6 +31,15 @@ expect rough edges until 1.0.
  wire format's own integrity byte and a mismatch is logged to stderr (diagnostic only — the
  reading still surfaces, since silently rejecting on every mismatch isn't safe without more
  data on how reliably real hardware sets the CRC).
+- **Battery level bar no longer flashes red before the first reading.** "No data yet" (nil)
+ was being treated the same as 0% battery; it now renders neutral until a real value arrives.
+- **`HIDMonitor`'s IOKit callback context is now properly retained** and released via a new
+ `invalidate()` (called on app termination), removing a theoretical use-after-free if a
+ notification were already queued on the main queue at the moment the monitor is deallocated.
+
+### Docs
+- README notes the one known case where two devices share settings: identical mice of the
+ same model that don't expose a hardware serial number have no other stable identifier.
 
 ## [0.1.3] — 2026-06-24
 

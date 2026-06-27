@@ -247,7 +247,10 @@ struct PopoverView: View {
 
     private var batteryLevel: Double { Double(controller.batteryPercent ?? 0) / 100 }
     private var batteryColor: Color {
-        switch controller.batteryPercent ?? 0 {
+        // No reading yet (nil) is "unknown," not "critically low" — don't flash red before the
+        // first successful poll completes.
+        guard let pct = controller.batteryPercent else { return .secondary }
+        switch pct {
         case ..<15: return .batteryLow
         case ..<40: return .batteryMid
         default: return .batteryFull

@@ -18,6 +18,12 @@ final class HIDMonitor: @unchecked Sendable {
     private var terminatedIter: io_iterator_t = 0
     private let onAppear: @Sendable () -> Void
     private let onRemove: @Sendable () -> Void
+    /// An extra retain on `self`, held for the IOKit callback context. A callback already
+    /// queued on `.main` when the owner drops its reference would otherwise read a deallocated
+    /// `self` (the context pointer is unretained-by-default, which doesn't keep `self` alive).
+    /// Released by `invalidate()`, which must be called before the owner's last reference goes
+    /// away; until then this keeps the object alive deliberately.
+    private var selfContext: UnsafeMutableRawPointer?
 
     init(vendorId: Int, onAppear: @escaping @Sendable () -> Void, onRemove: @escaping @Sendable () -> Void) {
         self.onAppear = onAppear
@@ -27,7 +33,8 @@ final class HIDMonitor: @unchecked Sendable {
         self.port = port
         IONotificationPortSetDispatchQueue(port, .main)
 
-        let ctx = Unmanaged.passUnretained(self).toOpaque()
+        let ctx = Unmanaged.passRetained(self).toOpaque()
+        selfContext = ctx
 
         let matchedCB: IOServiceMatchingCallback = { refcon, iterator in
             HIDMonitor.drain(iterator)
@@ -61,7 +68,23 @@ final class HIDMonitor: @unchecked Sendable {
         }
     }
 
+    /// Stops IOKit notifications and releases the retained callback context. Must be called by
+    /// the owner before dropping its last reference — until this runs, the retain in `init`
+    /// keeps this object alive on purpose, so `deinit` is only ever reached afterward.
+    func invalidate() {
+        if let port { IONotificationPortDestroy(port) }
+        port = nil
+        if matchedIter != 0 { IOObjectRelease(matchedIter); matchedIter = 0 }
+        if terminatedIter != 0 { IOObjectRelease(terminatedIter); terminatedIter = 0 }
+        if let ctx = selfContext {
+            selfContext = nil
+            Unmanaged<HIDMonitor>.fromOpaque(ctx).release()
+        }
+    }
+
     deinit {
+        // Reached only after `invalidate()` already ran (it holds the only retain that would
+        // otherwise prevent deinit), so this is a no-op safety net, not the primary teardown.
         if matchedIter != 0 { IOObjectRelease(matchedIter) }
         if terminatedIter != 0 { IOObjectRelease(terminatedIter) }
         if let port { IONotificationPortDestroy(port) }

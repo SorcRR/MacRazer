@@ -194,6 +194,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         permissions.recheck()
     }
 
+    func applicationWillTerminate(_ notification: Notification) {
+        monitor?.invalidate()
+    }
+
     // MARK: - Input Monitoring permission
 
     static func openInputMonitoringSettings() {
