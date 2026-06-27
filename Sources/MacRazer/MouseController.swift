@@ -218,10 +218,12 @@ final class MouseController: ObservableObject, @unchecked Sendable {
 
             let pct = RazerCommands.batteryPercent(fromRaw: raw)
 
-            // Right after a reconnect/wake the device can return a transient garbage value
-            // (e.g. 0xFF → 100%) before settling. If the first reading jumps wildly from the
-            // last trusted value, distrust it once or twice and re-poll fast.
-            if !batteryReady, let last = lastGoodPercent, abs(pct - last) > 20, batteryRejects < 2 {
+            // A reconnect/wake can return a transient garbage value (e.g. 0xFF → 100%) before
+            // settling — but a wild jump is implausible at any time (battery can't swing >20%
+            // between 4-15s polls), so this check stays active even once `batteryReady` is
+            // true; otherwise the very first post-reconnect read permanently disables it and a
+            // later one-off garbage read (any time) gets trusted as the new baseline outright.
+            if let last = lastGoodPercent, abs(pct - last) > 20, batteryRejects < 2 {
                 batteryRejects += 1
                 publish {
                     let wasConnected = self.connected
@@ -402,9 +404,13 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         device = d
         let pid = d.productID
         // Per-unit key: the device's serial number if it reports one, else the PID. Lets two
-        // mice of the same model keep separate settings.
+        // mice of the same model keep separate settings. If the serial probe fails on a
+        // reconnect (the wireless link is already known to be flaky) but we already have a
+        // serial-keyed history for this session, keep using it instead of falling back to the
+        // PID key — that fallback would fragment one mouse's history across two files on every
+        // transient serial-read failure rather than just on a genuine device change.
         let serial = (try? d.sendWithRetry(RazerCommands.getSerial())).flatMap { RazerCommands.parseSerial($0) }
-        let key = serial ?? String(format: "%04x", pid)
+        let key = serial ?? historyKey ?? String(format: "%04x", pid)
         // Switch to this mouse's own battery history (per-device file + learned rate).
         if key != historyKey {
             historyKey = key

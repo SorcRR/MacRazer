@@ -94,7 +94,20 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         // Use the literal key to avoid touching the non-Sendable global CFString symbol.
         let granted = AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": prompt] as CFDictionary)
         accessibilityGranted = granted
-        if granted && tap == nil { installTap() }
+        if granted && tap == nil {
+            installTap()
+        } else if !granted && tap != nil {
+            removeTap()
+        }
+    }
+
+    /// Tears down the event tap and its run-loop source — called when Accessibility is revoked
+    /// while the app is running, so a stale tap isn't left registered indefinitely.
+    private func removeTap() {
+        if let tap { CGEvent.tapEnable(tap: tap, enable: false) }
+        if let runLoopSource { CFRunLoopRemoveSource(CFRunLoopGetMain(), runLoopSource, .commonModes) }
+        tap = nil
+        runLoopSource = nil
     }
 
     func openAccessibilitySettings() {

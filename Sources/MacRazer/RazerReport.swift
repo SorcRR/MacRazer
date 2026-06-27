@@ -65,6 +65,14 @@ struct RazerReport {
         r.remainingPackets = (UInt16(b[2]) << 8) | UInt16(b[3])
         r.protocolType = b[4]
         r.arguments = Array(b[8..<88])
+        // Diagnostic only — log on mismatch rather than reject, since rejecting on every
+        // CRC-failed read (with no real-world data on how reliably actual hardware sets it)
+        // risks turning a corrupted-but-recoverable read into a hard failure.
+        let expectedCRC = crc(of: b)
+        if b[88] != expectedCRC {
+            FileHandle.standardError.write(Data(
+                "[MacRazer] CRC mismatch on response (got 0x\(String(b[88], radix: 16)), expected 0x\(String(expectedCRC, radix: 16))) — reading may be corrupted\n".utf8))
+        }
         return r
     }
 

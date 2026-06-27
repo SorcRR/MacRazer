@@ -17,6 +17,21 @@ expect rough edges until 1.0.
 - Time estimates (the battery card's "~Xh Ym left" and the new usage stats) now break down
  into days once they pass 24 hours, e.g. "~1d 4h", instead of showing raw hour counts.
 
+### Fixed
+- **Implausible battery jump guard now stays active permanently**, not just for the first read
+ after a reconnect — previously, once the device was marked "ready," a single corrupted
+ reading (any time) was trusted outright as the new baseline with no sanity check.
+- **A flaky serial-number read on reconnect no longer fragments a device's battery history.**
+ If the serial probe fails transiently, the previous session's device key is now reused
+ instead of falling back to a PID-only key, which used to split one mouse's history across
+ two on-disk files.
+- **Button-remap event tap is now torn down when Accessibility is revoked** while the app is
+ running, instead of leaving a stale `CGEventTap`/run-loop source registered indefinitely.
+- **Corrupted HID responses are now logged.** Incoming reports' CRC is checked against the
+ wire format's own integrity byte and a mismatch is logged to stderr (diagnostic only — the
+ reading still surfaces, since silently rejecting on every mismatch isn't safe without more
+ data on how reliably real hardware sets the CRC).
+
 ## [0.1.3] — 2026-06-24
 
 ### Added
