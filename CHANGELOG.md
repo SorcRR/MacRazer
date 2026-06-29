@@ -10,6 +10,19 @@ expect rough edges until 1.0.
 - **Update check.** The app checks GitHub once a day for a newer release and shows a card in
  the popover (plus a badge dot on the menu bar icon) when one is available, with a one-click
  "Download" that fetches the new DMG and opens it in Finder.
+- **Hover tooltips on the battery-usage charts.** Hovering the discharge curve or a past-charge
+ bar shows its value/time next to the section title.
+
+### Changed
+- "Time since last full charge" is now **"Time since last charge"**, and shows the percentage
+ the cycle started from (e.g. "1d 4h (from 73%)") — the cycle boundary isn't necessarily a
+ full 100% charge, so the old label was misleading for partial top-ups.
+
+### Fixed
+- **A one-off garbage charging-status read right after sleep/wake (or a reconnect) no longer
+ wipes the whole discharge history.** A not-charging→charging transition now has to be
+ confirmed on two consecutive polls before it's trusted, since acting on a single bad read
+ destructively reset the "time since last charge" timer to ~0.
 
 ## [0.1.4] — 2026-06-27
 
