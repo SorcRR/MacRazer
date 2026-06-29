@@ -4,7 +4,7 @@ All notable changes to this project. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/). The project is **pre-release** (0.x) —
 expect rough edges until 1.0.
 
-## [Unreleased]
+## [0.1.5] — 2026-06-29
 
 ### Added
 - **Update check.** The app checks GitHub once a day for a newer release and shows a card in
