@@ -12,6 +12,10 @@ struct UsageGraphView: View {
     @ObservedObject var controller: MouseController
     var onBack: () -> Void
 
+    /// Sample/cycle currently under the pointer, used to draw the hover tooltip on each chart.
+    @State private var hoveredSample: BatterySample?
+    @State private var hoveredCycle: ChargeCycleSummary?
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 10) {
@@ -42,11 +46,30 @@ struct UsageGraphView: View {
                         LineMark(x: .value("Time", sample.t), y: .value("Battery", sample.pct))
                             .foregroundStyle(Color.razerGreen)
                             .interpolationMethod(.monotone)
+                        if hoveredSample?.t == sample.t {
+                            PointMark(x: .value("Time", sample.t), y: .value("Battery", sample.pct))
+                                .foregroundStyle(Color.razerGreen)
+                                .symbolSize(50)
+                                .annotation(position: .top, spacing: 4) {
+                                    hoverLabel("\(sample.pct)% · \(Self.timeFormatter.string(from: sample.t))")
+                                }
+                        }
                     }
                     .chartYScale(domain: 0...100)
                     .chartXAxis { AxisMarks(values: .automatic(desiredCount: 3)) }
                     .chartYAxis { AxisMarks(values: [0, 50, 100]) }
                     .frame(height: 120)
+                    .chartOverlay { proxy in
+                        GeometryReader { geo in
+                            hoverCatcher(proxy: proxy, geo: geo) { date in
+                                hoveredSample = controller.batterySamples.min {
+                                    abs($0.t.timeIntervalSince(date)) < abs($1.t.timeIntervalSince(date))
+                                }
+                            } onEnd: {
+                                hoveredSample = nil
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -59,7 +82,7 @@ struct UsageGraphView: View {
             VStack(alignment: .leading, spacing: 8) {
                 statRow("Discharge rate", dischargeRateText)
                 statRow("Estimated time remaining", remainingText)
-                statRow("Time since last full charge", sinceChargeText)
+                statRow("Time since last charge", sinceChargeText)
                 statRow("Average battery life per charge", averageLifeText)
             }
         }
@@ -82,7 +105,11 @@ struct UsageGraphView: View {
         // resetting "~0m" rather than the prior completed discharge.
         if controller.charging { return "Charging" }
         guard let start = controller.cycleStartedAt else { return "—" }
-        return BatteryHistory.formatDuration(hours: Date().timeIntervalSince(start) / 3600)
+        let duration = BatteryHistory.formatDuration(hours: Date().timeIntervalSince(start) / 3600)
+        // The cycle starts wherever the last charge (full or partial) left off, not necessarily
+        // 100% — show that starting level so the duration isn't read as "since it was full".
+        guard let startPct = controller.cycleStartedPercent else { return duration }
+        return "\(duration) (from \(startPct)%)"
     }
 
     private var averageLifeText: String {
@@ -112,11 +139,28 @@ struct UsageGraphView: View {
                     // Bucketing by day would stack two same-day charges into one bar; use the
                     // exact end timestamp so each cycle gets its own bar.
                     Chart(controller.pastCycles, id: \.start) { cycle in
+                        let isHovered = hoveredCycle?.start == cycle.start
                         BarMark(x: .value("Charge", cycle.end), y: .value("Hours", cycle.duration / 3600))
-                            .foregroundStyle(Color.razerGreen.opacity(0.75))
+                            .foregroundStyle(Color.razerGreen.opacity(isHovered ? 1.0 : 0.75))
+                            .annotation(position: .top, spacing: 4) {
+                                if isHovered {
+                                    hoverLabel("\(BatteryHistory.formatDuration(hours: cycle.duration / 3600)) · \(Self.dayFormatter.string(from: cycle.end))")
+                                }
+                            }
                     }
                     .chartXAxis { AxisMarks(values: .automatic(desiredCount: 3)) }
                     .frame(height: 100)
+                    .chartOverlay { proxy in
+                        GeometryReader { geo in
+                            hoverCatcher(proxy: proxy, geo: geo) { date in
+                                hoveredCycle = controller.pastCycles.min {
+                                    abs($0.end.timeIntervalSince(date)) < abs($1.end.timeIntervalSince(date))
+                                }
+                            } onEnd: {
+                                hoveredCycle = nil
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -130,4 +174,47 @@ struct UsageGraphView: View {
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, minHeight: 60, alignment: .center)
     }
+
+    /// Small pill used by both charts' hover annotations.
+    private func hoverLabel(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 10, weight: .semibold))
+            .monospacedDigit()
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 4))
+    }
+
+    /// Transparent hit-test layer over a chart's plot area: tracks the pointer, converts its
+    /// position to the chart's x-axis value, and reports it via `onMove` (nil x is ignored,
+    /// since `value(atX:)` returns nil outside the plot area's bounds). `onEnd` fires when the
+    /// pointer leaves so the caller can clear its hover state.
+    private func hoverCatcher(proxy: ChartProxy, geo: GeometryProxy, onMove: @escaping (Date) -> Void, onEnd: @escaping () -> Void) -> some View {
+        Rectangle()
+            .fill(.clear)
+            .contentShape(Rectangle())
+            .onContinuousHover { phase in
+                switch phase {
+                case .active(let location):
+                    guard let plotFrame = proxy.plotFrame else { return }
+                    let origin = geo[plotFrame].origin
+                    guard let date: Date = proxy.value(atX: location.x - origin.x) else { return }
+                    onMove(date)
+                case .ended:
+                    onEnd()
+                }
+            }
+    }
+
+    private static let timeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "h:mm a"
+        return f
+    }()
+
+    private static let dayFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "MMM d"
+        return f
+    }()
 }

@@ -53,6 +53,11 @@ final class BatteryHistory {
     /// nil if there's no data yet.
     var cycleStartedAt: Date? { samples.first?.t }
 
+    /// Battery percent at the start of the current discharge cycle — i.e. what it was charged
+    /// to before we started consuming it again. Not necessarily 100%: any uptick (or a
+    /// charging report) ends the previous cycle, full or not.
+    var cycleStartedPercent: Int? { samples.first?.pct }
+
     /// The discharge rate currently in effect (session fit if confident, else the persisted
     /// learned rate), exposed for display alongside the formatted estimate.
     var currentRatePerHour: Double? { sessionRatePerHour() ?? learnedRatePerHour }

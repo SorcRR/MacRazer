@@ -23,6 +23,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     @Published private(set) var batterySamples: [BatterySample] = []
     @Published private(set) var dischargeRatePerHour: Double?
     @Published private(set) var cycleStartedAt: Date?
+    @Published private(set) var cycleStartedPercent: Int?
     @Published private(set) var pastCycles: [ChargeCycleSummary] = []
     @Published private(set) var averageCycleHours: Double?
     @Published private(set) var statusText = "…"
@@ -72,6 +73,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     private var batteryReady = false
     private var lastGoodPercent: Int?  // last trusted reading, for sanity-checking jumps
     private var batteryRejects = 0     // how many implausible post-reconnect readings we've skipped
+    /// True once a not-charging→charging transition has been seen but not yet confirmed on a
+    /// second consecutive poll (see the charging-status read above).
+    private var pendingChargeConfirm = false
 
     // Adaptive poll cadence: react quickly while offline (to catch reconnects), relax when up.
     private let pollWhenConnected: TimeInterval = 15
@@ -242,12 +246,30 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             if let cResp = try? dev.sendWithRetry(RazerCommands.getChargingStatus()) {
                 charging = cResp.arguments[1] != 0
             }
-            let isCharging = charging
+            // A reconnect/wake can return a one-off garbage charging byte just like it can a
+            // garbage percent (see the wild-jump guard above) — but here, acting on a false
+            // positive destructively resets the whole discharge history. Require the rising
+            // edge (not-charging → charging) to be confirmed on a second consecutive poll
+            // before trusting it; dropping back to false is acted on immediately since that
+            // direction can't trigger the destructive reset.
+            let isCharging: Bool
+            if charging {
+                if pendingChargeConfirm {
+                    isCharging = true
+                } else {
+                    pendingChargeConfirm = true
+                    isCharging = false
+                }
+            } else {
+                pendingChargeConfirm = false
+                isCharging = false
+            }
             history.record(percent: pct, charging: isCharging)
             let estimate = isCharging ? "Charging" : history.estimateString(currentPercent: pct)
             let samples = history.samples
             let rate = history.currentRatePerHour
             let cycleStart = history.cycleStartedAt
+            let cycleStartPct = history.cycleStartedPercent
             batteryReady = true
             publish {
                 let wasConnected = self.connected
@@ -258,6 +280,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 self.batterySamples = samples
                 self.dischargeRatePerHour = rate
                 self.cycleStartedAt = cycleStart
+                self.cycleStartedPercent = cycleStartPct
                 self.lastError = nil
                 self.bluetoothMouseName = nil
                 self.updateStatusText()
@@ -268,6 +291,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             device = nil // drop the handle so we reopen next tick
             lastReadOK = false
             batteryReady = false // force the reconnect freshness check next time
+            pendingChargeConfirm = false // don't let a stale pending confirm carry across a drop
             consecutiveFailures += 1
             // Require two consecutive failures before declaring offline — the wireless link
             // throws the odd transient timeout that shouldn't flap the UI or fire a sound.
@@ -373,6 +397,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         }.reversed()
         dischargeRatePerHour = 1.0
         cycleStartedAt = batterySamples.first?.t
+        cycleStartedPercent = batterySamples.first?.pct
         pastCycles = (1...6).map { i in
             let end = now.addingTimeInterval(Double(-i) * 86400)
             return ChargeCycleSummary(start: end.addingTimeInterval(-Double(20 + i) * 3600),
@@ -417,17 +442,23 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             history = BatteryHistory(deviceKey: key)
             cycleHistory = ChargeCycleHistory(deviceKey: key)
             wireHistory()
+            // A charging debounce pending for the previous mouse must not auto-confirm the new
+            // one's first read — that's exactly the unverified-first-read case the debounce
+            // exists to guard.
+            pendingChargeConfirm = false
             // Republish everything derived from history immediately so the usage graph doesn't
             // keep showing the previous mouse's curve until the next poll tick.
             let samples = history.samples
             let rate = history.currentRatePerHour
             let cycleStart = history.cycleStartedAt
+            let cycleStartPct = history.cycleStartedPercent
             let cycles = cycleHistory.cycles
             let avg = cycleHistory.averageCycleDuration.map { $0 / 3600 }
             publish {
                 self.batterySamples = samples
                 self.dischargeRatePerHour = rate
                 self.cycleStartedAt = cycleStart
+                self.cycleStartedPercent = cycleStartPct
                 self.pastCycles = cycles
                 self.averageCycleHours = avg
             }
