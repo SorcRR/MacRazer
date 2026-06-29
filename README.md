@@ -1,8 +1,10 @@
 # Razer mouse control for macOS
 
-A native menu bar app to control Razer mice on macOS, which Razer's Synapse does not support.
-It talks to the mouse directly over USB HID (no kernel extension, no driver install), using a
-protocol ported from [OpenRazer](https://github.com/openrazer/openrazer).
+A native menu bar app to control Razer mice on macOS. Razer does ship a Synapse for Mac now,
+but its [supported-device list](https://mysupport.razer.com/app/answers/detail/a_id/14809/~/razer-synapse-for-mac-supported-and-compatible-devices)
+is short and doesn't include the Cobra HyperSpeed or Atheris — this fills that gap. It talks
+to the mouse directly over USB HID (no kernel extension, no driver install), using a protocol
+ported from [OpenRazer](https://github.com/openrazer/openrazer).
 
 Works best with the **Razer Cobra HyperSpeed** and the **Razer Atheris**, the two devices this
 has actually been tested on. It detects any Razer mouse by name and should work with other

@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="google-site-verification" content="SmhAFHV4KG5IkP0GP-oTNQpCV6aW-Dp_afW9zDSs5NA" />
-<title>MacRazer — Razer mouse control for macOS (free, open source)</title>
-<meta name="description" content="MacRazer is a free, open-source menu bar app that controls Razer mice on macOS — battery %, DPI, RGB lighting, polling rate, and button remapping over USB HID. No Synapse required, no kernel extension. Works with Razer Cobra HyperSpeed, Atheris, and Cobra Pro.">
+<title>MacRazer: Razer mouse control for macOS (free, open source)</title>
+<meta name="description" content="MacRazer is a free, open-source menu bar app that controls Razer mice on macOS: battery %, DPI, RGB lighting, polling rate, and button remapping over USB HID. No Synapse required, no kernel extension. Works with Razer Cobra HyperSpeed, Atheris, and Cobra Pro.">
 <meta name="keywords" content="Razer mouse macOS, Razer Synapse alternative Mac, Razer Cobra HyperSpeed Mac, Razer Atheris Mac, Razer mouse driver macOS, Razer DPI macOS, Razer RGB macOS">
 <meta name="author" content="SorcRR">
 <link rel="canonical" href="https://sorcrr.github.io/MacRazer/">
@@ -13,14 +13,14 @@
 <!-- Open Graph / Facebook, Slack, Discord, etc. -->
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://sorcrr.github.io/MacRazer/">
-<meta property="og:title" content="MacRazer — Razer mouse control for macOS">
-<meta property="og:description" content="Free, open-source menu bar app for Razer mice on macOS — battery, DPI, RGB, polling rate, and button remapping over USB HID. No Synapse required.">
+<meta property="og:title" content="MacRazer: Razer mouse control for macOS">
+<meta property="og:description" content="Free, open-source menu bar app for Razer mice on macOS: battery, DPI, RGB, polling rate, and button remapping over USB HID. No Synapse required.">
 <meta property="og:image" content="https://sorcrr.github.io/MacRazer/assets/icon-1024.png">
 
 <!-- Twitter / X card -->
 <meta name="twitter:card" content="summary">
-<meta name="twitter:title" content="MacRazer — Razer mouse control for macOS">
-<meta name="twitter:description" content="Free, open-source menu bar app for Razer mice on macOS — battery, DPI, RGB, polling rate, and button remapping over USB HID. No Synapse required.">
+<meta name="twitter:title" content="MacRazer: Razer mouse control for macOS">
+<meta name="twitter:description" content="Free, open-source menu bar app for Razer mice on macOS: battery, DPI, RGB, polling rate, and button remapping over USB HID. No Synapse required.">
 <meta name="twitter:image" content="https://sorcrr.github.io/MacRazer/assets/icon-1024.png">
 
 <link rel="icon" type="image/png" href="assets/favicon.png">
@@ -35,7 +35,7 @@
   "name": "MacRazer",
   "operatingSystem": "macOS 14+",
   "applicationCategory": "UtilitiesApplication",
-  "description": "A native menu bar app to control Razer mice on macOS — battery, DPI, RGB lighting, polling rate, and button remapping over USB HID, without Razer Synapse.",
+  "description": "A native menu bar app to control Razer mice on macOS: battery, DPI, RGB lighting, polling rate, and button remapping over USB HID, without Razer Synapse.",
   "url": "https://sorcrr.github.io/MacRazer/",
   "downloadUrl": "https://github.com/SorcRR/MacRazer/releases/latest/download/MacRazer.dmg",
   "softwareVersion": "latest",
@@ -74,11 +74,12 @@
 
   <div class="hero-content">
     <p class="kicker">menu&nbsp;bar app · macOS 14+ · Apple Silicon</p>
-    <h1>Razer Synapse<br><em>doesn't</em> support macOS.<br>This does.</h1>
+    <h1>Razer Synapse for Mac<br><em>still doesn't</em> cover<br>this mouse. This does.</h1>
     <p class="hero-sub">
-      MacRazer talks to your Razer mouse directly over USB HID — battery, DPI,
+      MacRazer talks to your Razer mouse directly over USB HID: battery, DPI,
       RGB lighting, polling rate, and button remapping, with no kernel extension,
-      no driver install, and no Synapse.
+      no driver install, and no Synapse. Built for the <strong>Cobra HyperSpeed</strong>
+      and <strong>Atheris</strong>, which Razer's own Synapse for Mac still doesn't support.
     </p>
 
     <div class="hero-actions">
@@ -93,7 +94,7 @@
     <div class="terminal">
       <div class="terminal-bar">
         <span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span>
-        <span class="terminal-title">~ — build from source</span>
+        <span class="terminal-title">~ · build from source</span>
       </div>
       <pre class="terminal-body"><span class="prompt">$</span> git clone https://github.com/SorcRR/MacRazer.git
 <span class="prompt">$</span> cd MacRazer &amp;&amp; swift run MacRazer</pre>
@@ -104,19 +105,19 @@
 <main>
 
   <section class="strip">
-    <p><strong>Connect over the 2.4&nbsp;GHz dongle or USB‑C</strong> — Razer only exposes its control
+    <p><strong>Connect over the 2.4&nbsp;GHz dongle or USB‑C:</strong> Razer only exposes its control
     protocol over USB. Over Bluetooth your mouse is a plain pointer, and so is MacRazer's view of it.</p>
   </section>
 
   <section id="features" class="features">
-    <h2>Everything Synapse gives Windows.<br>Natively, in your menu bar.</h2>
+    <h2>Everything Synapse for Mac skips.<br>Natively, in your menu bar.</h2>
 
     <div class="feature-grid">
       <article class="feature">
         <span class="feature-tag">01 · battery</span>
         <h3>Battery, honestly reported</h3>
         <p>Live percentage, charging state, and a <em>learned</em> time‑until‑empty estimate
-        built from your mouse's own discharge history — kept per physical device by serial number.</p>
+        built from your mouse's own discharge history, kept per physical device by serial number.</p>
       </article>
 
       <article class="feature">
@@ -130,7 +131,7 @@
         <span class="feature-tag">03 · dpi</span>
         <h3>DPI, capped correctly</h3>
         <p>A slider bounded to each model's real maximum, the mouse's own onboard preset stages,
-        and a recallable custom value — per device.</p>
+        and a recallable custom value, per device.</p>
       </article>
 
       <article class="feature">
@@ -149,8 +150,8 @@
       <article class="feature">
         <span class="feature-tag">06 · remap</span>
         <h3>Button remapping</h3>
-        <p>Side Back/Forward buttons to keyboard shortcuts, mouse clicks, or media keys — software
-        remap via a CGEvent tap, saved per device.</p>
+        <p>Side Back/Forward buttons to keyboard shortcuts, mouse clicks, or media keys, via a
+        software remap (a CGEvent tap), saved per device.</p>
       </article>
 
       <article class="feature">
@@ -163,7 +164,7 @@
       <article class="feature">
         <span class="feature-tag">08 · detect</span>
         <h3>Any Razer mouse, named</h3>
-        <p>Controls a model lacks are hidden automatically — no lighting on the Atheris,
+        <p>Controls a model lacks are hidden automatically: no lighting on the Atheris,
         no battery UI on wired‑only mice.</p>
       </article>
     </div>
@@ -209,7 +210,7 @@
         </tr>
       </tbody>
     </table>
-    <p class="mice-note">Adding a model is a small registry change plus on‑hardware verification —
+    <p class="mice-note">Adding a model is a small registry change plus on‑hardware verification:
       see <a href="https://github.com/SorcRR/MacRazer/blob/master/CONTRIBUTING.md">CONTRIBUTING.md</a>.</p>
   </section>
 
@@ -252,7 +253,7 @@
   <section id="support" class="support">
     <div class="support-card">
       <h2>Free, unpaid, community‑run.</h2>
-      <p>MacRazer is built and maintained on free time. If it's useful to you, a tip helps —
+      <p>MacRazer is built and maintained on free time. If it's useful to you, a tip helps,
         and if you've got a Razer mouse this hasn't been verified on, a PR adding it helps even more.</p>
       <div class="support-actions">
         <a href="https://ko-fi.com/sorcrr" class="btn btn-primary btn-large">
