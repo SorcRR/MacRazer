@@ -4,6 +4,13 @@ All notable changes to this project. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/). The project is **pre-release** (0.x) —
 expect rough edges until 1.0.
 
+## [Unreleased]
+
+### Added
+- **Update check.** The app checks GitHub once a day for a newer release and shows a card in
+ the popover (plus a badge dot on the menu bar icon) when one is available, with a one-click
+ "Download" that fetches the new DMG and opens it in Finder.
+
 ## [0.1.4] — 2026-06-27
 
 ### Added

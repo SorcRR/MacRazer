@@ -32,6 +32,7 @@ extension Color {
 struct PopoverView: View {
     @ObservedObject var controller: MouseController
     @ObservedObject var remapper: ButtonRemapper
+    @ObservedObject var updateChecker: UpdateChecker
 
     enum Page { case main, color, buttons, usage }
     @State private var page: Page = .main
@@ -111,6 +112,7 @@ struct PopoverView: View {
     private var mainPage: some View {
         VStack(alignment: .leading, spacing: 10) {
             headerCard
+            if let version = updateChecker.latestVersion { updateCard(version) }
             // A Razer mouse on Bluetooth can't be controlled (no control protocol over BT) —
             // explain it instead of just showing "offline".
             if controller.bluetoothMouseName != nil && !controller.connected { bluetoothNotice }
@@ -241,6 +243,57 @@ struct PopoverView: View {
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.batteryMid.opacity(0.12), in: RoundedRectangle(cornerRadius: 13))
+    }
+
+    // MARK: Update notice
+
+    private func updateCard(_ version: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "arrow.down.circle.fill")
+                    .foregroundStyle(Color.razerGreen)
+                    .font(.system(size: 14, weight: .semibold))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Update available").font(.system(size: 12, weight: .semibold))
+                    Text("Version \(version) is out — you're on \(appVersion).")
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+                Button {
+                    updateChecker.dismiss(version)
+                } label: {
+                    Image(systemName: "xmark").font(.system(size: 9, weight: .bold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.tertiary)
+            }
+            if let error = updateChecker.downloadError {
+                Text(error).font(.system(size: 10.5)).foregroundStyle(Color.batteryLow)
+            }
+            Button {
+                Task { await updateChecker.downloadAndOpenDMG() }
+            } label: {
+                HStack(spacing: 6) {
+                    if updateChecker.isDownloading {
+                        ProgressView().controlSize(.small)
+                        Text("Downloading…")
+                    } else {
+                        Image(systemName: "arrow.down.to.line")
+                        Text("Download")
+                    }
+                }
+                .font(.system(size: 11.5, weight: .medium))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 5)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.razerGreen)
+            .controlSize(.small)
+            .disabled(updateChecker.isDownloading)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.razerGreen.opacity(0.12), in: RoundedRectangle(cornerRadius: 13))
     }
 
     // MARK: Battery hero

@@ -18,6 +18,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private lazy var remapWindow = RemapWindowController(remapper: remapper)
     private lazy var permissions = PermissionsModel(remapper: remapper, controller: controller)
     private lazy var permissionsWindow = PermissionsWindowController(model: permissions, controller: controller)
+    private let updateChecker = UpdateChecker()
+    private var updateTimer: Timer?
+    private var updateBadgeView: NSView?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Razer HID devices enumerate as a keyboard/mouse, so macOS gates opening them behind
@@ -48,7 +51,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // logo have poor contrast on the light-mode grey material; dark is also the gaming
         // aesthetic and makes the green pop.
         popover.appearance = NSAppearance(named: .darkAqua)
-        let hosting = NSHostingController(rootView: PopoverView(controller: controller, remapper: remapper))
+        let hosting = NSHostingController(rootView: PopoverView(controller: controller, remapper: remapper, updateChecker: updateChecker))
         hosting.sizingOptions = [.preferredContentSize] // popover auto-fits the SwiftUI content
         popover.contentViewController = hosting
 
@@ -99,6 +102,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             .receive(on: RunLoop.main)
             .sink { [weak self] key in self?.remapper.setActiveDevice(key) }
             .store(in: &cancellables)
+
+        // Update check: once now (throttled internally to once/24h), then a daily timer so a
+        // long-running session still notices new releases without a relaunch.
+        updateChecker.$latestVersion
+            .receive(on: RunLoop.main)
+            .sink { [weak self] version in self?.setUpdateBadge(visible: version != nil) }
+            .store(in: &cancellables)
+        Task { await updateChecker.checkForUpdatesIfDue() }
+        let timer = Timer(timeInterval: 24 * 60 * 60, repeats: true) { [weak self] _ in
+            Task { await self?.updateChecker.checkForUpdatesIfDue() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        updateTimer = timer
+    }
+
+    /// Small red dot over the status-item icon when an update is available. A subview rather
+    /// than baking it into the icon image — the icon is a template image that macOS recolors
+    /// automatically for light/dark menu bars, and a baked-in dot would lose its red color to
+    /// that same recoloring.
+    private func setUpdateBadge(visible: Bool) {
+        guard let button = statusItem.button else { return }
+        guard visible else {
+            updateBadgeView?.removeFromSuperview()
+            updateBadgeView = nil
+            return
+        }
+        guard updateBadgeView == nil else { return }
+        let dotSize: CGFloat = 6
+        let dot = NSView(frame: NSRect(
+            x: button.bounds.width - dotSize, y: button.bounds.height - dotSize,
+            width: dotSize, height: dotSize))
+        dot.wantsLayer = true
+        dot.layer?.backgroundColor = NSColor.systemRed.cgColor
+        dot.layer?.cornerRadius = dotSize / 2
+        dot.autoresizingMask = [.minXMargin, .minYMargin]
+        button.addSubview(dot)
+        updateBadgeView = dot
     }
 
     // MARK: - Click handling
@@ -196,6 +236,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         monitor?.invalidate()
+        updateTimer?.invalidate()
     }
 
     // MARK: - Input Monitoring permission
