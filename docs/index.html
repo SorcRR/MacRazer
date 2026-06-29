@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MacRazer — Razer mouse control for macOS</title>
+<meta name="description" content="A native menu bar app for controlling Razer mice on macOS — battery, DPI, RGB, polling rate, and button remapping over USB HID. No Synapse, no kernel extension, free and open source.">
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,600;1,9..144,500&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div class="grain"></div>
+
+<header class="hero">
+  <nav class="topbar">
+    <div class="brand">
+      <img src="assets/icon-1024.png" alt="" class="brand-icon">
+      <span>MacRazer</span>
+    </div>
+    <div class="topbar-links">
+      <a href="#features">Features</a>
+      <a href="#mice">Supported mice</a>
+      <a href="#install">Install</a>
+      <a href="https://ko-fi.com/sorcrr">Tips</a>
+      <a href="https://github.com/SorcRR/MacRazer" class="topbar-gh">GitHub →</a>
+    </div>
+  </nav>
+
+  <div class="hero-content">
+    <p class="kicker">menu&nbsp;bar app · macOS 14+ · Apple Silicon</p>
+    <h1>Razer Synapse<br><em>doesn't</em> support macOS.<br>This does.</h1>
+    <p class="hero-sub">
+      MacRazer talks to your Razer mouse directly over USB HID — battery, DPI,
+      RGB lighting, polling rate, and button remapping, with no kernel extension,
+      no driver install, and no Synapse.
+    </p>
+
+    <div class="hero-actions">
+      <a href="https://github.com/SorcRR/MacRazer/releases/latest/download/MacRazer.dmg" class="btn btn-primary">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1V11M8 11L4.5 7.5M8 11L11.5 7.5M2 13.5H14" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Download MacRazer.dmg
+      </a>
+      <a href="https://github.com/SorcRR/MacRazer" class="btn btn-ghost">View source</a>
+    </div>
+    <p class="hero-meta">Free · Open source (GPL-2.0) · Unofficial, not affiliated with Razer Inc.</p>
+
+    <div class="terminal">
+      <div class="terminal-bar">
+        <span class="dot dot-r"></span><span class="dot dot-y"></span><span class="dot dot-g"></span>
+        <span class="terminal-title">~ — build from source</span>
+      </div>
+      <pre class="terminal-body"><span class="prompt">$</span> git clone https://github.com/SorcRR/MacRazer.git
+<span class="prompt">$</span> cd MacRazer &amp;&amp; swift run MacRazer</pre>
+    </div>
+  </div>
+</header>
+
+<main>
+
+  <section class="strip">
+    <p><strong>Connect over the 2.4&nbsp;GHz dongle or USB‑C</strong> — Razer only exposes its control
+    protocol over USB. Over Bluetooth your mouse is a plain pointer, and so is MacRazer's view of it.</p>
+  </section>
+
+  <section id="features" class="features">
+    <h2>Everything Synapse gives Windows.<br>Natively, in your menu bar.</h2>
+
+    <div class="feature-grid">
+      <article class="feature">
+        <span class="feature-tag">01 · battery</span>
+        <h3>Battery, honestly reported</h3>
+        <p>Live percentage, charging state, and a <em>learned</em> time‑until‑empty estimate
+        built from your mouse's own discharge history — kept per physical device by serial number.</p>
+      </article>
+
+      <article class="feature">
+        <span class="feature-tag">02 · history</span>
+        <h3>Discharge graph &amp; trends</h3>
+        <p>One click opens the current discharge curve, drain rate, time since last full charge,
+        and a trend chart across past charge cycles.</p>
+      </article>
+
+      <article class="feature">
+        <span class="feature-tag">03 · dpi</span>
+        <h3>DPI, capped correctly</h3>
+        <p>A slider bounded to each model's real maximum, the mouse's own onboard preset stages,
+        and a recallable custom value — per device.</p>
+      </article>
+
+      <article class="feature">
+        <span class="feature-tag">04 · polling</span>
+        <h3>Polling rate</h3>
+        <p>125 / 500 / 1000&nbsp;Hz, switchable from the menu bar without touching Windows.</p>
+      </article>
+
+      <article class="feature">
+        <span class="feature-tag">05 · rgb</span>
+        <h3>RGB lighting</h3>
+        <p>Static colour via an inline hue/saturation wheel, plus spectrum, wave, off, and a
+        brightness slider.</p>
+      </article>
+
+      <article class="feature">
+        <span class="feature-tag">06 · remap</span>
+        <h3>Button remapping</h3>
+        <p>Side Back/Forward buttons to keyboard shortcuts, mouse clicks, or media keys — software
+        remap via a CGEvent tap, saved per device.</p>
+      </article>
+
+      <article class="feature">
+        <span class="feature-tag">07 · onboard</span>
+        <h3>Onboard memory</h3>
+        <p>Settings write to the mouse itself where supported, so they persist even when
+        MacRazer isn't running.</p>
+      </article>
+
+      <article class="feature">
+        <span class="feature-tag">08 · detect</span>
+        <h3>Any Razer mouse, named</h3>
+        <p>Controls a model lacks are hidden automatically — no lighting on the Atheris,
+        no battery UI on wired‑only mice.</p>
+      </article>
+    </div>
+  </section>
+
+  <section class="shots">
+    <figure>
+      <img src="https://github.com/user-attachments/assets/a7632668-2d12-4d2f-aa84-7b234bad31dc" alt="MacRazer menu bar dropdown showing battery, DPI, RGB and remap controls">
+      <figcaption>The full control panel, right from the menu bar.</figcaption>
+    </figure>
+    <figure>
+      <img src="https://github.com/user-attachments/assets/c1cf4013-9c1e-40df-ac09-c3e36756df69" alt="MacRazer button remap screen showing detected Forward and Back buttons mapped to Copy and Paste">
+      <figcaption>Remap the side buttons to whatever you actually use.</figcaption>
+    </figure>
+    <figure>
+      <img src="assets/battery-usage.png" alt="MacRazer battery usage screen showing the discharge curve, discharge rate, estimated time remaining, and a trend chart of past charge cycles">
+      <figcaption>Discharge curve, drain rate, and charge‑cycle trend over time.</figcaption>
+    </figure>
+  </section>
+
+  <section id="mice" class="mice">
+    <h2>Supported mice</h2>
+    <table>
+      <thead>
+        <tr><th>Mouse</th><th>Status</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Razer Cobra HyperSpeed <span class="muted">(wired + wireless)</span></td>
+          <td><span class="badge badge-good">Tested, works best</span></td>
+        </tr>
+        <tr>
+          <td>Razer Atheris</td>
+          <td><span class="badge badge-good">Tested, works best</span></td>
+        </tr>
+        <tr>
+          <td>Razer Cobra, Cobra Pro <span class="muted">(wired + wireless)</span></td>
+          <td><span class="badge badge-mid">Same protocol, not yet verified</span></td>
+        </tr>
+        <tr>
+          <td>Any other Razer mouse</td>
+          <td><span class="badge badge-mid">Detected and named; untested</span></td>
+        </tr>
+      </tbody>
+    </table>
+    <p class="mice-note">Adding a model is a small registry change plus on‑hardware verification —
+      see <a href="https://github.com/SorcRR/MacRazer/blob/master/CONTRIBUTING.md">CONTRIBUTING.md</a>.</p>
+  </section>
+
+  <section id="install" class="install">
+    <h2>Install</h2>
+    <ol class="steps">
+      <li>
+        <span class="step-num">1</span>
+        <div>
+          <p>Download <code>MacRazer.dmg</code> from the
+          <a href="https://github.com/SorcRR/MacRazer/releases/latest">latest release</a>,
+          open it, and drag <strong>MacRazer</strong> into Applications.</p>
+        </div>
+      </li>
+      <li>
+        <span class="step-num">2</span>
+        <div>
+          <p>This build is unsigned (no paid Apple Developer ID), so Gatekeeper will warn on
+          first launch. That's the standard unsigned‑app warning, not an actual problem.
+          Right‑click the app → <strong>Open</strong> → confirm, <em>or</em> run:</p>
+          <div class="terminal terminal-inline">
+            <pre class="terminal-body"><span class="prompt">$</span> xattr -cr /Applications/MacRazer.app</pre>
+          </div>
+        </div>
+      </li>
+      <li>
+        <span class="step-num">3</span>
+        <div>
+          <p>Launch it. Grant <strong>Input Monitoring</strong> (and <strong>Accessibility</strong>
+          if you use button remapping) when asked.</p>
+        </div>
+      </li>
+    </ol>
+    <a href="https://github.com/SorcRR/MacRazer/releases/latest/download/MacRazer.dmg" class="btn btn-primary btn-large">
+      Download MacRazer.dmg
+    </a>
+  </section>
+
+  <section id="support" class="support">
+    <div class="support-card">
+      <h2>Free, unpaid, community‑run.</h2>
+      <p>MacRazer is built and maintained on free time. If it's useful to you, a tip helps —
+        and if you've got a Razer mouse this hasn't been verified on, a PR adding it helps even more.</p>
+      <div class="support-actions">
+        <a href="https://ko-fi.com/sorcrr" class="btn btn-primary btn-large">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 14.2C8 14.2 1.8 10.6 1.8 6.2C1.8 4 3.5 2.4 5.6 2.4C6.7 2.4 7.5 2.9 8 3.6C8.5 2.9 9.3 2.4 10.4 2.4C12.5 2.4 14.2 4 14.2 6.2C14.2 10.6 8 14.2 8 14.2Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+          Leave a tip
+        </a>
+        <a href="https://github.com/SorcRR/MacRazer/blob/master/CONTRIBUTING.md" class="btn btn-ghost btn-large">
+          Contribute on GitHub
+        </a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="footer">
+  <div class="footer-grid">
+    <div>
+      <div class="brand">
+        <img src="assets/icon-1024.png" alt="" class="brand-icon">
+        <span>MacRazer</span>
+      </div>
+      <p class="footer-disclaimer">Unofficial. Not affiliated with, authorized by, or endorsed by
+        Razer Inc. Protocol ported from <a href="https://github.com/openrazer/openrazer">OpenRazer</a>.</p>
+    </div>
+    <div class="footer-links">
+      <a href="https://github.com/SorcRR/MacRazer">GitHub</a>
+      <a href="https://github.com/SorcRR/MacRazer/releases">Releases</a>
+      <a href="https://github.com/SorcRR/MacRazer/blob/master/CHANGELOG.md">Changelog</a>
+      <a href="https://github.com/SorcRR/MacRazer/blob/master/LICENSE">GPL-2.0 License</a>
+      <a href="https://ko-fi.com/sorcrr">Tips</a>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
