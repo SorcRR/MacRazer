@@ -124,9 +124,22 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         (0, "Volume Up"), (1, "Volume Down"), (7, "Mute"),
     ]
 
+    /// Called after an individual button's mapping changes — lets owners (e.g. profile tracking
+    /// in `MouseController`) know the live config has drifted from whatever profile was applied.
+    var onManualChange: (() -> Void)?
+
     func setAction(_ action: RemapAction, for button: Int) {
         mappings[button] = action
         seenButtons.insert(button)
+        saveMappings()
+        onManualChange?()
+    }
+
+    /// Replaces the whole mapping table at once — used when applying a saved profile (as opposed
+    /// to a single-button edit from the remap UI, which goes through `setAction`).
+    func setMappings(_ new: [Int: RemapAction]) {
+        mappings = new
+        seenButtons.formUnion(new.keys)
         saveMappings()
     }
 

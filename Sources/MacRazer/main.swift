@@ -67,6 +67,8 @@ case "render-ui":
         ? AnyView(ColorPickerPage(color: .constant(.blue), onBack: {}, onApply: { _ in }))
         : args.contains("usage")
         ? AnyView(UsageGraphView(controller: controller, onBack: {}))
+        : args.contains("profiles")
+        ? AnyView(ProfilesView(controller: controller, remapper: ButtonRemapper(), onBack: {}))
         : AnyView(PopoverView(controller: controller, remapper: ButtonRemapper(), updateChecker: UpdateChecker()))
     let renderer = ImageRenderer(content: rootView.padding(1).background(Color(white: 0.13)))
     renderer.scale = 2
