@@ -180,6 +180,15 @@ h1 em {
   margin: 0 0 44px;
 }
 
+.version-tag {
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+#version-tag-install {
+  margin: 10px 0 0;
+}
+
 /* terminal block */
 .terminal {
   max-width: 460px;

@@ -88,7 +88,7 @@
       </a>
       <a href="https://github.com/SorcRR/MacRazer" class="btn btn-ghost">View source</a>
     </div>
-    <p class="hero-meta">Free · Open source (GPL-2.0) · Unofficial, not affiliated with Razer Inc.</p>
+    <p class="hero-meta">Free · Open source (GPL-2.0) · Unofficial, not affiliated with Razer Inc.<span id="version-tag" class="version-tag"></span></p>
 
     <div class="terminal">
       <div class="terminal-bar">
@@ -246,6 +246,7 @@
     <a href="https://github.com/SorcRR/MacRazer/releases/latest/download/MacRazer.dmg" class="btn btn-primary btn-large">
       Download MacRazer.dmg
     </a>
+    <p class="version-tag" id="version-tag-install"></p>
   </section>
 
   <section id="support" class="support">
@@ -288,5 +289,21 @@
   </div>
 </footer>
 
+<script>
+  // Best-effort: fill in the current version next to the download buttons. Falls back to
+  // showing nothing (the buttons already link straight to /releases/latest regardless) if
+  // the GitHub API is unreachable or rate-limited.
+  fetch("https://api.github.com/repos/SorcRR/MacRazer/releases/latest")
+    .then(r => r.ok ? r.json() : null)
+    .then(data => {
+      const tag = data && data.tag_name;
+      if (!tag) return;
+      const inline = document.getElementById("version-tag");
+      if (inline) inline.textContent = " · " + tag;
+      const standalone = document.getElementById("version-tag-install");
+      if (standalone) standalone.textContent = "Currently " + tag;
+    })
+    .catch(() => {});
+</script>
 </body>
 </html>
