@@ -36,7 +36,17 @@ struct UsageGraphView: View {
     private var currentCycleChart: some View {
         card {
             VStack(alignment: .leading, spacing: 6) {
-                sectionLabel("This charge", "bolt.fill")
+                HStack {
+                    sectionLabel("This charge", "bolt.fill")
+                    Spacer()
+                    // Fixed slot next to the label, not anchored to the hovered point — an
+                    // annotation positioned at the mark can overflow the chart's fixed-height
+                    // frame and grow the enclosing card, which reads as the whole view jumping.
+                    if let hovered = hoveredSample {
+                        hoverLabel("\(hovered.pct)% · \(Self.timeFormatter.string(from: hovered.t))")
+                    }
+                }
+                .frame(height: headerRowHeight)
                 if controller.charging {
                     placeholder("Charging — usage tracking paused")
                 } else if controller.batterySamples.count < 4 {
@@ -47,12 +57,11 @@ struct UsageGraphView: View {
                             .foregroundStyle(Color.razerGreen)
                             .interpolationMethod(.monotone)
                         if hoveredSample?.t == sample.t {
+                            RuleMark(x: .value("Time", sample.t))
+                                .foregroundStyle(.secondary.opacity(0.25))
                             PointMark(x: .value("Time", sample.t), y: .value("Battery", sample.pct))
                                 .foregroundStyle(Color.razerGreen)
                                 .symbolSize(50)
-                                .annotation(position: .top, spacing: 4) {
-                                    hoverLabel("\(sample.pct)% · \(Self.timeFormatter.string(from: sample.t))")
-                                }
                         }
                     }
                     .chartYScale(domain: 0...100)
@@ -132,7 +141,14 @@ struct UsageGraphView: View {
     private var trendChart: some View {
         card {
             VStack(alignment: .leading, spacing: 6) {
-                sectionLabel("Past charges", "clock.arrow.circlepath")
+                HStack {
+                    sectionLabel("Past charges", "clock.arrow.circlepath")
+                    Spacer()
+                    if let hovered = hoveredCycle {
+                        hoverLabel("\(BatteryHistory.formatDuration(hours: hovered.duration / 3600)) · \(Self.dayFormatter.string(from: hovered.end))")
+                    }
+                }
+                .frame(height: headerRowHeight)
                 if controller.pastCycles.isEmpty {
                     placeholder("No completed charge cycles tracked yet")
                 } else {
@@ -142,11 +158,6 @@ struct UsageGraphView: View {
                         let isHovered = hoveredCycle?.start == cycle.start
                         BarMark(x: .value("Charge", cycle.end), y: .value("Hours", cycle.duration / 3600))
                             .foregroundStyle(Color.razerGreen.opacity(isHovered ? 1.0 : 0.75))
-                            .annotation(position: .top, spacing: 4) {
-                                if isHovered {
-                                    hoverLabel("\(BatteryHistory.formatDuration(hours: cycle.duration / 3600)) · \(Self.dayFormatter.string(from: cycle.end))")
-                                }
-                            }
                     }
                     .chartXAxis { AxisMarks(values: .automatic(desiredCount: 3)) }
                     .frame(height: 100)
@@ -174,6 +185,10 @@ struct UsageGraphView: View {
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, minHeight: 60, alignment: .center)
     }
+
+    /// Fixed height for each chart's title row, so the hover label appearing/disappearing next
+    /// to the section title never changes the row's height and shifts the chart below it.
+    private let headerRowHeight: CGFloat = 16
 
     /// Small pill used by both charts' hover annotations.
     private func hoverLabel(_ text: String) -> some View {
