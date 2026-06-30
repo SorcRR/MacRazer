@@ -58,7 +58,7 @@ Adding a model is a small change to a registry plus on-hardware verification. Se
 Per-device settings (custom DPI, button remaps, battery history) are keyed by the mouse's own
 serial number when it reports one, otherwise by its USB product ID. If you own **two mice of
 the exact same model and that model doesn't expose a serial**, both fall back to the same
-PID-based key and will share one settings/history file — there's no other stable identifier to
+PID-based key and will share one settings/history file: there's no other stable identifier to
 tell them apart. This doesn't affect mixed setups (different models, or models that do report
 a serial).
 
@@ -66,7 +66,7 @@ a serial).
 
 macOS 14 or later (Apple Silicon).
 
-**Connect over the 2.4 GHz dongle or a USB-C cable — not Bluetooth.** Razer only exposes its
+**Connect over the 2.4 GHz dongle or a USB-C cable, not Bluetooth.** Razer only exposes its
 control protocol (battery, DPI, lighting) over USB; over Bluetooth the mouse is just a plain
 pointer, so MacRazer can't read or change anything. If your mouse has a mode switch, set it to
 2.4 GHz. (MacRazer will tell you when it sees your mouse on Bluetooth.)
