@@ -16,8 +16,11 @@ final class BatteryHistory {
     private let url: URL
     private(set) var samples: [BatterySample] = []
 
-    /// Keep a bounded window so a single charge cycle dominates the fit.
-    private let maxSamples = 500
+    /// Keep a bounded window so a single charge cycle dominates the fit, but generous enough
+    /// that the usage graph can show the *whole* cycle rather than just a recent slice — at the
+    /// 15s connected-poll interval this covers a bit over 100 hours (~4 days), comfortably past
+    /// any realistic single-charge duration for these mice.
+    private let maxSamples = 25_000
     /// Per-device key (e.g. the PID hex) so each mouse keeps its own history + learned rate.
     private let deviceKey: String
 
@@ -26,6 +29,22 @@ final class BatteryHistory {
     /// a near-empty array during a single charge session). Callers must filter noise themselves;
     /// `ChargeCycleHistory.recordFinishedCycle` does this via its span/drop thresholds.
     var onCycleFinished: (([BatterySample]) -> Void)?
+
+    /// Fired with (previous percent, new percent, elapsed seconds) for every consecutive
+    /// in-cycle sample pair — the raw signal `DischargeCurveModel` learns dwell times from.
+    var onInterval: ((_ fromPercent: Int, _ toPercent: Int, _ duration: TimeInterval) -> Void)?
+
+    /// Above this, a gap between two samples isn't real dwell time — the mouse went to sleep,
+    /// got disconnected, or the app was closed, none of which the device "remembers" as
+    /// discharging once reconnected. Generous margin above both poll cadences (4-15s) so it
+    /// never clips a real interval, but well short of any genuine offline gap. Without this, a
+    /// multi-hour disconnect gets credited to `DischargeCurveModel` as multi-hour dwell time at
+    /// whatever percent(s) it spans, corrupting that bucket's learned mean after as few as two
+    /// such gaps (no decay/down-weighting — it's a plain running average).
+    private let maxIntervalForDwellLearning: TimeInterval = 5 * 60
+
+    private var lastSaveAt = Date.distantPast
+    private let saveInterval: TimeInterval = 30
 
     init(deviceKey: String) {
         self.deviceKey = deviceKey
@@ -38,15 +57,29 @@ final class BatteryHistory {
     }
 
     func record(percent: Int, charging: Bool) {
+        let now = Date()
         // A charge event invalidates the discharge trend — reset the window on an uptick.
         let isReset = (samples.last.map { percent > $0.pct + 1 } ?? false) || charging
         if isReset {
             if !samples.isEmpty { onCycleFinished?(samples) }
             samples.removeAll()
+        } else if let last = samples.last {
+            let elapsed = now.timeIntervalSince(last.t)
+            if elapsed <= maxIntervalForDwellLearning {
+                onInterval?(last.pct, percent, elapsed)
+            }
         }
-        samples.append(BatterySample(t: Date(), pct: percent))
+        samples.append(BatterySample(t: now, pct: percent))
         if samples.count > maxSamples { samples.removeFirst(samples.count - maxSamples) }
-        save()
+        // Persisting on every tick made sense at the old 500-sample cap; at 25,000 it'd mean
+        // rewriting a much bigger file to disk every 4-15s. Always save promptly right after a
+        // reset (the array is small then, and it's a meaningful boundary worth not losing);
+        // otherwise throttle to a periodic save — losing a few seconds of the in-memory tail on
+        // an unclean quit is an acceptable trade for not hammering disk all cycle long.
+        if isReset || now.timeIntervalSince(lastSaveAt) >= saveInterval {
+            lastSaveAt = now
+            save()
+        }
     }
 
     /// Time the current discharge cycle started (the oldest sample since the last reset), or
@@ -71,18 +104,27 @@ final class BatteryHistory {
     }
 
     /// Hours remaining. Prefers a fresh per-session slope (and folds it into the learned rate);
-    /// otherwise falls back to the persisted learned rate.
-    func estimateHoursRemaining(currentPercent: Int) -> Double? {
-        if let rate = sessionRatePerHour() {
+    /// otherwise falls back to the persisted learned rate. If `curveModel` is given (only for
+    /// models with a learned per-percent discharge curve — see `DischargeCurveModel`) and it
+    /// can produce an estimate, that wins over the plain `currentPercent / rate` projection,
+    /// since a single rate can't represent a non-linear discharge curve. The rate is still
+    /// computed/persisted exactly as before either way — it's also the curve model's own
+    /// per-bucket fallback for percents it doesn't have data for yet.
+    func estimateHoursRemaining(currentPercent: Int, curveModel: DischargeCurveModel? = nil) -> Double? {
+        var rate: Double?
+        if let session = sessionRatePerHour() {
             // Blend the observed rate into the long-term learned rate (EMA), then use it.
-            let blended = learnedRatePerHour.map { 0.8 * $0 + 0.2 * rate } ?? rate
+            let blended = learnedRatePerHour.map { 0.8 * $0 + 0.2 * session } ?? session
             learnedRatePerHour = min(max(blended, 0.05), 60)
-            return Double(currentPercent) / rate
+            rate = session
+        } else if let learned = learnedRatePerHour, learned > 0 {
+            rate = learned
         }
-        if let rate = learnedRatePerHour, rate > 0 {
-            return Double(currentPercent) / rate
+        if let curveModel, let estimate = curveModel.estimateHoursRemaining(currentPercent: currentPercent, fallbackRatePerHour: rate) {
+            return estimate
         }
-        return nil
+        guard let rate else { return nil }
+        return Double(currentPercent) / rate
     }
 
     /// Linear least-squares fit of the current samples → discharge rate in %/hour (positive),
@@ -114,8 +156,8 @@ final class BatteryHistory {
     }
 
     /// Human-readable "~Xh Ym" / "~Xd Yh" string, or nil.
-    func estimateString(currentPercent: Int) -> String? {
-        guard let hours = estimateHoursRemaining(currentPercent: currentPercent) else { return nil }
+    func estimateString(currentPercent: Int, curveModel: DischargeCurveModel? = nil) -> String? {
+        guard let hours = estimateHoursRemaining(currentPercent: currentPercent, curveModel: curveModel) else { return nil }
         return "~\(Self.formatDuration(hours: hours)) left (est.)"
     }
 

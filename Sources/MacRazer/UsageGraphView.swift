@@ -53,17 +53,27 @@ struct UsageGraphView: View {
                     placeholder("Gathering data…")
                 } else {
                     Chart(controller.batterySamples, id: \.t) { sample in
+                        // Colored like the battery bar/gauge on the main page (low/mid/full).
+                        // A plain per-point `.foregroundStyle(Color)` doesn't segment a
+                        // LineMark in Swift Charts — every point ends up resolving to one
+                        // style for the whole line. `foregroundStyle(by:)` + a matching
+                        // `chartForegroundStyleScale` is what actually splits it into colored
+                        // segments by value.
                         LineMark(x: .value("Time", sample.t), y: .value("Battery", sample.pct))
-                            .foregroundStyle(Color.razerGreen)
+                            .foregroundStyle(by: .value("Level", Self.levelBand(sample.pct)))
                             .interpolationMethod(.monotone)
                         if hoveredSample?.t == sample.t {
                             RuleMark(x: .value("Time", sample.t))
                                 .foregroundStyle(.secondary.opacity(0.25))
                             PointMark(x: .value("Time", sample.t), y: .value("Battery", sample.pct))
-                                .foregroundStyle(Color.razerGreen)
+                                .foregroundStyle(batteryLevelColor(forPercent: sample.pct))
                                 .symbolSize(50)
                         }
                     }
+                    .chartForegroundStyleScale([
+                        Self.lowBand: Color.batteryLow, Self.midBand: Color.batteryMid, Self.fullBand: Color.batteryFull,
+                    ])
+                    .chartLegend(.hidden)
                     .chartYScale(domain: 0...100)
                     .chartXAxis { AxisMarks(values: .automatic(desiredCount: 3)) }
                     .chartYAxis { AxisMarks(values: [0, 50, 100]) }
@@ -81,6 +91,17 @@ struct UsageGraphView: View {
                     }
                 }
             }
+        }
+    }
+
+    // MARK: Level-band coloring (matches the battery bar's low/mid/full thresholds)
+
+    private static let lowBand = "Low", midBand = "Mid", fullBand = "Full"
+    private static func levelBand(_ pct: Int) -> String {
+        switch pct {
+        case ..<15: return lowBand
+        case ..<40: return midBand
+        default: return fullBand
         }
     }
 
@@ -103,9 +124,12 @@ struct UsageGraphView: View {
     }
 
     private var remainingText: String {
-        if controller.charging { return "Charging" }
-        guard let pct = controller.batteryPercent, let rate = controller.dischargeRatePerHour, rate > 0 else { return "—" }
-        return "~\(BatteryHistory.formatDuration(hours: Double(pct) / rate))"
+        // Reuse `timeEstimate` (the same value the main battery card shows) rather than
+        // recomputing percent/rate here — keeps the two displays from ever disagreeing, and
+        // automatically picks up the learned discharge-curve estimate where one applies.
+        guard let estimate = controller.timeEstimate else { return "—" }
+        if estimate == "Charging" { return estimate }
+        return estimate.replacingOccurrences(of: " left (est.)", with: "")
     }
 
     private var sinceChargeText: String {

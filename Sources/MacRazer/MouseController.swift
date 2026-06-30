@@ -62,6 +62,10 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     private var history = BatteryHistory(deviceKey: "default")
     private var cycleHistory = ChargeCycleHistory(deviceKey: "default")
     private var historyKey: String? // device the current history belongs to
+    /// Learned per-percent discharge curve — only set for models `RazerDevices` covers (see
+    /// `dischargeCurveModelKey`); nil leaves every other mouse on the generic rate estimate.
+    private var curveModel: DischargeCurveModel?
+    private var curveModelKey: String?
     /// Suppresses connect/disconnect sounds until the first poll establishes a baseline.
     private var hasBaseline = false
     /// io-queue only: outcome of the most recent read, and a debounce count so a single
@@ -87,8 +91,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         scheduleNextPoll(after: pollWhenOffline)
     }
 
-    /// Hooks `history` to log finished discharge cycles into `cycleHistory`, and republishes a
-    /// snapshot for the view. Re-run whenever `history`/`cycleHistory` are swapped for a new device.
+    /// Hooks `history` to log finished discharge cycles into `cycleHistory` and per-interval
+    /// dwell time into `curveModel`, and republishes a snapshot for the view. Re-run whenever
+    /// `history`/`cycleHistory` are swapped for a new device.
     private func wireHistory() {
         history.onCycleFinished = { [weak self] samples in
             self?.cycleHistory.recordFinishedCycle(samples: samples)
@@ -96,6 +101,11 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             let cycles = self.cycleHistory.cycles
             let avg = self.cycleHistory.averageCycleDuration.map { $0 / 3600 }
             self.publish { self.pastCycles = cycles; self.averageCycleHours = avg }
+        }
+        // Reads `self.curveModel` dynamically each call, so it stays correct even when only
+        // `curveModel` (not `history`) changes — no separate rewiring needed for that case.
+        history.onInterval = { [weak self] from, to, duration in
+            self?.curveModel?.record(fromPercent: from, toPercent: to, duration: duration)
         }
     }
 
@@ -265,7 +275,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 isCharging = false
             }
             history.record(percent: pct, charging: isCharging)
-            let estimate = isCharging ? "Charging" : history.estimateString(currentPercent: pct)
+            let estimate = isCharging ? "Charging" : history.estimateString(currentPercent: pct, curveModel: curveModel)
             let samples = history.samples
             let rate = history.currentRatePerHour
             let cycleStart = history.cycleStartedAt
@@ -390,10 +400,10 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         charging = false
         dpi = 1600
         pollRate = 1000
-        timeEstimate = "About 3 days remaining"
+        timeEstimate = "~3d 0h left (est.)" // matches BatteryHistory.estimateString's real format
         let now = Date()
         batterySamples = stride(from: 0, through: 28, by: 1).map {
-            BatterySample(t: now.addingTimeInterval(Double($0) * -3600), pct: min(100, 72 + $0))
+            BatterySample(t: now.addingTimeInterval(Double($0) * -3600), pct: min(100, 2 + $0 * 4))
         }.reversed()
         dischargeRatePerHour = 1.0
         cycleStartedAt = batterySamples.first?.t
@@ -428,6 +438,14 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         let d = try HIDDevice.open(vendorId: Razer.vendorId) // any Razer mouse
         device = d
         let pid = d.productID
+        // Model-scoped (not per-serial) discharge curve, shared across every unit of a covered
+        // model so data accumulates faster. Independent of the per-unit `historyKey` swap below
+        // since the curve key is the same across both Cobra HyperSpeed PIDs and every serial.
+        let newCurveKey = RazerDevices.dischargeCurveModelKey(pid: pid)
+        if newCurveKey != curveModelKey {
+            curveModelKey = newCurveKey
+            curveModel = newCurveKey.map { DischargeCurveModel(modelKey: $0) }
+        }
         // Per-unit key: the device's serial number if it reports one, else the PID. Lets two
         // mice of the same model keep separate settings. If the serial probe fails on a
         // reconnect (the wireless link is already known to be flaky) but we already have a
