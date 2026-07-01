@@ -21,8 +21,10 @@ final class VersionedFileStore<T: Codable> {
     private let saveInterval: TimeInterval
     private var lastSaveAt = Date.distantPast
 
-    init(filename: String, version: Int, saveInterval: TimeInterval = 30) {
-        let dir = FileManager.default
+    /// `directory` overrides the default Application Support location — used by tests so
+    /// they never touch (or depend on) the real user data.
+    init(filename: String, version: Int, saveInterval: TimeInterval = 30, directory: URL? = nil) {
+        let dir = directory ?? FileManager.default
             .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("MacRazer", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

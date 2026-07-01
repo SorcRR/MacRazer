@@ -10,10 +10,13 @@ the HID protocol, and every feature.
 ```sh
 swift run MacRazer # menu bar app (uses your Terminal's permission grants)
 swift run MacRazer battery # CLI diagnostics: battery / dpi / poll / rgb / brightness / info
+swift test # unit tests (protocol codec, battery models, persistence — no hardware needed)
 ./Scripts/build-app.sh # build a standalone .app
 ./Scripts/make-dmg.sh # package the .app into dist/MacRazer.dmg for a release
 ```
-macOS 14+, Swift 6.1 / Xcode 16+.
+macOS 14+, Swift 6.1 / Xcode 16+. CI runs `swift build && swift test` on pushes to master
+and on every PR; please run the tests locally before opening a PR, and add a test when you
+fix logic in the pure layers (anything without live HID in it).
 
 `make-dmg.sh` produces an unsigned/self-signed DMG (no paid Apple Developer ID), so it
 triggers a Gatekeeper warning on first launch. That's expected; the README's Install section

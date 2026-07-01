@@ -9,11 +9,16 @@ let package = Package(
         .macOS(.v14)
     ],
     targets: [
-        // CLI probe target — milestone 1/2: validate HID + battery read against
-        // real hardware before any UI is built. Evolves into the menu bar app later.
         .executableTarget(
             name: "MacRazer",
             path: "Sources/MacRazer"
-        )
+        ),
+        // Tests import the executable target directly (@testable) — supported by SwiftPM on
+        // macOS, and avoids splitting a library target just to gain testability.
+        .testTarget(
+            name: "MacRazerTests",
+            dependencies: ["MacRazer"],
+            path: "Tests/MacRazerTests"
+        ),
     ]
 )

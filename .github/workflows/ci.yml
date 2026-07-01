@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Build + unit tests on every push/PR. No hardware in CI, so this covers the pure layers:
+# protocol codec, command builders/parsers, battery/discharge models, persistence.
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - name: Build
+        run: swift build
+      - name: Test
+        run: swift test

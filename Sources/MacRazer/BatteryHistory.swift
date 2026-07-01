@@ -48,14 +48,21 @@ final class BatteryHistory {
     /// doesn't distort the slope.
     private let maxIdleGap: TimeInterval = 5 * 60
 
-    init(deviceKey: String) {
+    /// The persisted learned rate lives in `defaults`; tests inject their own suite so they
+    /// never read or pollute the real learned rates. `directory` likewise scopes the
+    /// history file (see `VersionedFileStore`).
+    private let defaults: UserDefaults
+
+    init(deviceKey: String, directory: URL? = nil, defaults: UserDefaults = .standard) {
         self.deviceKey = deviceKey
-        store = VersionedFileStore(filename: "battery-history-\(deviceKey).json", version: 1)
+        self.defaults = defaults
+        store = VersionedFileStore(filename: "battery-history-\(deviceKey).json", version: 1,
+                                   directory: directory)
         samples = store.load(migratingLegacy: true) ?? []
     }
 
-    func record(percent: Int, charging: Bool) {
-        let now = Date()
+    /// `now` is injectable for tests (gap splicing and cycle logic are time-driven).
+    func record(percent: Int, charging: Bool, at now: Date = Date()) {
         // A charge event invalidates the discharge trend — reset the window on an uptick.
         let isReset = (samples.last.map { percent > $0.pct + 1 } ?? false) || charging
         if isReset {
@@ -101,8 +108,8 @@ final class BatteryHistory {
     /// estimate is available immediately on launch / after a recharge instead of re-deriving
     /// from scratch each time.
     private var learnedRatePerHour: Double? {
-        get { UserDefaults.standard.object(forKey: "learnedDischargeRate-\(deviceKey)") as? Double }
-        set { UserDefaults.standard.set(newValue, forKey: "learnedDischargeRate-\(deviceKey)") }
+        get { defaults.object(forKey: "learnedDischargeRate-\(deviceKey)") as? Double }
+        set { defaults.set(newValue, forKey: "learnedDischargeRate-\(deviceKey)") }
     }
 
     /// Hours remaining. Prefers a fresh per-session slope (and folds it into the learned rate);

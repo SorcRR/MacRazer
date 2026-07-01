@@ -104,6 +104,14 @@ expect rough edges until 1.0.
  immediately on a charge-cycle boundary) instead of on every poll tick, now that the larger
  sample window would otherwise mean rewriting a much bigger file every 4-15 seconds.
 
+### Internal
+- **Unit tests + CI.** The pure layers — protocol codec (CRC/serialization), command
+ builders/parsers, the discharge-curve and rate-fit math, charge-cycle detection, and the
+ versioned persistence — now have a test suite (`swift test`, no hardware needed), including
+ regression tests for the estimate bugs fixed in this release. GitHub Actions runs
+ build+tests on pushes to master and on every PR. The data stores take an injectable
+ directory/defaults so tests never touch real user data.
+
 ## [0.1.5] — 2026-06-29
 
 ### Added

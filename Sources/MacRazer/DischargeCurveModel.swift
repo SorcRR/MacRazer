@@ -42,8 +42,9 @@ final class DischargeCurveModel {
     /// so it is discarded (fresh re-learn), not migrated.
     private let store: VersionedFileStore<[DischargeBucket]>
 
-    init(modelKey: String) {
-        store = VersionedFileStore(filename: "discharge-curve-\(modelKey).json", version: 2)
+    init(modelKey: String, directory: URL? = nil) {
+        store = VersionedFileStore(filename: "discharge-curve-\(modelKey).json", version: 2,
+                                   directory: directory)
         buckets = Array(repeating: DischargeBucket(), count: 101)
         if let decoded = store.load(), decoded.count == buckets.count {
             buckets = decoded

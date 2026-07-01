@@ -21,8 +21,9 @@ final class ChargeCycleHistory {
     private(set) var cycles: [ChargeCycleSummary] = []
     private let maxCycles = 30
 
-    init(deviceKey: String) {
-        store = VersionedFileStore(filename: "charge-cycles-\(deviceKey).json", version: 1)
+    init(deviceKey: String, directory: URL? = nil) {
+        store = VersionedFileStore(filename: "charge-cycles-\(deviceKey).json", version: 1,
+                                   directory: directory)
         cycles = store.load(migratingLegacy: true) ?? []
     }
 
