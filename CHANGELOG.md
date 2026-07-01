@@ -22,6 +22,23 @@ expect rough edges until 1.0.
  flat color.
 
 ### Fixed
+- **Device responses are now validated before being trusted.** A reply that doesn't echo the
+ command it answers (a stale buffer from the previous command, or an all-zeros "not ready"
+ report), a short transfer, or an explicit failure/not-supported status was previously
+ parsed as real data — a flaky wireless read could publish another command's bytes as the
+ DPI or brightness, and even persist them into a profile. Such replies are now re-read or
+ surfaced as errors, matching the OpenRazer reference behavior.
+- **Settings reads are independent of each other.** One transient failure (or a model that
+ genuinely lacks brightness, like the Atheris) no longer throws away DPI/polling values that
+ were already read — on-mouse DPI-button changes reflect reliably now.
+- **Setting DPI/polling/brightness/lighting only updates the UI when the device write
+ actually succeeded**, instead of optimistically showing a value the mouse never accepted;
+ on a failed write the sliders snap back to the real values. Applying a profile now sends
+ the whole config directly and marks the profile active only when the device took all of
+ it — applying to a sleeping mouse no longer highlights a profile that never landed.
+- **Offline detection and quit are snappier:** the retry ladder no longer sleeps after its
+ final attempt, "not supported" replies aren't pointlessly retried, and the refresh
+ spinner's cosmetic delay no longer blocks the device-command queue.
 - **Button mappings no longer leak from one mouse to another.** Connecting a mouse with no
  saved mappings kept the previous mouse's table live — remapping the new mouse with the old
  one's bindings, and saving the old table under the new device's key on the next edit.

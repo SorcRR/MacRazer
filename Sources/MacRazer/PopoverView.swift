@@ -161,9 +161,22 @@ struct PopoverView: View {
             if controller.dpi != 0 { dpiValue = Double(controller.dpi) }
             brightnessValue = Double(controller.brightness)
             loadCustomDPI()
+            syncFromActiveProfile() // covers applies made while this page was unmounted
         }
+        // Effect/color have no live controller readback; the applied profile is their
+        // ground truth. Sync when an apply actually landed (activeProfileID published)
+        // rather than optimistically at tap time — a failed apply must not leave the
+        // picker claiming lighting the mouse never took (which "+" would then persist
+        // into a new profile).
+        .onChange(of: controller.activeProfileID) { _, _ in syncFromActiveProfile() }
         .onChange(of: controller.dpi) { _, new in if new != 0 { dpiValue = Double(new) } }
         .onChange(of: controller.brightness) { _, new in brightnessValue = Double(new) }
+        // A failed device write leaves the controller's values unchanged, so no value-driven
+        // onChange fires — snap the optimistic slider state back to reality explicitly.
+        .onChange(of: controller.lastWriteFailure) { _, _ in
+            if controller.dpi != 0 { dpiValue = Double(controller.dpi) }
+            brightnessValue = Double(controller.brightness)
+        }
         .onChange(of: controller.deviceKey) { _, _ in loadCustomDPI() } // reload/clamp per mouse
         .onChange(of: controller.deviceMaxDPI) { _, _ in loadCustomDPI() }
     }
@@ -307,19 +320,9 @@ struct PopoverView: View {
     private func profileChip(_ profile: MouseProfile) -> some View {
         let active = profile.id == controller.activeProfileID
         return Button {
-            withAnimation(.easeInOut(duration: 0.2)) {
-                controller.applyProfile(profile, remapper: remapper)
-                if let parsed = Effect(rawValue: profile.effect), parsed != effect {
-                    // Set the flag only when the consuming onChange is guaranteed to fire
-                    // and clear it: the value must actually change AND the effect picker
-                    // (which hosts the onChange) must be mounted — it only exists for
-                    // lighting-capable mice. A time-based reset could race SwiftUI's
-                    // delivery; a flag set with the picker unmounted would strand.
-                    isApplyingProfileLocally = controller.deviceHasLighting
-                    effect = parsed
-                }
-                color = Color(red: Double(profile.color.r) / 255, green: Double(profile.color.g) / 255, blue: Double(profile.color.b) / 255)
-            }
+            // Local effect/color state follows via the activeProfileID onChange once the
+            // apply actually succeeds — nothing optimistic here.
+            controller.applyProfile(profile, remapper: remapper)
         } label: {
             Text(profile.name)
         }
@@ -363,6 +366,22 @@ struct PopoverView: View {
                 .font(.system(size: 11)).foregroundStyle(.secondary)
         }
         .transition(.opacity)
+    }
+
+    /// Pulls `effect`/`color` from the currently-active profile. Their ground truth is the
+    /// profile an apply landed with — there is no live lighting readback from the device.
+    private func syncFromActiveProfile() {
+        guard let id = controller.activeProfileID,
+              let profile = controller.profiles.first(where: { $0.id == id }) else { return }
+        if let parsed = Effect(rawValue: profile.effect), parsed != effect {
+            // Suppress the picker's onChange HID write — applyProfile already sent the
+            // lighting. Set only when the consuming onChange is guaranteed to fire and
+            // clear it: the value must actually change AND the effect picker (which hosts
+            // the onChange) must be mounted, i.e. the mouse has lighting.
+            isApplyingProfileLocally = controller.deviceHasLighting
+            effect = parsed
+        }
+        color = Color(red: Double(profile.color.r) / 255, green: Double(profile.color.g) / 255, blue: Double(profile.color.b) / 255)
     }
 
     private func saveNewProfile() {

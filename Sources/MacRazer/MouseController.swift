@@ -39,6 +39,10 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     @Published private(set) var deviceHasLighting = true
     /// Max settable DPI for the connected model (drives the slider range).
     @Published private(set) var deviceMaxDPI = 26000
+    /// Bumped whenever a user-initiated device write fails, so the UI can snap its
+    /// optimistic slider state back to the real values (the values themselves don't change
+    /// on a failed write, so no other `@Published` transition fires).
+    @Published private(set) var lastWriteFailure: Date?
     /// Product ID of the connected mouse (nil when none) — drives feature gating.
     @Published private(set) var deviceID: Int?
     /// Stable per-unit key (serial number if available, else PID) — drives per-device settings.
@@ -151,9 +155,22 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         io.async { [weak self] in self?.readBatterySync() }
     }
 
-    /// Settings (DPI + polling) only — no spinner.
+    /// Main-thread only (timer/popover callbacks): prevents the 2s popover timer from
+    /// stacking reads while one is still grinding through the retry ladder — with a mouse
+    /// that answers slowly (or a dongle answering with stale reports), each read can take
+    /// seconds, and unconditionally enqueueing every tick would grow the serial io queue's
+    /// backlog without bound, delaying user writes by minutes.
+    private var settingsReadQueued = false
+
+    /// Settings (DPI + polling) only — no spinner. Call on the main thread.
     func refreshSettings() {
-        io.async { [weak self] in self?.readSettingsSync() }
+        guard !settingsReadQueued else { return }
+        settingsReadQueued = true
+        io.async { [weak self] in
+            guard let self else { return }
+            self.readSettingsSync()
+            self.publish { self.settingsReadQueued = false }
+        }
     }
 
     private var settingsTimer: Timer?
@@ -192,9 +209,10 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             guard let self else { return }
             self.readBatterySync()
             self.readSettingsSync()
-            // Keep the spinner visible long enough to read as feedback.
-            Thread.sleep(forTimeInterval: 0.35)
-            self.publish { self.isRefreshing = false }
+            // Keep the spinner visible long enough to read as feedback — but pace it on the
+            // main queue, never by sleeping the serial io queue (that would delay any queued
+            // device command, e.g. a DPI write right after tapping refresh).
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { self.isRefreshing = false }
         }
     }
 
@@ -205,7 +223,13 @@ final class MouseController: ObservableObject, @unchecked Sendable {
 
             // Battery-less mice (wired-only): use a DPI read as the alive-check; no battery UI.
             if !ioHasBattery {
-                _ = try dev.sendWithRetry(RazerCommands.getDPI())
+                do {
+                    _ = try dev.sendWithRetry(RazerCommands.getDPI())
+                } catch HIDDevice.HIDError.commandFailed, HIDDevice.HIDError.notSupported {
+                    // Refused ≠ dead: a failure/not-supported reply proves the link is up,
+                    // which is all this check needs (some firmwares may reject this exact
+                    // DPI variant while everything else works).
+                }
                 lastReadOK = true
                 consecutiveFailures = 0
                 batteryReady = true
@@ -221,8 +245,16 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 return
             }
 
-            let bResp = try dev.sendWithRetry(RazerCommands.getBatteryLevel())
-            let raw = bResp.arguments[1]
+            let raw: UInt8
+            do {
+                raw = try dev.sendWithRetry(RazerCommands.getBatteryLevel()).arguments[1]
+            } catch HIDDevice.HIDError.commandFailed, HIDDevice.HIDError.notSupported {
+                // The device answered — the link is alive — but refused the command (seen
+                // on the HyperSpeed around sleep). Pre-validation builds parsed these
+                // replies as all-zeros and took the raw==0 grace path below; keep doing
+                // the equivalent rather than flapping to offline with disconnect sounds.
+                raw = 0
+            }
             lastReadOK = true
             consecutiveFailures = 0
 
@@ -300,7 +332,8 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 self.hasBaseline = true
             }
         } catch {
-            device = nil // drop the handle so we reopen next tick
+            device?.close() // release the user client now rather than at CF-dealloc time
+            device = nil    // drop the handle so we reopen next tick
             lastReadOK = false
             batteryReady = false // force the reconnect freshness check next time
             pendingChargeConfirm = false // don't let a stale pending confirm carry across a drop
@@ -339,37 +372,62 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         NSSound(named: connected ? connectSound : disconnectSound)?.play()
     }
 
-    /// Runs on `io`.
+    /// Runs on `io`. Per-feature errors (failure/not-supported — e.g. no brightness on the
+    /// Atheris) skip just that value, so the others still update; link-level errors
+    /// (timeouts, stale reports) abort the remaining reads — grinding three more full retry
+    /// ladders against a dead link would occupy the serial queue for seconds and delay any
+    /// queued user write. Battery refresh surfaces connection errors; this can fail quietly.
     private func readSettingsSync() {
-        do {
-            let dev = try ensureDevice()
-            let d = Int(RazerCommands.parseDPI(try dev.sendWithRetry(RazerCommands.getDPI())).x)
-            let p = RazerCommands.parsePollingRate(try dev.sendWithRetry(RazerCommands.getPollingRate()))
-            let b = RazerCommands.brightnessPercent(fromRaw: try dev.sendWithRetry(RazerCommands.getBrightness()).arguments[2])
-            // DPI stages are optional (a few models don't expose them) — don't fail the read.
-            let stages = (try? dev.sendWithRetry(RazerCommands.getDPIStages())).map { RazerCommands.parseDPIStages($0) } ?? []
-            publish { self.dpi = d; self.pollRate = p; self.brightness = b; if !stages.isEmpty { self.dpiStages = stages } }
-        } catch {
-            // Battery refresh surfaces connection errors; settings read can fail quietly.
+        guard let dev = try? ensureDevice() else { return }
+        var linkDead = false
+        func read<T>(_ report: RazerReport, _ parse: (RazerReport) -> T) -> T? {
+            guard !linkDead else { return nil }
+            do { return parse(try dev.sendWithRetry(report)) }
+            catch HIDDevice.HIDError.commandFailed, HIDDevice.HIDError.notSupported {
+                return nil // this feature only — the device answered, keep reading others
+            } catch {
+                linkDead = true
+                return nil
+            }
+        }
+        let d = read(RazerCommands.getDPI()) { Int(RazerCommands.parseDPI($0).x) }
+        let p = read(RazerCommands.getPollingRate()) { RazerCommands.parsePollingRate($0) }
+        let b = read(RazerCommands.getBrightness()) { RazerCommands.brightnessPercent(fromRaw: $0.arguments[2]) }
+        let stages = read(RazerCommands.getDPIStages()) { RazerCommands.parseDPIStages($0) } ?? []
+        publish {
+            if let d { self.dpi = d }
+            if let p { self.pollRate = p }
+            if let b { self.brightness = b }
+            if !stages.isEmpty { self.dpiStages = stages }
         }
     }
 
     // MARK: - Writes
 
+    // Setters publish (and un-mark the active profile) only when the device write actually
+    // succeeded — publishing optimistically would show the new value in the UI while the
+    // mouse keeps its old config, and the next settings poll corrects it confusingly.
+
     func setDPI(_ value: Int) {
         let v = UInt16(max(100, min(value, 45000)))
         io.async { [weak self] in
             guard let self else { return }
-            _ = try? self.ensureDevice().sendWithRetry(RazerCommands.setDPI(x: v, y: v))
-            self.publish { self.dpi = Int(v); self.clearActiveProfileIfNeeded() }
+            let ok = (try? self.ensureDevice().sendWithRetry(RazerCommands.setDPI(x: v, y: v))) != nil
+            self.publish {
+                guard ok else { self.lastWriteFailure = Date(); return }
+                self.dpi = Int(v); self.clearActiveProfileIfNeeded()
+            }
         }
     }
 
     func setPollRate(_ hz: Int) {
         io.async { [weak self] in
             guard let self else { return }
-            _ = try? self.ensureDevice().sendWithRetry(RazerCommands.setPollingRate(hz))
-            self.publish { self.pollRate = hz; self.clearActiveProfileIfNeeded() }
+            let ok = (try? self.ensureDevice().sendWithRetry(RazerCommands.setPollingRate(hz))) != nil
+            self.publish {
+                guard ok else { self.lastWriteFailure = Date(); return }
+                self.pollRate = hz; self.clearActiveProfileIfNeeded()
+            }
         }
     }
 
@@ -377,8 +435,11 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         let pct = max(0, min(percent, 100))
         io.async { [weak self] in
             guard let self else { return }
-            _ = try? self.ensureDevice().sendWithRetry(RazerCommands.setBrightness(RazerCommands.brightnessRaw(fromPercent: pct)))
-            self.publish { self.brightness = pct; self.clearActiveProfileIfNeeded() }
+            let ok = (try? self.ensureDevice().sendWithRetry(RazerCommands.setBrightness(RazerCommands.brightnessRaw(fromPercent: pct)))) != nil
+            self.publish {
+                guard ok else { self.lastWriteFailure = Date(); return }
+                self.brightness = pct; self.clearActiveProfileIfNeeded()
+            }
         }
     }
 
@@ -390,19 +451,17 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     private func send(_ report: RazerReport) {
         io.async { [weak self] in
             guard let self else { return }
-            _ = try? self.ensureDevice().sendWithRetry(report)
-            self.publish { self.clearActiveProfileIfNeeded() }
+            let ok = (try? self.ensureDevice().sendWithRetry(report)) != nil
+            self.publish {
+                if ok { self.clearActiveProfileIfNeeded() } else { self.lastWriteFailure = Date() }
+            }
         }
     }
 
     // MARK: - Profiles
 
-    /// Suppressed while `applyProfile` is driving these same setters, so applying a profile
-    /// doesn't immediately un-mark itself as active.
-    private var isApplyingProfile = false
-
     private func clearActiveProfileIfNeeded() {
-        guard !isApplyingProfile, activeProfileID != nil else { return }
+        guard activeProfileID != nil else { return }
         activeProfileID = nil
         if let key = deviceKey { ProfileStore.setActiveProfileID(nil, forDevice: key) }
     }
@@ -424,28 +483,56 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         ProfileStore.setActiveProfileID(profile.id, forDevice: key)
     }
 
-    /// Applies a saved profile's DPI/poll/brightness/lighting and button remaps to the live mouse.
+    /// Applies a saved profile's DPI/poll/brightness/lighting and button remaps to the live
+    /// mouse. Sends directly on `io` rather than through the public setters: those un-mark
+    /// the active profile on every manual change (which used to require a fragile
+    /// cross-queue suppression flag here), and publish per-value — whereas an apply should
+    /// mark the profile active only if the device actually took the whole config.
     func applyProfile(_ profile: MouseProfile, remapper: ButtonRemapper) {
         guard let key = deviceKey else { return }
-        isApplyingProfile = true
-        setDPI(profile.dpi)
-        setPollRate(profile.pollRate)
-        setBrightness(profile.brightness)
-        switch profile.effect {
-        case "Static": setStatic(profile.color)
-        case "Spectrum": setSpectrum()
-        case "Wave": setWave()
-        default: setLightingOff()
-        }
+        // Button remaps are software-side (no device write) — apply and persist regardless.
         remapper.setMappings(profile.buttonMappings)
-        // The writes above are dispatched async on `io`; flip the suppression flag back off
-        // once they've had a chance to land, then set the real active id.
+
+        let dpi = UInt16(max(100, min(profile.dpi, 45000)))
+        let hz = profile.pollRate == 0 ? 1000 : profile.pollRate
+        let brightnessPct = max(0, min(profile.brightness, 100))
+        let lighting: RazerReport
+        switch profile.effect {
+        case "Static": lighting = RazerCommands.setStatic(rgb: profile.color)
+        case "Spectrum": lighting = RazerCommands.setSpectrum()
+        case "Wave": lighting = RazerCommands.setWave()
+        default: lighting = RazerCommands.setNone()
+        }
+
         io.async { [weak self] in
             guard let self else { return }
+            guard let dev = try? self.ensureDevice() else {
+                self.publish { self.lastWriteFailure = Date() }
+                return
+            }
+            let dpiOK = (try? dev.sendWithRetry(RazerCommands.setDPI(x: dpi, y: dpi))) != nil
+            let pollOK = (try? dev.sendWithRetry(RazerCommands.setPollingRate(hz))) != nil
+            // Lighting commands only count on models that have lighting — the Atheris
+            // (correctly) refuses them, and that must not block its profiles from applying.
+            let hasLighting = RazerDevices.hasLighting(pid: dev.productID)
+            let brightOK = !hasLighting
+                || (try? dev.sendWithRetry(RazerCommands.setBrightness(RazerCommands.brightnessRaw(fromPercent: brightnessPct)))) != nil
+            let lightOK = !hasLighting || (try? dev.sendWithRetry(lighting)) != nil
+            let allOK = dpiOK && pollOK && brightOK && lightOK
             self.publish {
-                self.isApplyingProfile = false
-                self.activeProfileID = profile.id
-                ProfileStore.setActiveProfileID(profile.id, forDevice: key)
+                if dpiOK { self.dpi = Int(dpi) }
+                if pollOK { self.pollRate = hz }
+                if hasLighting && brightOK { self.brightness = brightnessPct }
+                // The contains-check covers a profile deleted while the writes were in
+                // flight — marking it active would persist a dangling id.
+                if allOK, self.profiles.contains(where: { $0.id == profile.id }) {
+                    self.activeProfileID = profile.id
+                    ProfileStore.setActiveProfileID(profile.id, forDevice: key)
+                } else {
+                    // Partial/failed apply: don't claim the profile is active, and let the
+                    // UI snap any optimistic state back to reality.
+                    self.lastWriteFailure = Date()
+                }
             }
         }
     }

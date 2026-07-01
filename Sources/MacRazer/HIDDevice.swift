@@ -23,6 +23,8 @@ final class HIDDevice {
         case getReportFailed(IOReturn)
         case badResponse
         case timeout
+        case commandFailed
+        case notSupported
 
         var description: String {
             func hex(_ r: IOReturn) -> String { String(format: "0x%08x", UInt32(bitPattern: r)) }
@@ -31,8 +33,10 @@ final class HIDDevice {
             case .openFailed(let r): return "IOHIDDeviceOpen failed: \(hex(r))"
             case .setReportFailed(let r): return "SetReport failed: \(hex(r))"
             case .getReportFailed(let r): return "GetReport failed: \(hex(r))"
-            case .badResponse: return "Malformed response report"
+            case .badResponse: return "Malformed or mismatched response report"
             case .timeout: return "Device command timed out (known-finicky over the wireless dongle)"
+            case .commandFailed: return "Device reported the command failed (status 0x03)"
+            case .notSupported: return "Device reports the command as not supported (status 0x05)"
             }
         }
     }
@@ -133,7 +137,9 @@ final class HIDDevice {
             throw HIDError.notFound
         }
 
-        print("  → control interface: \(describe(chosen))")
+        // stderr, not stdout: this fires on every (re)open inside the GUI app too, and the
+        // CLI's actual output goes to stdout.
+        FileHandle.standardError.write(Data("[MacRazer] control interface: \(describe(chosen))\n".utf8))
         let openResult = IOHIDDeviceOpen(chosen, IOOptionBits(kIOHIDOptionsTypeNone))
         guard openResult == kIOReturnSuccess else { throw HIDError.openFailed(openResult) }
         return HIDDevice(device: chosen)
@@ -167,7 +173,9 @@ final class HIDDevice {
 
         usleep(HIDDevice.receiverWaitUs)
 
-        // Re-read while the device reports BUSY.
+        // Re-read while the device reports BUSY, hands back a short/stale/mismatched
+        // report, or hasn't written a response yet.
+        var lastProblem = HIDError.timeout
         for busyAttempt in 0..<5 {
             var inBuf = [UInt8](repeating: 0, count: RazerReport.wireSize)
             var inLen = inBuf.count
@@ -175,19 +183,44 @@ final class HIDDevice {
                 IOHIDDeviceGetReport(device, kIOHIDReportTypeFeature, 0, ptr.baseAddress!, &inLen)
             }
             guard getResult == kIOReturnSuccess else { throw HIDError.getReportFailed(getResult) }
-            guard let parsed = RazerReport.parse(inBuf) else { throw HIDError.badResponse }
+            // A short transfer leaves the pre-zeroed buffer parsing as an all-zeros
+            // "success" with zero arguments — not-ready, not data. Re-read.
+            guard inLen == RazerReport.wireSize, let parsed = RazerReport.parse(inBuf) else {
+                lastProblem = .badResponse
+                if busyAttempt < 4 { usleep(HIDDevice.receiverWaitUs * useconds_t(busyAttempt + 1)) }
+                continue
+            }
+            // A response that doesn't echo the request's command bytes is stale — the
+            // previous command's reply still sitting in the buffer, or a zeroed
+            // placeholder. Consuming it would publish another command's arguments as this
+            // one's data (OpenRazer rejects these the same way). Re-read.
+            guard parsed.commandClass == report.commandClass, parsed.commandId == report.commandId else {
+                lastProblem = .badResponse
+                if busyAttempt < 4 { usleep(HIDDevice.receiverWaitUs * useconds_t(busyAttempt + 1)) }
+                continue
+            }
 
             switch parsed.status {
             case RazerStatus.busy.rawValue:
-                usleep(HIDDevice.receiverWaitUs * useconds_t(busyAttempt + 1))
+                // Verified on the HyperSpeed: BUSY here means "response not ready yet" and
+                // a re-read returns the real reply. (OpenRazer notes some commands on other
+                // models reply BUSY yet succeed; such a model would mis-report writes here.)
+                lastProblem = .timeout
+                if busyAttempt < 4 { usleep(HIDDevice.receiverWaitUs * useconds_t(busyAttempt + 1)) }
                 continue
             case RazerStatus.timeout.rawValue:
                 throw HIDError.timeout
+            case RazerStatus.failure.rawValue:
+                // Parsing a failure reply's arguments as real data is how a garbage
+                // brightness/DPI ends up in the UI (or persisted into a profile).
+                throw HIDError.commandFailed
+            case RazerStatus.notSupported.rawValue:
+                throw HIDError.notSupported
             default:
-                return parsed // 0x02 successful (and anything else the caller can inspect)
+                return parsed // 0x02 successful (unknown statuses pass through, like OpenRazer)
             }
         }
-        throw HIDError.timeout
+        throw lastProblem
     }
 
     /// Send with retry + linear backoff — the wireless dongle is documented as finicky and
@@ -197,9 +230,17 @@ final class HIDDevice {
         for attempt in 0..<attempts {
             do {
                 return try send(report)
+            } catch HIDError.notSupported {
+                // Deterministic per model/command — retrying can't change the answer, and
+                // the backoffs would just delay every poll on models lacking the feature.
+                throw HIDError.notSupported
             } catch {
                 lastError = error
-                usleep(useconds_t(50_000 * (attempt + 1))) // 50ms, 100ms, 150ms...
+                // No backoff after the final attempt: it would only delay reporting the
+                // failure (offline detection, queued user writes on the serial queue).
+                if attempt < attempts - 1 {
+                    usleep(useconds_t(50_000 * (attempt + 1))) // 50ms, 100ms...
+                }
             }
         }
         throw lastError

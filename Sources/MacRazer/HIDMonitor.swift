@@ -29,7 +29,11 @@ final class HIDMonitor: @unchecked Sendable {
         self.onAppear = onAppear
         self.onRemove = onRemove
 
-        guard let port = IONotificationPortCreate(kIOMainPortDefault) else { return }
+        guard let port = IONotificationPortCreate(kIOMainPortDefault) else {
+            FileHandle.standardError.write(Data(
+                "[MacRazer] IONotificationPortCreate failed — plug/unplug detection disabled, polling only\n".utf8))
+            return
+        }
         self.port = port
         IONotificationPortSetDispatchQueue(port, .main)
 
@@ -51,11 +55,26 @@ final class HIDMonitor: @unchecked Sendable {
             return d as CFDictionary
         }
 
-        IOServiceAddMatchingNotification(port, kIOMatchedNotification, matchingDict(), matchedCB, ctx, &matchedIter)
-        HIDMonitor.drain(matchedIter) // arm the notification + consume currently-present devices
+        // Log registration failures: a silently dead monitor just degrades plug/unplug
+        // detection to the poll fallback, which would otherwise be indistinguishable from
+        // "working" while masking the real problem.
+        let matchedResult = IOServiceAddMatchingNotification(
+            port, kIOMatchedNotification, matchingDict(), matchedCB, ctx, &matchedIter)
+        if matchedResult == kIOReturnSuccess {
+            HIDMonitor.drain(matchedIter) // arm the notification + consume currently-present devices
+        } else {
+            FileHandle.standardError.write(Data(
+                "[MacRazer] HID matched-notification registration failed: 0x\(String(UInt32(bitPattern: matchedResult), radix: 16))\n".utf8))
+        }
 
-        IOServiceAddMatchingNotification(port, kIOTerminatedNotification, matchingDict(), terminatedCB, ctx, &terminatedIter)
-        HIDMonitor.drain(terminatedIter) // arm
+        let terminatedResult = IOServiceAddMatchingNotification(
+            port, kIOTerminatedNotification, matchingDict(), terminatedCB, ctx, &terminatedIter)
+        if terminatedResult == kIOReturnSuccess {
+            HIDMonitor.drain(terminatedIter) // arm
+        } else {
+            FileHandle.standardError.write(Data(
+                "[MacRazer] HID terminated-notification registration failed: 0x\(String(UInt32(bitPattern: terminatedResult), radix: 16))\n".utf8))
+        }
     }
 
     /// Consume (and release) all io_objects an iterator currently holds. Required to re-arm
