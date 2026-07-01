@@ -107,6 +107,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             .sink { [weak self] key in self?.remapper.setActiveDevice(key) }
             .store(in: &cancellables)
 
+        // Pause remapping while the mouse is offline (powered off, asleep, dongle pulled) —
+        // the tap can't tell devices apart, so an offline mouse's mappings would otherwise
+        // keep firing for matching buttons on other pointing devices.
+        controller.$connected
+            .receive(on: RunLoop.main)
+            .sink { [weak self] connected in self?.remapper.remappingPaused = !connected }
+            .store(in: &cancellables)
+
         // Update check: once now (throttled internally to once/24h), then a daily timer so a
         // long-running session still notices new releases without a relaunch.
         updateChecker.$latestVersion

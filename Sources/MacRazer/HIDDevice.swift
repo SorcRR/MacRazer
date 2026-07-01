@@ -37,6 +37,13 @@ final class HIDDevice {
         }
     }
 
+    /// Whether an error string from a failed open/read means the macOS Input Monitoring
+    /// permission is missing. `HIDError` renders IOReturn codes as hex only, so match
+    /// kIOReturnNotPermitted's hex form — a "NotPermitted" substring never appears.
+    static func errorLooksPermissionDenied(_ text: String) -> Bool {
+        text.contains("0xe00002e2") // kIOReturnNotPermitted
+    }
+
     private let device: IOHIDDevice
     let productID: Int
     let productName: String

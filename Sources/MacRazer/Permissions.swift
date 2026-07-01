@@ -19,6 +19,9 @@ final class PermissionsModel: ObservableObject {
     /// Input Monitoring is granted at the API level, but the *running* process still can't open
     /// the device — the grant only takes effect after a relaunch. The classic macOS TCC gotcha.
     @Published private(set) var needsRelaunch = false
+    /// The automatic relaunch failed (translocated run from the DMG, no bundle under
+    /// `swift run`) — tell the user to quit and reopen manually instead of doing nothing.
+    @Published private(set) var relaunchFailed = false
 
     private weak var remapper: ButtonRemapper?
     private weak var controller: MouseController?
@@ -42,7 +45,7 @@ final class PermissionsModel: ObservableObject {
         accessibility = remapper?.accessibilityGranted ?? accessibility
         // Granted in System Settings but the device still reports a permission error → relaunch.
         if let c = controller, inputMonitoring, !c.connected, let err = c.lastError {
-            needsRelaunch = err.contains("NotPermitted") || err.contains("0xe00002e2")
+            needsRelaunch = HIDDevice.errorLooksPermissionDenied(err)
         } else {
             needsRelaunch = false
         }
@@ -77,11 +80,22 @@ final class PermissionsModel: ObservableObject {
     /// Relaunch so a freshly-granted Input Monitoring permission takes effect. Only meaningful for
     /// the packaged `.app` (a no-op shape under `swift run`, which has no bundle to relaunch).
     func relaunch() {
+        relaunchFailed = false
         let url = Bundle.main.bundleURL
         let config = NSWorkspace.OpenConfiguration()
         config.createsNewApplicationInstance = true
-        NSWorkspace.shared.openApplication(at: url, configuration: config) { _, _ in
-            Task { @MainActor in NSApp.terminate(nil) }
+        NSWorkspace.shared.openApplication(at: url, configuration: config) { app, error in
+            // Only quit once the replacement instance actually launched — terminating on a
+            // failed open (no bundle under `swift run`, app translocation) would turn
+            // "Quit & Relaunch" into plain "Quit". But don't fail silently either: say so,
+            // so the user quits and reopens manually instead of concluding the button is broken.
+            Task { @MainActor in
+                if app != nil, error == nil {
+                    NSApp.terminate(nil)
+                } else {
+                    self.relaunchFailed = true
+                }
+            }
         }
     }
 

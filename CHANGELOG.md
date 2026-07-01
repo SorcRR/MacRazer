@@ -22,6 +22,33 @@ expect rough edges until 1.0.
  flat color.
 
 ### Fixed
+- **Button mappings no longer leak from one mouse to another.** Connecting a mouse with no
+ saved mappings kept the previous mouse's table live — remapping the new mouse with the old
+ one's bindings, and saving the old table under the new device's key on the next edit.
+ Remapping now also pauses whenever the mouse is offline (powered off, asleep, dongle
+ unplugged) — previously the mappings kept firing for matching buttons on other pointing
+ devices, since macOS can't tell which mouse sent a click. The remap page shows a note while
+ paused and states the any-device limitation; stale mappings persisted under the old
+ no-device key by earlier builds are cleaned up.
+- **Pressing Escape in the shortcut recorder now cancels it** instead of binding the mouse
+ button to ⎋ (modifier combos with Escape still record).
+- **Buttons remapped to a mouse click now synthesize a real click count**, so apps reading
+ `clickCount` (e.g. middle-click-closes-tab) recognize them.
+- **A failed update check no longer silences update notices for a day** — only successful
+ checks count against the daily throttle, so an offline launch retries at the next
+ opportunity. A found update is also remembered across relaunches instead of vanishing until
+ the next day's check.
+- **"Quit & Relaunch" no longer just quits when the relaunch fails** — it only terminates
+ once the replacement instance actually launched, and says so if it couldn't (e.g. when
+ running straight from the mounted DMG).
+- **Navigating to a sub-page no longer lets the popover resize after the transition** — the
+ measured main-page height is kept while the main page is unmounted.
+- **A custom DPI saved before the device key resolves is no longer written to a shared
+ "default" slot** that every mouse would read.
+- **Renaming a profile to an empty/whitespace name is now rejected**, matching profile
+ creation.
+- **Chart tooltips now respect the system's 12/24-hour locale setting** and include the day,
+ since a discharge cycle can span several days.
 - **The learned discharge curve now measures real dwell time per percent.** It was averaging
  per poll tick instead of per completed traversal, so after one full discharge every percent
  "learned" a dwell of ~15 seconds and the estimate collapsed toward `percent × 15s` (e.g.

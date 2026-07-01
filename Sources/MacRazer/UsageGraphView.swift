@@ -43,7 +43,7 @@ struct UsageGraphView: View {
                     // annotation positioned at the mark can overflow the chart's fixed-height
                     // frame and grow the enclosing card, which reads as the whole view jumping.
                     if let hovered = hoveredSample {
-                        hoverLabel("\(hovered.pct)% · \(Self.timeFormatter.string(from: hovered.t))")
+                        hoverLabel("\(hovered.pct)% · \(Self.hoverDateFormatter.string(from: hovered.t))")
                     }
                 }
                 .frame(height: headerRowHeight)
@@ -179,7 +179,7 @@ struct UsageGraphView: View {
                     sectionLabel("Past charges", "clock.arrow.circlepath")
                     Spacer()
                     if let hovered = hoveredCycle {
-                        hoverLabel("\(BatteryHistory.formatDuration(hours: hovered.duration / 3600)) · \(Self.dayFormatter.string(from: hovered.end))")
+                        hoverLabel("\(BatteryHistory.formatDuration(hours: hovered.duration / 3600)) · \(Self.hoverDateFormatter.string(from: hovered.end))")
                     }
                 }
                 .frame(height: headerRowHeight)
@@ -255,15 +255,13 @@ struct UsageGraphView: View {
             }
     }
 
-    private static let timeFormatter: DateFormatter = {
+    /// Shared by both charts' hover tooltips. A localized template, not a fixed format — a
+    /// hardcoded "h:mm a" would show 12-hour AM/PM times in 24-hour locales. Includes the
+    /// day *and* the time: a discharge cycle can span ~4 days (bare time is ambiguous), and
+    /// two cycles can end on the same day (bare day is ambiguous).
+    private static let hoverDateFormatter: DateFormatter = {
         let f = DateFormatter()
-        f.dateFormat = "h:mm a"
-        return f
-    }()
-
-    private static let dayFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "MMM d"
+        f.setLocalizedDateFormatFromTemplate("MMMd jm")
         return f
     }()
 }

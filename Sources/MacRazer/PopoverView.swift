@@ -38,9 +38,11 @@ struct PopoverView: View {
     @State private var page: Page = .main
     @State private var isAddingProfile = false
     @State private var newProfileName = ""
-    /// Suppresses the `effect` picker's `onChange`-driven HID write while a profile apply is
-    /// updating `effect`/`color` to reflect the profile — `applyProfile` already sent the right
-    /// lighting command, and re-sending it here would also re-clear the just-set active profile.
+    /// Suppresses the `effect` picker's `onChange`-driven HID write for exactly one
+    /// programmatic `effect` change during a profile apply — `applyProfile` already sent the
+    /// right lighting command, and re-sending it here would also re-clear the just-set active
+    /// profile. Set only when the value will actually change; consumed (and cleared) by the
+    /// `onChange` handler itself.
     @State private var isApplyingProfileLocally = false
 
     @State private var dpiValue: Double = 1600
@@ -85,7 +87,10 @@ struct PopoverView: View {
         }
         .frame(width: popoverWidth)
         .frame(height: page == .main ? nil : (mainHeight > 0 ? mainHeight : nil))
-        .onPreferenceChange(HeightKey.self) { mainHeight = max($0, 0) }
+        // While a sub-page is showing, the main page is unmounted and the preference reverts
+        // to its 0 default — keep the last real measurement so sub-pages stay locked to the
+        // main page's height instead of resizing once the transition finishes.
+        .onPreferenceChange(HeightKey.self) { if $0 > 0 { mainHeight = $0 } }
         .animation(.easeInOut(duration: 0.26), value: page)
     }
 
@@ -165,20 +170,23 @@ struct PopoverView: View {
 
     // MARK: Custom DPI (per-mouse, clamped to the model's max)
 
-    private var customDPIKey: String {
-        "customDPI-\(controller.deviceKey ?? "default")"
+    /// nil while no device key is known — persisting then would land in a "default" slot
+    /// shared by every mouse and never migrated to the real key once it resolves.
+    private var customDPIKey: String? {
+        controller.deviceKey.map { "customDPI-\($0)" }
     }
 
     private func loadCustomDPI() {
-        let stored = UserDefaults.standard.object(forKey: customDPIKey) as? Int ?? min(8000, controller.deviceMaxDPI)
+        let stored = customDPIKey.flatMap { UserDefaults.standard.object(forKey: $0) as? Int }
+            ?? min(8000, controller.deviceMaxDPI)
         let clamped = min(max(stored, 100), controller.deviceMaxDPI) // reset if it exceeds this mouse's max
         customDPI = clamped
-        if clamped != stored { UserDefaults.standard.set(clamped, forKey: customDPIKey) }
+        if clamped != stored, let key = customDPIKey { UserDefaults.standard.set(clamped, forKey: key) }
     }
 
     private func saveCustomDPI(_ value: Int) {
         customDPI = value
-        UserDefaults.standard.set(value, forKey: customDPIKey)
+        if let key = customDPIKey { UserDefaults.standard.set(value, forKey: key) }
     }
 
     // MARK: Header
@@ -299,13 +307,19 @@ struct PopoverView: View {
     private func profileChip(_ profile: MouseProfile) -> some View {
         let active = profile.id == controller.activeProfileID
         return Button {
-            isApplyingProfileLocally = true
             withAnimation(.easeInOut(duration: 0.2)) {
                 controller.applyProfile(profile, remapper: remapper)
-                if let parsed = Effect(rawValue: profile.effect) { effect = parsed }
+                if let parsed = Effect(rawValue: profile.effect), parsed != effect {
+                    // Set the flag only when the consuming onChange is guaranteed to fire
+                    // and clear it: the value must actually change AND the effect picker
+                    // (which hosts the onChange) must be mounted — it only exists for
+                    // lighting-capable mice. A time-based reset could race SwiftUI's
+                    // delivery; a flag set with the picker unmounted would strand.
+                    isApplyingProfileLocally = controller.deviceHasLighting
+                    effect = parsed
+                }
                 color = Color(red: Double(profile.color.r) / 255, green: Double(profile.color.g) / 255, blue: Double(profile.color.b) / 255)
             }
-            DispatchQueue.main.async { isApplyingProfileLocally = false }
         } label: {
             Text(profile.name)
         }
@@ -463,7 +477,7 @@ struct PopoverView: View {
 
     private var needsPermission: Bool {
         guard !controller.connected, let err = controller.lastError else { return false }
-        return err.contains("NotPermitted") || err.contains("0xe00002e2")
+        return HIDDevice.errorLooksPermissionDenied(err)
     }
 
     /// Custom battery glyph whose fill is proportional to the exact charge level and
@@ -654,7 +668,10 @@ struct PopoverView: View {
             .pickerStyle(.segmented)
             .controlSize(.small)
             .labelsHidden()
-            .onChange(of: effect) { _, new in if !isApplyingProfileLocally { apply(effect: new) } }
+            .onChange(of: effect) { _, new in
+                if isApplyingProfileLocally { isApplyingProfileLocally = false; return }
+                apply(effect: new)
+            }
 
             if effect == .staticColor {
                 HStack(spacing: 7) {

@@ -451,8 +451,12 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     }
 
     func renameProfile(_ id: UUID, to newName: String) {
-        guard let key = deviceKey, let idx = profiles.firstIndex(where: { $0.id == id }) else { return }
-        profiles[idx].name = newName
+        // Same trim-and-reject-empty rule as profile creation — a whitespace-only commit
+        // would leave a blank, unclickable-looking chip on the main page.
+        let name = newName.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty, let key = deviceKey,
+              let idx = profiles.firstIndex(where: { $0.id == id }) else { return }
+        profiles[idx].name = name
         ProfileStore.save(profiles, forDevice: key)
     }
 

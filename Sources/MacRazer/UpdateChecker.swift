@@ -20,6 +20,7 @@ final class UpdateChecker: ObservableObject {
 
     private static let dismissedKey = "dismissedUpdateVersion"
     private static let lastCheckKey = "lastUpdateCheckDate"
+    private static let lastFoundKey = "lastFoundUpdateVersion"
 
     private struct GitHubRelease: Decodable {
         let tag_name: String
@@ -33,18 +34,27 @@ final class UpdateChecker: ObservableObject {
     /// call on every launch and from a repeating timer.
     func checkForUpdatesIfDue() async {
         let last = UserDefaults.standard.object(forKey: Self.lastCheckKey) as? Date
-        if let last, Date().timeIntervalSince(last) < checkInterval { return }
+        if let last, Date().timeIntervalSince(last) < checkInterval {
+            // Within the throttle window, surface what the last successful check already
+            // found — otherwise a relaunch forgets a known update for up to a day.
+            restoreLastFound()
+            return
+        }
         await checkForUpdatesNow()
     }
 
     /// Bypasses the throttle — used by `checkForUpdatesIfDue()` once due, and available for a
     /// manual "Check Now" action.
     func checkForUpdatesNow() async {
-        UserDefaults.standard.set(Date(), forKey: Self.lastCheckKey)
         do {
             let (data, _) = try await URLSession.shared.data(from: releaseAPIURL)
             let release = try JSONDecoder().decode(GitHubRelease.self, from: data)
             let remote = release.tag_name.hasPrefix("v") ? String(release.tag_name.dropFirst()) : release.tag_name
+            // Only a *successful* check counts against the daily throttle: a failed one
+            // (offline right after wake is common) should retry on the next opportunity,
+            // not silence update notices for a day.
+            UserDefaults.standard.set(Date(), forKey: Self.lastCheckKey)
+            UserDefaults.standard.set(remote, forKey: Self.lastFoundKey)
             let dismissed = UserDefaults.standard.string(forKey: Self.dismissedKey)
             if Self.isNewer(remote, than: currentVersion), remote != dismissed {
                 latestVersion = remote
@@ -53,7 +63,20 @@ final class UpdateChecker: ObservableObject {
             }
         } catch {
             // Silent: a failed background check shouldn't surface as an error — only an
-            // explicit download attempt should show one.
+            // explicit download attempt should show one. But do surface what the last
+            // *successful* check found, or an offline relaunch hides a known update.
+            restoreLastFound()
+        }
+    }
+
+    /// Re-applies the newest remote version a past check found (newer-than-current and
+    /// not-dismissed are re-evaluated, so updating or dismissing in the meantime clears it).
+    private func restoreLastFound() {
+        guard latestVersion == nil,
+              let found = UserDefaults.standard.string(forKey: Self.lastFoundKey) else { return }
+        let dismissed = UserDefaults.standard.string(forKey: Self.dismissedKey)
+        if Self.isNewer(found, than: currentVersion), found != dismissed {
+            latestVersion = found
         }
     }
 

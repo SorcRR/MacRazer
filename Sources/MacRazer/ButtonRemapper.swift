@@ -50,6 +50,12 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
     /// Per-device key so each mouse keeps its own remaps.
     private var activeKey = "none"
     private var defaultsKey: String { "buttonMappings-\(activeKey)" }
+    /// Mirrors `MouseController.connected` (wired in AppDelegate; main-thread, same as the
+    /// tap callback). While the mouse is offline — powered off, asleep, dongle unplugged —
+    /// its mappings must not fire: the tap can't tell which device sent a click, so they'd
+    /// keep remapping matching buttons on every other pointing device. Published so the
+    /// remap UI can say why nothing is firing (button detection still works while paused).
+    @Published var remappingPaused = false
 
     /// Switch to the connected mouse's mappings (called when the device changes). `key` is the
     /// per-unit device key (serial/PID).
@@ -213,7 +219,7 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
             return Unmanaged.passUnretained(event)
         }
 
-        if let action = mappings[button], action != .passthrough {
+        if !remappingPaused, let action = mappings[button], action != .passthrough {
             if type == .otherMouseDown { apply(action) }
             return nil // suppress the original button (both down and up)
         }
@@ -250,8 +256,13 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         let mb = CGMouseButton(rawValue: UInt32(button)) ?? .center
         let downType: CGEventType = button == 0 ? .leftMouseDown : (button == 1 ? .rightMouseDown : .otherMouseDown)
         let upType: CGEventType = button == 0 ? .leftMouseUp : (button == 1 ? .rightMouseUp : .otherMouseUp)
-        CGEvent(mouseEventSource: postSource, mouseType: downType, mouseCursorPosition: pos, mouseButton: mb)?.post(tap: .cghidEventTap)
-        CGEvent(mouseEventSource: postSource, mouseType: upType, mouseCursorPosition: pos, mouseButton: mb)?.post(tap: .cghidEventTap)
+        for (type, clickState) in [(downType, 1), (upType, 1)] {
+            let e = CGEvent(mouseEventSource: postSource, mouseType: type, mouseCursorPosition: pos, mouseButton: mb)
+            // Without a click count, apps reading NSEvent.clickCount see 0 and may not
+            // treat the synthesized press as a click at all (e.g. middle-click-closes-tab).
+            e?.setIntegerValueField(.mouseEventClickState, value: Int64(clickState))
+            e?.post(tap: .cghidEventTap)
+        }
     }
 
     private func postDoubleClick() {
@@ -280,12 +291,29 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
     // MARK: - Persistence
 
     private func saveMappings() {
+        // No connected device, no persistence: an edit made in a remap window that outlived
+        // a disconnect would otherwise be saved under the meaningless "none" key and
+        // silently dropped on reconnect.
+        guard activeKey != "none" else { return }
         if let data = try? JSONEncoder().encode(mappings) {
             UserDefaults.standard.set(data, forKey: defaultsKey)
         }
     }
 
     private func loadMappings() {
+        // Always reset first: a device with no saved table must start empty rather than
+        // inherit the previous mouse's mappings — which would both remap the new mouse with
+        // the old one's bindings and, on the next edit, save the old table under the new
+        // device's key. Also covers disconnect (key "none"): with no mappings the tap
+        // passes everything through.
+        mappings = [:]
+        // Never load under the no-device key. Nothing writes it anymore (see saveMappings),
+        // but pre-fix builds persisted disconnected edits there — clear that junk out so it
+        // can't remap other pointing devices on every launch/disconnect forever.
+        guard activeKey != "none" else {
+            UserDefaults.standard.removeObject(forKey: defaultsKey)
+            return
+        }
         guard let data = UserDefaults.standard.data(forKey: defaultsKey),
               let decoded = try? JSONDecoder().decode([Int: RemapAction].self, from: data) else { return }
         mappings = decoded

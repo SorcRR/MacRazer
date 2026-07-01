@@ -18,6 +18,7 @@ struct RemapView: View {
             if !remapper.accessibilityGranted {
                 accessibilityBanner
             } else {
+                if remapper.remappingPaused { pausedNote }
                 detectionHint
                 buttonList
             }
@@ -36,12 +37,12 @@ struct RemapView: View {
                 Text("Press a key combination").font(.system(size: 14, weight: .semibold))
                 Text("for \(recordingButton.map { ButtonRemapper.label(for: $0) } ?? "")")
                     .font(.system(size: 11)).foregroundStyle(.secondary)
-                KeyRecorderView { keyCode, flags, display in
+                KeyRecorderView(onCapture: { keyCode, flags, display in
                     if let b = recordingButton {
                         remapper.setAction(.keystroke(keyCode: keyCode, modifiers: flags.rawValue, name: display), for: b)
                     }
                     recordingButton = nil
-                }
+                }, onCancel: { recordingButton = nil })
                 .frame(height: 46)
                 .frame(maxWidth: .infinity)
                 .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.10)))
@@ -82,6 +83,20 @@ struct RemapView: View {
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    /// Mappings don't fire while the mouse is offline (see `ButtonRemapper.remappingPaused`);
+    /// without this note, a working detection row next to non-firing mappings looks broken.
+    private var pausedNote: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "pause.circle").foregroundStyle(Color.batteryMid)
+            Text("Mouse offline — remapping is paused until it reconnects.")
+                .font(.system(size: 11)).foregroundStyle(.secondary)
+            Spacer()
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.batteryMid.opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
     }
 
     private var detectionHint: some View {
@@ -157,18 +172,24 @@ struct RemapView: View {
     }
 
     private var footer: some View {
-        Text("Remapping works while this app is running. Mappings are saved automatically.")
+        Text("Remapping works while this app is running and the mouse is connected; it "
+             + "pauses when the mouse goes offline. macOS can't tell which mouse sent a "
+             + "click, so while connected the mappings apply to matching buttons on any "
+             + "pointing device. Mappings are saved automatically.")
             .font(.system(size: 10)).foregroundStyle(.tertiary)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
 
 /// Captures a single raw key combination (virtual keyCode + modifiers) for the recorder.
 struct KeyRecorderView: NSViewRepresentable {
     var onCapture: (UInt16, CGEventFlags, String) -> Void
+    var onCancel: (() -> Void)? = nil
 
     func makeNSView(context: Context) -> NSView {
         let v = RecorderNSView()
         v.onCapture = onCapture
+        v.onCancel = onCancel
         return v
     }
     func updateNSView(_ nsView: NSView, context: Context) {
@@ -178,6 +199,7 @@ struct KeyRecorderView: NSViewRepresentable {
 
 final class RecorderNSView: NSView {
     var onCapture: ((UInt16, CGEventFlags, String) -> Void)?
+    var onCancel: (() -> Void)?
     override var acceptsFirstResponder: Bool { true }
 
     override func keyDown(with event: NSEvent) { capture(event) }
@@ -189,6 +211,12 @@ final class RecorderNSView: NSView {
         if event.modifierFlags.contains(.shift) { flags.insert(.maskShift) }
         if event.modifierFlags.contains(.control) { flags.insert(.maskControl) }
         if event.modifierFlags.contains(.option) { flags.insert(.maskAlternate) }
+        // A bare Escape is the universal "get me out" key — cancel the recording rather
+        // than binding the mouse button to ⎋. (⌘⎋ etc. still record normally.)
+        if event.keyCode == 53, flags.isEmpty {
+            onCancel?()
+            return
+        }
         onCapture?(event.keyCode, flags, Self.display(event))
     }
 

@@ -127,9 +127,16 @@ struct PermissionsView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 6)
-            Button("Relaunch") { model.relaunch() }
-                .buttonStyle(.borderedProminent).tint(.razerGreen)
-                .font(.system(size: 12, weight: .medium))
+            VStack(alignment: .trailing, spacing: 4) {
+                Button("Relaunch") { model.relaunch() }
+                    .buttonStyle(.borderedProminent).tint(.razerGreen)
+                    .font(.system(size: 12, weight: .medium))
+                if model.relaunchFailed {
+                    Text("Couldn't relaunch — quit and reopen MacRazer manually.")
+                        .font(.system(size: 10)).foregroundStyle(Color.batteryLow)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -178,6 +185,10 @@ struct PermissionsView: View {
                 Button("Quit & Relaunch") { model.relaunch() }
                     .buttonStyle(.bordered).font(.system(size: 12))
                     .help("Relaunch so macOS applies an Input Monitoring grant made while the app was running.")
+                if model.relaunchFailed {
+                    Text("Relaunch failed — quit and reopen manually.")
+                        .font(.system(size: 10)).foregroundStyle(Color.batteryLow)
+                }
             }
             Spacer()
             Button(model.allRequiredGranted ? "Done" : "Close") { onDone?() }
