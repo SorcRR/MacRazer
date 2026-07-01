@@ -34,8 +34,14 @@ struct PopoverView: View {
     @ObservedObject var remapper: ButtonRemapper
     @ObservedObject var updateChecker: UpdateChecker
 
-    enum Page { case main, color, buttons, usage }
+    enum Page { case main, color, buttons, usage, profiles }
     @State private var page: Page = .main
+    @State private var isAddingProfile = false
+    @State private var newProfileName = ""
+    /// Suppresses the `effect` picker's `onChange`-driven HID write while a profile apply is
+    /// updating `effect`/`color` to reflect the profile — `applyProfile` already sent the right
+    /// lighting command, and re-sending it here would also re-clear the just-set active profile.
+    @State private var isApplyingProfileLocally = false
 
     @State private var dpiValue: Double = 1600
     @State private var brightnessValue: Double = 100
@@ -74,6 +80,7 @@ struct PopoverView: View {
             case .color: colorPage.transition(.move(edge: .trailing))
             case .buttons: buttonsPage.transition(.move(edge: .trailing))
             case .usage: usagePage.transition(.move(edge: .trailing))
+            case .profiles: profilesPage.transition(.move(edge: .trailing))
             }
         }
         .frame(width: popoverWidth)
@@ -109,6 +116,13 @@ struct PopoverView: View {
         }
     }
 
+    private var profilesPage: some View {
+        ScrollView {
+            ProfilesView(controller: controller, remapper: remapper, onBack: { page = .main })
+                .frame(maxWidth: .infinity)
+        }
+    }
+
     private var mainPage: some View {
         VStack(alignment: .leading, spacing: 10) {
             headerCard
@@ -116,6 +130,7 @@ struct PopoverView: View {
             // A Razer mouse on Bluetooth can't be controlled (no control protocol over BT) —
             // explain it instead of just showing "offline".
             if controller.bluetoothMouseName != nil && !controller.connected { bluetoothNotice }
+            profilesCard.disabled(!controller.connected).opacity(controller.connected ? 1 : 0.45)
             // Battery stays readable (last-known) but dims when offline; its refresh button
             // stays active so you can retry.
             if controller.deviceHasBattery {
@@ -243,6 +258,104 @@ struct PopoverView: View {
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.batteryMid.opacity(0.12), in: RoundedRectangle(cornerRadius: 13))
+    }
+
+    // MARK: Profiles
+
+    /// Quick-switch row: a chip per saved profile (filled green when active) plus a "+" chip to
+    /// save the current setup. Kept on the main page so switching never needs a page navigation —
+    /// only the rarely-needed rename/delete flow lives behind "Manage…".
+    private var profilesCard: some View {
+        card {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    sectionLabel("Profiles", "person.crop.square.on.square.angled")
+                    Spacer()
+                    if !controller.profiles.isEmpty {
+                        Button("Manage…") { page = .profiles }
+                            .buttonStyle(.plain)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(Color.razerGreen)
+                    }
+                }
+                if controller.profiles.isEmpty && !isAddingProfile {
+                    HStack(spacing: 8) {
+                        Text("Save your current setup as a profile")
+                            .font(.system(size: 11)).foregroundStyle(.secondary)
+                        Spacer()
+                        addProfileChip
+                    }
+                } else {
+                    HStack(spacing: 6) {
+                        ForEach(controller.profiles) { profileChip($0) }
+                        if !isAddingProfile { addProfileChip }
+                    }
+                }
+                if isAddingProfile { addProfileField }
+            }
+        }
+    }
+
+    private func profileChip(_ profile: MouseProfile) -> some View {
+        let active = profile.id == controller.activeProfileID
+        return Button {
+            isApplyingProfileLocally = true
+            withAnimation(.easeInOut(duration: 0.2)) {
+                controller.applyProfile(profile, remapper: remapper)
+                if let parsed = Effect(rawValue: profile.effect) { effect = parsed }
+                color = Color(red: Double(profile.color.r) / 255, green: Double(profile.color.g) / 255, blue: Double(profile.color.b) / 255)
+            }
+            DispatchQueue.main.async { isApplyingProfileLocally = false }
+        } label: {
+            Text(profile.name)
+        }
+        .buttonStyle(.plain)
+        .font(.system(size: 10.5, weight: active ? .semibold : .regular))
+        .foregroundStyle(active ? .white : .secondary)
+        .padding(.horizontal, 10)
+        .frame(height: 24)
+        .background(active ? Color.razerGreen : Color.primary.opacity(0.08), in: Capsule())
+        .lineLimit(1)
+    }
+
+    private var addProfileChip: some View {
+        Button {
+            newProfileName = "Profile \(controller.profiles.count + 1)"
+            isAddingProfile = true
+        } label: {
+            Image(systemName: "plus").font(.system(size: 10.5, weight: .semibold))
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(Color.razerGreen)
+        .frame(width: 24, height: 24)
+        .background(Color.razerGreen.opacity(0.12), in: Circle())
+        .overlay(Circle().stroke(Color.razerGreen.opacity(0.55), lineWidth: 1))
+    }
+
+    private var addProfileField: some View {
+        HStack(spacing: 6) {
+            TextField("Profile name", text: $newProfileName, onCommit: saveNewProfile)
+                .textFieldStyle(.plain)
+                .font(.system(size: 11.5))
+                .padding(.horizontal, 8).padding(.vertical, 4)
+                .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+            Button("Save", action: saveNewProfile)
+                .buttonStyle(.borderedProminent)
+                .tint(.razerGreen)
+                .controlSize(.small)
+                .disabled(newProfileName.trimmingCharacters(in: .whitespaces).isEmpty)
+            Button("Cancel") { isAddingProfile = false }
+                .buttonStyle(.plain)
+                .font(.system(size: 11)).foregroundStyle(.secondary)
+        }
+        .transition(.opacity)
+    }
+
+    private func saveNewProfile() {
+        let name = newProfileName.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return }
+        controller.saveCurrentAsProfile(name: name, effect: effect.rawValue, color: color.rgb, remapper: remapper)
+        isAddingProfile = false
     }
 
     // MARK: Update notice
@@ -545,7 +658,7 @@ struct PopoverView: View {
             .pickerStyle(.segmented)
             .controlSize(.small)
             .labelsHidden()
-            .onChange(of: effect) { _, new in apply(effect: new) }
+            .onChange(of: effect) { _, new in if !isApplyingProfileLocally { apply(effect: new) } }
 
             if effect == .staticColor {
                 HStack(spacing: 7) {

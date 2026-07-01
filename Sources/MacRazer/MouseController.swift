@@ -48,6 +48,12 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     @Published private(set) var bluetoothMouseName: String?
     private var ioHasBattery = true // io-queue mirror of deviceHasBattery
 
+    /// Saved DPI/poll/lighting/button-remap presets for the connected mouse, and which one (if
+    /// any) currently matches the live config. Loaded/swapped alongside `deviceKey` in
+    /// `ensureDevice()`, same as the battery history.
+    @Published private(set) var profiles: [MouseProfile] = []
+    @Published private(set) var activeProfileID: UUID?
+
     /// User preference: show the battery % beside the menu bar icon (persisted).
     @Published var showPercentInMenuBar: Bool = (UserDefaults.standard.object(forKey: "showPercentInMenuBar") as? Bool) ?? true {
         didSet {
@@ -349,7 +355,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         io.async { [weak self] in
             guard let self else { return }
             _ = try? self.ensureDevice().sendWithRetry(RazerCommands.setDPI(x: v, y: v))
-            self.publish { self.dpi = Int(v) }
+            self.publish { self.dpi = Int(v); self.clearActiveProfileIfNeeded() }
         }
     }
 
@@ -357,7 +363,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         io.async { [weak self] in
             guard let self else { return }
             _ = try? self.ensureDevice().sendWithRetry(RazerCommands.setPollingRate(hz))
-            self.publish { self.pollRate = hz }
+            self.publish { self.pollRate = hz; self.clearActiveProfileIfNeeded() }
         }
     }
 
@@ -366,7 +372,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         io.async { [weak self] in
             guard let self else { return }
             _ = try? self.ensureDevice().sendWithRetry(RazerCommands.setBrightness(RazerCommands.brightnessRaw(fromPercent: pct)))
-            self.publish { self.brightness = pct }
+            self.publish { self.brightness = pct; self.clearActiveProfileIfNeeded() }
         }
     }
 
@@ -377,7 +383,80 @@ final class MouseController: ObservableObject, @unchecked Sendable {
 
     private func send(_ report: RazerReport) {
         io.async { [weak self] in
-            _ = try? self?.ensureDevice().sendWithRetry(report)
+            guard let self else { return }
+            _ = try? self.ensureDevice().sendWithRetry(report)
+            self.publish { self.clearActiveProfileIfNeeded() }
+        }
+    }
+
+    // MARK: - Profiles
+
+    /// Suppressed while `applyProfile` is driving these same setters, so applying a profile
+    /// doesn't immediately un-mark itself as active.
+    private var isApplyingProfile = false
+
+    private func clearActiveProfileIfNeeded() {
+        guard !isApplyingProfile, activeProfileID != nil else { return }
+        activeProfileID = nil
+        if let key = deviceKey { ProfileStore.setActiveProfileID(nil, forDevice: key) }
+    }
+
+    /// Called by `ButtonRemapper.onManualChange` — a remap edit made outside `applyProfile`
+    /// means the live config no longer matches the active profile.
+    func clearActiveProfileIfManuallyChanged() { clearActiveProfileIfNeeded() }
+
+    /// Captures the current live DPI/poll/brightness/lighting + the remapper's button mappings
+    /// as a new named profile for the connected mouse.
+    func saveCurrentAsProfile(name: String, effect: String, color: RGB, remapper: ButtonRemapper) {
+        guard let key = deviceKey else { return }
+        let profile = MouseProfile(name: name, dpi: dpi, pollRate: pollRate == 0 ? 1000 : pollRate,
+                                    brightness: brightness, effect: effect, color: color,
+                                    buttonMappings: remapper.mappings)
+        profiles.append(profile)
+        ProfileStore.save(profiles, forDevice: key)
+        activeProfileID = profile.id
+        ProfileStore.setActiveProfileID(profile.id, forDevice: key)
+    }
+
+    /// Applies a saved profile's DPI/poll/brightness/lighting and button remaps to the live mouse.
+    func applyProfile(_ profile: MouseProfile, remapper: ButtonRemapper) {
+        guard let key = deviceKey else { return }
+        isApplyingProfile = true
+        setDPI(profile.dpi)
+        setPollRate(profile.pollRate)
+        setBrightness(profile.brightness)
+        switch profile.effect {
+        case "Static": setStatic(profile.color)
+        case "Spectrum": setSpectrum()
+        case "Wave": setWave()
+        default: setLightingOff()
+        }
+        remapper.setMappings(profile.buttonMappings)
+        // The writes above are dispatched async on `io`; flip the suppression flag back off
+        // once they've had a chance to land, then set the real active id.
+        io.async { [weak self] in
+            guard let self else { return }
+            self.publish {
+                self.isApplyingProfile = false
+                self.activeProfileID = profile.id
+                ProfileStore.setActiveProfileID(profile.id, forDevice: key)
+            }
+        }
+    }
+
+    func renameProfile(_ id: UUID, to newName: String) {
+        guard let key = deviceKey, let idx = profiles.firstIndex(where: { $0.id == id }) else { return }
+        profiles[idx].name = newName
+        ProfileStore.save(profiles, forDevice: key)
+    }
+
+    func deleteProfile(_ id: UUID) {
+        guard let key = deviceKey else { return }
+        profiles.removeAll { $0.id == id }
+        ProfileStore.save(profiles, forDevice: key)
+        if activeProfileID == id {
+            activeProfileID = nil
+            ProfileStore.setActiveProfileID(nil, forDevice: key)
         }
     }
 
@@ -405,6 +484,12 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         }
         averageCycleHours = 23
         updateStatusText()
+        let p1 = MouseProfile(name: "Work", dpi: 1600, pollRate: 1000, brightness: 60,
+                               effect: "Static", color: RGB(r: 0x44, g: 0xD6, b: 0x2C), buttonMappings: [:])
+        let p2 = MouseProfile(name: "Gaming", dpi: 6400, pollRate: 1000, brightness: 100,
+                               effect: "Spectrum", color: RGB(r: 255, g: 0, b: 0), buttonMappings: [:])
+        profiles = [p1, p2]
+        activeProfileID = p1.id
     }
 
     /// For the `render-ui offline` preview: keep last-known values but mark disconnected.
@@ -454,6 +539,8 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             let cycleStartPct = history.cycleStartedPercent
             let cycles = cycleHistory.cycles
             let avg = cycleHistory.averageCycleDuration.map { $0 / 3600 }
+            let loadedProfiles = ProfileStore.profiles(forDevice: key)
+            let loadedActiveID = ProfileStore.activeProfileID(forDevice: key)
             publish {
                 self.batterySamples = samples
                 self.dischargeRatePerHour = rate
@@ -461,6 +548,8 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 self.cycleStartedPercent = cycleStartPct
                 self.pastCycles = cycles
                 self.averageCycleHours = avg
+                self.profiles = loadedProfiles
+                self.activeProfileID = loadedActiveID
             }
         }
         let name = d.productName

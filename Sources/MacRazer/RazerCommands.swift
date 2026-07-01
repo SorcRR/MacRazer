@@ -33,7 +33,7 @@ enum Razer {
 }
 
 /// RGB triple.
-struct RGB {
+struct RGB: Codable, Equatable {
     var r: UInt8, g: UInt8, b: UInt8
 }
 
