@@ -3,75 +3,9 @@
 
 import AppKit
 
-/// Which body shape `MenuBarIcon.mouseModel` should draw, grouped by physical chassis rather
-/// than by SKU — wired/wireless variants of the same mouse share a shape.
-enum RazerMouseSilhouette {
-    case cobra
-    case cobraPro
-    case atheris
-
-    /// Maps a connected device's USB product ID (see `RazerDevices.known`) to its chassis.
-    static func forDevicePID(_ pid: Int?) -> RazerMouseSilhouette {
-        switch pid {
-        case 0x00DB, 0x00DA, 0x00AF, 0x00B0: return .cobraPro // Cobra HyperSpeed + Cobra Pro
-        case 0x0062: return .atheris
-        default: return .cobra
-        }
-    }
-}
-
-/// Draws a Razer-style "tri-snake" mark: three curved blades radiating from the centre at
-/// 120°. This is an original, evocative mark — the actual Razer logo is a trademark.
+/// Draws the app's mouse marks. (The silhouette-per-model mapping lives in
+/// `RazerDevices` — the registry — so adding a mouse doesn't touch drawing code.)
 enum MenuBarIcon {
-
-    /// A template image for the menu bar (monochrome; adapts to light/dark automatically).
-    static func template(pointSize: CGFloat = 16) -> NSImage {
-        let img = draw(size: pointSize) { ctx, _ in ctx.setStrokeColor(NSColor.black.cgColor) }
-        img.isTemplate = true
-        return img
-    }
-
-    /// A coloured version (for previews / about screens).
-    static func colored(pointSize: CGFloat, color: NSColor = NSColor(red: 0x44/255, green: 0xD6/255, blue: 0x2C/255, alpha: 1)) -> NSImage {
-        draw(size: pointSize) { ctx, _ in ctx.setStrokeColor(color.cgColor) }
-    }
-
-    private static func draw(size: CGFloat, _ configure: @escaping (CGContext, NSRect) -> Void) -> NSImage {
-        NSImage(size: NSSize(width: size, height: size), flipped: false) { rect in
-            guard let ctx = NSGraphicsContext.current?.cgContext else { return false }
-            configure(ctx, rect)
-
-            let c = CGPoint(x: rect.midX, y: rect.midY)
-            let s = size
-            let outer = s * 0.40
-            ctx.setLineWidth(s * 0.135)
-            ctx.setLineCap(.round)
-            ctx.setLineJoin(.round)
-
-            // Three identical curved snakes, each rotated 120°.
-            for k in 0..<3 {
-                let base = CGFloat(k) * (2 * .pi / 3) - .pi / 2 // point one snake up
-                let perp = base + .pi / 2
-
-                func pt(_ alongFrac: CGFloat, _ sideFrac: CGFloat) -> CGPoint {
-                    CGPoint(
-                        x: c.x + cos(base) * outer * alongFrac + cos(perp) * s * sideFrac,
-                        y: c.y + sin(base) * outer * alongFrac + sin(perp) * s * sideFrac
-                    )
-                }
-
-                let path = CGMutablePath()
-                path.move(to: pt(0.10, -0.02))
-                // S-curve: swing out one side then hook back — snake-like.
-                path.addCurve(to: pt(1.0, 0.06),
-                              control1: pt(0.35, 0.20),
-                              control2: pt(0.85, 0.20))
-                ctx.addPath(path)
-                ctx.strokePath()
-            }
-            return true
-        }
-    }
 
     /// A mouse silhouette with a small Razer triskelion cut into the body (even-odd).
     /// Template image for the menu bar.
@@ -85,7 +19,7 @@ enum MenuBarIcon {
     /// (by USB product ID) instead of always drawing the generic Cobra body. Falls back to
     /// the generic Cobra shape for an unknown or absent device.
     static func mouseModel(pid: Int?, razerCutout: Bool = true, pointSize: CGFloat = 20) -> NSImage {
-        let img = drawMouse(size: pointSize, razerCutout: razerCutout, silhouette: RazerMouseSilhouette.forDevicePID(pid))
+        let img = drawMouse(size: pointSize, razerCutout: razerCutout, silhouette: RazerDevices.silhouette(pid: pid))
         img.isTemplate = true
         return img
     }

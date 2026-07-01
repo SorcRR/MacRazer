@@ -165,6 +165,11 @@ final class HIDDevice {
     /// request, sleep the receiver wait, then GetReport. If the device replies BUSY (0x01),
     /// it hasn't finished yet — wait and re-read a few times before giving up.
     func send(_ report: RazerReport) throws -> RazerReport {
+        var report = report
+        // Per-model (and per-command-class) transaction id from the registry, stamped at
+        // the single point every command passes through — the builders in `RazerCommands`
+        // stay model-agnostic.
+        report.transactionId = RazerDevices.transactionId(pid: productID, commandClass: report.commandClass)
         let out = report.serialized()
         let setResult = out.withUnsafeBufferPointer { ptr in
             IOHIDDeviceSetReport(device, kIOHIDReportTypeFeature, 0, ptr.baseAddress!, ptr.count)

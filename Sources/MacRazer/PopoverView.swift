@@ -10,14 +10,6 @@ private struct HeightKey: PreferenceKey {
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
 }
 
-private enum Effect: String, CaseIterable, Identifiable {
-    case staticColor = "Static"
-    case spectrum = "Spectrum"
-    case wave = "Wave"
-    case off = "Off"
-    var id: Self { self }
-}
-
 extension Color {
     /// Razer brand green (#44D62C) — the single accent. Budget: logo, slider, active chip/segment.
     static let razerGreen = Color(red: 0x44 / 255, green: 0xD6 / 255, blue: 0x2C / 255)
@@ -48,7 +40,7 @@ struct PopoverView: View {
     @State private var dpiValue: Double = 1600
     @State private var brightnessValue: Double = 100
     @State private var color: Color = .razerGreen
-    @State private var effect: Effect = .staticColor
+    @State private var effect: LightingEffect = .staticColor
     /// Recallable custom DPI — persisted per-mouse, and never above the mouse's max.
     @State private var customDPI: Int = 8000
 
@@ -373,13 +365,13 @@ struct PopoverView: View {
     private func syncFromActiveProfile() {
         guard let id = controller.activeProfileID,
               let profile = controller.profiles.first(where: { $0.id == id }) else { return }
-        if let parsed = Effect(rawValue: profile.effect), parsed != effect {
+        if profile.lightingEffect != effect {
             // Suppress the picker's onChange HID write — applyProfile already sent the
             // lighting. Set only when the consuming onChange is guaranteed to fire and
             // clear it: the value must actually change AND the effect picker (which hosts
             // the onChange) must be mounted, i.e. the mouse has lighting.
             isApplyingProfileLocally = controller.deviceHasLighting
-            effect = parsed
+            effect = profile.lightingEffect
         }
         color = Color(red: Double(profile.color.r) / 255, green: Double(profile.color.g) / 255, blue: Double(profile.color.b) / 255)
     }
@@ -387,7 +379,7 @@ struct PopoverView: View {
     private func saveNewProfile() {
         let name = newProfileName.trimmingCharacters(in: .whitespaces)
         guard !name.isEmpty else { return }
-        controller.saveCurrentAsProfile(name: name, effect: effect.rawValue, color: color.rgb, remapper: remapper)
+        controller.saveCurrentAsProfile(name: name, effect: effect, color: color.rgb, remapper: remapper)
         isAddingProfile = false
     }
 
@@ -682,7 +674,7 @@ struct PopoverView: View {
                 Image(systemName: "sun.max.fill").font(.system(size: 11)).foregroundStyle(.secondary)
             }
             Picker("", selection: $effect) {
-                ForEach(Effect.allCases) { Text($0.rawValue).tag($0) }
+                ForEach(LightingEffect.allCases) { Text($0.rawValue).tag($0) }
             }
             .pickerStyle(.segmented)
             .controlSize(.small)
@@ -744,7 +736,7 @@ struct PopoverView: View {
         return a.r == b.r && a.g == b.g && a.b == b.b
     }
 
-    private func apply(effect: Effect) {
+    private func apply(effect: LightingEffect) {
         switch effect {
         case .staticColor: controller.setStatic(color.rgb)
         case .spectrum: controller.setSpectrum()

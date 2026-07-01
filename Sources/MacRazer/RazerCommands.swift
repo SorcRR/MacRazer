@@ -6,8 +6,8 @@ import Foundation
 /// Device + command constants ported from the OpenRazer Cobra Pro driver, which the
 /// Cobra HyperSpeed reuses unmodified (per PR openrazer/openrazer#2583).
 ///
-/// IMPORTANT: every Cobra Pro command in razermouse_driver.c sets
-/// `transaction_id.id = 0x1f`. We replicate that here.
+/// The per-model `transaction_id.id` byte lives in `RazerDevices` and is stamped by
+/// `HIDDevice.send` — the builders here are model-agnostic.
 enum Razer {
     static let vendorId: Int = 0x1532
 
@@ -19,9 +19,6 @@ enum Razer {
     static let pidCobra: Int = 0x00A3
     static let pidCobraProWired: Int = 0x00AF
     static let pidCobraProWireless: Int = 0x00B0
-
-    /// Transaction id used by all Cobra Pro commands.
-    static let transactionId: UInt8 = 0x1f
 
     // razercommon.h LED storage
     static let varstore: UInt8 = 0x01
@@ -37,15 +34,9 @@ struct RGB: Codable, Equatable {
     var r: UInt8, g: UInt8, b: UInt8
 }
 
-/// Command builders — direct ports of razerchromacommon.c. Each returns a ready-to-send
-/// report with the Cobra Pro transaction id already applied.
+/// Command builders — direct ports of razerchromacommon.c. The per-model transaction id is
+/// stamped later by `HIDDevice.send` (see `RazerDevices.transactionId`).
 enum RazerCommands {
-
-    private static func withTxn(_ r: RazerReport) -> RazerReport {
-        var r = r
-        r.transactionId = Razer.transactionId
-        return r
-    }
 
     /// razer_chroma_misc_get_battery_level() -> get_razer_report(0x07, 0x80, 0x02)
     /// Response arguments[1] is the battery level on a 0-255 scale.
@@ -53,13 +44,13 @@ enum RazerCommands {
     /// NOTE: this is the command that TIMES OUT over the 2.4GHz dongle in the PR author's
     /// testing (dmesg command_class 07, command_id 81). Handle timeouts with backoff.
     static func getBatteryLevel() -> RazerReport {
-        withTxn(RazerReport(commandClass: 0x07, commandId: 0x80, dataSize: 0x02))
+        RazerReport(commandClass: 0x07, commandId: 0x80, dataSize: 0x02)
     }
 
     /// razer_chroma_standard_get_serial() -> get_razer_report(0x00, 0x82, 0x16).
     /// Response arguments hold the device's serial as an ASCII string — a stable per-unit id.
     static func getSerial() -> RazerReport {
-        withTxn(RazerReport(commandClass: 0x00, commandId: 0x82, dataSize: 0x16))
+        RazerReport(commandClass: 0x00, commandId: 0x82, dataSize: 0x16)
     }
 
     /// Decode a serial response into a sanitized string, or nil if blank/all-zero.
@@ -76,10 +67,10 @@ enum RazerCommands {
         Int((Double(raw) * 100.0 / 255.0).rounded())
     }
 
-    /// razer_chroma_misc_get_charging_status() — command_class 0x07, command_id 0x84.
-    /// (Confirm exact id against chromacommon.c before relying on it.)
+    /// razer_chroma_misc_get_charging_status() — command_class 0x07, command_id 0x84
+    /// (confirmed against razerchromacommon.c:1067).
     static func getChargingStatus() -> RazerReport {
-        withTxn(RazerReport(commandClass: 0x07, commandId: 0x84, dataSize: 0x02))
+        RazerReport(commandClass: 0x07, commandId: 0x84, dataSize: 0x02)
     }
 
     /// razer_chroma_misc_set_dpi_xy(VARSTORE, dpi_x, dpi_y)
@@ -95,7 +86,7 @@ enum RazerCommands {
         r.arguments[2] = UInt8(dx & 0xFF)
         r.arguments[3] = UInt8((dy >> 8) & 0xFF)
         r.arguments[4] = UInt8(dy & 0xFF)
-        return withTxn(r)
+        return r
     }
 
     /// razer_chroma_misc_get_dpi_xy(VARSTORE) -> get_razer_report(0x04, 0x85, 0x07)
@@ -103,7 +94,7 @@ enum RazerCommands {
     static func getDPI() -> RazerReport {
         var r = RazerReport(commandClass: 0x04, commandId: 0x85, dataSize: 0x07)
         r.arguments[0] = Razer.varstore
-        return withTxn(r)
+        return r
     }
 
     /// Decode a DPI response into (x, y).
@@ -119,7 +110,7 @@ enum RazerCommands {
     static func getDPIStages() -> RazerReport {
         var r = RazerReport(commandClass: 0x04, commandId: 0x86, dataSize: 0x26)
         r.arguments[0] = Razer.varstore
-        return withTxn(r)
+        return r
     }
 
     static func parseDPIStages(_ resp: RazerReport) -> [Int] {
@@ -145,13 +136,13 @@ enum RazerCommands {
         case 125:  r.arguments[0] = 0x08
         default:   r.arguments[0] = 0x02 // driver default is 500Hz
         }
-        return withTxn(r)
+        return r
     }
 
     /// razer_chroma_misc_get_polling_rate() -> get_razer_report(0x00, 0x85, 0x01)
     /// Response arg[0]: 0x01->1000, 0x02->500, 0x08->125.
     static func getPollingRate() -> RazerReport {
-        withTxn(RazerReport(commandClass: 0x00, commandId: 0x85, dataSize: 0x01))
+        RazerReport(commandClass: 0x00, commandId: 0x85, dataSize: 0x01)
     }
 
     /// Decode a poll-rate response arg[0] to Hz (0 if unrecognised).
@@ -192,12 +183,12 @@ enum RazerCommands {
         r.arguments[6] = rgb.r
         r.arguments[7] = rgb.g
         r.arguments[8] = rgb.b
-        return withTxn(r)
+        return r
     }
 
     /// Spectrum cycle. base(0x06, …, 0x03).
     static func setSpectrum(led: UInt8 = zeroLed) -> RazerReport {
-        withTxn(effectBase(argSize: 0x06, led: led, effect: 0x03))
+        effectBase(argSize: 0x06, led: led, effect: 0x03)
     }
 
     /// Wave. base(0x06, …, 0x04); args[3]=direction (0..2), args[4]=speed (0x28 default).
@@ -205,12 +196,12 @@ enum RazerCommands {
         var r = effectBase(argSize: 0x06, led: led, effect: 0x04)
         r.arguments[3] = min(direction, 0x02)
         r.arguments[4] = speed
-        return withTxn(r)
+        return r
     }
 
     /// Off. base(0x06, …, 0x00).
     static func setNone(led: UInt8 = zeroLed) -> RazerReport {
-        withTxn(effectBase(argSize: 0x06, led: led, effect: 0x00))
+        effectBase(argSize: 0x06, led: led, effect: 0x00)
     }
 
     // --- LED brightness (extended matrix, class 0x0F) ---
@@ -224,7 +215,7 @@ enum RazerCommands {
         r.arguments[0] = Razer.varstore
         r.arguments[1] = led
         r.arguments[2] = value
-        return withTxn(r)
+        return r
     }
 
     /// razer_chroma_extended_matrix_get_brightness(VARSTORE, LOGO_LED)
@@ -233,7 +224,7 @@ enum RazerCommands {
         var r = RazerReport(commandClass: 0x0F, commandId: 0x84, dataSize: 0x03)
         r.arguments[0] = Razer.varstore
         r.arguments[1] = led
-        return withTxn(r)
+        return r
     }
 
     static func brightnessPercent(fromRaw raw: UInt8) -> Int { Int((Double(raw) * 100 / 255).rounded()) }

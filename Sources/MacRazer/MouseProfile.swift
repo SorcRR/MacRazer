@@ -3,6 +3,17 @@
 
 import Foundation
 
+/// The lighting effects the UI picker and saved profiles share. Raw values are what profiles
+/// persist AND what the picker displays — renaming a case would orphan every saved profile's
+/// effect (it decodes as a plain string and falls back to `.off`), so treat them as frozen.
+enum LightingEffect: String, CaseIterable, Identifiable {
+    case staticColor = "Static"
+    case spectrum = "Spectrum"
+    case wave = "Wave"
+    case off = "Off"
+    var id: Self { self }
+}
+
 /// A named, switchable snapshot of everything the popover lets you configure: DPI, polling rate,
 /// lighting, and button remaps. The physical "profile" button on the mouse only cycles DPI
 /// stages in firmware — there's no onboard multi-profile storage or button-press notification to
@@ -13,10 +24,13 @@ struct MouseProfile: Codable, Identifiable, Equatable {
     var dpi: Int
     var pollRate: Int
     var brightness: Int // percent
-    /// Raw value of `PopoverView`'s `Effect` enum ("Static"/"Spectrum"/"Wave"/"Off").
+    /// Raw value of `LightingEffect` — stored as a string so one unrecognized value can't
+    /// fail the whole profiles array's decode. Read through `lightingEffect`.
     var effect: String
-    /// Only meaningful when `effect == "Static"`.
+    /// Only meaningful when the effect is `.staticColor`.
     var color: RGB
+
+    var lightingEffect: LightingEffect { LightingEffect(rawValue: effect) ?? .off }
     var buttonMappings: [Int: RemapAction]
 
     init(name: String, dpi: Int, pollRate: Int, brightness: Int, effect: String, color: RGB,

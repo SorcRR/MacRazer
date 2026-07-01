@@ -3,15 +3,11 @@
 
 import Foundation
 
-// Milestone 1/2 CLI probe: open the device over the 2.4GHz dongle and attempt a battery
-// read. This is the lowest-risk validation that HID communication works from Swift/IOKit
-// before any UI is built. Expect the battery read to possibly time out over wireless —
-// that's the known issue from openrazer/openrazer#2583.
-//
-// Usage:
-//   swift run MacRazer            # probe + battery read
-//   swift run MacRazer battery    # same, explicit
-//   (DPI / polling / RGB writes will be added as subcommands as each milestone lands)
+// Entry point. No arguments launches the menu bar app; subcommands are CLI diagnostics
+// against real hardware (battery / dpi / poll / rgb / brightness / info) plus render-*
+// commands that draw UI pages and icons to PNGs for visual inspection without a device.
+// Battery reads may time out over the wireless dongle — the known issue from
+// openrazer/openrazer#2583.
 
 import AppKit
 import SwiftUI
@@ -38,6 +34,22 @@ func openDevice() -> HIDDevice? {
     } catch {
         print("✗ \(error)")
         return nil
+    }
+}
+
+/// Shared by the render-* commands: draw a SwiftUI view at 2x on the app's dark backdrop
+/// and write it to a PNG.
+@MainActor func writeViewPNG<V: View>(_ view: V, to path: String) {
+    let renderer = ImageRenderer(content: view.padding(1).background(Color(white: 0.13)))
+    renderer.scale = 2
+    if let img = renderer.nsImage,
+       let tiff = img.tiffRepresentation,
+       let rep = NSBitmapImageRep(data: tiff),
+       let png = rep.representation(using: .png, properties: [:]) {
+        try? png.write(to: URL(fileURLWithPath: path))
+        print("Wrote \(path)")
+    } else {
+        print("Render failed")
     }
 }
 
@@ -70,29 +82,14 @@ case "render-ui":
         : args.contains("profiles")
         ? AnyView(ProfilesView(controller: controller, remapper: ButtonRemapper(), onBack: {}))
         : AnyView(PopoverView(controller: controller, remapper: ButtonRemapper(), updateChecker: UpdateChecker()))
-    let renderer = ImageRenderer(content: rootView.padding(1).background(Color(white: 0.13)))
-    renderer.scale = 2
-    if let img = renderer.nsImage,
-       let tiff = img.tiffRepresentation,
-       let rep = NSBitmapImageRep(data: tiff),
-       let png = rep.representation(using: .png, properties: [:]) {
-        try? png.write(to: URL(fileURLWithPath: path))
-        print("Wrote \(path)")
-    } else {
-        print("Render failed")
-    }
+    writeViewPNG(rootView, to: path)
 
 case "render-remap":
     _ = NSApplication.shared
     let path = args.dropFirst().first ?? "remap-preview.png"
     let r = ButtonRemapper()
     r.loadPreviewState()
-    let renderer = ImageRenderer(content: RemapView(remapper: r).padding(1).background(Color(white: 0.13)))
-    renderer.scale = 2
-    if let img = renderer.nsImage, let tiff = img.tiffRepresentation,
-       let rep = NSBitmapImageRep(data: tiff), let png = rep.representation(using: .png, properties: [:]) {
-        try? png.write(to: URL(fileURLWithPath: path)); print("Wrote \(path)")
-    } else { print("Render failed") }
+    writeViewPNG(RemapView(remapper: r), to: path)
 
 case "render-permissions":
     _ = NSApplication.shared
@@ -101,13 +98,7 @@ case "render-permissions":
     controller.loadPreviewState()
     let model = PermissionsModel()
     model.loadPreviewState()
-    let renderer = ImageRenderer(content: PermissionsView(model: model, controller: controller)
-        .padding(1).background(Color(white: 0.13)))
-    renderer.scale = 2
-    if let img = renderer.nsImage, let tiff = img.tiffRepresentation,
-       let rep = NSBitmapImageRep(data: tiff), let png = rep.representation(using: .png, properties: [:]) {
-        try? png.write(to: URL(fileURLWithPath: path)); print("Wrote \(path)")
-    } else { print("Render failed") }
+    writeViewPNG(PermissionsView(model: model, controller: controller), to: path)
 
 case "icon":
     // Render the menu bar mark to a PNG for visual inspection.

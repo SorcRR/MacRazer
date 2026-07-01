@@ -254,9 +254,5 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     // MARK: - Input Monitoring permission
 
-    static func openInputMonitoringSettings() {
-        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent") {
-            NSWorkspace.shared.open(url)
-        }
-    }
+    static func openInputMonitoringSettings() { SystemSettingsPanes.openInputMonitoring() }
 }

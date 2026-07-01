@@ -116,11 +116,7 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         runLoopSource = nil
     }
 
-    func openAccessibilitySettings() {
-        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
-            NSWorkspace.shared.open(url)
-        }
-    }
+    func openAccessibilitySettings() { SystemSettingsPanes.openAccessibility() }
 
     // MARK: - Mappings
 

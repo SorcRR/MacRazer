@@ -150,11 +150,6 @@ final class MouseController: ObservableObject, @unchecked Sendable {
 
     // MARK: - Reads
 
-    /// Battery only — used by the background timer (no spinner).
-    func refreshBattery() {
-        io.async { [weak self] in self?.readBatterySync() }
-    }
-
     /// Main-thread only (timer/popover callbacks): prevents the 2s popover timer from
     /// stacking reads while one is still grinding through the retry ladder — with a mouse
     /// that answers slowly (or a dongle answering with stale reports), each read can take
@@ -472,10 +467,10 @@ final class MouseController: ObservableObject, @unchecked Sendable {
 
     /// Captures the current live DPI/poll/brightness/lighting + the remapper's button mappings
     /// as a new named profile for the connected mouse.
-    func saveCurrentAsProfile(name: String, effect: String, color: RGB, remapper: ButtonRemapper) {
+    func saveCurrentAsProfile(name: String, effect: LightingEffect, color: RGB, remapper: ButtonRemapper) {
         guard let key = deviceKey else { return }
         let profile = MouseProfile(name: name, dpi: dpi, pollRate: pollRate == 0 ? 1000 : pollRate,
-                                    brightness: brightness, effect: effect, color: color,
+                                    brightness: brightness, effect: effect.rawValue, color: color,
                                     buttonMappings: remapper.mappings)
         profiles.append(profile)
         ProfileStore.save(profiles, forDevice: key)
@@ -497,11 +492,11 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         let hz = profile.pollRate == 0 ? 1000 : profile.pollRate
         let brightnessPct = max(0, min(profile.brightness, 100))
         let lighting: RazerReport
-        switch profile.effect {
-        case "Static": lighting = RazerCommands.setStatic(rgb: profile.color)
-        case "Spectrum": lighting = RazerCommands.setSpectrum()
-        case "Wave": lighting = RazerCommands.setWave()
-        default: lighting = RazerCommands.setNone()
+        switch profile.lightingEffect {
+        case .staticColor: lighting = RazerCommands.setStatic(rgb: profile.color)
+        case .spectrum: lighting = RazerCommands.setSpectrum()
+        case .wave: lighting = RazerCommands.setWave()
+        case .off: lighting = RazerCommands.setNone()
         }
 
         io.async { [weak self] in
@@ -582,9 +577,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         averageCycleHours = 23
         updateStatusText()
         let p1 = MouseProfile(name: "Work", dpi: 1600, pollRate: 1000, brightness: 60,
-                               effect: "Static", color: RGB(r: 0x44, g: 0xD6, b: 0x2C), buttonMappings: [:])
+                               effect: LightingEffect.staticColor.rawValue, color: RGB(r: 0x44, g: 0xD6, b: 0x2C), buttonMappings: [:])
         let p2 = MouseProfile(name: "Gaming", dpi: 6400, pollRate: 1000, brightness: 100,
-                               effect: "Spectrum", color: RGB(r: 255, g: 0, b: 0), buttonMappings: [:])
+                               effect: LightingEffect.spectrum.rawValue, color: RGB(r: 255, g: 0, b: 0), buttonMappings: [:])
         profiles = [p1, p2]
         activeProfileID = p1.id
     }

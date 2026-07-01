@@ -103,6 +103,12 @@ expect rough edges until 1.0.
 - Persisting battery/discharge-curve history to disk is now throttled (~every 30s, plus
  immediately on a charge-cycle boundary) instead of on every poll tick, now that the larger
  sample window would otherwise mean rewriting a much bigger file every 4-15 seconds.
+- **The device registry is the single source of per-model data.** The protocol transaction
+ id (previously hardcoded to the Cobra family's 0x1f for every mouse) and the menu-bar
+ silhouette now live in `RazerDevices` and are picked per connected model — adding a mouse
+ is one row instead of edits across the transport, commands, and drawing code. The plain
+ Razer Cobra now follows OpenRazer's per-command split (0xFF for DPI/polling/serial, 0x1f
+ for lighting); hardware-verified models keep their verified ids everywhere.
 
 ### Internal
 - **Unit tests + CI.** The pure layers — protocol codec (CRC/serialization), command

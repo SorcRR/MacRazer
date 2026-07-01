@@ -4,6 +4,22 @@
 import AppKit
 import IOKit.hid
 
+/// The System Settings privacy panes this app sends users to — one place for the
+/// `x-apple.systempreferences` deep links instead of hand-rolled copies per caller.
+enum SystemSettingsPanes {
+    static func openInputMonitoring() {
+        open("x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent")
+    }
+
+    static func openAccessibility() {
+        open("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
+    }
+
+    private static func open(_ urlString: String) {
+        if let url = URL(string: urlString) { NSWorkspace.shared.open(url) }
+    }
+}
+
 /// Single source of truth for the two macOS permissions MacRazer needs, and the actions to
 /// grant them. Drives the first-run setup window (`PermissionsView`).
 ///
@@ -69,13 +85,9 @@ final class PermissionsModel: ObservableObject {
         recheck()
     }
 
-    func openInputMonitoringSettings() {
-        open("x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent")
-    }
+    func openInputMonitoringSettings() { SystemSettingsPanes.openInputMonitoring() }
 
-    func openAccessibilitySettings() {
-        open("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
-    }
+    func openAccessibilitySettings() { SystemSettingsPanes.openAccessibility() }
 
     /// Relaunch so a freshly-granted Input Monitoring permission takes effect. Only meaningful for
     /// the packaged `.app` (a no-op shape under `swift run`, which has no bundle to relaunch).
@@ -108,9 +120,4 @@ final class PermissionsModel: ObservableObject {
         needsRelaunch = false
     }
 
-    // MARK: - Helpers
-
-    private func open(_ urlString: String) {
-        if let url = URL(string: urlString) { NSWorkspace.shared.open(url) }
-    }
 }
