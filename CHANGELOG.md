@@ -4,6 +4,34 @@ All notable changes to this project. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/). The project is **pre-release** (0.x) —
 expect rough edges until 1.0.
 
+## [Unreleased]
+
+### Added
+- **Learned discharge curve for the Razer Cobra HyperSpeed.** Rather than one flat %/hour rate,
+ the app now learns how long the battery actually dwells at each percent (0-100) from real
+ discharge history, specifically for the Cobra HyperSpeed (wired + wireless) — its Li-ion cell
+ has a long flat voltage plateau through most of the discharge and steep drops near full/empty,
+ which a single linear rate can't represent. The learned curve is shared across every Cobra
+ HyperSpeed unit the app sees (not per physical mouse) so it improves faster, and falls back to
+ the existing linear-rate estimate for any percent it doesn't have data for yet — with zero
+ data the estimate is identical to before. Every other mouse model is unaffected and keeps
+ using the generic estimate, since their cell/firmware behavior is unverified.
+- **Usage graph now covers the whole charge, not just the last ~2 hours.** The retained sample
+ window was raised from 500 to 25,000 (~104 hours), and the discharge curve on the usage page
+ is now colored green/orange/red at the same thresholds as the main battery bar, instead of a
+ flat color.
+
+### Fixed
+- **A multi-hour disconnect or sleep gap no longer gets learned as real per-percent dwell
+ time.** The discharge-curve model could mistake "mouse was offline for hours" for "battery
+ sat at this percent for hours," skewing its estimate after as few as two such gaps; intervals
+ longer than 5 minutes are now excluded from what it learns from.
+
+### Changed
+- Persisting battery/discharge-curve history to disk is now throttled (~every 30s, plus
+ immediately on a charge-cycle boundary) instead of on every poll tick, now that the larger
+ sample window would otherwise mean rewriting a much bigger file every 4-15 seconds.
+
 ## [0.1.5] — 2026-06-29
 
 ### Added
