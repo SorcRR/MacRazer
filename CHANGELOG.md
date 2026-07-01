@@ -22,6 +22,34 @@ expect rough edges until 1.0.
  flat color.
 
 ### Fixed
+- **The learned discharge curve now measures real dwell time per percent.** It was averaging
+ per poll tick instead of per completed traversal, so after one full discharge every percent
+ "learned" a dwell of ~15 seconds and the estimate collapsed toward `percent × 15s` (e.g.
+ "~20m left" at 80% on a ~30h battery). Buckets now accumulate an open dwell and commit it
+ only when the discharge actually drops out of that percent; partial dwells (charge started
+ mid-percent, offline gaps) are discarded instead of polluting the mean. Previously learned
+ curve data was corrupt under the old math and is discarded on upgrade — the curve re-learns
+ from the next discharge cycle.
+- **Idle/offline gaps no longer distort the discharge-rate estimate.** The session rate fit
+ spanned raw wall-clock time, so a weekend with the mouse switched off could turn a 1%/hour
+ mouse into "~19d left" on Monday — and blend that bogus rate into the persisted learned
+ rate. Gaps longer than 5 minutes are now spliced out of the fit entirely (neither the gap's
+ time nor the percent self-drained during it counts), making the estimate mean "time
+ remaining at active use", consistent with the dwell-based curve model.
+- **Battery/cycle/curve files are now written atomically, with a format version.** A crash or
+ power loss mid-write could truncate the JSON, and the next launch would silently start from
+ empty and overwrite what was left — permanently losing that device's history. Existing
+ history files are migrated in place.
+- **The usage chart no longer renders every raw sample.** A full multi-day cycle is up to
+ 25,000 samples, re-rendered on every 15s poll while the usage page was open (plus a full
+ scan per mouse-move for the hover readout) — enough to stall the popover. The published
+ snapshot is now decimated to ~600 min/max-preserving points; persistence still keeps every
+ sample.
+- **A clean quit no longer drops the last ~30 seconds of history.** The throttled savers are
+ flushed on app termination.
+- **Docking the mouse no longer leaks one charging sample into the discharge history.** The
+ first (unconfirmed) charging report is skipped instead of being logged as a discharge
+ sample, and the history file is no longer rewritten every poll tick during a charge session.
 - **A multi-hour disconnect or sleep gap no longer gets learned as real per-percent dwell
  time.** The discharge-curve model could mistake "mouse was offline for hours" for "battery
  sat at this percent for hours," skewing its estimate after as few as two such gaps; intervals

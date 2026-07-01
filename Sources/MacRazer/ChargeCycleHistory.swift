@@ -17,17 +17,13 @@ struct ChargeCycleSummary: Codable {
 /// Persists a rolling log of past discharge cycles, fed by `BatteryHistory.onCycleFinished`
 /// right before each cycle's raw samples are discarded.
 final class ChargeCycleHistory {
-    private let url: URL
+    private let store: VersionedFileStore<[ChargeCycleSummary]>
     private(set) var cycles: [ChargeCycleSummary] = []
     private let maxCycles = 30
 
     init(deviceKey: String) {
-        let dir = FileManager.default
-            .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("MacRazer", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        url = dir.appendingPathComponent("charge-cycles-\(deviceKey).json")
-        load()
+        store = VersionedFileStore(filename: "charge-cycles-\(deviceKey).json", version: 1)
+        cycles = store.load(migratingLegacy: true) ?? []
     }
 
     /// Same noise thresholds as `BatteryHistory.sessionRatePerHour` — a real cycle needs a
@@ -39,22 +35,12 @@ final class ChargeCycleHistory {
         guard span >= 900, drop >= 2 else { return }
         cycles.append(ChargeCycleSummary(start: first.t, end: last.t, startPercent: first.pct, endPercent: last.pct))
         if cycles.count > maxCycles { cycles.removeFirst(cycles.count - maxCycles) }
-        save()
+        // Unthrottled: cycles finish minutes-to-days apart, and each one is worth keeping.
+        store.saveNow(cycles)
     }
 
     var averageCycleDuration: TimeInterval? {
         guard !cycles.isEmpty else { return nil }
         return cycles.map(\.duration).reduce(0, +) / Double(cycles.count)
-    }
-
-    private func load() {
-        guard let data = try? Data(contentsOf: url),
-              let decoded = try? JSONDecoder().decode([ChargeCycleSummary].self, from: data) else { return }
-        cycles = decoded
-    }
-
-    private func save() {
-        guard let data = try? JSONEncoder().encode(cycles) else { return }
-        try? data.write(to: url)
     }
 }

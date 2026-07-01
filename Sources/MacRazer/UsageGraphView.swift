@@ -89,6 +89,16 @@ struct UsageGraphView: View {
                             }
                         }
                     }
+                    // The published samples are re-decimated on every poll, which can shift
+                    // which timestamps survive — re-snap an active hover to the new array so
+                    // the marker (matched by exact timestamp above) doesn't vanish and leave
+                    // a stale hover pill in the header.
+                    .onChange(of: controller.batterySamples) { _, newSamples in
+                        guard let hovered = hoveredSample else { return }
+                        hoveredSample = newSamples.min {
+                            abs($0.t.timeIntervalSince(hovered.t)) < abs($1.t.timeIntervalSince(hovered.t))
+                        }
+                    }
                 }
             }
         }
@@ -133,9 +143,9 @@ struct UsageGraphView: View {
     }
 
     private var sinceChargeText: String {
-        // While charging, `cycleStartedAt` tracks the in-progress charge (it resets on every
-        // poll tick until charging stops), so showing it here would read as a constantly
-        // resetting "~0m" rather than the prior completed discharge.
+        // While charging, the discharge window is empty (`BatteryHistory.record` doesn't log
+        // charge-session samples), so `cycleStartedAt` is nil and would render "—"; name the
+        // state instead.
         if controller.charging { return "Charging" }
         guard let start = controller.cycleStartedAt else { return "—" }
         let duration = BatteryHistory.formatDuration(hours: Date().timeIntervalSince(start) / 3600)

@@ -11,60 +11,90 @@ import Foundation
 /// because each percent gets its own learned dwell time instead of one shared rate.
 struct DischargeBucket: Codable {
     var totalSeconds: Double = 0
+    /// Completed traversals: how many times a discharge has passed *through and out of* this
+    /// percent, observed end-to-end. NOT poll ticks — dividing by ticks would make `mean`
+    /// converge on the poll interval (~15s) instead of the real dwell time (~18min on the
+    /// plateau), collapsing the whole-curve estimate to `percent × poll interval`.
     var count: Int = 0
     var mean: Double? { count > 0 ? totalSeconds / Double(count) : nil }
 }
 
 final class DischargeCurveModel {
-    private let url: URL
     /// Index 0...100 = percent. 101 buckets, always fully allocated (some just empty).
     private(set) var buckets: [DischargeBucket]
-    /// Below this many samples, a bucket falls back to the rate-derived estimate instead of
-    /// trusting its own (still-noisy) mean.
+    /// Dwell seconds accumulated at each percent for the current, still-open traversal.
+    /// Committed into `buckets` only once the discharge drops out of that percent.
+    private var pendingSeconds = [Double](repeating: 0, count: 101)
+    /// Whether we actually watched the battery *arrive* at each percent (a drop into it
+    /// within one observed interval). A dwell whose start wasn't seen — app launch, an
+    /// offline gap, a device swap, or a noise flicker whose rising edge is ignored — is
+    /// front-truncated: committing it as a full traversal would bias the mean low, the same
+    /// corruption class this model exists to avoid. Neither this nor `pendingSeconds` is
+    /// persisted: an open traversal interrupted by a relaunch is discarded, never
+    /// committed short.
+    private var entryObserved = [Bool](repeating: false, count: 101)
+    /// Below this many completed traversals (full discharge passes through the percent), a
+    /// bucket falls back to the rate-derived estimate instead of trusting its own
+    /// (still-noisy) mean.
     private let minSamplesToTrust = 2
-    /// `record()` fires on every poll tick while discharging — throttle the disk write rather
-    /// than re-encoding and rewriting all 101 buckets every 4-15s for what's typically a few
-    /// bytes of actual change. Losing a few seconds of the latest bucket update on an unclean
-    /// quit is an acceptable trade.
-    private var lastSaveAt = Date.distantPast
-    private let saveInterval: TimeInterval = 30
+    /// v2: `count` counts completed traversals. The pre-envelope v1 files counted poll ticks,
+    /// which is exactly the bug this version fixes — that data is corrupt under the new math,
+    /// so it is discarded (fresh re-learn), not migrated.
+    private let store: VersionedFileStore<[DischargeBucket]>
 
     init(modelKey: String) {
-        let dir = FileManager.default
-            .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("MacRazer", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        url = dir.appendingPathComponent("discharge-curve-\(modelKey).json")
+        store = VersionedFileStore(filename: "discharge-curve-\(modelKey).json", version: 2)
         buckets = Array(repeating: DischargeBucket(), count: 101)
-        load()
+        if let decoded = store.load(), decoded.count == buckets.count {
+            buckets = decoded
+        }
     }
 
     /// Distributes `duration` across every percent point crossed while discharging
     /// (`fromPercent > toPercent`) — splitting evenly rather than crediting it all to
     /// `fromPercent` matters near steep drops, where one poll interval can skip several
-    /// percent points at once. A flat interval credits its single bucket in full. A rising
-    /// interval (sensor noise — doesn't trigger `BatteryHistory`'s cycle reset) is ignored,
-    /// since there's no clean way to attribute it.
+    /// percent points at once. A flat interval accrues to its percent's open traversal. A
+    /// rising interval (sensor noise — doesn't trigger `BatteryHistory`'s cycle reset) is
+    /// ignored, since there's no clean way to attribute it.
     func record(fromPercent: Int, toPercent: Int, duration: TimeInterval) {
         guard duration > 0, duration.isFinite else { return }
         guard fromPercent >= toPercent, fromPercent >= 0, fromPercent <= 100, toPercent >= 0 else { return }
         if fromPercent == toPercent {
-            add(duration, toBucket: fromPercent)
-        } else {
-            let span = fromPercent - toPercent
-            let share = duration / Double(span)
-            for pct in (toPercent + 1)...fromPercent { add(share, toBucket: pct) }
+            pendingSeconds[fromPercent] += duration
+            return
         }
-        let now = Date()
-        guard now.timeIntervalSince(lastSaveAt) >= saveInterval else { return }
-        lastSaveAt = now
-        save()
+        let share = duration / Double(fromPercent - toPercent)
+        var committedAny = false
+        for pct in (toPercent + 1)...fromPercent {
+            // Percents strictly inside the interval were entered AND left within this one
+            // observed interval, so their traversal is complete by construction. The
+            // boundary percent's dwell began earlier — it only counts if its start was
+            // actually seen (see `entryObserved`).
+            if pct < fromPercent || entryObserved[fromPercent] {
+                buckets[pct].totalSeconds += pendingSeconds[pct] + share
+                buckets[pct].count += 1
+                committedAny = true
+            }
+            pendingSeconds[pct] = 0
+            entryObserved[pct] = false
+        }
+        entryObserved[toPercent] = true // we just watched the battery arrive here
+        if committedAny { store.save(buckets) }
     }
 
-    private func add(_ seconds: Double, toBucket pct: Int) {
-        guard buckets.indices.contains(pct) else { return }
-        buckets[pct].totalSeconds += seconds
-        buckets[pct].count += 1
+    /// The continuous observation stream broke: a charge started (cycle reset), an
+    /// offline/sleep gap, or a device swap. Every open dwell is now a partial observation
+    /// and the next entry into the current percent wasn't seen — drop the open state so
+    /// front-truncated dwells can't commit as complete traversals. Learned buckets persist;
+    /// observation resumes with the next watched percent-to-percent drop.
+    func observationInterrupted() {
+        pendingSeconds = [Double](repeating: 0, count: 101)
+        entryObserved = [Bool](repeating: false, count: 101)
+    }
+
+    /// Unconditional write, bypassing the save throttle — for app termination.
+    func saveNow() {
+        store.saveNow(buckets)
     }
 
     /// Sum of learned (or rate-derived fallback) dwell time for every bucket from
@@ -93,17 +123,5 @@ final class DischargeCurveModel {
         }
         guard hasAnyData || fallbackSecondsPerPercent != nil else { return nil }
         return totalSeconds / 3600
-    }
-
-    private func load() {
-        guard let data = try? Data(contentsOf: url),
-              let decoded = try? JSONDecoder().decode([DischargeBucket].self, from: data),
-              decoded.count == buckets.count else { return }
-        buckets = decoded
-    }
-
-    private func save() {
-        guard let data = try? JSONEncoder().encode(buckets) else { return }
-        try? data.write(to: url)
     }
 }

@@ -103,6 +103,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     private func wireHistory() {
         history.onCycleFinished = { [weak self] samples in
             self?.cycleHistory.recordFinishedCycle(samples: samples)
+            // The cycle ended, so whatever dwell the curve model had open at the current
+            // percent will never complete — drop it so it can't skew a later cycle's mean.
+            self?.curveModel?.observationInterrupted()
             guard let self else { return }
             let cycles = self.cycleHistory.cycles
             let avg = self.cycleHistory.averageCycleDuration.map { $0 / 3600 }
@@ -112,6 +115,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         // `curveModel` (not `history`) changes — no separate rewiring needed for that case.
         history.onInterval = { [weak self] from, to, duration in
             self?.curveModel?.record(fromPercent: from, toPercent: to, duration: duration)
+        }
+        history.onObservationGap = { [weak self] in
+            self?.curveModel?.observationInterrupted()
         }
     }
 
@@ -267,25 +273,15 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             // positive destructively resets the whole discharge history. Require the rising
             // edge (not-charging → charging) to be confirmed on a second consecutive poll
             // before trusting it; dropping back to false is acted on immediately since that
-            // direction can't trigger the destructive reset.
-            let isCharging: Bool
-            if charging {
-                if pendingChargeConfirm {
-                    isCharging = true
-                } else {
-                    pendingChargeConfirm = true
-                    isCharging = false
-                }
-            } else {
-                pendingChargeConfirm = false
-                isCharging = false
-            }
-            history.record(percent: pct, charging: isCharging)
+            // direction can't trigger the destructive reset. The unconfirmed first tick isn't
+            // logged at all: if the report is real, the sample belongs to the charge session
+            // and would skew the finished cycle's end; if it's garbage, one skipped tick is free.
+            let isCharging = charging && pendingChargeConfirm
+            let skipHistoryTick = charging && !pendingChargeConfirm
+            pendingChargeConfirm = charging
+            if !skipHistoryTick { history.record(percent: pct, charging: isCharging) }
             let estimate = isCharging ? "Charging" : history.estimateString(currentPercent: pct, curveModel: curveModel)
-            let samples = history.samples
-            let rate = history.currentRatePerHour
-            let cycleStart = history.cycleStartedAt
-            let cycleStartPct = history.cycleStartedPercent
+            let snap = historySnapshot()
             batteryReady = true
             publish {
                 let wasConnected = self.connected
@@ -293,10 +289,10 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 self.batteryPercent = pct
                 self.charging = isCharging
                 self.timeEstimate = estimate
-                self.batterySamples = samples
-                self.dischargeRatePerHour = rate
-                self.cycleStartedAt = cycleStart
-                self.cycleStartedPercent = cycleStartPct
+                self.batterySamples = snap.samples
+                self.dischargeRatePerHour = snap.rate
+                self.cycleStartedAt = snap.cycleStart
+                self.cycleStartedPercent = snap.cycleStartPct
                 self.lastError = nil
                 self.bluetoothMouseName = nil
                 self.updateStatusText()
@@ -517,6 +513,32 @@ final class MouseController: ObservableObject, @unchecked Sendable {
 
     // MARK: - Helpers
 
+    /// Writes out the throttled savers' in-memory tail (up to ~30s of samples/curve updates
+    /// otherwise dropped on every clean quit). Called from `applicationWillTerminate`.
+    /// Best-effort with a short timeout: the serial queue may be mid-poll inside the HID
+    /// retry ladder (seconds of sleeps against a flaky dongle), and wedging quit behind
+    /// that is worse than losing the tail — the timeout path just matches the old
+    /// unclean-quit behavior.
+    func flushHistoryToDisk() {
+        let done = DispatchSemaphore(value: 0)
+        io.async {
+            self.history.saveNow()
+            self.curveModel?.saveNow()
+            done.signal()
+        }
+        _ = done.wait(timeout: .now() + 2)
+    }
+
+    /// io-queue only: snapshot of everything the UI derives from `history`, decimated for
+    /// display. Shared by the poll path and the device-swap republish so the two can't
+    /// drift (e.g. one of them forgetting the decimation).
+    private func historySnapshot() -> (samples: [BatterySample], rate: Double?, cycleStart: Date?, cycleStartPct: Int?) {
+        (BatteryHistory.decimatedForDisplay(history.samples),
+         history.currentRatePerHour,
+         history.cycleStartedAt,
+         history.cycleStartedPercent)
+    }
+
     /// Must be called on `io`.
     private func ensureDevice() throws -> HIDDevice {
         if let d = device { return d }
@@ -549,21 +571,22 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             // one's first read — that's exactly the unverified-first-read case the debounce
             // exists to guard.
             pendingChargeConfirm = false
+            // The curve model is model-scoped and survives this per-unit swap when both
+            // units are the same model — but its open dwell belongs to the previous mouse,
+            // and the new one's current percent was never watched arriving.
+            curveModel?.observationInterrupted()
             // Republish everything derived from history immediately so the usage graph doesn't
             // keep showing the previous mouse's curve until the next poll tick.
-            let samples = history.samples
-            let rate = history.currentRatePerHour
-            let cycleStart = history.cycleStartedAt
-            let cycleStartPct = history.cycleStartedPercent
+            let snap = historySnapshot()
             let cycles = cycleHistory.cycles
             let avg = cycleHistory.averageCycleDuration.map { $0 / 3600 }
             let loadedProfiles = ProfileStore.profiles(forDevice: key)
             let loadedActiveID = ProfileStore.activeProfileID(forDevice: key)
             publish {
-                self.batterySamples = samples
-                self.dischargeRatePerHour = rate
-                self.cycleStartedAt = cycleStart
-                self.cycleStartedPercent = cycleStartPct
+                self.batterySamples = snap.samples
+                self.dischargeRatePerHour = snap.rate
+                self.cycleStartedAt = snap.cycleStart
+                self.cycleStartedPercent = snap.cycleStartPct
                 self.pastCycles = cycles
                 self.averageCycleHours = avg
                 self.profiles = loadedProfiles

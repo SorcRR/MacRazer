@@ -241,6 +241,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         monitor?.invalidate()
         updateTimer?.invalidate()
+        controller.flushHistoryToDisk()
     }
 
     // MARK: - Input Monitoring permission
