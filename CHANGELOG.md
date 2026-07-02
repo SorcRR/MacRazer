@@ -119,6 +119,11 @@ expect rough edges until 1.0.
  for lighting); hardware-verified models keep their verified ids everywhere.
 
 ### Internal
+- **The battery poll's decision logic is a tested pure state machine.** The offline
+ debounce, post-reconnect garbage rejection, and charging two-poll confirmation moved out
+ of `MouseController` into `BatteryPollStateMachine` — a value type with no I/O — with
+ tests replaying poll sequences (reconnect garbage, debounce, charge blips, device swaps).
+ Behavior is unchanged; it's now verifiable without hardware.
 - **Unit tests + CI.** The pure layers — protocol codec (CRC/serialization), command
  builders/parsers, the discharge-curve and rate-fit math, charge-cycle detection, and the
  versioned persistence — now have a test suite (`swift test`, no hardware needed), including

@@ -78,18 +78,10 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     private var curveModelKey: String?
     /// Suppresses connect/disconnect sounds until the first poll establishes a baseline.
     private var hasBaseline = false
-    /// io-queue only: outcome of the most recent read, and a debounce count so a single
-    /// transient wireless timeout doesn't flap the UI to "offline".
-    private var lastReadOK = false
-    private var consecutiveFailures = 0
-    /// True once we've read a real (non-zero) battery value; false right after a reconnect
-    /// while the device is still settling. Drives fast re-polling until it's ready.
-    private var batteryReady = false
-    private var lastGoodPercent: Int?  // last trusted reading, for sanity-checking jumps
-    private var batteryRejects = 0     // how many implausible post-reconnect readings we've skipped
-    /// True once a not-charging→charging transition has been seen but not yet confirmed on a
-    /// second consecutive poll (see the charging-status read above).
-    private var pendingChargeConfirm = false
+    /// io-queue only: the pure decision core of the poll loop — offline debounce, garbage
+    /// rejection, charge confirmation. All the subtle logic lives (and is tested) there;
+    /// this class just does the I/O and acts on the verdicts.
+    private var pollState = BatteryPollStateMachine()
 
     // Adaptive poll cadence: react quickly while offline (to catch reconnects), relax when up.
     private let pollWhenConnected: TimeInterval = 15
@@ -143,7 +135,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             // Poll fast whenever the last read failed OR the battery isn't ready yet (just
             // reconnected), so we confirm a disconnect, catch a reconnect, and resolve the
             // real % quickly.
-            let next = (self.lastReadOK && self.batteryReady) ? self.pollWhenConnected : self.pollWhenOffline
+            let next = (self.pollState.lastReadOK && self.pollState.batteryReady) ? self.pollWhenConnected : self.pollWhenOffline
             self.publish { self.scheduleNextPoll(after: next) }
         }
     }
@@ -191,7 +183,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         io.async { [weak self] in
             guard let self else { return }
             self.readBatterySync(immediateOffline: immediateOffline)
-            let next = (self.lastReadOK && self.batteryReady) ? self.pollWhenConnected : self.pollWhenOffline
+            let next = (self.pollState.lastReadOK && self.pollState.batteryReady) ? self.pollWhenConnected : self.pollWhenOffline
             self.publish { self.scheduleNextPoll(after: next) }
         }
     }
@@ -211,13 +203,15 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         }
     }
 
-    /// Runs on `io`.
+    /// Runs on `io`. Performs the HID reads, feeds the outcome to `pollState` (where every
+    /// decision rule lives — see `BatteryPollStateMachine`), and acts on the verdict.
     private func readBatterySync(immediateOffline: Bool = false) {
+        let outcome: BatteryPollStateMachine.ReadOutcome
+        var errText: String?
         do {
             let dev = try ensureDevice()
-
-            // Battery-less mice (wired-only): use a DPI read as the alive-check; no battery UI.
             if !ioHasBattery {
+                // Battery-less mice (wired-only): a DPI read is the alive-check; no battery UI.
                 do {
                     _ = try dev.sendWithRetry(RazerCommands.getDPI())
                 } catch HIDDevice.HIDError.commandFailed, HIDDevice.HIDError.notSupported {
@@ -225,94 +219,50 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                     // which is all this check needs (some firmwares may reject this exact
                     // DPI variant while everything else works).
                 }
-                lastReadOK = true
-                consecutiveFailures = 0
-                batteryReady = true
-                publish {
-                    let wasConnected = self.connected
-                    self.connected = true
-                    self.batteryPercent = nil
-                    self.lastError = nil
-                    self.updateStatusText()
-                    if self.hasBaseline && !wasConnected { Self.playSound(connected: true) }
-                    self.hasBaseline = true
+                outcome = .aliveNoBattery
+            } else {
+                let raw: UInt8
+                do {
+                    raw = try dev.sendWithRetry(RazerCommands.getBatteryLevel()).arguments[1]
+                } catch HIDDevice.HIDError.commandFailed, HIDDevice.HIDError.notSupported {
+                    // The device answered — the link is alive — but refused the command
+                    // (seen on the HyperSpeed around sleep). Pre-validation builds parsed
+                    // these replies as all-zeros; raw 0 keeps taking that grace path
+                    // rather than flapping to offline with disconnect sounds.
+                    raw = 0
                 }
-                return
+                // Charging status only matters alongside a real battery value — skip it on
+                // the raw==0 grace ticks so the fast not-ready poll loop stays one command
+                // per tick against an already-fragile (waking/refusing) link. A failed read
+                // counts as not-charging. (A garbage-rejected tick still pays for the extra
+                // command — bounded at two ticks per episode, not worth pre-empting the
+                // state machine's decision here.)
+                let charging = raw != 0
+                    && ((try? dev.sendWithRetry(RazerCommands.getChargingStatus()))?.arguments[1] ?? 0) != 0
+                outcome = .battery(raw: raw, charging: charging)
             }
+        } catch {
+            device?.close() // release the user client now rather than at CF-dealloc time
+            device = nil    // drop the handle so we reopen next tick
+            errText = String(describing: error)
+            // No Razer mouse present at all (vs. present-but-asleep timeout).
+            let gone: Bool = { if case HIDDevice.HIDError.notFound = error { return true }; return false }()
+            outcome = .failure(deviceGone: gone)
+        }
 
-            let raw: UInt8
-            do {
-                raw = try dev.sendWithRetry(RazerCommands.getBatteryLevel()).arguments[1]
-            } catch HIDDevice.HIDError.commandFailed, HIDDevice.HIDError.notSupported {
-                // The device answered — the link is alive — but refused the command (seen
-                // on the HyperSpeed around sleep). Pre-validation builds parsed these
-                // replies as all-zeros and took the raw==0 grace path below; keep doing
-                // the equivalent rather than flapping to offline with disconnect sounds.
-                raw = 0
-            }
-            lastReadOK = true
-            consecutiveFailures = 0
+        switch pollState.handle(outcome, immediateOffline: immediateOffline) {
+        case .aliveNoBattery:
+            publishConnected { self.batteryPercent = nil }
 
-            // A raw 0 means "connected but battery not ready yet" — common right after a
-            // reconnect/wake while the dongle re-probes. Don't display a bogus 0%: keep the
-            // last known value, mark not-ready so we keep polling fast, and bail.
-            guard raw != 0 else {
-                batteryReady = false
-                publish {
-                    let wasConnected = self.connected
-                    self.connected = true
-                    self.lastError = nil
-                    self.updateStatusText()
-                    if self.hasBaseline && !wasConnected { Self.playSound(connected: true) }
-                    self.hasBaseline = true
-                }
-                return
-            }
+        case .notReady:
+            // Keep the last known value on screen; the fast poll cadence retries shortly.
+            publishConnected {}
 
-            let pct = RazerCommands.batteryPercent(fromRaw: raw)
-
-            // A reconnect/wake can return a transient garbage value (e.g. 0xFF → 100%) before
-            // settling — but a wild jump is implausible at any time (battery can't swing >20%
-            // between 4-15s polls), so this check stays active even once `batteryReady` is
-            // true; otherwise the very first post-reconnect read permanently disables it and a
-            // later one-off garbage read (any time) gets trusted as the new baseline outright.
-            if let last = lastGoodPercent, abs(pct - last) > 20, batteryRejects < 2 {
-                batteryRejects += 1
-                publish {
-                    let wasConnected = self.connected
-                    self.connected = true
-                    self.lastError = nil
-                    self.updateStatusText()
-                    if self.hasBaseline && !wasConnected { Self.playSound(connected: true) }
-                    self.hasBaseline = true
-                }
-                return
-            }
-            batteryRejects = 0
-            lastGoodPercent = pct
-
-            var charging = false
-            if let cResp = try? dev.sendWithRetry(RazerCommands.getChargingStatus()) {
-                charging = cResp.arguments[1] != 0
-            }
-            // A reconnect/wake can return a one-off garbage charging byte just like it can a
-            // garbage percent (see the wild-jump guard above) — but here, acting on a false
-            // positive destructively resets the whole discharge history. Require the rising
-            // edge (not-charging → charging) to be confirmed on a second consecutive poll
-            // before trusting it; dropping back to false is acted on immediately since that
-            // direction can't trigger the destructive reset. The unconfirmed first tick isn't
-            // logged at all: if the report is real, the sample belongs to the charge session
-            // and would skew the finished cycle's end; if it's garbage, one skipped tick is free.
-            let isCharging = charging && pendingChargeConfirm
-            let skipHistoryTick = charging && !pendingChargeConfirm
-            pendingChargeConfirm = charging
-            if !skipHistoryTick { history.record(percent: pct, charging: isCharging) }
+        case .reading(let pct, let isCharging, let recordSample):
+            if recordSample { history.record(percent: pct, charging: isCharging) }
             let estimate = isCharging ? "Charging" : history.estimateString(currentPercent: pct, curveModel: curveModel)
             let snap = historySnapshot()
-            batteryReady = true
-            publish {
-                let wasConnected = self.connected
-                self.connected = true
+            publishConnected {
                 self.batteryPercent = pct
                 self.charging = isCharging
                 self.timeEstimate = estimate
@@ -320,41 +270,45 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 self.dischargeRatePerHour = snap.rate
                 self.cycleStartedAt = snap.cycleStart
                 self.cycleStartedPercent = snap.cycleStartPct
-                self.lastError = nil
                 self.bluetoothMouseName = nil
-                self.updateStatusText()
-                if self.hasBaseline && !wasConnected { Self.playSound(connected: true) }
-                self.hasBaseline = true
             }
-        } catch {
-            device?.close() // release the user client now rather than at CF-dealloc time
-            device = nil    // drop the handle so we reopen next tick
-            lastReadOK = false
-            batteryReady = false // force the reconnect freshness check next time
-            pendingChargeConfirm = false // don't let a stale pending confirm carry across a drop
-            consecutiveFailures += 1
-            // Require two consecutive failures before declaring offline — the wireless link
-            // throws the odd transient timeout that shouldn't flap the UI or fire a sound.
-            // An IOKit removal event (immediateOffline) is definitive, so skip the debounce.
-            let declareOffline = immediateOffline || consecutiveFailures >= 2
-            let errText = String(describing: error)
-            // No Razer mouse present at all (vs. present-but-asleep timeout).
-            let gone: Bool = { if case HIDDevice.HIDError.notFound = error { return true }; return false }()
-            FileHandle.standardError.write(Data("[MacRazer] battery read failed (\(consecutiveFailures)): \(errText)\n".utf8))
-            guard declareOffline else { return }
-            // Can't reach a Razer mouse over USB — is one sitting on Bluetooth instead? (Razer's
-            // control protocol isn't exposed over BT, so that's the likely cause of "offline".)
+
+        case .pendingOffline:
+            FileHandle.standardError.write(Data(
+                "[MacRazer] battery read failed (\(pollState.consecutiveFailures)): \(errText ?? "?")\n".utf8))
+
+        case .offline(let gone):
+            FileHandle.standardError.write(Data(
+                "[MacRazer] battery read failed (\(pollState.consecutiveFailures)): \(errText ?? "?")\n".utf8))
+            // Can't reach a Razer mouse over USB — is one sitting on Bluetooth instead?
+            // (Razer's control protocol isn't exposed over BT, so that's the likely cause.)
             let btName = HIDDevice.bluetoothRazerMouseName()
+            let err = errText
             publish {
                 let wasConnected = self.connected
                 self.connected = false
-                self.lastError = errText
+                self.lastError = err
                 self.bluetoothMouseName = btName
                 if gone { self.deviceName = nil; self.deviceID = nil; self.deviceKey = nil }
                 self.updateStatusText()
                 if self.hasBaseline && wasConnected { Self.playSound(connected: false) }
                 self.hasBaseline = true
             }
+        }
+    }
+
+    /// Main-queue publish shared by every "device is reachable" verdict: the connection
+    /// flag, error reset, first-baseline and connect-sound handling. `alsoSet` runs inside
+    /// the same block, before the status text refresh.
+    private func publishConnected(alsoSet: @escaping @Sendable () -> Void) {
+        publish {
+            let wasConnected = self.connected
+            self.connected = true
+            self.lastError = nil
+            alsoSet()
+            self.updateStatusText()
+            if self.hasBaseline && !wasConnected { Self.playSound(connected: true) }
+            self.hasBaseline = true
         }
     }
 
@@ -656,7 +610,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             // A charging debounce pending for the previous mouse must not auto-confirm the new
             // one's first read — that's exactly the unverified-first-read case the debounce
             // exists to guard.
-            pendingChargeConfirm = false
+            pollState.deviceChanged()
             // The curve model is model-scoped and survives this per-unit swap when both
             // units are the same model — but its open dwell belongs to the previous mouse,
             // and the new one's current percent was never watched arriving.
