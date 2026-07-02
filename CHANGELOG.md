@@ -4,7 +4,7 @@ All notable changes to this project. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/). The project is **pre-release** (0.x) —
 expect rough edges until 1.0.
 
-## [Unreleased]
+## [0.2.0] — 2026-07-02
 
 ### Added
 - **Learned discharge curve for the Razer Cobra HyperSpeed.** Rather than one flat %/hour rate,

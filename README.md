@@ -47,6 +47,7 @@ the mouse connects, disconnects, or sleeps.
 |---|---|
 | Razer Cobra HyperSpeed (wired + wireless) | Tested, works best |
 | Razer Atheris | Tested, works best |
+| Razer Basilisk V3 | In the registry; user-reported working |
 | Razer Cobra, Cobra Pro (wired + wireless) | Same protocol, not yet hardware-verified here |
 | Any other Razer mouse | Detected and named; should work, but untested |
 
