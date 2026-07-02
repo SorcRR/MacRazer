@@ -124,18 +124,25 @@ final class HIDDevice {
         )
     }
 
-    /// Find and open the *control* interface: the one that can carry our 90-byte feature
-    /// report. We prefer (a) a vendor-defined usage page (>= 0xFF00), then (b) the largest
-    /// MaxFeatureReportSize. The keyboard/mouse interfaces report tiny/zero feature sizes.
+    /// Find and open the control interface. Which physical device (and which of its
+    /// interfaces) wins is decided by `HIDDeviceSelection` — matching is vendor-wide, so
+    /// with a Razer keyboard or second mouse attached, the mouse must be picked by rank
+    /// (registry-known PID → mouse-usage device → score), not by raw interface score.
     static func open(vendorId: Int) throws -> HIDDevice {
         let devices = matchingDevices(vendorId: vendorId)
         guard !devices.isEmpty else { throw HIDError.notFound }
 
-        // Only consider interfaces that can carry the 90-byte Razer control report.
-        let candidates = devices.filter { (intProp($0, kIOHIDMaxFeatureReportSizeKey) ?? 0) >= 90 }
-        guard let chosen = candidates.max(by: { controlScore($0) < controlScore($1) }) else {
+        let infos = devices.map { dev in
+            HIDInterfaceInfo(pid: intProp(dev, kIOHIDProductIDKey) ?? 0,
+                             locationID: intProp(dev, kIOHIDLocationIDKey) ?? 0,
+                             usagePage: intProp(dev, kIOHIDPrimaryUsagePageKey) ?? 0,
+                             usage: intProp(dev, kIOHIDPrimaryUsageKey) ?? 0,
+                             maxFeatureReportSize: intProp(dev, kIOHIDMaxFeatureReportSizeKey) ?? 0)
+        }
+        guard let idx = HIDDeviceSelection.controlInterfaceIndex(interfaces: infos) else {
             throw HIDError.notFound
         }
+        let chosen = devices[idx]
 
         // stderr, not stdout: this fires on every (re)open inside the GUI app too, and the
         // CLI's actual output goes to stdout.
@@ -143,17 +150,6 @@ final class HIDDevice {
         let openResult = IOHIDDeviceOpen(chosen, IOOptionBits(kIOHIDOptionsTypeNone))
         guard openResult == kIOReturnSuccess else { throw HIDError.openFailed(openResult) }
         return HIDDevice(device: chosen)
-    }
-
-    /// Higher score = more likely to be the mouse's Razer control interface.
-    private static func controlScore(_ dev: IOHIDDevice) -> Int {
-        let up = intProp(dev, kIOHIDPrimaryUsagePageKey) ?? 0
-        let usage = intProp(dev, kIOHIDPrimaryUsageKey) ?? 0
-        let maxFeat = intProp(dev, kIOHIDMaxFeatureReportSizeKey) ?? 0
-        var score = maxFeat                 // prefer interfaces that carry big feature reports
-        if up >= 0xFF00 { score += 1000 }   // vendor-defined usage page (some models)
-        if up == 0x01 && usage == 0x02 { score += 500 } // prefer the Mouse interface over a keyboard
-        return score
     }
 
     /// Wait between SetReport and GetReport, in microseconds. Cobra Pro / HyperSpeed route

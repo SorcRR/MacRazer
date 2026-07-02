@@ -22,6 +22,14 @@ expect rough edges until 1.0.
  flat color.
 
 ### Fixed
+- **A Razer keyboard (or second Razer device) can no longer capture the app.** Device
+ matching is vendor-wide, and the app used to bind whichever single interface scored
+ highest — with a Razer keyboard attached it could open the keyboard and send mouse
+ commands to it. Devices are now ranked first (registry-known mice, then devices exposing
+ a Mouse interface), which of two identical mice wins is stable across reconnects, and
+ unplugging a *different* Razer product no longer bypasses the offline debounce (which
+ could flap the mouse to "offline" with a disconnect sound on a coincidental wireless
+ timeout).
 - **Device responses are now validated before being trusted.** A reply that doesn't echo the
  command it answers (a stale buffer from the previous command, or an all-zeros "not ready"
  report), a short transfer, or an explicit failure/not-supported status was previously

@@ -16,8 +16,11 @@ final class HIDMonitor: @unchecked Sendable {
     private var port: IONotificationPortRef?
     private var matchedIter: io_iterator_t = 0
     private var terminatedIter: io_iterator_t = 0
-    private let onAppear: @Sendable () -> Void
-    private let onRemove: @Sendable () -> Void
+    /// Both callbacks receive the product IDs of the services in the event (possibly empty
+    /// when the registry property can't be read) — so the owner can tell "the connected
+    /// mouse's dongle was pulled" apart from "some other Razer product came or went".
+    private let onAppear: @Sendable ([Int]) -> Void
+    private let onRemove: @Sendable ([Int]) -> Void
     /// An extra retain on `self`, held for the IOKit callback context. A callback already
     /// queued on `.main` when the owner drops its reference would otherwise read a deallocated
     /// `self` (the context pointer is unretained-by-default, which doesn't keep `self` alive).
@@ -25,7 +28,7 @@ final class HIDMonitor: @unchecked Sendable {
     /// away; until then this keeps the object alive deliberately.
     private var selfContext: UnsafeMutableRawPointer?
 
-    init(vendorId: Int, onAppear: @escaping @Sendable () -> Void, onRemove: @escaping @Sendable () -> Void) {
+    init(vendorId: Int, onAppear: @escaping @Sendable ([Int]) -> Void, onRemove: @escaping @Sendable ([Int]) -> Void) {
         self.onAppear = onAppear
         self.onRemove = onRemove
 
@@ -41,12 +44,12 @@ final class HIDMonitor: @unchecked Sendable {
         selfContext = ctx
 
         let matchedCB: IOServiceMatchingCallback = { refcon, iterator in
-            HIDMonitor.drain(iterator)
-            if let refcon { Unmanaged<HIDMonitor>.fromOpaque(refcon).takeUnretainedValue().onAppear() }
+            let pids = HIDMonitor.drain(iterator)
+            if let refcon { Unmanaged<HIDMonitor>.fromOpaque(refcon).takeUnretainedValue().onAppear(pids) }
         }
         let terminatedCB: IOServiceMatchingCallback = { refcon, iterator in
-            HIDMonitor.drain(iterator)
-            if let refcon { Unmanaged<HIDMonitor>.fromOpaque(refcon).takeUnretainedValue().onRemove() }
+            let pids = HIDMonitor.drain(iterator)
+            if let refcon { Unmanaged<HIDMonitor>.fromOpaque(refcon).takeUnretainedValue().onRemove(pids) }
         }
 
         func matchingDict() -> CFDictionary {
@@ -61,7 +64,7 @@ final class HIDMonitor: @unchecked Sendable {
         let matchedResult = IOServiceAddMatchingNotification(
             port, kIOMatchedNotification, matchingDict(), matchedCB, ctx, &matchedIter)
         if matchedResult == kIOReturnSuccess {
-            HIDMonitor.drain(matchedIter) // arm the notification + consume currently-present devices
+            _ = HIDMonitor.drain(matchedIter) // arm the notification + consume currently-present devices
         } else {
             FileHandle.standardError.write(Data(
                 "[MacRazer] HID matched-notification registration failed: 0x\(String(UInt32(bitPattern: matchedResult), radix: 16))\n".utf8))
@@ -70,21 +73,30 @@ final class HIDMonitor: @unchecked Sendable {
         let terminatedResult = IOServiceAddMatchingNotification(
             port, kIOTerminatedNotification, matchingDict(), terminatedCB, ctx, &terminatedIter)
         if terminatedResult == kIOReturnSuccess {
-            HIDMonitor.drain(terminatedIter) // arm
+            _ = HIDMonitor.drain(terminatedIter) // arm
         } else {
             FileHandle.standardError.write(Data(
                 "[MacRazer] HID terminated-notification registration failed: 0x\(String(UInt32(bitPattern: terminatedResult), radix: 16))\n".utf8))
         }
     }
 
-    /// Consume (and release) all io_objects an iterator currently holds. Required to re-arm
-    /// the notification; on the initial call it just absorbs the already-present devices.
-    private static func drain(_ iterator: io_iterator_t) {
+    /// Consume (and release) all io_objects an iterator currently holds, returning their
+    /// product IDs. Required to re-arm the notification; on the initial call it just absorbs
+    /// the already-present devices.
+    @discardableResult
+    private static func drain(_ iterator: io_iterator_t) -> [Int] {
+        var pids: [Int] = []
         var obj = IOIteratorNext(iterator)
         while obj != 0 {
+            if let pid = IORegistryEntryCreateCFProperty(obj, kIOHIDProductIDKey as CFString,
+                                                         kCFAllocatorDefault, 0)?
+                .takeRetainedValue() as? Int {
+                pids.append(pid)
+            }
             IOObjectRelease(obj)
             obj = IOIteratorNext(iterator)
         }
+        return pids
     }
 
     /// Stops IOKit notifications and releases the retained callback context. Must be called by

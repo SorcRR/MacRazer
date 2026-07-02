@@ -95,8 +95,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             vendorId: Razer.vendorId,
             // Small settle delay on appear so the dongle has re-probed before the first read
             // (avoids a transient 0% right after reconnect).
-            onAppear: { DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { ctrl.forceCheck(immediateOffline: false) } },
-            onRemove: { ctrl.forceCheck(immediateOffline: true) }
+            onAppear: { _ in DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { ctrl.forceCheck(immediateOffline: false) } },
+            onRemove: { pids in
+                // Only the connected device's removal is definitive. Matching is vendor-wide,
+                // so unplugging a Razer keyboard (or a different-model mouse) fires this too —
+                // that must not bypass the offline debounce, or a coincidental wireless
+                // timeout at that moment flaps the mouse to "offline" with the disconnect
+                // sound. PID granularity can't tell two units of the same model apart, and
+                // unknown PIDs (property read failed) are treated as ours — both err on the
+                // conservative side (a spurious immediate check self-corrects next poll).
+                let mine = ctrl.deviceID.map { pids.isEmpty || pids.contains($0) } ?? false
+                ctrl.forceCheck(immediateOffline: mine)
+            }
         )
 
         remapper.start()
