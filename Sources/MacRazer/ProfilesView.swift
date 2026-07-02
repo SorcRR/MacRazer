@@ -26,6 +26,13 @@ struct ProfilesView: View {
                         row(for: profile)
                     }
                 }
+                if !controller.connected {
+                    Text("Mouse offline — profiles can be renamed or deleted, but not applied.")
+                        .font(.system(size: 10.5)).foregroundStyle(.secondary)
+                } else if controller.profileApplyFailed {
+                    Text("Couldn't apply — the mouse isn't responding.")
+                        .font(.system(size: 10.5)).foregroundStyle(Color.batteryLow)
+                }
             }
         }
         .padding(18)
@@ -68,30 +75,26 @@ struct ProfilesView: View {
 
     private func row(for profile: MouseProfile) -> some View {
         let active = profile.id == controller.activeProfileID
+        let renaming = renamingID == profile.id
         return HStack(spacing: 10) {
-            Button {
-                controller.applyProfile(profile, remapper: remapper)
-            } label: {
-                ZStack {
-                    Circle().fill(active ? Color.razerGreen : Color.primary.opacity(0.10))
-                    if active {
-                        Image(systemName: "checkmark").font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(.white)
-                    }
+            ZStack {
+                Circle().fill(active ? Color.razerGreen : Color.primary.opacity(0.10))
+                if active {
+                    Image(systemName: "checkmark").font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.white)
                 }
-                .frame(width: 20, height: 20)
             }
-            .buttonStyle(.plain)
-            .help(active ? "Active" : "Apply this profile")
+            .frame(width: 20, height: 20)
 
             VStack(alignment: .leading, spacing: 1) {
-                if renamingID == profile.id {
+                if renaming {
                     TextField("Name", text: $renameText, onCommit: {
                         controller.renameProfile(profile.id, to: renameText)
                         renamingID = nil
                     })
                     .textFieldStyle(.plain)
                     .font(.system(size: 12.5, weight: .medium))
+                    .onExitCommand { renamingID = nil } // Esc cancels, like any macOS rename
                 } else {
                     Text(profile.name).font(.system(size: 12.5, weight: .medium)).lineLimit(1)
                 }
@@ -119,5 +122,14 @@ struct ProfilesView: View {
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.primary.opacity(active ? 0.10 : 0.06), in: RoundedRectangle(cornerRadius: 10))
+        // The whole row applies (the old 20pt circle was a needlessly small target); the
+        // pencil/trash Buttons take precedence over this tap, and it's inert while a
+        // rename is in progress or the mouse is offline.
+        .contentShape(RoundedRectangle(cornerRadius: 10))
+        .onTapGesture {
+            guard controller.connected, !renaming else { return }
+            controller.applyProfile(profile, remapper: remapper)
+        }
+        .help(active ? "Active" : (controller.connected ? "Apply this profile" : "Mouse offline"))
     }
 }

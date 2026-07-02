@@ -17,6 +17,13 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     @Published private(set) var dpi: Int = 0
     @Published private(set) var pollRate: Int = 0
     @Published private(set) var brightness: Int = 100 // percent
+    /// Lighting state is controller-owned like DPI/brightness: published on successful
+    /// device writes only. There's no lighting readback command, so this is the app's
+    /// single source of truth for what the mouse is showing — the picker, the swatches,
+    /// and profile snapshots all read it (a UI-local copy used to snapshot "phantom"
+    /// lighting the mouse never took).
+    @Published private(set) var effect: LightingEffect = .staticColor
+    @Published private(set) var lightingColor = RGB(r: 0x44, g: 0xD6, b: 0x2C) // razer green
     @Published private(set) var dpiStages: [Int] = [] // the mouse's configured DPI presets
     @Published private(set) var timeEstimate: String?
     /// Snapshots of `io`-queue-owned history, republished on the main queue for the usage graph.
@@ -57,6 +64,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// `ensureDevice()`, same as the battery history.
     @Published private(set) var profiles: [MouseProfile] = []
     @Published private(set) var activeProfileID: UUID?
+    /// The most recent profile apply failed (mouse offline/asleep) — without this, tapping
+    /// a chip on a sleeping mouse does visibly nothing. Cleared when the next apply starts.
+    @Published private(set) var profileApplyFailed = false
 
     /// User preference: show the battery % beside the menu bar icon (persisted).
     @Published var showPercentInMenuBar: Bool = (UserDefaults.standard.object(forKey: "showPercentInMenuBar") as? Bool) ?? true {
@@ -263,6 +273,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             let estimate = isCharging ? "Charging" : history.estimateString(currentPercent: pct, curveModel: curveModel)
             let snap = historySnapshot()
             publishConnected {
+                // A real reading proves the mouse is responding again — a stale "couldn't
+                // apply" banner would now be lying (polls clear it within ~15s of a wake).
+                self.profileApplyFailed = false
                 self.batteryPercent = pct
                 self.charging = isCharging
                 self.timeEstimate = estimate
@@ -348,6 +361,20 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             if let p { self.pollRate = p }
             if let b { self.brightness = b }
             if !stages.isEmpty { self.dpiStages = stages }
+            // The mouse's own controls change config behind the app's back (the DPI-cycle
+            // button; onboard memory surviving an app restart). If what we just read
+            // contradicts the active profile, its checkmark is a lie — clear it. Comparing
+            // against the PROFILE's stored values (not the previous published ones) keeps
+            // the launch-time restore honest without clearing it on the first read.
+            if let id = self.activeProfileID,
+               let active = self.profiles.first(where: { $0.id == id }) {
+                let dpiDrifted = d.map { $0 != active.dpi } ?? false
+                let pollDrifted = p.map { $0 != active.pollRate } ?? false
+                let brightnessDrifted = self.deviceHasLighting && (b.map { $0 != active.brightness } ?? false)
+                if dpiDrifted || pollDrifted || brightnessDrifted {
+                    self.clearActiveProfileIfNeeded()
+                }
+            }
         }
     }
 
@@ -392,17 +419,45 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         }
     }
 
-    func setStatic(_ rgb: RGB) { send(RazerCommands.setStatic(rgb: rgb)) }
-    func setSpectrum() { send(RazerCommands.setSpectrum()) }
-    func setWave() { send(RazerCommands.setWave()) }
-    func setLightingOff() { send(RazerCommands.setNone()) }
+    /// Sets the lighting effect (using the current `lightingColor` for `.staticColor`).
+    /// Like the other setters: the device write happens on `io`, and `effect` is published
+    /// only on success — the picker never claims lighting the mouse didn't take.
+    func setEffect(_ newEffect: LightingEffect) {
+        // NSSegmentedControl can fire its action on a click of the already-selected
+        // segment; a no-change "set" must not resend the command or un-mark the active
+        // profile (the config didn't change).
+        guard newEffect != effect else { return }
+        sendLighting(report(for: newEffect, color: lightingColor)) {
+            self.effect = newEffect
+        }
+    }
 
-    private func send(_ report: RazerReport) {
+    /// Sets a static colour (switching the effect to `.staticColor` if needed).
+    func setStaticColor(_ rgb: RGB) {
+        guard !(effect == .staticColor && lightingColor == rgb) else { return } // no-change re-click
+        sendLighting(RazerCommands.setStatic(rgb: rgb)) {
+            self.effect = .staticColor
+            self.lightingColor = rgb
+        }
+    }
+
+    private func report(for effect: LightingEffect, color: RGB) -> RazerReport {
+        switch effect {
+        case .staticColor: return RazerCommands.setStatic(rgb: color)
+        case .spectrum: return RazerCommands.setSpectrum()
+        case .wave: return RazerCommands.setWave()
+        case .off: return RazerCommands.setNone()
+        }
+    }
+
+    private func sendLighting(_ report: RazerReport, onSuccess: @escaping @Sendable () -> Void) {
         io.async { [weak self] in
             guard let self else { return }
             let ok = (try? self.ensureDevice().sendWithRetry(report)) != nil
             self.publish {
-                if ok { self.clearActiveProfileIfNeeded() } else { self.lastWriteFailure = Date() }
+                guard ok else { self.lastWriteFailure = Date(); return }
+                onSuccess()
+                self.clearActiveProfileIfNeeded()
             }
         }
     }
@@ -412,19 +467,33 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     private func clearActiveProfileIfNeeded() {
         guard activeProfileID != nil else { return }
         activeProfileID = nil
-        if let key = deviceKey { ProfileStore.setActiveProfileID(nil, forDevice: key) }
+        if let key = profilesStorageKey { ProfileStore.setActiveProfileID(nil, forDevice: key) }
     }
 
     /// Called by `ButtonRemapper.onManualChange` — a remap edit made outside `applyProfile`
     /// means the live config no longer matches the active profile.
     func clearActiveProfileIfManuallyChanged() { clearActiveProfileIfNeeded() }
 
+    /// Where the currently-displayed `profiles` are persisted. Falls back to the key they
+    /// were loaded under when `deviceKey` clears on a dongle unplug — rename/delete are pure
+    /// app-side operations on a list the user can still see, and silently ignoring them
+    /// (the field snapping back, the confirmed delete not deleting) reads as broken.
+    private var profilesStorageKey: String? { deviceKey ?? profilesLoadedForKey }
+    private var profilesLoadedForKey: String?
+
     /// Captures the current live DPI/poll/brightness/lighting + the remapper's button mappings
     /// as a new named profile for the connected mouse.
-    func saveCurrentAsProfile(name: String, effect: LightingEffect, color: RGB, remapper: ButtonRemapper) {
-        guard let key = deviceKey else { return }
+    func saveCurrentAsProfile(name: String, remapper: ButtonRemapper) {
+        // dpi == 0 means the settings read hasn't succeeded yet — snapshotting it would
+        // save a profile that later applies as 100 DPI (the protocol clamp floor). The
+        // "+" chip is disabled in that state; this guard is the belt to its braces.
+        guard let key = deviceKey, dpi != 0 else { return }
         let profile = MouseProfile(name: name, dpi: dpi, pollRate: pollRate == 0 ? 1000 : pollRate,
-                                    brightness: brightness, effect: effect.rawValue, color: color,
+                                    brightness: brightness,
+                                    // No LEDs → no effect captured (the picker isn't even
+                                    // shown); an empty string keeps the summary honest.
+                                    effect: deviceHasLighting ? effect.rawValue : "",
+                                    color: lightingColor,
                                     buttonMappings: remapper.mappings)
         profiles.append(profile)
         ProfileStore.save(profiles, forDevice: key)
@@ -434,29 +503,28 @@ final class MouseController: ObservableObject, @unchecked Sendable {
 
     /// Applies a saved profile's DPI/poll/brightness/lighting and button remaps to the live
     /// mouse. Sends directly on `io` rather than through the public setters: those un-mark
-    /// the active profile on every manual change (which used to require a fragile
-    /// cross-queue suppression flag here), and publish per-value — whereas an apply should
-    /// mark the profile active only if the device actually took the whole config.
+    /// the active profile on every manual change, and publish per-value — whereas an apply
+    /// is all-or-nothing: every part (including the software-side button remaps) lands only
+    /// when the device took the whole config, so a failed apply changes nothing.
     func applyProfile(_ profile: MouseProfile, remapper: ButtonRemapper) {
-        guard let key = deviceKey else { return }
-        // Button remaps are software-side (no device write) — apply and persist regardless.
-        remapper.setMappings(profile.buttonMappings)
+        guard let key = deviceKey else {
+            profileApplyFailed = true
+            return
+        }
+        profileApplyFailed = false
 
         let dpi = UInt16(max(100, min(profile.dpi, 45000)))
         let hz = profile.pollRate == 0 ? 1000 : profile.pollRate
         let brightnessPct = max(0, min(profile.brightness, 100))
-        let lighting: RazerReport
-        switch profile.lightingEffect {
-        case .staticColor: lighting = RazerCommands.setStatic(rgb: profile.color)
-        case .spectrum: lighting = RazerCommands.setSpectrum()
-        case .wave: lighting = RazerCommands.setWave()
-        case .off: lighting = RazerCommands.setNone()
-        }
+        let effect = profile.lightingEffect
+        let lighting = report(for: effect, color: profile.color)
+        let color = profile.color
+        let mappings = profile.buttonMappings
 
         io.async { [weak self] in
             guard let self else { return }
             guard let dev = try? self.ensureDevice() else {
-                self.publish { self.lastWriteFailure = Date() }
+                self.publish { self.lastWriteFailure = Date(); self.profileApplyFailed = true }
                 return
             }
             let dpiOK = (try? dev.sendWithRetry(RazerCommands.setDPI(x: dpi, y: dpi))) != nil
@@ -468,6 +536,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 || (try? dev.sendWithRetry(RazerCommands.setBrightness(RazerCommands.brightnessRaw(fromPercent: brightnessPct)))) != nil
             let lightOK = !hasLighting || (try? dev.sendWithRetry(lighting)) != nil
             let allOK = dpiOK && pollOK && brightOK && lightOK
+            let anyOK = dpiOK || pollOK || (hasLighting && (brightOK || lightOK))
             self.publish {
                 if dpiOK { self.dpi = Int(dpi) }
                 if pollOK { self.pollRate = hz }
@@ -475,12 +544,21 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 // The contains-check covers a profile deleted while the writes were in
                 // flight — marking it active would persist a dangling id.
                 if allOK, self.profiles.contains(where: { $0.id == profile.id }) {
+                    remapper.setMappings(mappings)
+                    if hasLighting {
+                        self.effect = effect
+                        self.lightingColor = color
+                    }
                     self.activeProfileID = profile.id
                     ProfileStore.setActiveProfileID(profile.id, forDevice: key)
                 } else {
-                    // Partial/failed apply: don't claim the profile is active, and let the
-                    // UI snap any optimistic state back to reality.
+                    // Partial/failed apply: don't claim the profile is active, surface the
+                    // failure, and let the UI snap optimistic state back to reality. A
+                    // partial apply also invalidates whatever profile WAS active — the
+                    // config is now a hybrid that matches neither.
                     self.lastWriteFailure = Date()
+                    self.profileApplyFailed = true
+                    if anyOK { self.clearActiveProfileIfNeeded() }
                 }
             }
         }
@@ -490,14 +568,14 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         // Same trim-and-reject-empty rule as profile creation — a whitespace-only commit
         // would leave a blank, unclickable-looking chip on the main page.
         let name = newName.trimmingCharacters(in: .whitespaces)
-        guard !name.isEmpty, let key = deviceKey,
+        guard !name.isEmpty, let key = profilesStorageKey,
               let idx = profiles.firstIndex(where: { $0.id == id }) else { return }
         profiles[idx].name = name
         ProfileStore.save(profiles, forDevice: key)
     }
 
     func deleteProfile(_ id: UUID) {
-        guard let key = deviceKey else { return }
+        guard let key = profilesStorageKey else { return }
         profiles.removeAll { $0.id == id }
         ProfileStore.save(profiles, forDevice: key)
         if activeProfileID == id {
@@ -631,6 +709,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 self.averageCycleHours = avg
                 self.profiles = loadedProfiles
                 self.activeProfileID = loadedActiveID
+                self.profilesLoadedForKey = key
             }
         }
         let name = d.productName

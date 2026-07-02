@@ -45,9 +45,10 @@ struct MouseProfile: Codable, Identifiable, Equatable {
         self.buttonMappings = buttonMappings
     }
 
-    /// One-line summary shown under a profile's name in the manage page.
+    /// One-line summary shown under a profile's name in the manage page. `effect` is empty
+    /// for profiles saved on mice without lighting — don't show a lighting mode they can't have.
     var summary: String {
-        "\(dpi) DPI · \(pollRate) Hz · \(effect)"
+        effect.isEmpty ? "\(dpi) DPI · \(pollRate) Hz" : "\(dpi) DPI · \(pollRate) Hz · \(effect)"
     }
 }
 

@@ -41,6 +41,17 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(RazerDevices.silhouette(pid: nil), .cobra)
     }
 
+    func testProfileSummaryOmitsEmptyEffect() {
+        // Profiles saved on lighting-less mice store an empty effect — the summary must not
+        // show a lighting mode the mouse can't have.
+        var p = MouseProfile(name: "A", dpi: 1600, pollRate: 1000, brightness: 100,
+                             effect: "", color: RGB(r: 0, g: 0, b: 0), buttonMappings: [:])
+        XCTAssertEqual(p.summary, "1600 DPI · 1000 Hz")
+        XCTAssertEqual(p.lightingEffect, .off, "empty effect degrades to off on apply")
+        p.effect = LightingEffect.wave.rawValue
+        XCTAssertEqual(p.summary, "1600 DPI · 1000 Hz · Wave")
+    }
+
     func testLightingEffectRawValuesAreFrozen() {
         // Raw values are persisted in saved profiles — renaming a case orphans user data.
         XCTAssertEqual(LightingEffect.staticColor.rawValue, "Static")

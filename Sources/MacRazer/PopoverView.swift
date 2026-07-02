@@ -30,17 +30,12 @@ struct PopoverView: View {
     @State private var page: Page = .main
     @State private var isAddingProfile = false
     @State private var newProfileName = ""
-    /// Suppresses the `effect` picker's `onChange`-driven HID write for exactly one
-    /// programmatic `effect` change during a profile apply — `applyProfile` already sent the
-    /// right lighting command, and re-sending it here would also re-clear the just-set active
-    /// profile. Set only when the value will actually change; consumed (and cleared) by the
-    /// `onChange` handler itself.
-    @State private var isApplyingProfileLocally = false
-
     @State private var dpiValue: Double = 1600
     @State private var brightnessValue: Double = 100
+    /// Local mirror of `controller.lightingColor` — only because `ColorPickerPage` needs a
+    /// `Binding<Color>`. The controller's published value is the source of truth (lighting
+    /// state is device-confirmed there); this follows it via `onChange`.
     @State private var color: Color = .razerGreen
-    @State private var effect: LightingEffect = .staticColor
     /// Recallable custom DPI — persisted per-mouse, and never above the mouse's max.
     @State private var customDPI: Int = 8000
 
@@ -84,6 +79,10 @@ struct PopoverView: View {
         // main page's height instead of resizing once the transition finishes.
         .onPreferenceChange(HeightKey.self) { if $0 > 0 { mainHeight = $0 } }
         .animation(.easeInOut(duration: 0.26), value: page)
+        // Closing the popover resets navigation: reopening onto a stale sub-page (whose
+        // gating card may have been disabled in the meantime — e.g. Profiles after a
+        // disconnect) is disorienting.
+        .onDisappear { page = .main }
     }
 
     // MARK: Sub-pages
@@ -92,7 +91,7 @@ struct PopoverView: View {
         VStack(spacing: 0) {
             Spacer(minLength: 0)
             ColorPickerPage(color: $color, onBack: { page = .main }) { rgb in
-                controller.setStatic(rgb)
+                controller.setStaticColor(rgb)
             }
             .frame(maxWidth: .infinity)
             Spacer(minLength: 0)
@@ -127,7 +126,6 @@ struct PopoverView: View {
             // A Razer mouse on Bluetooth can't be controlled (no control protocol over BT) —
             // explain it instead of just showing "offline".
             if controller.bluetoothMouseName != nil && !controller.connected { bluetoothNotice }
-            profilesCard.disabled(!controller.connected).opacity(controller.connected ? 1 : 0.45)
             // Battery stays readable (last-known) but dims when offline; its refresh button
             // stays active so you can retry.
             if controller.deviceHasBattery {
@@ -143,6 +141,9 @@ struct PopoverView: View {
             .opacity(controller.connected ? 1 : 0.45)
 
             configureButton // software remap — works offline, stays enabled
+            // Profiles bundle the sections above (plus remaps) into presets — placed after
+            // them so the page reads "here are the controls, here's how to save/recall them".
+            profilesCard.disabled(!controller.connected).opacity(controller.connected ? 1 : 0.45)
             if controller.deviceHasBattery { settingsCard }
             footer
         }
@@ -153,14 +154,9 @@ struct PopoverView: View {
             if controller.dpi != 0 { dpiValue = Double(controller.dpi) }
             brightnessValue = Double(controller.brightness)
             loadCustomDPI()
-            syncFromActiveProfile() // covers applies made while this page was unmounted
+            color = controller.lightingColor.swiftUIColor
         }
-        // Effect/color have no live controller readback; the applied profile is their
-        // ground truth. Sync when an apply actually landed (activeProfileID published)
-        // rather than optimistically at tap time — a failed apply must not leave the
-        // picker claiming lighting the mouse never took (which "+" would then persist
-        // into a new profile).
-        .onChange(of: controller.activeProfileID) { _, _ in syncFromActiveProfile() }
+        .onChange(of: controller.lightingColor) { _, new in color = new.swiftUIColor }
         .onChange(of: controller.dpi) { _, new in if new != 0 { dpiValue = Double(new) } }
         .onChange(of: controller.brightness) { _, new in brightnessValue = Double(new) }
         // A failed device write leaves the controller's values unchanged, so no value-driven
@@ -299,12 +295,18 @@ struct PopoverView: View {
                         addProfileChip
                     }
                 } else {
-                    HStack(spacing: 6) {
+                    // Wraps to new rows — a plain HStack overflows the fixed-width popover
+                    // once a handful of profiles exist.
+                    FlowLayout(spacing: 6) {
                         ForEach(controller.profiles) { profileChip($0) }
                         if !isAddingProfile { addProfileChip }
                     }
                 }
                 if isAddingProfile { addProfileField }
+                if controller.profileApplyFailed {
+                    Text("Couldn't apply — the mouse isn't responding.")
+                        .font(.system(size: 10.5)).foregroundStyle(Color.batteryLow)
+                }
             }
         }
     }
@@ -327,9 +329,18 @@ struct PopoverView: View {
         .lineLimit(1)
     }
 
+    /// Default name that never collides with an existing profile (count+1 repeats after
+    /// deletions).
+    private var suggestedProfileName: String {
+        let names = Set(controller.profiles.map(\.name))
+        var i = controller.profiles.count + 1
+        while names.contains("Profile \(i)") { i += 1 }
+        return "Profile \(i)"
+    }
+
     private var addProfileChip: some View {
         Button {
-            newProfileName = "Profile \(controller.profiles.count + 1)"
+            newProfileName = suggestedProfileName
             isAddingProfile = true
         } label: {
             Image(systemName: "plus").font(.system(size: 10.5, weight: .semibold))
@@ -339,6 +350,10 @@ struct PopoverView: View {
         .frame(width: 24, height: 24)
         .background(Color.razerGreen.opacity(0.12), in: Circle())
         .overlay(Circle().stroke(Color.razerGreen.opacity(0.55), lineWidth: 1))
+        // dpi == 0 = the first settings read hasn't landed yet; a snapshot taken now
+        // would save a profile that later applies as 100 DPI.
+        .disabled(controller.dpi == 0)
+        .help(controller.dpi == 0 ? "Waiting for the mouse's current settings…" : "Save current setup as a profile")
     }
 
     private var addProfileField: some View {
@@ -360,26 +375,10 @@ struct PopoverView: View {
         .transition(.opacity)
     }
 
-    /// Pulls `effect`/`color` from the currently-active profile. Their ground truth is the
-    /// profile an apply landed with — there is no live lighting readback from the device.
-    private func syncFromActiveProfile() {
-        guard let id = controller.activeProfileID,
-              let profile = controller.profiles.first(where: { $0.id == id }) else { return }
-        if profile.lightingEffect != effect {
-            // Suppress the picker's onChange HID write — applyProfile already sent the
-            // lighting. Set only when the consuming onChange is guaranteed to fire and
-            // clear it: the value must actually change AND the effect picker (which hosts
-            // the onChange) must be mounted, i.e. the mouse has lighting.
-            isApplyingProfileLocally = controller.deviceHasLighting
-            effect = profile.lightingEffect
-        }
-        color = Color(red: Double(profile.color.r) / 255, green: Double(profile.color.g) / 255, blue: Double(profile.color.b) / 255)
-    }
-
     private func saveNewProfile() {
         let name = newProfileName.trimmingCharacters(in: .whitespaces)
         guard !name.isEmpty else { return }
-        controller.saveCurrentAsProfile(name: name, effect: effect, color: color.rgb, remapper: remapper)
+        controller.saveCurrentAsProfile(name: name, remapper: remapper)
         isAddingProfile = false
     }
 
@@ -673,18 +672,18 @@ struct PopoverView: View {
                 .controlSize(.small)
                 Image(systemName: "sun.max.fill").font(.system(size: 11)).foregroundStyle(.secondary)
             }
-            Picker("", selection: $effect) {
+            // Bound straight to the controller: setEffect publishes only on a successful
+            // device write, so a failed change snaps the picker back by itself — no local
+            // state, no suppression flags.
+            Picker("", selection: Binding(get: { controller.effect },
+                                          set: { controller.setEffect($0) })) {
                 ForEach(LightingEffect.allCases) { Text($0.rawValue).tag($0) }
             }
             .pickerStyle(.segmented)
             .controlSize(.small)
             .labelsHidden()
-            .onChange(of: effect) { _, new in
-                if isApplyingProfileLocally { isApplyingProfileLocally = false; return }
-                apply(effect: new)
-            }
 
-            if effect == .staticColor {
+            if controller.effect == .staticColor {
                 HStack(spacing: 7) {
                     ForEach(Array(swatches.enumerated()), id: \.offset) { _, sw in
                         swatch(sw)
@@ -704,10 +703,7 @@ struct PopoverView: View {
             .frame(width: 18, height: 18)
             .overlay(Circle().strokeBorder(Color.primary.opacity(0.15), lineWidth: 0.5))
             .overlay(Circle().inset(by: -2.5).stroke(Color.primary, lineWidth: isSelected(sw) ? 1.5 : 0))
-            .onTapGesture {
-                color = sw
-                controller.setStatic(sw.rgb)
-            }
+            .onTapGesture { controller.setStaticColor(sw.rgb) }
     }
 
     /// Circular "custom colour" well — a rainbow ring that opens the system colour panel.
@@ -734,15 +730,6 @@ struct PopoverView: View {
     private func isSelected(_ sw: Color) -> Bool {
         let a = sw.rgb, b = color.rgb
         return a.r == b.r && a.g == b.g && a.b == b.b
-    }
-
-    private func apply(effect: LightingEffect) {
-        switch effect {
-        case .staticColor: controller.setStatic(color.rgb)
-        case .spectrum: controller.setSpectrum()
-        case .wave: controller.setWave()
-        case .off: controller.setLightingOff()
-        }
     }
 
     // MARK: Configure buttons
@@ -810,5 +797,12 @@ extension Color {
             g: UInt8((ns.greenComponent * 255).rounded()),
             b: UInt8((ns.blueComponent * 255).rounded())
         )
+    }
+}
+
+extension RGB {
+    /// The device triple as a SwiftUI color (inverse of `Color.rgb`).
+    var swiftUIColor: Color {
+        Color(red: Double(r) / 255, green: Double(g) / 255, blue: Double(b) / 255)
     }
 }

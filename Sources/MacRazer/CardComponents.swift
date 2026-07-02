@@ -28,3 +28,68 @@ func batteryLevelColor(forPercent pct: Int) -> Color {
     default: return .batteryFull
     }
 }
+
+/// Minimal left-aligned flow container: lays subviews in rows, wrapping when the next one
+/// wouldn't fit the proposed width. SwiftUI has no built-in flow layout, and the profile
+/// chips would otherwise overflow the fixed-width popover once a handful of profiles exist.
+struct FlowLayout: Layout {
+    var spacing: CGFloat = 6
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let rows = layoutRows(maxWidth: proposal.width ?? .infinity, subviews: subviews)
+        let height = rows.last.map { $0.minY + $0.height } ?? 0
+        let width = proposal.width ?? rows.map(\.width).max() ?? 0
+        return CGSize(width: width, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let rows = layoutRows(maxWidth: bounds.width, subviews: subviews)
+        for row in rows {
+            var x = bounds.minX
+            for index in row.indices {
+                let natural = subviews[index].sizeThatFits(.unspecified)
+                // Clamp to the container: a single over-wide subview (a chip with a long
+                // profile name) truncates within bounds instead of drawing past the card.
+                let width = min(natural.width, bounds.width)
+                // Center each subview vertically within its row.
+                let y = bounds.minY + row.minY + (row.height - natural.height) / 2
+                subviews[index].place(at: CGPoint(x: x, y: y),
+                                      proposal: ProposedViewSize(width: width, height: natural.height))
+                x += width + spacing
+            }
+        }
+    }
+
+    private struct Row {
+        var indices: [Int] = []
+        var width: CGFloat = 0
+        var height: CGFloat = 0
+        var minY: CGFloat = 0
+    }
+
+    private func layoutRows(maxWidth: CGFloat, subviews: Subviews) -> [Row] {
+        var rows: [Row] = []
+        var current = Row()
+        var y: CGFloat = 0
+        for (index, subview) in subviews.enumerated() {
+            let natural = subview.sizeThatFits(.unspecified)
+            // Same clamp as placement, so row math matches what actually gets drawn.
+            let size = CGSize(width: min(natural.width, maxWidth), height: natural.height)
+            let needed = current.indices.isEmpty ? size.width : current.width + spacing + size.width
+            if !current.indices.isEmpty && needed > maxWidth {
+                current.minY = y
+                y += current.height + spacing
+                rows.append(current)
+                current = Row()
+            }
+            current.width = current.indices.isEmpty ? size.width : current.width + spacing + size.width
+            current.height = max(current.height, size.height)
+            current.indices.append(index)
+        }
+        if !current.indices.isEmpty {
+            current.minY = y
+            rows.append(current)
+        }
+        return rows
+    }
+}

@@ -21,6 +21,28 @@ expect rough edges until 1.0.
  is now colored green/orange/red at the same thresholds as the main battery bar, instead of a
  flat color.
 
+### Changed (profiles)
+- **The Profiles card moved below Configure Buttons** — the page now reads top-down as "here
+ are the controls, here's how to save and recall them as presets".
+- **Applying a profile is all-or-nothing and says so when it fails.** Button remaps and the
+ active checkmark now land only when the mouse took the whole config; a failed apply changes
+ nothing and shows "Couldn't apply — the mouse isn't responding" (previously it silently
+ half-applied: remaps were overwritten first, some values landed, and the *previous*
+ profile's checkmark survived over the hybrid).
+- **The active checkmark now clears when the mouse's own controls change the config** (e.g.
+ the on-mouse DPI-cycle button) or when the config drifted while the app was closed — it
+ only stays lit while the live settings actually match the profile.
+- **Lighting state (effect + colour) is now app-tracked ground truth**, published only on
+ successful device writes — the picker can't claim lighting the mouse never took, and "+"
+ can't snapshot it into a profile.
+- **Profiles page works honestly offline:** rename and delete now work (they're app-side),
+ applying is disabled with a note, and the popover no longer reopens onto a stale sub-page.
+- **The chips row wraps** instead of overflowing the popover with several profiles; whole
+ rows (not a 20pt circle) apply on the manage page; Esc cancels a rename; default names
+ skip already-used numbers; "+" is disabled until the mouse's settings have actually been
+ read (a too-early snapshot saved 0 DPI, which later applied as 100); profiles saved for
+ lighting-less mice no longer claim a lighting mode in their summary.
+
 ### Fixed
 - **A Razer keyboard (or second Razer device) can no longer capture the app.** Device
  matching is vendor-wide, and the app used to bind whichever single interface scored
