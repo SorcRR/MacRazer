@@ -12,6 +12,16 @@ enum RazerMouseSilhouette {
     case atheris
 }
 
+/// How this PID reaches the Mac. A PID identifies the *link*, not just the mouse — wireless
+/// models enumerate under a different PID when plugged in by cable — so the registry knows
+/// which one each row is. Drives the "Wired"/"2.4 GHz" chip in the header; guessing it from
+/// side effects (the old `charging ⇒ wired` heuristic) mislabeled every wired-only mouse as
+/// "2.4 GHz", since a wired mouse never reports charging.
+enum RazerConnection {
+    case wired
+    case wirelessDongle
+}
+
 /// Minimal registry of Razer mice. The connected device reports its own name via the USB
 /// product string, so detection works for ANY Razer mouse; this table adds per-model
 /// capabilities (verified protocol, battery, lighting, max DPI), protocol quirks
@@ -35,6 +45,12 @@ struct RazerDeviceInfo {
     /// OpenRazer splits some models per command class — the plain Cobra uses 0xFF for misc
     /// but 0x1f for every extended-matrix command — so one id per model can't represent it.
     let matrixTransactionId: UInt8
+    /// Per-command exceptions the class split can't express, keyed by
+    /// `commandClass << 8 | commandId`. The Basilisk V3 uses 0x1f everywhere except the
+    /// DPI-stages pair (0x04/0x06 and 0x04/0x86), which it shares with the plain Cobra's
+    /// 0xFF group.
+    var transactionOverrides: [UInt16: UInt8] = [:]
+    let connection: RazerConnection
     let silhouette: RazerMouseSilhouette
     /// Model key for the learned per-percent discharge curve (see `DischargeCurveModel`), or nil
     /// if this model isn't covered — its cell/firmware behavior is unverified and likely
@@ -50,18 +66,22 @@ enum RazerDevices {
     static let known: [RazerDeviceInfo] = [
         // 0x1f throughout: hardware-verified on the HyperSpeed (both PIDs), and what
         // OpenRazer uses for the whole Cobra Pro family.
-        .init(pid: 0x00DB, name: "Razer Cobra HyperSpeed", fullySupported: true, hasBattery: true, hasLighting: true, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, silhouette: .cobraPro, dischargeCurveModelKey: "cobra-hyperspeed"),
-        .init(pid: 0x00DA, name: "Razer Cobra HyperSpeed (Wired)", fullySupported: true, hasBattery: true, hasLighting: true, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, silhouette: .cobraPro, dischargeCurveModelKey: "cobra-hyperspeed"),
+        .init(pid: 0x00DB, name: "Razer Cobra HyperSpeed", fullySupported: true, hasBattery: true, hasLighting: true, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobraPro, dischargeCurveModelKey: "cobra-hyperspeed"),
+        .init(pid: 0x00DA, name: "Razer Cobra HyperSpeed (Wired)", fullySupported: true, hasBattery: true, hasLighting: true, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobraPro, dischargeCurveModelKey: "cobra-hyperspeed"),
         // Plain Cobra per razermouse_driver.c: 0xFF for standard/misc (serial :1509,
         // polling :2011/:2193, DPI :2600/:2781) but 0x1f for every extended-matrix
         // command (brightness :4202/:4312, spectrum :4622, static :5085, none :5301).
         // Not yet re-verified on hardware with this app.
-        .init(pid: 0x00A3, name: "Razer Cobra", fullySupported: true, hasBattery: false, hasLighting: true, maxDPI: 8500, transactionId: 0xff, matrixTransactionId: 0x1f, silhouette: .cobra, dischargeCurveModelKey: nil),
-        .init(pid: 0x00AF, name: "Razer Cobra Pro (Wired)", fullySupported: true, hasBattery: true, hasLighting: true, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, silhouette: .cobraPro, dischargeCurveModelKey: nil),
-        .init(pid: 0x00B0, name: "Razer Cobra Pro (Wireless)", fullySupported: true, hasBattery: true, hasLighting: true, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, silhouette: .cobraPro, dischargeCurveModelKey: nil),
+        .init(pid: 0x00A3, name: "Razer Cobra", fullySupported: true, hasBattery: false, hasLighting: true, maxDPI: 8500, transactionId: 0xff, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
+        .init(pid: 0x00AF, name: "Razer Cobra Pro (Wired)", fullySupported: true, hasBattery: true, hasLighting: true, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobraPro, dischargeCurveModelKey: nil),
+        .init(pid: 0x00B0, name: "Razer Cobra Pro (Wireless)", fullySupported: true, hasBattery: true, hasLighting: true, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobraPro, dischargeCurveModelKey: nil),
         // OpenRazer uses 0xFF for the Atheris, but 0x1f is what this app was hardware-tested
         // with (README) — verified behavior wins over the reference here.
-        .init(pid: 0x0062, name: "Razer Atheris", fullySupported: true, hasBattery: true, hasLighting: false, maxDPI: 7200, transactionId: 0x1f, matrixTransactionId: 0x1f, silhouette: .atheris, dischargeCurveModelKey: nil),
+        .init(pid: 0x0062, name: "Razer Atheris", fullySupported: true, hasBattery: true, hasLighting: false, maxDPI: 7200, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .atheris, dischargeCurveModelKey: nil),
+        // Basilisk V3 (user-reported working): wired-only, 11-zone lighting. Per
+        // razermouse_driver.c it takes 0x1f everywhere except the DPI-stages pair, which it
+        // shares with the plain Cobra's 0xFF group. Not yet re-verified on hardware by us.
+        .init(pid: 0x0099, name: "Razer Basilisk V3", fullySupported: false, hasBattery: false, hasLighting: true, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, transactionOverrides: [0x0406: 0xff, 0x0486: 0xff], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
     ]
 
     static func info(pid: Int) -> RazerDeviceInfo? { known.first { $0.pid == pid } }
@@ -70,11 +90,21 @@ enum RazerDevices {
     static func hasBattery(pid: Int) -> Bool { info(pid: pid)?.hasBattery ?? true }
     static func hasLighting(pid: Int) -> Bool { info(pid: pid)?.hasLighting ?? true }
     static func maxDPI(pid: Int) -> Int { info(pid: pid)?.maxDPI ?? 26000 }
-    /// Per-command-class transaction id (see `RazerDeviceInfo.matrixTransactionId`).
-    /// 0x1f default for unknown models — the Cobra-family id this app has hardware verified.
-    static func transactionId(pid: Int, commandClass: UInt8) -> UInt8 {
+    /// Per-command transaction id: explicit per-command override, else the class split
+    /// (see `RazerDeviceInfo.matrixTransactionId`). 0x1f default for unknown models — the
+    /// Cobra-family id this app has hardware verified.
+    static func transactionId(pid: Int, commandClass: UInt8, commandId: UInt8) -> UInt8 {
         guard let info = info(pid: pid) else { return 0x1f }
+        if let override = info.transactionOverrides[UInt16(commandClass) << 8 | UInt16(commandId)] {
+            return override
+        }
         return commandClass == 0x0F ? info.matrixTransactionId : info.transactionId
+    }
+
+    /// nil for unknown models — the UI then shows a neutral "USB" chip, which is true for
+    /// both a cable and a dongle.
+    static func connection(pid: Int?) -> RazerConnection? {
+        pid.flatMap { info(pid: $0)?.connection }
     }
     static func silhouette(pid: Int?) -> RazerMouseSilhouette { pid.flatMap { info(pid: $0)?.silhouette } ?? .cobra }
     static func dischargeCurveModelKey(pid: Int) -> String? { info(pid: pid)?.dischargeCurveModelKey }

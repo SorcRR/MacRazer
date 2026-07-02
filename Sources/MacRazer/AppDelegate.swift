@@ -71,6 +71,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
         // Mirror the controller's status text onto the menu bar title.
         controller.$statusText
+            .removeDuplicates()
             .receive(on: RunLoop.main)
             .sink { [weak self] text in self?.statusItem.button?.title = text }
             .store(in: &cancellables)
@@ -79,6 +80,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // opacity — a fixed grey tint disappears against a dark menu bar, whereas a dimmed
         // white/black reads as a clearly-visible lighter grey in both light and dark.
         controller.$connected
+            .removeDuplicates()
             .receive(on: RunLoop.main)
             .sink { [weak self] connected in
                 self?.statusItem.button?.contentTintColor = nil
@@ -113,6 +115,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
         // Load the connected mouse's own button mappings when the device changes (per-unit key).
         controller.$deviceKey
+            .removeDuplicates()
             .receive(on: RunLoop.main)
             .sink { [weak self] key in self?.remapper.setActiveDevice(key) }
             .store(in: &cancellables)
@@ -121,6 +124,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // the tap can't tell devices apart, so an offline mouse's mappings would otherwise
         // keep firing for matching buttons on other pointing devices.
         controller.$connected
+            .removeDuplicates()
             .receive(on: RunLoop.main)
             .sink { [weak self] connected in self?.remapper.remappingPaused = !connected }
             .store(in: &cancellables)

@@ -165,7 +165,9 @@ final class HIDDevice {
         // Per-model (and per-command-class) transaction id from the registry, stamped at
         // the single point every command passes through — the builders in `RazerCommands`
         // stay model-agnostic.
-        report.transactionId = RazerDevices.transactionId(pid: productID, commandClass: report.commandClass)
+        report.transactionId = RazerDevices.transactionId(pid: productID,
+                                                          commandClass: report.commandClass,
+                                                          commandId: report.commandId)
         let out = report.serialized()
         let setResult = out.withUnsafeBufferPointer { ptr in
             IOHIDDeviceSetReport(device, kIOHIDReportTypeFeature, 0, ptr.baseAddress!, ptr.count)

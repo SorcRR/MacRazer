@@ -262,7 +262,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
 
         switch pollState.handle(outcome, immediateOffline: immediateOffline) {
         case .aliveNoBattery:
-            publishConnected { self.batteryPercent = nil }
+            publishConnected { self.update(\.batteryPercent, nil) }
 
         case .notReady:
             // Keep the last known value on screen; the fast poll cadence retries shortly.
@@ -275,15 +275,15 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             publishConnected {
                 // A real reading proves the mouse is responding again — a stale "couldn't
                 // apply" banner would now be lying (polls clear it within ~15s of a wake).
-                self.profileApplyFailed = false
-                self.batteryPercent = pct
-                self.charging = isCharging
-                self.timeEstimate = estimate
-                self.batterySamples = snap.samples
-                self.dischargeRatePerHour = snap.rate
-                self.cycleStartedAt = snap.cycleStart
-                self.cycleStartedPercent = snap.cycleStartPct
-                self.bluetoothMouseName = nil
+                self.update(\.profileApplyFailed, false)
+                self.update(\.batteryPercent, pct)
+                self.update(\.charging, isCharging)
+                self.update(\.timeEstimate, estimate)
+                self.update(\.batterySamples, snap.samples)
+                self.update(\.dischargeRatePerHour, snap.rate)
+                self.update(\.cycleStartedAt, snap.cycleStart)
+                self.update(\.cycleStartedPercent, snap.cycleStartPct)
+                self.update(\.bluetoothMouseName, nil)
             }
 
         case .pendingOffline:
@@ -299,10 +299,14 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             let err = errText
             publish {
                 let wasConnected = self.connected
-                self.connected = false
-                self.lastError = err
-                self.bluetoothMouseName = btName
-                if gone { self.deviceName = nil; self.deviceID = nil; self.deviceKey = nil }
+                self.update(\.connected, false)
+                self.update(\.lastError, err)
+                self.update(\.bluetoothMouseName, btName)
+                if gone {
+                    self.update(\.deviceName, nil)
+                    self.update(\.deviceID, nil)
+                    self.update(\.deviceKey, nil)
+                }
                 self.updateStatusText()
                 if self.hasBaseline && wasConnected { Self.playSound(connected: false) }
                 self.hasBaseline = true
@@ -316,8 +320,8 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     private func publishConnected(alsoSet: @escaping @Sendable () -> Void) {
         publish {
             let wasConnected = self.connected
-            self.connected = true
-            self.lastError = nil
+            self.update(\.connected, true)
+            self.update(\.lastError, nil)
             alsoSet()
             self.updateStatusText()
             if self.hasBaseline && !wasConnected { Self.playSound(connected: true) }
@@ -357,10 +361,10 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         let b = read(RazerCommands.getBrightness()) { RazerCommands.brightnessPercent(fromRaw: $0.arguments[2]) }
         let stages = read(RazerCommands.getDPIStages()) { RazerCommands.parseDPIStages($0) } ?? []
         publish {
-            if let d { self.dpi = d }
-            if let p { self.pollRate = p }
-            if let b { self.brightness = b }
-            if !stages.isEmpty { self.dpiStages = stages }
+            if let d { self.update(\.dpi, d) }
+            if let p { self.update(\.pollRate, p) }
+            if let b { self.update(\.brightness, b) }
+            if !stages.isEmpty { self.update(\.dpiStages, stages) }
             // The mouse's own controls change config behind the app's back (the DPI-cycle
             // button; onboard memory surviving an app restart). If what we just read
             // contradicts the active profile, its checkmark is a lie — clear it. Comparing
@@ -742,13 +746,13 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         let battery = RazerDevices.hasBattery(pid: pid)
         ioHasBattery = battery
         publish {
-            self.deviceID = pid
-            self.deviceKey = key
-            self.deviceName = name
-            self.deviceSupported = RazerDevices.fullySupported(pid: pid)
-            self.deviceHasBattery = battery
-            self.deviceHasLighting = RazerDevices.hasLighting(pid: pid)
-            self.deviceMaxDPI = RazerDevices.maxDPI(pid: pid)
+            self.update(\.deviceID, pid)
+            self.update(\.deviceKey, key)
+            self.update(\.deviceName, name)
+            self.update(\.deviceSupported, RazerDevices.fullySupported(pid: pid))
+            self.update(\.deviceHasBattery, battery)
+            self.update(\.deviceHasLighting, RazerDevices.hasLighting(pid: pid))
+            self.update(\.deviceMaxDPI, RazerDevices.maxDPI(pid: pid))
         }
         return d
     }
@@ -800,11 +804,25 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         DispatchQueue.main.async(execute: block)
     }
 
+    /// Assign a published property only when the value actually changed. Every @Published
+    /// set fires objectWillChange even for equal values, and the poll/settings timers
+    /// re-publish the same state every few seconds — each no-op publish re-rendered every
+    /// observing view, which among other things dismissed any open SwiftUI Menu (the remap
+    /// shortcut picker collapsing after ~a second, mid-choice).
+    private func update<T: Equatable>(_ keyPath: ReferenceWritableKeyPath<MouseController, T>, _ value: T) {
+        if self[keyPath: keyPath] != value { self[keyPath: keyPath] = value }
+    }
+
     private func updateStatusText() {
-        // No-battery mouse or preference off → show just the mouse icon (no text).
-        guard showPercentInMenuBar, deviceHasBattery else { statusText = ""; return }
-        guard let p = batteryPercent, connected else { statusText = " —"; return }
-        // Single mouse glyph + percentage only — charging is shown inside the popover.
-        statusText = " \(p)%"
+        let text: String
+        if !showPercentInMenuBar || !deviceHasBattery {
+            text = "" // no-battery mouse or preference off → just the mouse icon
+        } else if let p = batteryPercent, connected {
+            // Single mouse glyph + percentage only — charging is shown inside the popover.
+            text = " \(p)%"
+        } else {
+            text = " —"
+        }
+        update(\.statusText, text)
     }
 }

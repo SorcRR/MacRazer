@@ -99,9 +99,27 @@ struct PopoverView: View {
     }
 
     private var buttonsPage: some View {
-        ScrollView {
-            RemapView(remapper: remapper, onBack: { page = .main })
-                .frame(maxWidth: .infinity)
+        // Isolated behind .equatable() so the controller's legitimate periodic publishes
+        // (a new battery sample every ~15s while discharging) can't re-render this subtree:
+        // a re-render dismisses an open SwiftUI Menu, collapsing the shortcut picker while
+        // the user is still choosing. This page only depends on the remapper, whose own
+        // publishes (detected buttons, mappings) still update it normally.
+        ButtonsPage(remapper: remapper, onBack: { page = .main }).equatable()
+    }
+
+    private struct ButtonsPage: View, Equatable {
+        let remapper: ButtonRemapper
+        let onBack: () -> Void
+
+        /// The closure is deliberately excluded: it's recreated on every parent render and
+        /// always does the same thing (navigate back).
+        nonisolated static func == (a: Self, b: Self) -> Bool { a.remapper === b.remapper }
+
+        var body: some View {
+            ScrollView {
+                RemapView(remapper: remapper, onBack: onBack)
+                    .frame(maxWidth: .infinity)
+            }
         }
     }
 
@@ -230,14 +248,26 @@ struct PopoverView: View {
         return "Connect a Razer mouse"
     }
 
-    /// The active control transport, shown as a small chip beside "Connected". `charging` implies
-    /// a USB-C cable is attached (wired); otherwise control is going over the 2.4 GHz dongle.
+    /// The active control transport, shown as a small chip beside "Connected". Resolved from
+    /// the registry — the PID identifies the link (wireless models enumerate under a
+    /// different PID when cabled). The old `charging ⇒ wired` heuristic mislabeled every
+    /// wired-only mouse as "2.4 GHz", since a wired mouse never reports charging.
     /// (Bluetooth can't carry control, so it never reads "Connected" — it's surfaced separately.)
     private var connectionType: (symbol: String, label: String)? {
         guard controller.connected else { return nil }
-        return controller.charging
-            ? ("cable.connector", "Wired")
-            : ("antenna.radiowaves.left.and.right", "2.4 GHz")
+        switch RazerDevices.connection(pid: controller.deviceID) {
+        case .wired:
+            return ("cable.connector", "Wired")
+        case .wirelessDongle:
+            // `charging` implies a USB-C cable is attached, even though control still
+            // flows through the dongle's PID.
+            return controller.charging
+                ? ("cable.connector", "Wired")
+                : ("antenna.radiowaves.left.and.right", "2.4 GHz")
+        case nil:
+            // Unknown model: "USB" is true for both a cable and a dongle.
+            return ("cable.connector", "USB")
+        }
     }
 
     private func connectionChip(_ ct: (symbol: String, label: String)) -> some View {

@@ -10,20 +10,38 @@ final class RazerDevicesTests: XCTestCase {
     /// The misc class (0x07 here) and the extended-matrix class (0x0F) are checked
     /// separately because OpenRazer splits the plain Cobra between them.
     func testTransactionIds() {
+        func txn(_ pid: Int, _ cls: UInt8, _ id: UInt8 = 0x80) -> UInt8 {
+            RazerDevices.transactionId(pid: pid, commandClass: cls, commandId: id)
+        }
         let misc: UInt8 = 0x07, matrix: UInt8 = 0x0F
         for cls in [misc, matrix] {
-            XCTAssertEqual(RazerDevices.transactionId(pid: 0x00DB, commandClass: cls), 0x1f) // HyperSpeed (hardware-verified)
-            XCTAssertEqual(RazerDevices.transactionId(pid: 0x00DA, commandClass: cls), 0x1f)
-            XCTAssertEqual(RazerDevices.transactionId(pid: 0x00AF, commandClass: cls), 0x1f) // Cobra Pro (OpenRazer)
-            XCTAssertEqual(RazerDevices.transactionId(pid: 0x00B0, commandClass: cls), 0x1f)
-            XCTAssertEqual(RazerDevices.transactionId(pid: 0x0062, commandClass: cls), 0x1f) // Atheris (hardware-verified)
-            XCTAssertEqual(RazerDevices.transactionId(pid: 0x9999, commandClass: cls), 0x1f) // unknown → Cobra default
+            XCTAssertEqual(txn(0x00DB, cls), 0x1f) // HyperSpeed (hardware-verified)
+            XCTAssertEqual(txn(0x00DA, cls), 0x1f)
+            XCTAssertEqual(txn(0x00AF, cls), 0x1f) // Cobra Pro (OpenRazer)
+            XCTAssertEqual(txn(0x00B0, cls), 0x1f)
+            XCTAssertEqual(txn(0x0062, cls), 0x1f) // Atheris (hardware-verified)
+            XCTAssertEqual(txn(0x9999, cls), 0x1f) // unknown → Cobra default
         }
         // Plain Cobra: 0xFF for standard/misc, but 0x1f for extended-matrix (lighting) —
         // per razermouse_driver.c's per-command switches.
-        XCTAssertEqual(RazerDevices.transactionId(pid: 0x00A3, commandClass: misc), 0xff)
-        XCTAssertEqual(RazerDevices.transactionId(pid: 0x00A3, commandClass: 0x00), 0xff)
-        XCTAssertEqual(RazerDevices.transactionId(pid: 0x00A3, commandClass: matrix), 0x1f)
+        XCTAssertEqual(txn(0x00A3, misc), 0xff)
+        XCTAssertEqual(txn(0x00A3, 0x00), 0xff)
+        XCTAssertEqual(txn(0x00A3, matrix), 0x1f)
+        // Basilisk V3: 0x1f everywhere EXCEPT the DPI-stages pair (per-command override,
+        // shared with the plain Cobra's 0xFF group in razermouse_driver.c).
+        XCTAssertEqual(txn(0x0099, 0x04, 0x05), 0x1f) // set DPI
+        XCTAssertEqual(txn(0x0099, 0x04, 0x85), 0x1f) // get DPI
+        XCTAssertEqual(txn(0x0099, 0x04, 0x06), 0xff) // set DPI stages
+        XCTAssertEqual(txn(0x0099, 0x04, 0x86), 0xff) // get DPI stages
+        XCTAssertEqual(txn(0x0099, matrix, 0x02), 0x1f) // lighting
+    }
+
+    func testConnectionKind() {
+        XCTAssertEqual(RazerDevices.connection(pid: 0x00DB), .wirelessDongle)
+        XCTAssertEqual(RazerDevices.connection(pid: 0x00DA), .wired)
+        XCTAssertEqual(RazerDevices.connection(pid: 0x0099), .wired) // Basilisk V3: wired-only
+        XCTAssertNil(RazerDevices.connection(pid: 0x9999), "unknown models show the neutral USB chip")
+        XCTAssertNil(RazerDevices.connection(pid: nil))
     }
 
     func testCapabilityDefaultsForUnknownModels() {

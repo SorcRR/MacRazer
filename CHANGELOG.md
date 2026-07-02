@@ -60,6 +60,23 @@ expect rough edges until 1.0.
  lighting-less mice no longer claim a lighting mode in their summary.
 
 ### Fixed
+- **Wired-only mice no longer show a "2.4 GHz" connection chip** (reported on a Basilisk V3).
+ The chip was guessed from a `charging ⇒ wired` heuristic, and a wired mouse never reports
+ charging. The connection kind now comes from the device registry (a PID identifies the
+ link — wireless models enumerate under a different PID when cabled); unknown models show a
+ neutral "USB" chip, which is true for both a cable and a dongle.
+- **The button-remap shortcut menu no longer collapses while you're choosing** (reported on
+ a Basilisk V3, but affected every mouse). Two causes: the battery poll and the popover's
+ 2s settings refresh re-assigned unchanged `@Published` values, and every no-op publish
+ re-rendered the observing views — dismissing any open SwiftUI menu; published state now
+ only fires on actual changes and the app-level subscriptions deduplicate. And on battery
+ mice, *real* changes (a new battery sample every ~15s while discharging) had the same
+ effect — the remap page is now isolated from the controller's re-renders entirely, since
+ it only depends on the remapper.
+- **Razer Basilisk V3 added to the device registry** (wired-only, no battery UI, 11-zone
+ lighting, 26K DPI, per-command transaction ids matching OpenRazer — it splits the
+ DPI-stages commands from everything else). Previously it fell back to unknown-device
+ defaults, which also meant a bogus battery section and a permanent 4-second fast-poll loop.
 - **A Razer keyboard (or second Razer device) can no longer capture the app.** Device
  matching is vendor-wide, and the app used to bind whichever single interface scored
  highest — with a Razer keyboard attached it could open the keyboard and send mouse
