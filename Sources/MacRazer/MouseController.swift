@@ -494,7 +494,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                                     // shown); an empty string keeps the summary honest.
                                     effect: deviceHasLighting ? effect.rawValue : "",
                                     color: lightingColor,
-                                    buttonMappings: remapper.mappings)
+                                    buttonMappings: remapper.mappings,
+                                    // The stage table the DPI button cycles is config too.
+                                    dpiStages: dpiStages.isEmpty ? nil : dpiStages)
         profiles.append(profile)
         ProfileStore.save(profiles, forDevice: key)
         activeProfileID = profile.id
@@ -520,6 +522,15 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         let lighting = report(for: effect, color: profile.color)
         let color = profile.color
         let mappings = profile.buttonMappings
+        // Restore the onboard stage table (what the DPI button cycles) when the profile
+        // captured one, marking the stage matching the profile's DPI active. Written before
+        // the explicit DPI set so the current DPI always ends up as the profile says.
+        // Clamped exactly like the wire command clamps, so what gets published (and what a
+        // later "+" re-snapshots) is what the device actually stored.
+        let stages = (profile.dpiStages ?? []).prefix(RazerCommands.maxDPIStages)
+            .map { max(100, min($0, 45000)) }
+        let stagesReport = stages.isEmpty ? nil
+            : RazerCommands.setDPIStages(stages, activeStage: stages.firstIndex(of: profile.dpi) ?? 0)
 
         io.async { [weak self] in
             guard let self else { return }
@@ -527,6 +538,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 self.publish { self.lastWriteFailure = Date(); self.profileApplyFailed = true }
                 return
             }
+            let stagesOK = stagesReport.map { (try? dev.sendWithRetry($0)) != nil } ?? true
             let dpiOK = (try? dev.sendWithRetry(RazerCommands.setDPI(x: dpi, y: dpi))) != nil
             let pollOK = (try? dev.sendWithRetry(RazerCommands.setPollingRate(hz))) != nil
             // Lighting commands only count on models that have lighting — the Atheris
@@ -535,9 +547,11 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             let brightOK = !hasLighting
                 || (try? dev.sendWithRetry(RazerCommands.setBrightness(RazerCommands.brightnessRaw(fromPercent: brightnessPct)))) != nil
             let lightOK = !hasLighting || (try? dev.sendWithRetry(lighting)) != nil
-            let allOK = dpiOK && pollOK && brightOK && lightOK
+            let allOK = stagesOK && dpiOK && pollOK && brightOK && lightOK
             let anyOK = dpiOK || pollOK || (hasLighting && (brightOK || lightOK))
+                || (stagesReport != nil && stagesOK)
             self.publish {
+                if stagesOK, !stages.isEmpty { self.dpiStages = stages }
                 if dpiOK { self.dpi = Int(dpi) }
                 if pollOK { self.pollRate = hz }
                 if hasLighting && brightOK { self.brightness = brightnessPct }
@@ -681,6 +695,18 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         let key = serial ?? historyKey ?? String(format: "%04x", pid)
         // Switch to this mouse's own battery history (per-device file + learned rate).
         if key != historyKey {
+            // Same-session key upgrade: the serial probe failed on this session's first
+            // open (data landed under the PID fallback) and has now resolved. Move that
+            // data to the serial key — it demonstrably belongs to this physical unit (same
+            // session, same connection); without this, everything recorded so far would be
+            // orphaned forever. Cross-session PID orphans are deliberately NOT migrated:
+            // with two same-model units, they could belong to the other mouse.
+            if let old = historyKey, serial != nil, old == String(format: "%04x", pid) {
+                // Flush the live history's throttled tail first — the migration moves the
+                // file, and anything not yet written would silently vanish with it.
+                history.saveNow()
+                Self.migratePerDeviceData(from: old, to: key)
+            }
             historyKey = key
             history = BatteryHistory(deviceKey: key)
             cycleHistory = ChargeCycleHistory(deviceKey: key)
@@ -725,6 +751,49 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             self.deviceMaxDPI = RazerDevices.maxDPI(pid: pid)
         }
         return d
+    }
+
+    /// Moves every per-device store from one key to another — files and UserDefaults —
+    /// filling holes only (existing destination data is never overwritten). The key
+    /// patterns mirror their owners (BatteryHistory, ChargeCycleHistory, ProfileStore,
+    /// ButtonRemapper, PopoverView's custom DPI).
+    private static func migratePerDeviceData(from old: String, to new: String) {
+        let fm = FileManager.default
+        let dir = StoreDirectory.default
+        for prefix in ["battery-history-", "charge-cycles-"] {
+            let src = dir.appendingPathComponent("\(prefix)\(old).json")
+            let dst = dir.appendingPathComponent("\(prefix)\(new).json")
+            if fm.fileExists(atPath: src.path), !fm.fileExists(atPath: dst.path) {
+                try? fm.moveItem(at: src, to: dst)
+            }
+        }
+        let defaults = UserDefaults.standard
+        for prefix in ["learnedDischargeRate-", "buttonMappings-", "customDPI-"] {
+            let srcKey = "\(prefix)\(old)", dstKey = "\(prefix)\(new)"
+            if let value = defaults.object(forKey: srcKey), defaults.object(forKey: dstKey) == nil {
+                defaults.set(value, forKey: dstKey)
+                defaults.removeObject(forKey: srcKey)
+            }
+        }
+        // Profiles get MERGED, not hole-filled: a returning user's serial key usually
+        // already has profiles, and one saved minutes ago (under the PID fallback, before
+        // the serial resolved) disappearing on reconnect reads as data loss. IDs are
+        // unique, so appending the missing ones is safe. The active id travels only with
+        // its profile — migrating it alone would persist a dangling id that no chip shows
+        // and the drift check can never clear.
+        let sourceProfiles = ProfileStore.profiles(forDevice: old)
+        if !sourceProfiles.isEmpty {
+            var destination = ProfileStore.profiles(forDevice: new)
+            let existing = Set(destination.map(\.id))
+            destination.append(contentsOf: sourceProfiles.filter { !existing.contains($0.id) })
+            ProfileStore.save(destination, forDevice: new)
+            if ProfileStore.activeProfileID(forDevice: new) == nil,
+               let active = ProfileStore.activeProfileID(forDevice: old),
+               destination.contains(where: { $0.id == active }) {
+                ProfileStore.setActiveProfileID(active, forDevice: new)
+            }
+        }
+        ProfileStore.removeStorage(forDevice: old)
     }
 
     private func publish(_ block: @escaping @Sendable () -> Void) {

@@ -93,6 +93,39 @@ final class RazerCommandsTests: XCTestCase {
         XCTAssertEqual(RazerCommands.parseDPIStages(resp), [])
     }
 
+    func testSetDPIStagesWireLayout() {
+        // razer_chroma_misc_set_dpi_stages: [varstore, active, count, then per stage:
+        // stage# (0-based), x_hi, x_lo, y_hi, y_lo, 0, 0]. Verified on hardware
+        // (write-back of [400,800,1600,3200,6400] active 4 → status 0x2, identical read).
+        let r = RazerCommands.setDPIStages([400, 800], activeStage: 1)
+        XCTAssertEqual(r.commandClass, 0x04)
+        XCTAssertEqual(r.commandId, 0x06)
+        XCTAssertEqual(r.dataSize, 0x26)
+        XCTAssertEqual(Array(r.arguments[0...2]), [0x01, 1, 2]) // varstore, active, count
+        XCTAssertEqual(Array(r.arguments[3...9]), [0, 0x01, 0x90, 0x01, 0x90, 0, 0])  // stage 0: 400
+        XCTAssertEqual(Array(r.arguments[10...16]), [1, 0x03, 0x20, 0x03, 0x20, 0, 0]) // stage 1: 800
+    }
+
+    func testSetDPIStagesClampsAndRoundTrips() {
+        // Set layout matches the get-response layout, so parseDPIStages round-trips it.
+        let r = RazerCommands.setDPIStages([50, 800, 46000, 1600, 3200, 6400, 9999], activeStage: 9)
+        XCTAssertEqual(RazerCommands.parseDPIStages(r), [100, 800, 45000, 1600, 3200],
+                       "values clamp to the protocol range; the table caps at 5 stages")
+        XCTAssertEqual(RazerCommands.parseActiveDPIStage(r), 4, "active index clamps to the last stage")
+    }
+
+    func testProfileDecodesWithoutDPIStagesField() {
+        // Profiles saved before dpiStages existed must keep decoding (and apply without
+        // touching the stage table).
+        let legacy = """
+        [{"id":"6F1C7C5C-0000-0000-0000-000000000000","name":"Old","dpi":1600,"pollRate":1000,
+        "brightness":80,"effect":"Static","color":{"r":1,"g":2,"b":3},"buttonMappings":{}}]
+        """
+        let decoded = try? JSONDecoder().decode([MouseProfile].self, from: Data(legacy.utf8))
+        XCTAssertEqual(decoded?.count, 1)
+        XCTAssertNil(decoded?[0].dpiStages)
+    }
+
     func testParseSerial() {
         var resp = RazerReport(commandClass: 0x00, commandId: 0x82, dataSize: 0x16)
         for (i, byte) in Array("PM-2434H01234567".utf8).enumerated() { resp.arguments[i] = byte }

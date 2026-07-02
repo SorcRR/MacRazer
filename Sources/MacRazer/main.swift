@@ -197,6 +197,37 @@ case "dpi":
         exit(2)
     }
 
+case "stages":
+    // Read (and optionally write) the onboard DPI stage table the mouse's DPI button cycles.
+    guard let dev = openDevice() else { exit(1) }
+    defer { dev.close() }
+    do {
+        let before = try dev.sendWithRetry(RazerCommands.getDPIStages())
+        print("Current stages: \(RazerCommands.parseDPIStages(before)) (active byte = \(RazerCommands.parseActiveDPIStage(before)))")
+        if let arg = args.dropFirst().first {
+            let tokens = arg.split(separator: ",")
+            let stages = tokens.compactMap { Int($0) }
+            // Reject the whole argument on any junk token — silently dropping "3200o"
+            // would shrink the onboard table the DPI button cycles.
+            guard !stages.isEmpty, stages.count == tokens.count,
+                  stages.count <= RazerCommands.maxDPIStages else {
+                print("Usage: stages 400,800,1600[,…]   (1-\(RazerCommands.maxDPIStages) comma-separated numbers)")
+                exit(64)
+            }
+            let active = args.dropFirst(2).first.flatMap { Int($0) } ?? 0
+            print("Setting stages \(stages) (active \(active)) …")
+            let resp = try dev.sendWithRetry(RazerCommands.setDPIStages(stages, activeStage: active))
+            print("  set status = 0x\(String(resp.status, radix: 16))")
+            let after = try dev.sendWithRetry(RazerCommands.getDPIStages())
+            print("Read-back: \(RazerCommands.parseDPIStages(after)) (active byte = \(RazerCommands.parseActiveDPIStage(after)))")
+        } else {
+            print("(pass values to set, e.g. `stages 400,800,1600 1` — last number is the active stage index)")
+        }
+    } catch {
+        print("Stages command failed: \(error)")
+        exit(2)
+    }
+
 case "poll":
     guard let dev = openDevice() else { exit(1) }
     defer { dev.close() }
@@ -293,6 +324,6 @@ case "rgb":
 
 default:
     print("Unknown command: \(command)")
-    print("Available: info, battery, dpi [x] [y], poll [hz], rgb <static rrggbb|spectrum|wave|off>")
+    print("Available: info, battery, dpi [x] [y], poll [hz], stages [d1,d2,…] [active], rgb <static rrggbb|spectrum|wave|off>, brightness [pct]")
     exit(64)
 }

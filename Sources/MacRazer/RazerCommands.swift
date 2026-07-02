@@ -126,6 +126,34 @@ enum RazerCommands {
         return stages
     }
 
+    /// The active stage byte from a get-DPI-stages response (args[1]).
+    static func parseActiveDPIStage(_ resp: RazerReport) -> Int { Int(resp.arguments[1]) }
+
+    /// Devices store at most 5 stages (dataSize 0x26 = 3 header bytes + 5 × 7-byte records).
+    static let maxDPIStages = 5
+
+    /// razer_chroma_misc_set_dpi_stages(VARSTORE, count, active_stage, dpi[])
+    ///   get_razer_report(0x04, 0x06, 0x26); args: [VARSTORE, active, count,
+    ///   then per stage: stage# (0-based), x_hi, x_lo, y_hi, y_lo, 0, 0].
+    /// X is used for Y too — the app treats DPI as symmetric everywhere.
+    static func setDPIStages(_ stages: [Int], activeStage: Int) -> RazerReport {
+        var r = RazerReport(commandClass: 0x04, commandId: 0x06, dataSize: 0x26)
+        let clamped = stages.prefix(maxDPIStages).map { UInt16(max(100, min($0, 45000))) }
+        r.arguments[0] = Razer.varstore
+        r.arguments[1] = UInt8(max(0, min(activeStage, clamped.count - 1)))
+        r.arguments[2] = UInt8(clamped.count)
+        var offset = 3
+        for (i, dpi) in clamped.enumerated() {
+            r.arguments[offset] = UInt8(i) // stage number, 0-based per the reference
+            r.arguments[offset + 1] = UInt8((dpi >> 8) & 0xFF)
+            r.arguments[offset + 2] = UInt8(dpi & 0xFF)
+            r.arguments[offset + 3] = UInt8((dpi >> 8) & 0xFF)
+            r.arguments[offset + 4] = UInt8(dpi & 0xFF)
+            offset += 7 // two reserved bytes stay 0
+        }
+        return r
+    }
+
     /// razer_chroma_misc_set_polling_rate(rate)
     ///   get_razer_report(0x00, 0x05, 0x01); arg0: 1000->0x01, 500->0x02, 125->0x08
     static func setPollingRate(_ hz: Int) -> RazerReport {

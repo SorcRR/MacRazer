@@ -22,6 +22,22 @@ expect rough edges until 1.0.
  flat color.
 
 ### Changed (profiles)
+- **Profiles now capture and restore the onboard DPI stage table** — the presets the
+ mouse's own DPI button cycles through, which a profile previously didn't touch (it saved
+ only the single current DPI). Applying a profile writes the stages (marking the one
+ matching the profile's DPI as active), then the exact DPI. Profiles saved by older
+ versions keep working and simply don't touch the stage table. A `stages` CLI diagnostic
+ reads/writes the table (`swift run MacRazer stages 400,800,1600 0`); the write was
+ verified on Cobra HyperSpeed hardware.
+- **A serial number that resolves late no longer strands that session's data.** If the
+ serial probe fails on the session's first connect, per-device data (battery history,
+ charge cycles, learned rate, profiles, button mappings, custom DPI) lands under a PID
+ fallback key; when the serial then resolves in the same session, that data is now migrated
+ to the serial key instead of being orphaned forever. Profiles are *merged* (a profile
+ saved before the serial resolved survives even when the serial key already has its own);
+ the other stores fill holes only and never overwrite existing serial-keyed data.
+ Cross-session orphans are deliberately left alone — with two same-model mice they could
+ belong to the other unit.
 - **The Profiles card moved below Configure Buttons** — the page now reads top-down as "here
  are the controls, here's how to save and recall them as presets".
 - **Applying a profile is all-or-nothing and says so when it fails.** Button remaps and the

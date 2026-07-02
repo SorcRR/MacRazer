@@ -3,6 +3,16 @@
 
 import Foundation
 
+/// Where the per-device stores live — shared between `VersionedFileStore` and the
+/// key-migration helper so the two can't drift apart.
+enum StoreDirectory {
+    static var `default`: URL {
+        FileManager.default
+            .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("MacRazer", isDirectory: true)
+    }
+}
+
 /// One versioned JSON file in Application Support, shared by the per-device data stores
 /// (battery history, charge cycles, discharge curve). Adds what the bare
 /// `Data.write`/`JSONDecoder` calls it replaced were missing:
@@ -24,9 +34,7 @@ final class VersionedFileStore<T: Codable> {
     /// `directory` overrides the default Application Support location — used by tests so
     /// they never touch (or depend on) the real user data.
     init(filename: String, version: Int, saveInterval: TimeInterval = 30, directory: URL? = nil) {
-        let dir = directory ?? FileManager.default
-            .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("MacRazer", isDirectory: true)
+        let dir = directory ?? StoreDirectory.default
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         url = dir.appendingPathComponent(filename)
         self.version = version

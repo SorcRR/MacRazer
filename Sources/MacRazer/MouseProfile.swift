@@ -32,9 +32,13 @@ struct MouseProfile: Codable, Identifiable, Equatable {
 
     var lightingEffect: LightingEffect { LightingEffect(rawValue: effect) ?? .off }
     var buttonMappings: [Int: RemapAction]
+    /// The onboard DPI stage table (what the mouse's DPI button cycles). Optional so
+    /// profiles saved before this existed keep decoding (they apply without touching the
+    /// stage table, exactly as they always did).
+    var dpiStages: [Int]?
 
     init(name: String, dpi: Int, pollRate: Int, brightness: Int, effect: String, color: RGB,
-         buttonMappings: [Int: RemapAction]) {
+         buttonMappings: [Int: RemapAction], dpiStages: [Int]? = nil) {
         self.id = UUID()
         self.name = name
         self.dpi = dpi
@@ -43,6 +47,7 @@ struct MouseProfile: Codable, Identifiable, Equatable {
         self.effect = effect
         self.color = color
         self.buttonMappings = buttonMappings
+        self.dpiStages = dpiStages
     }
 
     /// One-line summary shown under a profile's name in the manage page. `effect` is empty
@@ -80,5 +85,12 @@ struct ProfileStore {
         } else {
             UserDefaults.standard.removeObject(forKey: activeKey(forDevice: deviceKey))
         }
+    }
+
+    /// Drops a device key's profile storage entirely — used after its contents were
+    /// migrated to another key.
+    static func removeStorage(forDevice deviceKey: String) {
+        UserDefaults.standard.removeObject(forKey: key(forDevice: deviceKey))
+        UserDefaults.standard.removeObject(forKey: activeKey(forDevice: deviceKey))
     }
 }
