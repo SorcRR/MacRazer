@@ -229,16 +229,22 @@ case "brightness":
         "status=0x\(String(r.status, radix: 16)) args[0..5]=" + r.arguments[0..<6].map { String(format: "%02x", $0) }.joined(separator: " ")
     }
     do {
-        let r = try dev.sendWithRetry(RazerCommands.getBrightness())
-        print("GET brightness (led ZERO=0x00): \(dump(r)) → \(RazerCommands.brightnessPercent(fromRaw: r.arguments[2]))%")
-        // Also probe BACKLIGHT (0x05) and LOGO (0x04) LEDs in case the lit zone differs.
-        for (name, led) in [("BACKLIGHT", UInt8(0x05)), ("LOGO", UInt8(0x04))] {
-            let rr = try dev.sendWithRetry(RazerCommands.getBrightness(led: led))
-            print("GET brightness (led \(name)=0x\(String(led, radix: 16))): \(dump(rr))")
+        let r = try dev.sendWithRetry(RazerCommands.getBrightness()) // defaults to LOGO_LED
+        print("GET brightness (led LOGO=0x04, the app's default): \(dump(r)) → \(RazerCommands.brightnessPercent(fromRaw: r.arguments[2]))%")
+        // Also probe the other LED groups. Per-LED refusals are expected (the HyperSpeed
+        // answers 0x03 for all but LOGO) — report and keep going; this sweep exists
+        // precisely to discover which LEDs answer on a given model.
+        for (name, led) in [("ZERO", UInt8(0x00)), ("BACKLIGHT", UInt8(0x05))] {
+            do {
+                let rr = try dev.sendWithRetry(RazerCommands.getBrightness(led: led))
+                print("GET brightness (led \(name)=0x\(String(format: "%02x", led))): \(dump(rr))")
+            } catch {
+                print("GET brightness (led \(name)=0x\(String(format: "%02x", led))): refused — \(error)")
+            }
         }
         if let arg = args.dropFirst().first, let pct = Int(arg) {
             let raw = RazerCommands.brightnessRaw(fromPercent: pct)
-            print("SET brightness \(pct)% (raw \(raw)) on ZERO_LED …")
+            print("SET brightness \(pct)% (raw \(raw)) on LOGO_LED …")
             let sr = try dev.sendWithRetry(RazerCommands.setBrightness(raw))
             print("  set: \(dump(sr))")
             let back = try dev.sendWithRetry(RazerCommands.getBrightness())
