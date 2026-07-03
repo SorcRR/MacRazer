@@ -28,6 +28,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     @Published private(set) var timeEstimate: String?
     /// Snapshots of `io`-queue-owned history, republished on the main queue for the usage graph.
     @Published private(set) var batterySamples: [BatterySample] = []
+    /// The last finished cycle's curve, drawn dimmed behind the current one (~2 charges of
+    /// context) so the chart doesn't blank out at a recharge.
+    @Published private(set) var previousCycleSamples: [BatterySample] = []
     @Published private(set) var dischargeRatePerHour: Double?
     @Published private(set) var cycleStartedAt: Date?
     @Published private(set) var cycleStartedPercent: Int?
@@ -280,6 +283,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 self.update(\.charging, isCharging)
                 self.update(\.timeEstimate, estimate)
                 self.update(\.batterySamples, snap.samples)
+                self.update(\.previousCycleSamples, snap.previous)
                 self.update(\.dischargeRatePerHour, snap.rate)
                 self.update(\.cycleStartedAt, snap.cycleStart)
                 self.update(\.cycleStartedPercent, snap.cycleStartPct)
@@ -616,6 +620,11 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         batterySamples = stride(from: 0, through: 28, by: 1).map {
             BatterySample(t: now.addingTimeInterval(Double($0) * -3600), pct: min(100, 2 + $0 * 4))
         }.reversed()
+        // The charge before it (dimmed context on the usage chart), with a 2h charge gap.
+        let previousEnd = now.addingTimeInterval(-30 * 3600)
+        previousCycleSamples = stride(from: 0, through: 24, by: 1).map {
+            BatterySample(t: previousEnd.addingTimeInterval(Double($0) * -3600), pct: min(100, 8 + $0 * 4))
+        }.reversed()
         dischargeRatePerHour = 1.0
         cycleStartedAt = batterySamples.first?.t
         cycleStartedPercent = batterySamples.first?.pct
@@ -668,8 +677,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// io-queue only: snapshot of everything the UI derives from `history`, decimated for
     /// display. Shared by the poll path and the device-swap republish so the two can't
     /// drift (e.g. one of them forgetting the decimation).
-    private func historySnapshot() -> (samples: [BatterySample], rate: Double?, cycleStart: Date?, cycleStartPct: Int?) {
+    private func historySnapshot() -> (samples: [BatterySample], previous: [BatterySample], rate: Double?, cycleStart: Date?, cycleStartPct: Int?) {
         (BatteryHistory.decimatedForDisplay(history.samples),
+         BatteryHistory.decimatedForDisplay(history.previousCycleSamples),
          history.currentRatePerHour,
          history.cycleStartedAt,
          history.cycleStartedPercent)
@@ -732,6 +742,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             let loadedActiveID = ProfileStore.activeProfileID(forDevice: key)
             publish {
                 self.batterySamples = snap.samples
+                self.previousCycleSamples = snap.previous
                 self.dischargeRatePerHour = snap.rate
                 self.cycleStartedAt = snap.cycleStart
                 self.cycleStartedPercent = snap.cycleStartPct

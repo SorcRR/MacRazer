@@ -15,6 +15,12 @@ struct BatterySample: Codable, Equatable {
 final class BatteryHistory {
     private let store: VersionedFileStore<[BatterySample]>
     private(set) var samples: [BatterySample] = []
+    /// Raw samples of the last *real* finished cycle (per `ChargeCycleHistory.isRealCycle`;
+    /// noise blips don't replace it), kept so the usage chart can show ~two charges of
+    /// context instead of blanking out at every recharge. Persisted in its own file so the
+    /// main history file's format — and existing users' data — stays untouched.
+    private(set) var previousCycleSamples: [BatterySample] = []
+    private let previousStore: VersionedFileStore<[BatterySample]>
 
     /// Keep a bounded window so a single charge cycle dominates the fit, but generous enough
     /// that the usage graph can show the *whole* cycle rather than just a recent slice — at the
@@ -41,12 +47,30 @@ final class BatteryHistory {
     /// Above this, a gap between two samples isn't real usage time — the mouse went to sleep,
     /// got disconnected, or the app was closed, none of which the device "remembers" as
     /// discharging once reconnected. Generous margin above both poll cadences (4-15s) so it
-    /// never clips a real interval, but well short of any genuine offline gap. Used two ways:
-    /// intervals longer than this are excluded from `DischargeCurveModel`'s dwell learning
-    /// (a multi-hour disconnect would otherwise be credited as multi-hour dwell time at
-    /// whatever percent it spans), and the session rate fit splices them out so idle time
-    /// doesn't distort the slope.
+    /// never clips a real interval, but well short of any genuine offline gap. Used three
+    /// ways: intervals longer than this are excluded from `DischargeCurveModel`'s dwell
+    /// learning (a multi-hour disconnect would otherwise be credited as multi-hour dwell time
+    /// at whatever percent it spans), the session rate fit splices them out so idle time
+    /// doesn't distort the slope, and an uptick spanning such a gap must clear
+    /// `maxGapRecovery` (not the in-cycle +1) before it's read as a recharge.
     private let maxIdleGap: TimeInterval = 5 * 60
+
+    /// A rested cell reads higher than it did under load: after hours offline (Mac asleep,
+    /// mouse switched off) the fuel gauge legitimately comes back several percent up —
+    /// voltage recovery, no charger involved. Reading that as a recharge would wipe the
+    /// cycle on every overnight sleep, so a post-gap uptick up to this many points continues
+    /// the cycle; anything bigger is treated as a charge that happened while nobody was
+    /// watching. Within continuous observation the tolerance stays at 1 — consecutive 4-15s
+    /// polls can only jitter by gauge rounding.
+    private let maxGapRecovery = 9
+
+    /// The previous reading was a reset-worthy uptick that hasn't been recorded yet. A reset
+    /// destroys the whole cycle window, so — like the poll state machine's charging
+    /// confirm — it only happens once a second consecutive reading agrees. If the next
+    /// reading is back at the old baseline, the uptick was a one-off garbage read (seen
+    /// around the Mac's own sleep transition) and is forgotten; one skipped tick is free
+    /// either way.
+    private var pendingUptickReset = false
 
     /// The persisted learned rate lives in `defaults`; tests inject their own suite so they
     /// never read or pollute the real learned rates. `directory` likewise scopes the
@@ -58,37 +82,67 @@ final class BatteryHistory {
         self.defaults = defaults
         store = VersionedFileStore(filename: "battery-history-\(deviceKey).json", version: 1,
                                    directory: directory)
+        previousStore = VersionedFileStore(filename: "battery-history-prev-\(deviceKey).json",
+                                           version: 1, directory: directory)
         samples = store.load(migratingLegacy: true) ?? []
+        previousCycleSamples = previousStore.load() ?? []
     }
 
     /// `now` is injectable for tests (gap splicing and cycle logic are time-driven).
     func record(percent: Int, charging: Bool, at now: Date = Date()) {
-        // A charge event invalidates the discharge trend — reset the window on an uptick.
-        let isReset = (samples.last.map { percent > $0.pct + 1 } ?? false) || charging
-        if isReset {
-            if !samples.isEmpty {
-                onCycleFinished?(samples)
-                samples.removeAll()
-                // A cycle boundary is worth persisting immediately: the file is small right
-                // after clearing, and losing the boundary would glue two cycles together.
-                store.saveNow(samples)
-            }
+        if charging {
+            pendingUptickReset = false
+            finishCycle()
             // While charging, keep the window empty rather than appending charge-session
             // samples for the next tick to clear again — the discharge cycle starts at the
             // first not-charging sample, and the file isn't rewritten once per tick all
             // charge session long.
-            if charging { return }
-        } else if let last = samples.last {
+            return
+        }
+        if let last = samples.last {
             let elapsed = now.timeIntervalSince(last.t)
-            if elapsed <= maxIdleGap {
-                onInterval?(last.pct, percent, elapsed)
+            // A charge event invalidates the discharge trend — reset the window on an
+            // uptick. Post-gap upticks get the recovery tolerance (see `maxGapRecovery`).
+            let tolerance = elapsed <= maxIdleGap ? 1 : maxGapRecovery
+            if percent > last.pct + tolerance {
+                // Hold the reset until a second reading agrees (see `pendingUptickReset`).
+                if !pendingUptickReset {
+                    pendingUptickReset = true
+                    return
+                }
+                pendingUptickReset = false
+                finishCycle()
             } else {
-                onObservationGap?()
+                pendingUptickReset = false
+                if elapsed <= maxIdleGap {
+                    onInterval?(last.pct, percent, elapsed)
+                } else {
+                    onObservationGap?()
+                }
             }
         }
         samples.append(BatterySample(t: now, pct: percent))
         if samples.count > maxSamples { samples.removeFirst(samples.count - maxSamples) }
         store.save(samples) // throttled — see VersionedFileStore
+    }
+
+    /// Ends the current discharge cycle: hands the samples to `onCycleFinished` and clears
+    /// the window. No-op when the window is already empty (repeated charging ticks).
+    private func finishCycle() {
+        guard !samples.isEmpty else { return }
+        onCycleFinished?(samples)
+        // Keep the finished curve for display (dimmed behind the new cycle on the usage
+        // chart) — but only a real cycle: a noise blip (a brief unplug/re-dock) must not
+        // replace a full multi-day curve. Same filter as the "Past charges" log, so the
+        // dimmed curve and the newest bar always describe the same cycle.
+        if ChargeCycleHistory.isRealCycle(samples) {
+            previousCycleSamples = samples
+            previousStore.saveNow(previousCycleSamples)
+        }
+        samples.removeAll()
+        // A cycle boundary is worth persisting immediately: the file is small right after
+        // clearing, and losing the boundary would glue two cycles together.
+        store.saveNow(samples)
     }
 
     /// Time the current discharge cycle started (the oldest sample since the last reset), or

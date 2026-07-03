@@ -4,6 +4,28 @@ All notable changes to this project. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/). The project is **pre-release** (0.x) —
 expect rough edges until 1.0.
 
+## [Unreleased]
+
+### Added
+- **The usage chart now shows ~2 charges: the previous charge stays visible (dimmed) behind
+ the current one.** Recharging no longer blanks the chart back to "Gathering data…" — the
+ finished cycle's raw curve is kept (and persisted per device) and drawn as a dimmed gray
+ line behind the live one, with a gap where the charge happened. While docked, the chart
+ keeps showing the previous charge with a "Charging — tracking paused" note instead of
+ disappearing entirely. Hover works across both curves. Noise blips (a brief unplug/re-dock,
+ same thresholds as the "Past charges" log) don't replace the kept curve.
+
+### Fixed
+- **A Mac sleep no longer resets the battery-usage chart.** After hours of rest a Li-ion
+ cell legitimately reads a few percent *higher* on wake (voltage recovery, no charger
+ involved), and any uptick of 2+ points was treated as "the mouse got recharged" — wiping
+ the whole discharge cycle, so the chart restarted at the sleep/wake boundary. Upticks now
+ confirm on two consecutive readings before resetting (a one-off garbage read around the
+ sleep transition is discarded instead of acted on), and after an offline gap an uptick has
+ to reach 10 points before it counts as a recharge — below that it's read as recovery and
+ the cycle continues. Trade-off: a genuine but tiny top-up (<10 points) during a gap is no
+ longer detected as a cycle boundary; it shows as an uptick within the ongoing cycle.
+
 ## [0.2.0] — 2026-07-02
 
 ### Added

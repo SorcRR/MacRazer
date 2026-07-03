@@ -98,8 +98,78 @@ final class BatteryHistoryTests: XCTestCase {
         h.record(percent: 90, charging: false, at: t0)
         h.record(percent: 91, charging: false, at: t0.addingTimeInterval(15)) // +1: tolerated
         XCTAssertEqual(finished, 0)
-        h.record(percent: 93, charging: false, at: t0.addingTimeInterval(30)) // +2: reset
+        h.record(percent: 93, charging: false, at: t0.addingTimeInterval(30)) // +2: candidate
+        XCTAssertEqual(finished, 0, "an unconfirmed uptick must not reset yet")
+        h.record(percent: 93, charging: false, at: t0.addingTimeInterval(45)) // agrees: reset
         XCTAssertEqual(finished, 1)
+        XCTAssertEqual(h.cycleStartedPercent, 93, "the confirming reading starts the new cycle")
+    }
+
+    func testSingleGarbageUptickIsDiscardedNotReset() {
+        // Seen around the Mac's sleep transition: one bogus higher reading, then back to
+        // normal. Acting on it wiped the whole chart; it must be held and discarded.
+        let h = makeHistory()
+        var finished = 0
+        h.onCycleFinished = { _ in finished += 1 }
+        h.record(percent: 90, charging: false, at: t0)
+        h.record(percent: 89, charging: false, at: t0.addingTimeInterval(15))
+        h.record(percent: 97, charging: false, at: t0.addingTimeInterval(30)) // garbage blip
+        h.record(percent: 89, charging: false, at: t0.addingTimeInterval(45)) // back to baseline
+        XCTAssertEqual(finished, 0, "a one-off garbage uptick must not wipe the cycle")
+        XCTAssertEqual(h.cycleStartedPercent, 90)
+        XCTAssertEqual(h.samples.count, 3, "the garbage reading itself must not be recorded")
+    }
+
+    func testPostGapRecoveryContinuesCycle() {
+        // The Mac-sleep bug: after hours offline a rested cell reads a few percent higher
+        // (voltage recovery, no charger) — that must not be mistaken for a recharge.
+        let h = makeHistory()
+        var finished = 0, gaps = 0
+        h.onCycleFinished = { _ in finished += 1 }
+        h.onObservationGap = { gaps += 1 }
+        h.record(percent: 60, charging: false, at: t0)
+        h.record(percent: 59, charging: false, at: t0.addingTimeInterval(15))
+        h.record(percent: 64, charging: false, at: t0.addingTimeInterval(8 * 3600)) // wake: +5
+        XCTAssertEqual(finished, 0, "post-gap voltage recovery is not a recharge")
+        XCTAssertEqual(gaps, 1, "the gap must still break dwell learning")
+        XCTAssertEqual(h.cycleStartedPercent, 60, "the cycle survives the sleep")
+        XCTAssertEqual(h.samples.count, 3)
+    }
+
+    func testFinishedCycleIsKeptAsPreviousAndPersisted() {
+        let h = makeHistory()
+        let end = feedSteadyDischarge(h, from: 100, hours: 4)
+        let cycleCount = h.samples.count
+        h.record(percent: 97, charging: true, at: end.addingTimeInterval(15))
+        XCTAssertEqual(h.previousCycleSamples.count, cycleCount, "the finished curve survives for display")
+        XCTAssertEqual(h.previousCycleSamples.first?.pct, 100)
+        XCTAssertTrue(h.samples.isEmpty)
+        XCTAssertEqual(makeHistory().previousCycleSamples.count, cycleCount, "…and across relaunches")
+    }
+
+    func testNoiseCycleDoesNotReplacePreviousCurve() {
+        let h = makeHistory()
+        let end = feedSteadyDischarge(h, from: 100, hours: 4)
+        h.record(percent: 96, charging: true, at: end.addingTimeInterval(15)) // real cycle → kept
+        let kept = h.previousCycleSamples.count
+        // A brief unplug/re-dock: two stray samples, then charging again.
+        h.record(percent: 100, charging: false, at: end.addingTimeInterval(3600))
+        h.record(percent: 100, charging: false, at: end.addingTimeInterval(3615))
+        h.record(percent: 100, charging: true, at: end.addingTimeInterval(3630))
+        XCTAssertEqual(h.previousCycleSamples.count, kept, "a noise blip must not clobber the kept curve")
+    }
+
+    func testPostGapRechargeStillResets() {
+        let h = makeHistory()
+        var finished = 0
+        h.onCycleFinished = { _ in finished += 1 }
+        h.record(percent: 60, charging: false, at: t0)
+        h.record(percent: 59, charging: false, at: t0.addingTimeInterval(15))
+        let wake = t0.addingTimeInterval(8 * 3600)
+        h.record(percent: 90, charging: false, at: wake)                        // +31: candidate
+        h.record(percent: 90, charging: false, at: wake.addingTimeInterval(15)) // confirmed
+        XCTAssertEqual(finished, 1, "a real offline recharge must still start a new cycle")
+        XCTAssertEqual(h.cycleStartedPercent, 90)
     }
 
     func testLongGapFiresObservationGapNotInterval() {

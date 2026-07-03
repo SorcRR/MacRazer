@@ -29,11 +29,15 @@ final class ChargeCycleHistory {
 
     /// Same noise thresholds as `BatteryHistory.sessionRatePerHour` — a real cycle needs a
     /// confident span and drop, not just a couple of stray samples before the next charge.
+    /// Shared with `BatteryHistory`'s previous-cycle display retention so the two never
+    /// disagree on what counts as a cycle.
+    static func isRealCycle(_ samples: [BatterySample]) -> Bool {
+        guard samples.count >= 4, let first = samples.first, let last = samples.last else { return false }
+        return last.t.timeIntervalSince(first.t) >= 900 && first.pct - last.pct >= 2
+    }
+
     func recordFinishedCycle(samples: [BatterySample]) {
-        guard samples.count >= 4, let first = samples.first, let last = samples.last else { return }
-        let span = last.t.timeIntervalSince(first.t)
-        let drop = first.pct - last.pct
-        guard span >= 900, drop >= 2 else { return }
+        guard Self.isRealCycle(samples), let first = samples.first, let last = samples.last else { return }
         cycles.append(ChargeCycleSummary(start: first.t, end: last.t, startPercent: first.pct, endPercent: last.pct))
         if cycles.count > maxCycles { cycles.removeFirst(cycles.count - maxCycles) }
         // Unthrottled: cycles finish minutes-to-days apart, and each one is worth keeping.

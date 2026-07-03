@@ -33,6 +33,13 @@ struct UsageGraphView: View {
 
     // MARK: Current-cycle chart
 
+    /// What the chart actually draws: the previous charge's curve (dimmed context) followed
+    /// by the current one. Hover snapping and the "enough data" check run over this same
+    /// set, so everything visible is hoverable.
+    private var displaySamples: [BatterySample] {
+        controller.previousCycleSamples + controller.batterySamples
+    }
+
     private var currentCycleChart: some View {
         card {
             VStack(alignment: .leading, spacing: 6) {
@@ -44,34 +51,49 @@ struct UsageGraphView: View {
                     // frame and grow the enclosing card, which reads as the whole view jumping.
                     if let hovered = hoveredSample {
                         hoverLabel("\(hovered.pct)% · \(Self.hoverDateFormatter.string(from: hovered.t))")
+                    } else if controller.charging {
+                        // The chart keeps showing the previous charge while docked — say
+                        // why it isn't moving.
+                        Text("Charging — tracking paused")
+                            .font(.system(size: 10)).foregroundStyle(.secondary)
                     }
                 }
                 .frame(height: headerRowHeight)
-                if controller.charging {
-                    placeholder("Charging — usage tracking paused")
-                } else if controller.batterySamples.count < 4 {
-                    placeholder("Gathering data…")
+                if displaySamples.count < 4 {
+                    placeholder(controller.charging ? "Charging — usage tracking paused" : "Gathering data…")
                 } else {
-                    Chart(controller.batterySamples, id: \.t) { sample in
-                        // Colored like the battery bar/gauge on the main page (low/mid/full).
-                        // A plain per-point `.foregroundStyle(Color)` doesn't segment a
-                        // LineMark in Swift Charts — every point ends up resolving to one
-                        // style for the whole line. `foregroundStyle(by:)` + a matching
-                        // `chartForegroundStyleScale` is what actually splits it into colored
-                        // segments by value.
-                        LineMark(x: .value("Time", sample.t), y: .value("Battery", sample.pct))
-                            .foregroundStyle(by: .value("Level", Self.levelBand(sample.pct)))
-                            .interpolationMethod(.monotone)
-                        if hoveredSample?.t == sample.t {
-                            RuleMark(x: .value("Time", sample.t))
+                    Chart {
+                        // The previous charge, one flat dimmed series behind the live one
+                        // (~2 charges of context so a recharge doesn't blank the chart).
+                        // Sharing the level bands' by:-value mechanism keeps it a separate
+                        // series, so it can't draw a connecting line across the charge gap.
+                        ForEach(controller.previousCycleSamples, id: \.t) { sample in
+                            LineMark(x: .value("Time", sample.t), y: .value("Battery", sample.pct))
+                                .foregroundStyle(by: .value("Level", Self.previousBand))
+                                .interpolationMethod(.monotone)
+                        }
+                        ForEach(controller.batterySamples, id: \.t) { sample in
+                            // Colored like the battery bar/gauge on the main page
+                            // (low/mid/full). A plain per-point `.foregroundStyle(Color)`
+                            // doesn't segment a LineMark in Swift Charts — every point ends
+                            // up resolving to one style for the whole line.
+                            // `foregroundStyle(by:)` + a matching `chartForegroundStyleScale`
+                            // is what actually splits it into colored segments by value.
+                            LineMark(x: .value("Time", sample.t), y: .value("Battery", sample.pct))
+                                .foregroundStyle(by: .value("Level", Self.levelBand(sample.pct)))
+                                .interpolationMethod(.monotone)
+                        }
+                        if let hovered = hoveredSample {
+                            RuleMark(x: .value("Time", hovered.t))
                                 .foregroundStyle(.secondary.opacity(0.25))
-                            PointMark(x: .value("Time", sample.t), y: .value("Battery", sample.pct))
-                                .foregroundStyle(batteryLevelColor(forPercent: sample.pct))
+                            PointMark(x: .value("Time", hovered.t), y: .value("Battery", hovered.pct))
+                                .foregroundStyle(isPreviousCycle(hovered) ? Self.previousColor : batteryLevelColor(forPercent: hovered.pct))
                                 .symbolSize(50)
                         }
                     }
                     .chartForegroundStyleScale([
                         Self.lowBand: Color.batteryLow, Self.midBand: Color.batteryMid, Self.fullBand: Color.batteryFull,
+                        Self.previousBand: Self.previousColor,
                     ])
                     .chartLegend(.hidden)
                     .chartYScale(domain: 0...100)
@@ -81,7 +103,7 @@ struct UsageGraphView: View {
                     .chartOverlay { proxy in
                         GeometryReader { geo in
                             hoverCatcher(proxy: proxy, geo: geo) { date in
-                                hoveredSample = controller.batterySamples.min {
+                                hoveredSample = displaySamples.min {
                                     abs($0.t.timeIntervalSince(date)) < abs($1.t.timeIntervalSince(date))
                                 }
                             } onEnd: {
@@ -93,9 +115,9 @@ struct UsageGraphView: View {
                     // which timestamps survive — re-snap an active hover to the new array so
                     // the marker (matched by exact timestamp above) doesn't vanish and leave
                     // a stale hover pill in the header.
-                    .onChange(of: controller.batterySamples) { _, newSamples in
+                    .onChange(of: controller.batterySamples) { _, _ in
                         guard let hovered = hoveredSample else { return }
-                        hoveredSample = newSamples.min {
+                        hoveredSample = displaySamples.min {
                             abs($0.t.timeIntervalSince(hovered.t)) < abs($1.t.timeIntervalSince(hovered.t))
                         }
                     }
@@ -104,9 +126,19 @@ struct UsageGraphView: View {
         }
     }
 
+    /// Both cycles come from the same monotonically-timestamped history, so anything at or
+    /// before the previous cycle's last sample belongs to the previous cycle.
+    private func isPreviousCycle(_ sample: BatterySample) -> Bool {
+        guard let lastPrevious = controller.previousCycleSamples.last else { return false }
+        return sample.t <= lastPrevious.t
+    }
+
     // MARK: Level-band coloring (matches the battery bar's low/mid/full thresholds)
 
     private static let lowBand = "Low", midBand = "Mid", fullBand = "Full"
+    /// The previous cycle's whole curve maps to this one band → one uniform dimmed line.
+    private static let previousBand = "Previous"
+    private static let previousColor = Color.gray.opacity(0.55)
     private static func levelBand(_ pct: Int) -> String {
         switch pct {
         case ..<15: return lowBand
