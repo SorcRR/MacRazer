@@ -57,6 +57,14 @@ struct LowBatteryAlertPolicy {
 /// so it needs no synchronisation — the delivery callback hops back before re-arming.
 final class LowBatteryNotifier: @unchecked Sendable {
     private var policy = LowBatteryAlertPolicy()
+    /// Cached notification authorization, main-queue owned. nil until the first check.
+    ///
+    /// Consulted *before* the policy so a denial can't silently burn this discharge's one
+    /// alert: `add()` reports success even when notifications are switched off for the app
+    /// (verified on macOS 26 — authorizationStatus .denied, add() completion error nil), so
+    /// the delivery callback can't be the place this is caught.
+    private var authorized: Bool?
+    private var loggedDenial = false
 
     /// Set the presentation delegate and ask for permission once, early — so the system
     /// prompt appears at launch rather than the first time the battery happens to be low.
@@ -84,9 +92,35 @@ final class LowBatteryNotifier: @unchecked Sendable {
 
     func deviceChanged() { policy.deviceChanged() }
 
+    /// Re-read whether the user has allowed notifications. Called at launch and whenever the
+    /// app returns to the foreground, so toggling the setting takes effect without a restart.
+    func refreshAuthorization() {
+        guard Bundle.main.bundleIdentifier != nil else { return }
+        // Built outside the callback so the callback never captures `self` (same reason as
+        // the delivery re-arm below).
+        let apply: @Sendable (Bool) -> Void = { [weak self] ok in
+            DispatchQueue.main.async { self?.authorized = ok }
+        }
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            apply(settings.authorizationStatus == .authorized
+                  || settings.authorizationStatus == .provisional)
+        }
+    }
+
     /// Call on every battery reading. `deviceKey` scopes the notification so two mice each
     /// hold their own alert instead of one silently replacing the other.
     func notify(deviceKey: String?, deviceName: String?, percent: Int, charging: Bool?) {
+        // Denied: leave the policy untouched so the alert is still pending if the user turns
+        // notifications on mid-discharge. Logged once — this runs on every poll.
+        if authorized == false {
+            if !loggedDenial {
+                loggedDenial = true
+                let msg = "[MacRazer] notifications are off for MacRazer — low-battery alerts "
+                    + "won't appear (System Settings › Notifications › MacRazer)\n"
+                FileHandle.standardError.write(Data(msg.utf8))
+            }
+            return
+        }
         let wasArmed = policy.isArmed
         guard policy.shouldAlert(percent: percent, charging: charging) else {
             // Re-armed on this tick (charged back up) — drop the delivered banner too, or

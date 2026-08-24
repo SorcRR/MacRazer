@@ -101,8 +101,13 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     private let pollWhenConnected: TimeInterval = 15
     private let pollWhenOffline: TimeInterval = 4
 
+    /// Re-read notification authorization (launch, and whenever the app is refocused) so a
+    /// low-battery alert isn't consumed while notifications are switched off.
+    func refreshNotificationAuthorization() { lowBatteryNotifier.refreshAuthorization() }
+
     func start() {
         wireHistory()
+        lowBatteryNotifier.refreshAuthorization()
         refreshAll()
         scheduleNextPoll(after: pollWhenOffline)
     }

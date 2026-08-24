@@ -17,7 +17,9 @@ expect rough edges until 1.0.
  climbs back to 20%+, so neither the 15s poll cadence nor a one-off garbage reading can
  repeat it. Swapping to a second mouse re-arms it for that unit, and charging back up
  withdraws the banner instead of leaving it in Notification Center. The armed state lives
- in memory, so a relaunch while the mouse is still low can alert once more.
+ in memory, so a relaunch while the mouse is still low can alert once more. If notifications
+ are switched off for MacRazer the alert stays pending rather than being silently spent, so
+ turning them on mid-discharge still gets you the warning.
 - **The usage chart now shows ~2 charges: the previous charge stays visible (dimmed) behind
  the current one.** Recharging no longer blanks the chart back to "Gathering data…" — the
  finished cycle's raw curve is kept (and persisted per device) and drawn as a dimmed gray

@@ -270,6 +270,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     /// a grant in System Settings and switched back, so the setup window reflects it live.
     func applicationDidBecomeActive(_ notification: Notification) {
         permissions.recheck()
+        // Same reason as the permission recheck: the user may have just flipped the
+        // Notifications switch in System Settings and come back.
+        controller.refreshNotificationAuthorization()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
