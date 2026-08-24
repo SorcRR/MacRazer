@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Razer Synapse alternative for Mac — free and open source | MacRazer</title>
+<meta name="description" content="Razer Synapse for Mac doesn't support every mouse. MacRazer is a free, open-source alternative: battery, DPI, RGB, polling rate and button remapping for Razer mice on macOS, with no account and no kernel extension.">
+<meta name="author" content="SorcRR">
+<link rel="canonical" href="https://sorcrr.github.io/MacRazer/razer-synapse-alternative-mac.html">
+
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://sorcrr.github.io/MacRazer/razer-synapse-alternative-mac.html">
+<meta property="og:title" content="Razer Synapse alternative for Mac — free and open source">
+<meta property="og:description" content="Synapse for Mac doesn't cover every Razer mouse. MacRazer controls battery, DPI, RGB, polling rate and button remaps over USB HID — no account, no kernel extension.">
+<meta property="og:image" content="https://sorcrr.github.io/MacRazer/assets/icon-1024.png">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Razer Synapse alternative for Mac — free and open source">
+<meta name="twitter:description" content="Synapse for Mac doesn't cover every Razer mouse. MacRazer does battery, DPI, RGB, polling rate and button remaps over USB HID.">
+<meta name="twitter:image" content="https://sorcrr.github.io/MacRazer/assets/icon-1024.png">
+
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,600;1,9..144,500&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "Does Razer Synapse work on Mac?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes, Razer ships Synapse for Mac, but it runs only on Apple Silicon Macs and supports a limited list of devices. Razer publishes that supported-device list, and several mice — including the Cobra HyperSpeed and Atheris — are not on it."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Is there a free alternative to Razer Synapse for macOS?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "MacRazer is a free, open-source (GPL-2.0) menu bar app for macOS 14 and later. It reads battery level and sets DPI, polling rate, RGB lighting and button remaps by speaking Razer's HID protocol directly over USB, with no account and no kernel extension."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Can I control a Razer mouse on Mac without an account?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes. MacRazer requires no sign-in and no cloud sync. Settings are written to the mouse's onboard memory where the model supports it, so they persist even when the app is not running."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does it work over Bluetooth?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "No. Razer only exposes its control protocol over USB, so you need the 2.4 GHz dongle or a USB-C cable. Over Bluetooth the mouse is a plain pointer to macOS and to any control app."
+      }
+    }
+  ]
+}
+</script>
+</head>
+<body>
+<div class="grain"></div>
+
+<header class="hero">
+  <nav class="topbar">
+    <div class="brand">
+      <a href="./" style="display:contents;color:inherit;text-decoration:none">
+        <img src="assets/icon-1024.png" alt="" class="brand-icon">
+        <span>MacRazer</span>
+      </a>
+    </div>
+    <div class="topbar-links">
+      <a href="./#features">Features</a>
+      <a href="./#mice">Supported mice</a>
+      <a href="razer-mouse-battery-mac.html">Battery on Mac</a>
+      <a href="./#install">Install</a>
+      <a href="https://github.com/SorcRR/MacRazer" class="topbar-gh">GitHub →</a>
+    </div>
+  </nav>
+
+  <div class="hero-content">
+    <p class="kicker">free · open source · no account</p>
+    <h1>A Razer Synapse<br>alternative for Mac.</h1>
+    <p class="hero-sub">Synapse for Mac exists now — but it's Apple Silicon only, and its
+    supported-device list leaves plenty of mice out. MacRazer talks to the mouse directly over
+    USB HID, so the model on Razer's "unsupported" list still gets battery, DPI, RGB, polling
+    rate and button remaps.</p>
+    <div class="hero-actions">
+      <a href="https://github.com/SorcRR/MacRazer/releases/latest/download/MacRazer.dmg" class="btn btn-primary btn-large">
+        Download for macOS<span id="version-tag" class="version-tag"></span>
+      </a>
+      <a href="./" class="btn btn-ghost">All features</a>
+    </div>
+  </div>
+</header>
+
+<main>
+  <section class="strip">
+    <p><strong>Unofficial project.</strong> MacRazer is not affiliated with, authorized by, or
+    endorsed by Razer Inc. It's a community app that reimplements the parts of the protocol
+    documented by <a href="https://github.com/openrazer/openrazer">OpenRazer</a>.</p>
+  </section>
+
+  <section class="features">
+    <h2>Where each one fits</h2>
+    <p class="mice-note" style="margin-bottom:1.5rem">Both are worth having. If Synapse for Mac
+    supports your device and you want macros and cloud profiles, use it. This page is for the
+    case it doesn't cover.</p>
+    <table>
+      <thead>
+        <tr><th></th><th>Razer Synapse for Mac</th><th>MacRazer</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Device coverage</td>
+          <td>Razer's published supported list</td>
+          <td>Any mouse speaking the protocol; verified on the Cobra family and Atheris</td>
+        </tr>
+        <tr>
+          <td>Hardware</td>
+          <td>Apple Silicon only</td>
+          <td>Apple Silicon, macOS 14+</td>
+        </tr>
+        <tr>
+          <td>Account</td>
+          <td>Sign-in for cloud profiles</td>
+          <td><span class="badge badge-good">None</span></td>
+        </tr>
+        <tr>
+          <td>Source</td>
+          <td>Closed</td>
+          <td><span class="badge badge-good">GPL-2.0, auditable</span></td>
+        </tr>
+        <tr>
+          <td>Macros</td>
+          <td><span class="badge badge-good">Yes</span></td>
+          <td><span class="badge badge-mid">No — two side buttons remap only</span></td>
+        </tr>
+        <tr>
+          <td>Battery history</td>
+          <td>Current level</td>
+          <td>Discharge curve, learned time-remaining, past cycles</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="features">
+    <h2>What MacRazer actually does</h2>
+    <div class="feature-grid">
+      <article class="feature">
+        <span class="feature-tag">01 · battery</span>
+        <h3>Battery in the menu bar</h3>
+        <p>Live percentage with a bolt while charging, a learned time-until-empty estimate built
+        from your own mouse's discharge history, and a warning once it drops below 15%.
+        <a href="razer-mouse-battery-mac.html">More on battery →</a></p>
+      </article>
+      <article class="feature">
+        <span class="feature-tag">02 · dpi</span>
+        <h3>DPI and polling rate</h3>
+        <p>Set DPI, edit the stage table your mouse's own DPI button cycles, and switch polling
+        rate between 125/500/1000&nbsp;Hz. Written to onboard memory, so it survives quitting
+        the app.</p>
+      </article>
+      <article class="feature">
+        <span class="feature-tag">03 · lighting</span>
+        <h3>RGB without Chroma</h3>
+        <p>Static colour, spectrum cycle, wave, or off, plus brightness — no Chroma runtime and
+        no background service.</p>
+      </article>
+      <article class="feature">
+        <span class="feature-tag">04 · remap</span>
+        <h3>Side-button remapping</h3>
+        <p>Map the two side buttons to keys or shortcuts. Software-side, so it needs
+        Accessibility permission — and it's honest that the other buttons are handled onboard
+        and invisible to macOS.</p>
+      </article>
+    </div>
+  </section>
+
+  <section class="mice">
+    <h2>Common questions</h2>
+    <h3>Does Razer Synapse work on Mac?</h3>
+    <p>Yes — Razer ships
+    <a href="https://www.razer.com/synapse-4-mac">Synapse for Mac</a>, on Apple Silicon only,
+    with a
+    <a href="https://mysupport.razer.com/app/answers/detail/a_id/14809/~/razer-synapse-for-mac-supported-and-compatible-devices">published supported-device list</a>.
+    Check that list first. If your mouse is on it and you want macros, use Synapse.</p>
+
+    <h3>My mouse isn't on Razer's list. Now what?</h3>
+    <p>That's the gap this app was built for — the Cobra HyperSpeed and Atheris weren't covered,
+    which is why MacRazer exists. The protocol is largely shared across models, so an
+    unsupported-by-Synapse mouse usually still answers. See
+    <a href="./#mice">supported mice</a> for what's actually been verified on hardware.</p>
+
+    <h3>Do I need a kernel extension or a driver?</h3>
+    <p>No. macOS already enumerates the mouse as a HID device; MacRazer sends feature reports to
+    it. You do have to grant <strong>Input Monitoring</strong>, because macOS gates HID access
+    behind it.</p>
+
+    <h3>Will it work over Bluetooth?</h3>
+    <p>No, and no app can. Razer only exposes the control protocol over USB — use the 2.4&nbsp;GHz
+    dongle or a USB-C cable. Over Bluetooth the mouse is just a pointer.</p>
+
+    <p class="mice-note">Still stuck? Open an issue on
+      <a href="https://github.com/SorcRR/MacRazer/issues">GitHub</a>.</p>
+  </section>
+</main>
+
+<footer class="footer">
+  <div class="footer-grid">
+    <div>
+      <div class="brand">
+        <img src="assets/icon-1024.png" alt="" class="brand-icon">
+        <span>MacRazer</span>
+      </div>
+      <p class="footer-disclaimer">Unofficial. Not affiliated with, authorized by, or endorsed by
+        Razer Inc. Protocol ported from <a href="https://github.com/openrazer/openrazer">OpenRazer</a>.</p>
+    </div>
+    <div class="footer-links">
+      <a href="./">Home</a>
+      <a href="razer-mouse-battery-mac.html">Battery on Mac</a>
+      <a href="https://github.com/SorcRR/MacRazer">GitHub</a>
+      <a href="https://github.com/SorcRR/MacRazer/releases">Releases</a>
+      <a href="https://github.com/SorcRR/MacRazer/blob/master/LICENSE">GPL-2.0 License</a>
+      <a href="https://ko-fi.com/sorcrr">Tips</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+  fetch("https://api.github.com/repos/SorcRR/MacRazer/releases/latest")
+    .then(r => r.ok ? r.json() : null)
+    .then(data => {
+      const tag = data && data.tag_name;
+      if (!tag) return;
+      const inline = document.getElementById("version-tag");
+      if (inline) inline.textContent = " · " + tag;
+    })
+    .catch(() => {});
+</script>
+</body>
+</html>

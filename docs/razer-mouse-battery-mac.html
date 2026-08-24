@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>How to check Razer mouse battery on Mac | MacRazer</title>
+<meta name="description" content="macOS doesn't show Razer mouse battery for 2.4 GHz dongle mice. MacRazer puts the live percentage in your menu bar, with a charging bolt, a learned time-remaining estimate and a low-battery warning. Free and open source.">
+<meta name="author" content="SorcRR">
+<link rel="canonical" href="https://sorcrr.github.io/MacRazer/razer-mouse-battery-mac.html">
+
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://sorcrr.github.io/MacRazer/razer-mouse-battery-mac.html">
+<meta property="og:title" content="How to check Razer mouse battery on Mac">
+<meta property="og:description" content="macOS hides battery for 2.4 GHz dongle mice. MacRazer shows the live percentage in the menu bar, with a learned time-remaining estimate and a low-battery warning.">
+<meta property="og:image" content="https://sorcrr.github.io/MacRazer/assets/battery-usage.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="How to check Razer mouse battery on Mac">
+<meta name="twitter:description" content="macOS hides battery for 2.4 GHz dongle mice. MacRazer shows it in the menu bar, with a learned time-remaining estimate.">
+<meta name="twitter:image" content="https://sorcrr.github.io/MacRazer/assets/battery-usage.png">
+
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,600;1,9..144,500&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "HowTo",
+  "name": "Check a Razer mouse's battery level on macOS",
+  "description": "Show a Razer mouse's battery percentage in the macOS menu bar using MacRazer, a free open-source app.",
+  "totalTime": "PT3M",
+  "supply": [
+    { "@type": "HowToSupply", "name": "A Razer mouse connected by its 2.4 GHz dongle or a USB-C cable" }
+  ],
+  "tool": [
+    { "@type": "HowToTool", "name": "MacRazer for macOS 14 or later" }
+  ],
+  "step": [
+    {
+      "@type": "HowToStep",
+      "name": "Connect over USB, not Bluetooth",
+      "text": "Plug in the 2.4 GHz dongle or connect a USB-C cable. Razer only exposes battery over USB; over Bluetooth the mouse is a plain pointer and reports no battery level."
+    },
+    {
+      "@type": "HowToStep",
+      "name": "Install MacRazer",
+      "text": "Download the DMG from the GitHub releases page and drag MacRazer into Applications. The build is unsigned, so right-click the app and choose Open on first launch."
+    },
+    {
+      "@type": "HowToStep",
+      "name": "Grant Input Monitoring",
+      "text": "macOS gates HID access behind Input Monitoring. Grant it in System Settings, Privacy and Security, Input Monitoring, then relaunch the app."
+    },
+    {
+      "@type": "HowToStep",
+      "name": "Read the percentage in the menu bar",
+      "text": "The battery percentage appears next to the mouse icon, which shows a lightning bolt while charging. Clicking it opens the discharge curve and estimated time remaining."
+    }
+  ]
+}
+</script>
+</head>
+<body>
+<div class="grain"></div>
+
+<header class="hero">
+  <nav class="topbar">
+    <div class="brand">
+      <a href="./" style="display:contents;color:inherit;text-decoration:none">
+        <img src="assets/icon-1024.png" alt="" class="brand-icon">
+        <span>MacRazer</span>
+      </a>
+    </div>
+    <div class="topbar-links">
+      <a href="./#features">Features</a>
+      <a href="./#mice">Supported mice</a>
+      <a href="razer-synapse-alternative-mac.html">Synapse alternative</a>
+      <a href="./#install">Install</a>
+      <a href="https://github.com/SorcRR/MacRazer" class="topbar-gh">GitHub →</a>
+    </div>
+  </nav>
+
+  <div class="hero-content">
+    <p class="kicker">menu bar · macOS 14+ · free</p>
+    <h1>Check your Razer mouse<br>battery on a Mac.</h1>
+    <p class="hero-sub">macOS shows battery for Bluetooth mice, but a Razer mouse on its
+    2.4&nbsp;GHz dongle appears as a generic USB device and reports nothing to the system.
+    MacRazer asks the mouse directly and puts the number in your menu bar.</p>
+    <div class="hero-actions">
+      <a href="https://github.com/SorcRR/MacRazer/releases/latest/download/MacRazer.dmg" class="btn btn-primary btn-large">
+        Download for macOS<span id="version-tag" class="version-tag"></span>
+      </a>
+      <a href="./" class="btn btn-ghost">All features</a>
+    </div>
+  </div>
+</header>
+
+<main>
+  <section class="strip">
+    <p><strong>Why macOS doesn't already show it:</strong> the dongle presents the mouse as a
+    plain HID device with no battery service. The charge level only comes back if you ask for it
+    in Razer's own vendor protocol — which is what this app does.</p>
+  </section>
+
+  <section id="install" class="install">
+    <h2>How to check it</h2>
+    <ol class="steps">
+      <li>
+        <span class="step-num">1</span>
+        <div>
+          <p><strong>Connect over the dongle or USB-C — not Bluetooth.</strong> Razer only exposes
+          battery over USB. On Bluetooth no app can read it, because the mouse never reports it.</p>
+        </div>
+      </li>
+      <li>
+        <span class="step-num">2</span>
+        <div>
+          <p>Download <code>MacRazer.dmg</code> from the
+          <a href="https://github.com/SorcRR/MacRazer/releases/latest">latest release</a> and drag
+          it into Applications. The build is unsigned, so right-click →
+          <strong>Open</strong> the first time.</p>
+        </div>
+      </li>
+      <li>
+        <span class="step-num">3</span>
+        <div>
+          <p>Grant <strong>Input Monitoring</strong> when asked (System Settings → Privacy &amp;
+          Security → Input Monitoring), then relaunch. macOS only applies the grant to a
+          freshly-launched app, so the relaunch matters.</p>
+        </div>
+      </li>
+      <li>
+        <span class="step-num">4</span>
+        <div>
+          <p>The percentage sits in your menu bar. The mouse mark shows a
+          <strong>lightning bolt</strong> while charging, and clicking it opens the full
+          battery history.</p>
+        </div>
+      </li>
+    </ol>
+  </section>
+
+  <section class="shots">
+    <img src="assets/battery-usage.png" alt="MacRazer battery usage screen showing the discharge curve, drain rate, estimated time remaining, and a trend chart of past charge cycles">
+  </section>
+
+  <section class="features">
+    <h2>More than a percentage</h2>
+    <div class="feature-grid">
+      <article class="feature">
+        <span class="feature-tag">01 · estimate</span>
+        <h3>A learned time-remaining</h3>
+        <p>A flat %/hour rate is wrong for a Li-ion cell — it sits on a long voltage plateau, then
+        drops fast. MacRazer learns how long your mouse actually dwells at each percent and
+        estimates from that, falling back to a linear rate until it has data.</p>
+      </article>
+      <article class="feature">
+        <span class="feature-tag">02 · history</span>
+        <h3>The whole discharge curve</h3>
+        <p>The current charge is charted with the previous one dimmed behind it, so a recharge
+        doesn't blank the view. Below it: drain rate, time since last full charge, and the average
+        life across past cycles.</p>
+      </article>
+      <article class="feature">
+        <span class="feature-tag">03 · warning</span>
+        <h3>A low-battery notification</h3>
+        <p>One notification when the charge drops below 15% — re-armed by charging, so it won't
+        nag every poll. You don't have to keep opening the popover to check.</p>
+      </article>
+      <article class="feature">
+        <span class="feature-tag">04 · honest</span>
+        <h3>It says when it doesn't know</h3>
+        <p>A sleeping or unreachable mouse shows the last known value dimmed rather than inventing
+        a number, and wired-only mice hide the battery UI entirely instead of showing a fake 0%.</p>
+      </article>
+    </div>
+  </section>
+
+  <section class="mice">
+    <h2>Common questions</h2>
+
+    <h3>Why can't I see my Razer mouse battery in macOS System Settings?</h3>
+    <p>Because macOS only surfaces battery for devices that report it through a standard service —
+    mainly Bluetooth peripherals. A Razer mouse on its 2.4&nbsp;GHz dongle enumerates as a generic
+    USB HID device, and its charge level is only available through Razer's vendor-specific
+    protocol.</p>
+
+    <h3>Does this work over Bluetooth?</h3>
+    <p>No. This is a hardware/protocol limit, not an app limitation: Razer doesn't expose the
+    control protocol over Bluetooth, so the battery level simply isn't there to read. Use the
+    dongle or a USB-C cable.</p>
+
+    <h3>Which mice does it read battery from?</h3>
+    <p>Verified on the Razer Cobra HyperSpeed and Atheris. Cobra Pro and other models use the same
+    protocol and generally answer, but aren't hardware-verified here — see
+    <a href="./#mice">supported mice</a>. Wired-only mice have no battery, and the app hides that
+    section rather than reporting a fake value.</p>
+
+    <h3>Is the percentage exact?</h3>
+    <p>It's the mouse's own fuel-gauge reading, scaled from the raw byte the firmware returns —
+    the same source Synapse uses. Expect the usual Li-ion quirks: the reading can recover a
+    percent or two after the mouse rests, which MacRazer accounts for rather than treating as a
+    recharge.</p>
+
+    <p class="mice-note">Questions or a mouse that doesn't report? Open an issue on
+      <a href="https://github.com/SorcRR/MacRazer/issues">GitHub</a>.</p>
+  </section>
+</main>
+
+<footer class="footer">
+  <div class="footer-grid">
+    <div>
+      <div class="brand">
+        <img src="assets/icon-1024.png" alt="" class="brand-icon">
+        <span>MacRazer</span>
+      </div>
+      <p class="footer-disclaimer">Unofficial. Not affiliated with, authorized by, or endorsed by
+        Razer Inc. Protocol ported from <a href="https://github.com/openrazer/openrazer">OpenRazer</a>.</p>
+    </div>
+    <div class="footer-links">
+      <a href="./">Home</a>
+      <a href="razer-synapse-alternative-mac.html">Synapse alternative</a>
+      <a href="https://github.com/SorcRR/MacRazer">GitHub</a>
+      <a href="https://github.com/SorcRR/MacRazer/releases">Releases</a>
+      <a href="https://github.com/SorcRR/MacRazer/blob/master/LICENSE">GPL-2.0 License</a>
+      <a href="https://ko-fi.com/sorcrr">Tips</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+  fetch("https://api.github.com/repos/SorcRR/MacRazer/releases/latest")
+    .then(r => r.ok ? r.json() : null)
+    .then(data => {
+      const tag = data && data.tag_name;
+      if (!tag) return;
+      const inline = document.getElementById("version-tag");
+      if (inline) inline.textContent = " · " + tag;
+    })
+    .catch(() => {});
+</script>
+</body>
+</html>
