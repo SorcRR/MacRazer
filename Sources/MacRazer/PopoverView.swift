@@ -482,7 +482,7 @@ struct PopoverView: View {
                     Text(verbatim: controller.batteryPercent.map { "\($0)" } ?? "—")
                         .font(.system(size: 34, weight: .semibold, design: .rounded))
                         .monospacedDigit()
-                        .foregroundStyle(controller.batteryPercent ?? 100 < 15 ? Color.batteryLow : .primary)
+                        .foregroundStyle(controller.batteryPercent ?? 100 < Battery.lowThresholdPercent ? Color.batteryLow : .primary)
                         .contentTransition(.numericText())
                     Text("%").font(.system(size: 17, weight: .medium)).foregroundStyle(.secondary)
                 }

@@ -8,9 +8,9 @@ import AppKit
 enum MenuBarIcon {
 
     /// A mouse silhouette with a small Razer triskelion cut into the body (even-odd).
-    /// Template image for the menu bar.
-    static func mouse(pointSize: CGFloat = 16, razerCutout: Bool = true) -> NSImage {
-        let img = drawMouse(size: pointSize, razerCutout: razerCutout, silhouette: .cobra)
+    /// Template image for the menu bar. `charging` swaps the button-split line for a bolt.
+    static func mouse(pointSize: CGFloat = 16, razerCutout: Bool = true, charging: Bool = false) -> NSImage {
+        let img = drawMouse(size: pointSize, razerCutout: razerCutout, silhouette: .cobra, charging: charging)
         img.isTemplate = true
         return img
     }
@@ -18,13 +18,17 @@ enum MenuBarIcon {
     /// Same silhouette family, but shaped/detailed to match the specific connected model
     /// (by USB product ID) instead of always drawing the generic Cobra body. Falls back to
     /// the generic Cobra shape for an unknown or absent device.
+    /// No charging variant here on purpose: this is the popover's header mark, and the card
+    /// directly below it already spells out the charging state in words.
     static func mouseModel(pid: Int?, razerCutout: Bool = true, pointSize: CGFloat = 20) -> NSImage {
-        let img = drawMouse(size: pointSize, razerCutout: razerCutout, silhouette: RazerDevices.silhouette(pid: pid))
+        let img = drawMouse(size: pointSize, razerCutout: razerCutout,
+                            silhouette: RazerDevices.silhouette(pid: pid))
         img.isTemplate = true
         return img
     }
 
-    private static func drawMouse(size s: CGFloat, razerCutout: Bool, silhouette: RazerMouseSilhouette, color: NSColor = .black) -> NSImage {
+    private static func drawMouse(size s: CGFloat, razerCutout: Bool, silhouette: RazerMouseSilhouette,
+                                  color: NSColor = .black, charging: Bool = false) -> NSImage {
         NSImage(size: NSSize(width: s, height: s), flipped: false) { rect in
             guard let ctx = NSGraphicsContext.current?.cgContext else { return false }
             let cx = rect.midX, cy = rect.midY
@@ -62,9 +66,12 @@ enum MenuBarIcon {
                                cornerWidth: wheelW / 2, cornerHeight: wheelW / 2, transform: nil)
             ctx.addPath(wheel)
 
-            // Button-split line below the wheel.
-            ctx.move(to: P(0, 0.13))
-            ctx.addLine(to: P(0, -0.10))
+            // Button-split line below the wheel — replaced by a charging bolt in the same
+            // slot, so the body silhouette stays identical and only the detail changes.
+            if !charging {
+                ctx.move(to: P(0, 0.13))
+                ctx.addLine(to: P(0, -0.10))
+            }
 
             // Thumb buttons on the left edge: two on Cobra/Cobra Pro, one on the smaller Atheris.
             let bw = s * 0.115, bh = s * 0.072
@@ -80,6 +87,27 @@ enum MenuBarIcon {
                 ctx.addPath(CGPath(roundedRect: dpi, cornerWidth: s * 0.025, cornerHeight: s * 0.025, transform: nil))
             }
             ctx.strokePath()
+
+            // Charging bolt, filled rather than stroked: at menu bar size a stroked outline
+            // closes up into a blob, while a solid glyph stays legible. Drawn after
+            // `strokePath` so it isn't caught by the body's stroke.
+            if charging {
+                // Classic 6-point flash, in units of the bolt's own half-width/half-height
+                // so the proportions hold at any icon size.
+                let boltHalfW = 0.16, boltHalfH = 0.145, yOff: CGFloat = 0.015
+                func B(_ x: CGFloat, _ y: CGFloat) -> CGPoint { P(x * boltHalfW, y * boltHalfH + yOff) }
+                let bolt = CGMutablePath()
+                bolt.move(to: B(0.35, 1.00))     // top tip
+                bolt.addLine(to: B(-0.55, 0.05)) // down-left to the waist
+                bolt.addLine(to: B(0.00, 0.05))  // jog back to centre
+                bolt.addLine(to: B(-0.35, -1.00))// bottom tip
+                bolt.addLine(to: B(0.55, -0.05)) // up-right to the waist
+                bolt.addLine(to: B(0.00, -0.05)) // jog back to centre
+                bolt.closeSubpath()
+                ctx.addPath(bolt)
+                ctx.setFillColor(color.cgColor)
+                ctx.fillPath()
+            }
 
             // Triskelion mark near the base.
             if razerCutout {
@@ -131,14 +159,18 @@ enum MenuBarIcon {
     }
 
     /// Render a mark to a PNG file (used by the `icon` CLI command for visual verification).
-    static func writePreview(to path: String, size: CGFloat, silhouette: RazerMouseSilhouette = .cobra, razerCutout: Bool = true) {
-        let image = drawMouse(size: size, razerCutout: razerCutout, silhouette: silhouette, color: NSColor(red: 0x44/255, green: 0xD6/255, blue: 0x2C/255, alpha: 1))
+    @discardableResult
+    static func writePreview(to path: String, size: CGFloat, silhouette: RazerMouseSilhouette = .cobra,
+                             razerCutout: Bool = true, charging: Bool = false) -> Bool {
+        let image = drawMouse(size: size, razerCutout: razerCutout, silhouette: silhouette,
+                              color: NSColor(red: 0x44/255, green: 0xD6/255, blue: 0x2C/255, alpha: 1),
+                              charging: charging)
         let px = Int(size)
         guard let rep = NSBitmapImageRep(
             bitmapDataPlanes: nil, pixelsWide: px, pixelsHigh: px,
             bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
             colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
-        ) else { return }
+        ) else { return false }
 
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
@@ -148,7 +180,13 @@ enum MenuBarIcon {
         image.draw(in: NSRect(x: 0, y: 0, width: CGFloat(px), height: CGFloat(px)))
         NSGraphicsContext.restoreGraphicsState()
 
-        guard let data = rep.representation(using: .png, properties: [:]) else { return }
-        try? data.write(to: URL(fileURLWithPath: path))
+        guard let data = rep.representation(using: .png, properties: [:]) else { return false }
+        do {
+            try data.write(to: URL(fileURLWithPath: path))
+            return true
+        } catch {
+            FileHandle.standardError.write(Data("[MacRazer] icon write failed: \(error)\n".utf8))
+            return false
+        }
     }
 }

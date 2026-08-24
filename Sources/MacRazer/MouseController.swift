@@ -91,6 +91,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     private var curveModelKey: String?
     /// Suppresses connect/disconnect sounds until the first poll establishes a baseline.
     private var hasBaseline = false
+    private let lowBatteryNotifier = LowBatteryNotifier()
     /// io-queue only: the pure decision core of the poll loop — offline debounce, garbage
     /// rejection, charge confirmation. All the subtle logic lives (and is tested) there;
     /// this class just does the I/O and acts on the verdicts.
@@ -100,8 +101,13 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     private let pollWhenConnected: TimeInterval = 15
     private let pollWhenOffline: TimeInterval = 4
 
+    /// Re-read notification authorization (launch, and whenever the app is refocused) so a
+    /// low-battery alert isn't consumed while notifications are switched off.
+    func refreshNotificationAuthorization() { lowBatteryNotifier.refreshAuthorization() }
+
     func start() {
         wireHistory()
+        lowBatteryNotifier.refreshAuthorization()
         refreshAll()
         scheduleNextPoll(after: pollWhenOffline)
     }
@@ -221,6 +227,15 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     private func readBatterySync(immediateOffline: Bool = false) {
         let outcome: BatteryPollStateMachine.ReadOutcome
         var errText: String?
+        /// The charging flag as the device reported it this tick, or nil when the charging
+        /// read itself failed. The verdict's `isCharging` is the two-poll-*confirmed* one,
+        /// which resets on any transient read failure — so a docked mouse looks "not
+        /// charging" on the first good poll after one. That's harmless for the history reset
+        /// the confirmation guards, but it would fire a false "battery low" while the mouse
+        /// sits on the charger, and blink the menu bar bolt off for a whole poll cycle.
+        /// Nil is kept distinct from false: the mouse refuses commands around sleep exactly
+        /// when it's most likely docked, so "read failed" must not read as "on battery".
+        var observedCharging: Bool?
         do {
             let dev = try ensureDevice()
             if !ioHasBattery {
@@ -250,8 +265,11 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 // counts as not-charging. (A garbage-rejected tick still pays for the extra
                 // command — bounded at two ticks per episode, not worth pre-empting the
                 // state machine's decision here.)
-                let charging = raw != 0
-                    && ((try? dev.sendWithRetry(RazerCommands.getChargingStatus()))?.arguments[1] ?? 0) != 0
+                // raw == 0 is the grace tick (device refused the level read): no charging
+                // query is issued, so the state is genuinely unknown rather than false.
+                let chargeReply = raw == 0 ? nil : try? dev.sendWithRetry(RazerCommands.getChargingStatus())
+                observedCharging = raw == 0 ? nil : chargeReply.map { $0.arguments[1] != 0 }
+                let charging = observedCharging ?? false
                 outcome = .battery(raw: raw, charging: charging)
             }
         } catch {
@@ -265,7 +283,12 @@ final class MouseController: ObservableObject, @unchecked Sendable {
 
         switch pollState.handle(outcome, immediateOffline: immediateOffline) {
         case .aliveNoBattery:
-            publishConnected { self.update(\.batteryPercent, nil) }
+            // A battery-less (wired) mouse can't be charging — without this the menu bar
+            // bolt survives a swap from a charging wireless mouse and never clears.
+            publishConnected {
+                self.update(\.batteryPercent, nil)
+                self.update(\.charging, false)
+            }
 
         case .notReady:
             // Keep the last known value on screen; the fast poll cadence retries shortly.
@@ -275,12 +298,20 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             if recordSample { history.record(percent: pct, charging: isCharging) }
             let estimate = isCharging ? "Charging" : history.estimateString(currentPercent: pct, curveModel: curveModel)
             let snap = historySnapshot()
+            let chargingNow = observedCharging // immutable capture for the @Sendable publish block
             publishConnected {
                 // A real reading proves the mouse is responding again — a stale "couldn't
                 // apply" banner would now be lying (polls clear it within ~15s of a wake).
                 self.update(\.profileApplyFailed, false)
                 self.update(\.batteryPercent, pct)
-                self.update(\.charging, isCharging)
+                // Published for display (menu bar bolt, popover badge) off the *observed*
+                // flag, not the debounced one: the debounce exists to guard the destructive
+                // history reset below, and applying it here blinks the bolt off for a full
+                // poll cycle after any transient failure. An unknown read holds the last
+                // known state rather than claiming discharge.
+                if let chargingNow { self.update(\.charging, chargingNow) }
+                self.lowBatteryNotifier.notify(deviceKey: self.deviceKey, deviceName: self.deviceName,
+                                               percent: pct, charging: chargingNow)
                 self.update(\.timeEstimate, estimate)
                 self.update(\.batterySamples, snap.samples)
                 self.update(\.previousCycleSamples, snap.previous)
@@ -304,6 +335,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             publish {
                 let wasConnected = self.connected
                 self.update(\.connected, false)
+                // An unreachable mouse isn't charging as far as we know — leaving this set
+                // strands the menu bar bolt on (dimmed) indefinitely after a disconnect.
+                self.update(\.charging, false)
                 self.update(\.lastError, err)
                 self.update(\.bluetoothMouseName, btName)
                 if gone {
@@ -715,7 +749,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             // session, same connection); without this, everything recorded so far would be
             // orphaned forever. Cross-session PID orphans are deliberately NOT migrated:
             // with two same-model units, they could belong to the other mouse.
-            if let old = historyKey, serial != nil, old == String(format: "%04x", pid) {
+            let isSameUnitKeyUpgrade = historyKey != nil && serial != nil
+                && historyKey == String(format: "%04x", pid)
+            if let old = historyKey, isSameUnitKeyUpgrade {
                 // Flush the live history's throttled tail first — the migration moves the
                 // file, and anything not yet written would silently vanish with it.
                 history.saveNow()
@@ -751,6 +787,13 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 self.profiles = loadedProfiles
                 self.activeProfileID = loadedActiveID
                 self.profilesLoadedForKey = key
+                // A genuinely different physical mouse — re-arm so it gets its own alert
+                // instead of inheriting the previous one's "already notified" state. Skipped
+                // for the same-unit PID→serial rename above, which would otherwise let one
+                // mouse alert twice in a single discharge. Done here on the main queue (not
+                // from the io-queue caller) because that's where `notify()` runs — the two
+                // must not race on the policy.
+                if !isSameUnitKeyUpgrade { self.lowBatteryNotifier.deviceChanged() }
             }
         }
         let name = d.productName

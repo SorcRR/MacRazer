@@ -4,11 +4,12 @@
 import AppKit
 import SwiftUI
 import Combine
+import UserNotifications
 
 /// Menu bar (accessory) app: an NSStatusItem showing battery %, click opens an NSPopover
 /// hosting the SwiftUI controls. Mirrors the pattern macOS's own Bluetooth/Battery menus use.
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNUserNotificationCenterDelegate {
     private var statusItem: NSStatusItem!
     private let popover = NSPopover()
     private let controller = MouseController()
@@ -29,6 +30,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // user without it is always walked through it rather than left with a silently-dead app.
         // Button remapping additionally needs Accessibility (optional; surfaced in the same window).
         permissions.recheck()
+        LowBatteryNotifier.configureNotifications(delegate: self)
         // A manual button-remap edit (outside applying a profile) means the live config no
         // longer matches whichever profile was last applied — let MouseController know so it
         // can drop the stale "active" highlight.
@@ -38,8 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        let icon = MenuBarIcon.mouse(pointSize: 21, razerCutout: false)
-        statusItem.button?.image = icon
+        statusItem.button?.image = Self.menuBarIcon(charging: false)
         statusItem.button?.imagePosition = .imageLeading
         statusItem.button?.imageHugsTitle = true
         statusItem.button?.title = " …"
@@ -74,6 +75,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             .removeDuplicates()
             .receive(on: RunLoop.main)
             .sink { [weak self] text in self?.statusItem.button?.title = text }
+            .store(in: &cancellables)
+
+        // Swap the mark for its bolt variant while the mouse is on the charger — the same
+        // at-a-glance cue macOS gives for its own battery, without needing the popover.
+        // Only the two states exist, so the images are cached rather than redrawn per event.
+        controller.$charging
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] charging in
+                self?.statusItem.button?.image = Self.menuBarIcon(charging: charging)
+            }
             .store(in: &cancellables)
 
         // When disconnected, keep the icon's normal adaptive (template) colour but dim it via
@@ -258,12 +270,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     /// a grant in System Settings and switched back, so the setup window reflects it live.
     func applicationDidBecomeActive(_ notification: Notification) {
         permissions.recheck()
+        // Same reason as the permission recheck: the user may have just flipped the
+        // Notifications switch in System Settings and come back.
+        controller.refreshNotificationAuthorization()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         monitor?.invalidate()
         updateTimer?.invalidate()
         controller.flushHistoryToDisk()
+    }
+
+    // MARK: - Menu bar mark
+
+    /// The status-item mark, in its idle and charging variants. Drawing is cheap but this
+    /// runs on every charge-state change for the app's lifetime, so both are built once.
+    private static let idleIcon = MenuBarIcon.mouse(pointSize: 21, razerCutout: false)
+    private static let chargingIcon = MenuBarIcon.mouse(pointSize: 21, razerCutout: false, charging: true)
+    private static func menuBarIcon(charging: Bool) -> NSImage { charging ? chargingIcon : idleIcon }
+
+    // MARK: - Notifications
+
+    /// Present the low-battery banner even while MacRazer is frontmost (the default is to
+    /// suppress it, which would silently swallow the alert).
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        completionHandler([.banner, .sound])
     }
 
     // MARK: - Input Monitoring permission

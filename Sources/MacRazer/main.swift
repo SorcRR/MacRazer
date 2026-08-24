@@ -26,6 +26,23 @@ if args.isEmpty {
 
 let command = args.first!
 
+/// Turn a permission-denied failure into the fix, instead of leaving a bare hex code on
+/// screen. The GUI already does this (PopoverView / PermissionsModel); every CLI catch
+/// routes through here so it does too. Returns whether the error was a permission problem,
+/// so callers can suppress advice that would then be misleading.
+@discardableResult
+func printPermissionHintIfDenied(_ error: Error) -> Bool {
+    guard HIDDevice.errorLooksPermissionDenied(String(describing: error)) else { return false }
+    print("  → macOS is refusing HID access (Input Monitoring).")
+    print("    Running via `swift run MacRazer …`? The grant belongs to the terminal that")
+    print("    launched it, not to the SwiftPM binary — grant Terminal (or iTerm/your IDE) in")
+    print("    System Settings › Privacy & Security › Input Monitoring, then start a new")
+    print("    terminal session and retry.")
+    print("    Running MacRazer.app? Grant MacRazer itself there, then relaunch it — macOS")
+    print("    only applies the grant to a freshly-launched app.")
+    return true
+}
+
 func openDevice() -> HIDDevice? {
     do {
         let dev = try HIDDevice.open(vendorId: Razer.vendorId)
@@ -33,6 +50,7 @@ func openDevice() -> HIDDevice? {
         return dev
     } catch {
         print("✗ \(error)")
+        printPermissionHintIfDenied(error)
         return nil
     }
 }
@@ -102,8 +120,22 @@ case "render-permissions":
 
 case "icon":
     // Render the menu bar mark to a PNG for visual inspection.
-    let path = args.dropFirst().first ?? "icon-preview.png"
-    MenuBarIcon.writePreview(to: path, size: 256)
+    // Flags and the optional size are bare words, so they must be excluded from the
+    // positional path — otherwise `icon charging` writes a file literally named "charging".
+    let iconFlags: Set<String> = ["charging", "nologo"]
+    let iconArgs = args.dropFirst()
+    let path = iconArgs.first { !iconFlags.contains($0) && Int($0) == nil } ?? "icon-preview.png"
+    // Optional size, so the mark can be checked at real menu bar scale (~21pt @2x) rather
+    // than judged from a downsampled 256px render. Bounded: an unbounded value makes the
+    // bitmap allocation fail and the write silently do nothing.
+    let size = iconArgs.compactMap { Int($0) }.first { $0 > 0 }.map { CGFloat(min($0, 2048)) } ?? 256
+    // `nologo` matches the menu bar's own call (razerCutout: false) so what's previewed is
+    // what ships there.
+    guard MenuBarIcon.writePreview(to: path, size: size, razerCutout: !iconArgs.contains("nologo"),
+                                   charging: iconArgs.contains("charging")) else {
+        print("Render failed")
+        exit(1)
+    }
     print("Wrote \(path)")
 
 case "icon-models":
@@ -163,8 +195,12 @@ case "battery":
         print("Full response args[0..8]: \(resp.arguments[0..<9].map { String(format: "%02x", $0) }.joined(separator: " "))")
     } catch {
         print("Battery read failed: \(error)")
-        print("(This is the documented wireless-dongle timeout. Try: re-seat the dongle, ")
-        print(" move the mouse to wake it, or test over wired USB-C to compare.)")
+        // Only blame the dongle when it isn't a permission problem — sending someone to
+        // re-seat hardware over a TCC denial wastes their time.
+        if !printPermissionHintIfDenied(error) {
+            print("(This is the documented wireless-dongle timeout. Try: re-seat the dongle, ")
+            print(" move the mouse to wake it, or test over wired USB-C to compare.)")
+        }
         exit(2)
     }
 
@@ -194,6 +230,7 @@ case "dpi":
         }
     } catch {
         print("DPI command failed: \(error)")
+        printPermissionHintIfDenied(error)
         exit(2)
     }
 
@@ -225,6 +262,7 @@ case "stages":
         }
     } catch {
         print("Stages command failed: \(error)")
+        printPermissionHintIfDenied(error)
         exit(2)
     }
 
@@ -250,6 +288,7 @@ case "poll":
         }
     } catch {
         print("Poll-rate command failed: \(error)")
+        printPermissionHintIfDenied(error)
         exit(2)
     }
 
@@ -282,7 +321,9 @@ case "brightness":
             print("  read-back: \(dump(back)) → \(RazerCommands.brightnessPercent(fromRaw: back.arguments[2]))%")
         }
     } catch {
-        print("Brightness probe failed: \(error)"); exit(2)
+        print("Brightness probe failed: \(error)")
+        printPermissionHintIfDenied(error)
+        exit(2)
     }
 
 case "rgb":
@@ -319,6 +360,7 @@ case "rgb":
         print("  status = 0x\(String(resp.status, radix: 16)) \(ok ? "✓" : "⚠︎")")
     } catch {
         print("RGB command failed: \(error)")
+        printPermissionHintIfDenied(error)
         exit(2)
     }
 
