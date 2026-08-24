@@ -141,7 +141,7 @@ struct UsageGraphView: View {
     private static let previousColor = Color.gray.opacity(0.55)
     private static func levelBand(_ pct: Int) -> String {
         switch pct {
-        case ..<15: return lowBand
+        case ..<Battery.lowThresholdPercent: return lowBand
         case ..<40: return midBand
         default: return fullBand
         }

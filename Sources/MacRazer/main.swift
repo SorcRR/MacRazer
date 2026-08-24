@@ -26,6 +26,23 @@ if args.isEmpty {
 
 let command = args.first!
 
+/// Turn a permission-denied failure into the fix, instead of leaving a bare hex code on
+/// screen. The GUI already does this (PopoverView / PermissionsModel); every CLI catch
+/// routes through here so it does too. Returns whether the error was a permission problem,
+/// so callers can suppress advice that would then be misleading.
+@discardableResult
+func printPermissionHintIfDenied(_ error: Error) -> Bool {
+    guard HIDDevice.errorLooksPermissionDenied(String(describing: error)) else { return false }
+    print("  → macOS is refusing HID access (Input Monitoring).")
+    print("    Running via `swift run MacRazer …`? The grant belongs to the terminal that")
+    print("    launched it, not to the SwiftPM binary — grant Terminal (or iTerm/your IDE) in")
+    print("    System Settings › Privacy & Security › Input Monitoring, then start a new")
+    print("    terminal session and retry.")
+    print("    Running MacRazer.app? Grant MacRazer itself there, then relaunch it — macOS")
+    print("    only applies the grant to a freshly-launched app.")
+    return true
+}
+
 func openDevice() -> HIDDevice? {
     do {
         let dev = try HIDDevice.open(vendorId: Razer.vendorId)
@@ -33,15 +50,7 @@ func openDevice() -> HIDDevice? {
         return dev
     } catch {
         print("✗ \(error)")
-        // The GUI already turns this same failure into "Grant Input Monitoring…" guidance
-        // (PopoverView/PermissionsModel) — the CLI path was left printing a bare hex code.
-        if HIDDevice.errorLooksPermissionDenied(String(describing: error)) {
-            print("  → Grant Input Monitoring for this binary: System Settings › Privacy & Security ›")
-            print("    Input Monitoring, then run this command again. Note: an ad-hoc `swift build`")
-            print("    gets a new code signature on every rebuild, which resets the grant — run")
-            print("    ./Scripts/setup-signing.sh once for a stable identity, or keep re-running")
-            print("    `swift run`/this binary without rebuilding in between.")
-        }
+        printPermissionHintIfDenied(error)
         return nil
     }
 }
@@ -172,8 +181,12 @@ case "battery":
         print("Full response args[0..8]: \(resp.arguments[0..<9].map { String(format: "%02x", $0) }.joined(separator: " "))")
     } catch {
         print("Battery read failed: \(error)")
-        print("(This is the documented wireless-dongle timeout. Try: re-seat the dongle, ")
-        print(" move the mouse to wake it, or test over wired USB-C to compare.)")
+        // Only blame the dongle when it isn't a permission problem — sending someone to
+        // re-seat hardware over a TCC denial wastes their time.
+        if !printPermissionHintIfDenied(error) {
+            print("(This is the documented wireless-dongle timeout. Try: re-seat the dongle, ")
+            print(" move the mouse to wake it, or test over wired USB-C to compare.)")
+        }
         exit(2)
     }
 
@@ -203,6 +216,7 @@ case "dpi":
         }
     } catch {
         print("DPI command failed: \(error)")
+        printPermissionHintIfDenied(error)
         exit(2)
     }
 
@@ -234,6 +248,7 @@ case "stages":
         }
     } catch {
         print("Stages command failed: \(error)")
+        printPermissionHintIfDenied(error)
         exit(2)
     }
 
@@ -259,6 +274,7 @@ case "poll":
         }
     } catch {
         print("Poll-rate command failed: \(error)")
+        printPermissionHintIfDenied(error)
         exit(2)
     }
 
@@ -291,7 +307,9 @@ case "brightness":
             print("  read-back: \(dump(back)) → \(RazerCommands.brightnessPercent(fromRaw: back.arguments[2]))%")
         }
     } catch {
-        print("Brightness probe failed: \(error)"); exit(2)
+        print("Brightness probe failed: \(error)")
+        printPermissionHintIfDenied(error)
+        exit(2)
     }
 
 case "rgb":
@@ -328,6 +346,7 @@ case "rgb":
         print("  status = 0x\(String(resp.status, radix: 16)) \(ok ? "✓" : "⚠︎")")
     } catch {
         print("RGB command failed: \(error)")
+        printPermissionHintIfDenied(error)
         exit(2)
     }
 

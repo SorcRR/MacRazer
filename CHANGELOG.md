@@ -9,8 +9,9 @@ expect rough edges until 1.0.
 ### Added
 - **A system notification fires once the mouse's battery drops below 15%** (the same
  threshold the battery card already colors red), so you don't have to open the popover to
- notice. It's re-armed by charging or the reading climbing back to 15%+, so it won't repeat
- every poll while the mouse sits low.
+ notice. One alert per discharge: it re-arms when the mouse is charging or the charge
+ climbs back to 20%+, so neither the 15s poll cadence nor a one-off garbage reading can
+ repeat it. Swapping to a second mouse re-arms it for that unit.
 - **The usage chart now shows ~2 charges: the previous charge stays visible (dimmed) behind
  the current one.** Recharging no longer blanks the chart back to "Gathering data…" — the
  finished cycle's raw curve is kept (and persisted per device) and drawn as a dimmed gray
@@ -20,10 +21,17 @@ expect rough edges until 1.0.
  same thresholds as the "Past charges" log) don't replace the kept curve.
 
 ### Fixed
-- **The CLI diagnostics (`battery`, `dpi`, `poll`, `rgb`, `brightness`) now explain a missing
- Input Monitoring grant instead of printing a bare `IOHIDDeviceOpen failed: 0xe00002e2`.**
- The GUI already had this guidance (`PopoverView`/`PermissionsModel`); the CLI's
- `openDevice()` never checked for it (issue #3).
+- **The CLI diagnostics (`battery`, `dpi`, `poll`, `stages`, `rgb`, `brightness`) now explain
+ a missing Input Monitoring grant instead of printing a bare `IOHIDDeviceOpen failed:
+ 0xe00002e2`.** The GUI already had this guidance (`PopoverView`/`PermissionsModel`); no CLI
+ path checked for it. The hint distinguishes the two cases that actually differ: under
+ `swift run` the grant belongs to the *terminal*, not the SwiftPM binary. The `battery`
+ command also no longer blames the wireless dongle for what is a permissions failure.
+- **`VersionCompare` no longer reports a downgrade as an update.** Unparseable version
+ components were dropped rather than read as 0, which shifted the remaining ones left — so
+ `"v0.1.0"` parsed as `[1, 0]` and compared newer than `"0.2.0"`. `UpdateChecker` strips a
+ bare leading `v`, so this needed a differently-shaped tag to bite, but the comparison was
+ wrong regardless.
 - **A Mac sleep no longer resets the battery-usage chart.** After hours of rest a Li-ion
  cell legitimately reads a few percent *higher* on wake (voltage recovery, no charger
  involved), and any uptick of 2+ points was treated as "the mouse got recharged" — wiping

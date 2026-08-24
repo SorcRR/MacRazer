@@ -4,11 +4,12 @@
 import AppKit
 import SwiftUI
 import Combine
+import UserNotifications
 
 /// Menu bar (accessory) app: an NSStatusItem showing battery %, click opens an NSPopover
 /// hosting the SwiftUI controls. Mirrors the pattern macOS's own Bluetooth/Battery menus use.
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNUserNotificationCenterDelegate {
     private var statusItem: NSStatusItem!
     private let popover = NSPopover()
     private let controller = MouseController()
@@ -29,6 +30,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // user without it is always walked through it rather than left with a silently-dead app.
         // Button remapping additionally needs Accessibility (optional; surfaced in the same window).
         permissions.recheck()
+        // Without a delegate, macOS suppresses our banner whenever MacRazer is the active
+        // app — and clicking the status item activates it, so a low reading while the
+        // popover is open would consume the one alert and show nothing.
+        UNUserNotificationCenter.current().delegate = self
         LowBatteryNotifier.requestAuthorizationIfNeeded()
         // A manual button-remap edit (outside applying a profile) means the live config no
         // longer matches whichever profile was last applied — let MouseController know so it
@@ -265,6 +270,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         monitor?.invalidate()
         updateTimer?.invalidate()
         controller.flushHistoryToDisk()
+    }
+
+    // MARK: - Notifications
+
+    /// Present the low-battery banner even while MacRazer is frontmost (the default is to
+    /// suppress it, which would silently swallow the alert).
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        completionHandler([.banner, .sound])
     }
 
     // MARK: - Input Monitoring permission

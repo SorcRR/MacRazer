@@ -222,6 +222,12 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     private func readBatterySync(immediateOffline: Bool = false) {
         let outcome: BatteryPollStateMachine.ReadOutcome
         var errText: String?
+        /// The charging flag exactly as the device reported it this tick. The verdict's
+        /// `isCharging` is the two-poll-*confirmed* one, which resets on any transient read
+        /// failure — so a docked mouse looks "not charging" on the first good poll after
+        /// one. That's harmless for the history reset the confirmation guards, but it would
+        /// fire a false "battery low, charge it soon" while the mouse sits on the charger.
+        var observedCharging = false
         do {
             let dev = try ensureDevice()
             if !ioHasBattery {
@@ -253,6 +259,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 // state machine's decision here.)
                 let charging = raw != 0
                     && ((try? dev.sendWithRetry(RazerCommands.getChargingStatus()))?.arguments[1] ?? 0) != 0
+                observedCharging = charging
                 outcome = .battery(raw: raw, charging: charging)
             }
         } catch {
@@ -276,13 +283,15 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             if recordSample { history.record(percent: pct, charging: isCharging) }
             let estimate = isCharging ? "Charging" : history.estimateString(currentPercent: pct, curveModel: curveModel)
             let snap = historySnapshot()
+            let chargingNow = observedCharging // immutable capture for the @Sendable publish block
             publishConnected {
                 // A real reading proves the mouse is responding again — a stale "couldn't
                 // apply" banner would now be lying (polls clear it within ~15s of a wake).
                 self.update(\.profileApplyFailed, false)
                 self.update(\.batteryPercent, pct)
                 self.update(\.charging, isCharging)
-                self.lowBatteryNotifier.notify(deviceName: self.deviceName, percent: pct, charging: isCharging)
+                self.lowBatteryNotifier.notify(deviceKey: self.deviceKey, deviceName: self.deviceName,
+                                               percent: pct, charging: chargingNow)
                 self.update(\.timeEstimate, estimate)
                 self.update(\.batterySamples, snap.samples)
                 self.update(\.previousCycleSamples, snap.previous)
@@ -717,7 +726,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             // session, same connection); without this, everything recorded so far would be
             // orphaned forever. Cross-session PID orphans are deliberately NOT migrated:
             // with two same-model units, they could belong to the other mouse.
-            if let old = historyKey, serial != nil, old == String(format: "%04x", pid) {
+            let isSameUnitKeyUpgrade = historyKey != nil && serial != nil
+                && historyKey == String(format: "%04x", pid)
+            if let old = historyKey, isSameUnitKeyUpgrade {
                 // Flush the live history's throttled tail first — the migration moves the
                 // file, and anything not yet written would silently vanish with it.
                 history.saveNow()
@@ -753,11 +764,13 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 self.profiles = loadedProfiles
                 self.activeProfileID = loadedActiveID
                 self.profilesLoadedForKey = key
-                // A new physical mouse — `notify()` only ever runs here on the main queue,
-                // so re-arm here too rather than from the io-queue caller above, or the two
-                // would race on `armed`. Otherwise this unit would silently inherit the
-                // previous mouse's "already notified" state and never alert on its own.
-                self.lowBatteryNotifier.deviceChanged()
+                // A genuinely different physical mouse — re-arm so it gets its own alert
+                // instead of inheriting the previous one's "already notified" state. Skipped
+                // for the same-unit PID→serial rename above, which would otherwise let one
+                // mouse alert twice in a single discharge. Done here on the main queue (not
+                // from the io-queue caller) because that's where `notify()` runs — the two
+                // must not race on the policy.
+                if !isSameUnitKeyUpgrade { self.lowBatteryNotifier.deviceChanged() }
             }
         }
         let name = d.productName
