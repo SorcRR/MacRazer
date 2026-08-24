@@ -94,8 +94,8 @@ enum MenuBarIcon {
             if charging {
                 // Classic 6-point flash, in units of the bolt's own half-width/half-height
                 // so the proportions hold at any icon size.
-                let bw = 0.16, bh = 0.145, yOff: CGFloat = 0.015
-                func B(_ x: CGFloat, _ y: CGFloat) -> CGPoint { P(x * bw, y * bh + yOff) }
+                let boltHalfW = 0.16, boltHalfH = 0.145, yOff: CGFloat = 0.015
+                func B(_ x: CGFloat, _ y: CGFloat) -> CGPoint { P(x * boltHalfW, y * boltHalfH + yOff) }
                 let bolt = CGMutablePath()
                 bolt.move(to: B(0.35, 1.00))     // top tip
                 bolt.addLine(to: B(-0.55, 0.05)) // down-left to the waist
@@ -159,8 +159,9 @@ enum MenuBarIcon {
     }
 
     /// Render a mark to a PNG file (used by the `icon` CLI command for visual verification).
+    @discardableResult
     static func writePreview(to path: String, size: CGFloat, silhouette: RazerMouseSilhouette = .cobra,
-                             razerCutout: Bool = true, charging: Bool = false) {
+                             razerCutout: Bool = true, charging: Bool = false) -> Bool {
         let image = drawMouse(size: size, razerCutout: razerCutout, silhouette: silhouette,
                               color: NSColor(red: 0x44/255, green: 0xD6/255, blue: 0x2C/255, alpha: 1),
                               charging: charging)
@@ -169,7 +170,7 @@ enum MenuBarIcon {
             bitmapDataPlanes: nil, pixelsWide: px, pixelsHigh: px,
             bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
             colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
-        ) else { return }
+        ) else { return false }
 
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
@@ -179,7 +180,13 @@ enum MenuBarIcon {
         image.draw(in: NSRect(x: 0, y: 0, width: CGFloat(px), height: CGFloat(px)))
         NSGraphicsContext.restoreGraphicsState()
 
-        guard let data = rep.representation(using: .png, properties: [:]) else { return }
-        try? data.write(to: URL(fileURLWithPath: path))
+        guard let data = rep.representation(using: .png, properties: [:]) else { return false }
+        do {
+            try data.write(to: URL(fileURLWithPath: path))
+            return true
+        } catch {
+            FileHandle.standardError.write(Data("[MacRazer] icon write failed: \(error)\n".utf8))
+            return false
+        }
     }
 }

@@ -120,14 +120,22 @@ case "render-permissions":
 
 case "icon":
     // Render the menu bar mark to a PNG for visual inspection.
-    let path = args.dropFirst().first ?? "icon-preview.png"
-    // Optional trailing size, so the mark can be checked at real menu bar scale (~21pt @2x)
-    // rather than judged from a downsampled 256px render.
-    let size = args.dropFirst().compactMap { CGFloat(Int($0) ?? 0) }.first { $0 > 0 } ?? 256
+    // Flags and the optional size are bare words, so they must be excluded from the
+    // positional path — otherwise `icon charging` writes a file literally named "charging".
+    let iconFlags: Set<String> = ["charging", "nologo"]
+    let iconArgs = args.dropFirst()
+    let path = iconArgs.first { !iconFlags.contains($0) && Int($0) == nil } ?? "icon-preview.png"
+    // Optional size, so the mark can be checked at real menu bar scale (~21pt @2x) rather
+    // than judged from a downsampled 256px render. Bounded: an unbounded value makes the
+    // bitmap allocation fail and the write silently do nothing.
+    let size = iconArgs.compactMap { Int($0) }.first { $0 > 0 }.map { CGFloat(min($0, 2048)) } ?? 256
     // `nologo` matches the menu bar's own call (razerCutout: false) so what's previewed is
     // what ships there.
-    MenuBarIcon.writePreview(to: path, size: size, razerCutout: !args.contains("nologo"),
-                             charging: args.contains("charging"))
+    guard MenuBarIcon.writePreview(to: path, size: size, razerCutout: !iconArgs.contains("nologo"),
+                                   charging: iconArgs.contains("charging")) else {
+        print("Render failed")
+        exit(1)
+    }
     print("Wrote \(path)")
 
 case "icon-models":

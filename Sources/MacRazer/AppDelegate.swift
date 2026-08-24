@@ -30,11 +30,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         // user without it is always walked through it rather than left with a silently-dead app.
         // Button remapping additionally needs Accessibility (optional; surfaced in the same window).
         permissions.recheck()
-        // Without a delegate, macOS suppresses our banner whenever MacRazer is the active
-        // app — and clicking the status item activates it, so a low reading while the
-        // popover is open would consume the one alert and show nothing.
-        UNUserNotificationCenter.current().delegate = self
-        LowBatteryNotifier.requestAuthorizationIfNeeded()
+        LowBatteryNotifier.configureNotifications(delegate: self)
         // A manual button-remap edit (outside applying a profile) means the live config no
         // longer matches whichever profile was last applied — let MouseController know so it
         // can drop the stale "active" highlight.

@@ -142,7 +142,7 @@ struct UsageGraphView: View {
     private static func levelBand(_ pct: Int) -> String {
         switch pct {
         case ..<Battery.lowThresholdPercent: return lowBand
-        case ..<40: return midBand
+        case ..<Battery.midThresholdPercent: return midBand
         default: return fullBand
         }
     }

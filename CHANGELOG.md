@@ -15,7 +15,9 @@ expect rough edges until 1.0.
  threshold the battery card already colors red), so you don't have to open the popover to
  notice. One alert per discharge: it re-arms when the mouse is charging or the charge
  climbs back to 20%+, so neither the 15s poll cadence nor a one-off garbage reading can
- repeat it. Swapping to a second mouse re-arms it for that unit.
+ repeat it. Swapping to a second mouse re-arms it for that unit, and charging back up
+ withdraws the banner instead of leaving it in Notification Center. The armed state lives
+ in memory, so a relaunch while the mouse is still low can alert once more.
 - **The usage chart now shows ~2 charges: the previous charge stays visible (dimmed) behind
  the current one.** Recharging no longer blanks the chart back to "Gathering data…" — the
  finished cycle's raw curve is kept (and persisted per device) and drawn as a dimmed gray

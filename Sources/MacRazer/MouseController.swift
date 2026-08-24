@@ -222,12 +222,15 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     private func readBatterySync(immediateOffline: Bool = false) {
         let outcome: BatteryPollStateMachine.ReadOutcome
         var errText: String?
-        /// The charging flag exactly as the device reported it this tick. The verdict's
-        /// `isCharging` is the two-poll-*confirmed* one, which resets on any transient read
-        /// failure — so a docked mouse looks "not charging" on the first good poll after
-        /// one. That's harmless for the history reset the confirmation guards, but it would
-        /// fire a false "battery low, charge it soon" while the mouse sits on the charger.
-        var observedCharging = false
+        /// The charging flag as the device reported it this tick, or nil when the charging
+        /// read itself failed. The verdict's `isCharging` is the two-poll-*confirmed* one,
+        /// which resets on any transient read failure — so a docked mouse looks "not
+        /// charging" on the first good poll after one. That's harmless for the history reset
+        /// the confirmation guards, but it would fire a false "battery low" while the mouse
+        /// sits on the charger, and blink the menu bar bolt off for a whole poll cycle.
+        /// Nil is kept distinct from false: the mouse refuses commands around sleep exactly
+        /// when it's most likely docked, so "read failed" must not read as "on battery".
+        var observedCharging: Bool?
         do {
             let dev = try ensureDevice()
             if !ioHasBattery {
@@ -257,9 +260,11 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 // counts as not-charging. (A garbage-rejected tick still pays for the extra
                 // command — bounded at two ticks per episode, not worth pre-empting the
                 // state machine's decision here.)
-                let charging = raw != 0
-                    && ((try? dev.sendWithRetry(RazerCommands.getChargingStatus()))?.arguments[1] ?? 0) != 0
-                observedCharging = charging
+                // raw == 0 is the grace tick (device refused the level read): no charging
+                // query is issued, so the state is genuinely unknown rather than false.
+                let chargeReply = raw == 0 ? nil : try? dev.sendWithRetry(RazerCommands.getChargingStatus())
+                observedCharging = raw == 0 ? nil : chargeReply.map { $0.arguments[1] != 0 }
+                let charging = observedCharging ?? false
                 outcome = .battery(raw: raw, charging: charging)
             }
         } catch {
@@ -273,7 +278,12 @@ final class MouseController: ObservableObject, @unchecked Sendable {
 
         switch pollState.handle(outcome, immediateOffline: immediateOffline) {
         case .aliveNoBattery:
-            publishConnected { self.update(\.batteryPercent, nil) }
+            // A battery-less (wired) mouse can't be charging — without this the menu bar
+            // bolt survives a swap from a charging wireless mouse and never clears.
+            publishConnected {
+                self.update(\.batteryPercent, nil)
+                self.update(\.charging, false)
+            }
 
         case .notReady:
             // Keep the last known value on screen; the fast poll cadence retries shortly.
@@ -289,7 +299,12 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 // apply" banner would now be lying (polls clear it within ~15s of a wake).
                 self.update(\.profileApplyFailed, false)
                 self.update(\.batteryPercent, pct)
-                self.update(\.charging, isCharging)
+                // Published for display (menu bar bolt, popover badge) off the *observed*
+                // flag, not the debounced one: the debounce exists to guard the destructive
+                // history reset below, and applying it here blinks the bolt off for a full
+                // poll cycle after any transient failure. An unknown read holds the last
+                // known state rather than claiming discharge.
+                if let chargingNow { self.update(\.charging, chargingNow) }
                 self.lowBatteryNotifier.notify(deviceKey: self.deviceKey, deviceName: self.deviceName,
                                                percent: pct, charging: chargingNow)
                 self.update(\.timeEstimate, estimate)
@@ -315,6 +330,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             publish {
                 let wasConnected = self.connected
                 self.update(\.connected, false)
+                // An unreachable mouse isn't charging as far as we know — leaving this set
+                // strands the menu bar bolt on (dimmed) indefinitely after a disconnect.
+                self.update(\.charging, false)
                 self.update(\.lastError, err)
                 self.update(\.bluetoothMouseName, btName)
                 if gone {

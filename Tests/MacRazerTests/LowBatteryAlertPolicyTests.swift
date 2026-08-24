@@ -81,8 +81,24 @@ final class LowBatteryAlertPolicyTests: XCTestCase {
         }
         XCTAssertFalse(isCharging, "the confirmation resets after a failure — this is the trap")
 
+        // The assertion that actually pins the wiring: feeding the DEBOUNCED flag fires a
+        // false alert for a mouse that is plainly on the charger...
+        var wrong = LowBatteryAlertPolicy()
+        XCTAssertTrue(wrong.shouldAlert(percent: pct, charging: isCharging),
+                      "regression guard: the debounced flag is what would misfire")
+        // ...while the observed flag — what MouseController actually passes — suppresses it.
+        var right = LowBatteryAlertPolicy()
+        XCTAssertFalse(right.shouldAlert(percent: pct, charging: true))
+    }
+
+    func testUnknownChargingNeitherAlertsNorRearms() {
         var p = LowBatteryAlertPolicy()
-        XCTAssertFalse(p.shouldAlert(percent: pct, charging: true),
-                       "the observed flag must suppress the alert even when the debounced one says false")
+        // The charging read failed: "don't know" must not be taken as "on battery".
+        XCTAssertFalse(p.shouldAlert(percent: 10, charging: nil))
+        // Still armed — a later confirmed-discharging read alerts normally.
+        XCTAssertTrue(p.shouldAlert(percent: 10, charging: false))
+        // And an unknown read afterwards doesn't re-arm it either.
+        XCTAssertFalse(p.shouldAlert(percent: 10, charging: nil))
+        XCTAssertFalse(p.shouldAlert(percent: 10, charging: false))
     }
 }

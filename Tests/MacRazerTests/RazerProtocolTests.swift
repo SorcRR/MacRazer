@@ -169,15 +169,18 @@ final class VersionCompareTests: XCTestCase {
         XCTAssertFalse(VersionCompare.isNewer("0.1", than: "0.1.0")) // trailing zero equal
     }
 
-    func testUnparseableComponentsReadAsZeroInPlace() {
-        // Regression: compactMap dropped a bad component and shifted the rest left, so
+    func testComponentsWithPrefixJunkStillCompareByTheirNumber() {
+        // Regression 1: compactMap dropped a bad component and shifted the rest left, so
         // "v0.1.0" parsed as [1, 0] and compared 1 > 0 — calling a downgrade an update.
-        // UpdateChecker strips a bare leading "v", but any other tag shape reaches here.
         XCTAssertFalse(VersionCompare.isNewer("v0.1.0", than: "0.2.0"))
         XCTAssertFalse(VersionCompare.isNewer("release-0.1.0", than: "0.2.0"))
-        // The component reads as 0 where it stands, so a pre-release sorts as its base.
+        // Regression 2: reading a junk component as a flat 0 fixed the shift but then
+        // buried real updates whose leading component wasn't bare digits.
+        XCTAssertTrue(VersionCompare.isNewer("V1.2.3", than: "1.0.0"))
+        XCTAssertTrue(VersionCompare.isNewer("MacRazer-1.2.3", than: "1.0.0"))
+        XCTAssertFalse(VersionCompare.isNewer("V1.0.0", than: "1.0.0"))
+        // A pre-release suffix sorts as its base version.
         XCTAssertFalse(VersionCompare.isNewer("0.2.0-beta", than: "0.2.0"))
-        // Earlier numeric components still decide the comparison.
         XCTAssertTrue(VersionCompare.isNewer("0.3.0-beta", than: "0.2.9"))
     }
 }
