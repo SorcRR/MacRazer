@@ -33,6 +33,15 @@ func openDevice() -> HIDDevice? {
         return dev
     } catch {
         print("✗ \(error)")
+        // The GUI already turns this same failure into "Grant Input Monitoring…" guidance
+        // (PopoverView/PermissionsModel) — the CLI path was left printing a bare hex code.
+        if HIDDevice.errorLooksPermissionDenied(String(describing: error)) {
+            print("  → Grant Input Monitoring for this binary: System Settings › Privacy & Security ›")
+            print("    Input Monitoring, then run this command again. Note: an ad-hoc `swift build`")
+            print("    gets a new code signature on every rebuild, which resets the grant — run")
+            print("    ./Scripts/setup-signing.sh once for a stable identity, or keep re-running")
+            print("    `swift run`/this binary without rebuilding in between.")
+        }
         return nil
     }
 }

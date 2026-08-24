@@ -168,4 +168,12 @@ final class VersionCompareTests: XCTestCase {
         XCTAssertFalse(VersionCompare.isNewer("0.1.5", than: "0.1.5"))
         XCTAssertFalse(VersionCompare.isNewer("0.1", than: "0.1.0")) // trailing zero equal
     }
+
+    func testNonNumericSuffixIsDroppedNotFatal() {
+        // "0.2.0-beta" loses its non-numeric last component rather than crashing — the
+        // comparison then falls through to treating that component as 0.
+        XCTAssertFalse(VersionCompare.isNewer("0.2.0-beta", than: "0.2.0"))
+        // An earlier, purely-numeric component still decides the comparison correctly.
+        XCTAssertTrue(VersionCompare.isNewer("0.3.0-beta", than: "0.2.9"))
+    }
 }

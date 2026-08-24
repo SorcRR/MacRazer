@@ -7,6 +7,10 @@ expect rough edges until 1.0.
 ## [Unreleased]
 
 ### Added
+- **A system notification fires once the mouse's battery drops below 15%** (the same
+ threshold the battery card already colors red), so you don't have to open the popover to
+ notice. It's re-armed by charging or the reading climbing back to 15%+, so it won't repeat
+ every poll while the mouse sits low.
 - **The usage chart now shows ~2 charges: the previous charge stays visible (dimmed) behind
  the current one.** Recharging no longer blanks the chart back to "Gathering data…" — the
  finished cycle's raw curve is kept (and persisted per device) and drawn as a dimmed gray
@@ -16,6 +20,10 @@ expect rough edges until 1.0.
  same thresholds as the "Past charges" log) don't replace the kept curve.
 
 ### Fixed
+- **The CLI diagnostics (`battery`, `dpi`, `poll`, `rgb`, `brightness`) now explain a missing
+ Input Monitoring grant instead of printing a bare `IOHIDDeviceOpen failed: 0xe00002e2`.**
+ The GUI already had this guidance (`PopoverView`/`PermissionsModel`); the CLI's
+ `openDevice()` never checked for it (issue #3).
 - **A Mac sleep no longer resets the battery-usage chart.** After hours of rest a Li-ion
  cell legitimately reads a few percent *higher* on wake (voltage recovery, no charger
  involved), and any uptick of 2+ points was treated as "the mouse got recharged" — wiping

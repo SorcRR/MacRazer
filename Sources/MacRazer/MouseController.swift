@@ -91,6 +91,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     private var curveModelKey: String?
     /// Suppresses connect/disconnect sounds until the first poll establishes a baseline.
     private var hasBaseline = false
+    private let lowBatteryNotifier = LowBatteryNotifier()
     /// io-queue only: the pure decision core of the poll loop — offline debounce, garbage
     /// rejection, charge confirmation. All the subtle logic lives (and is tested) there;
     /// this class just does the I/O and acts on the verdicts.
@@ -281,6 +282,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 self.update(\.profileApplyFailed, false)
                 self.update(\.batteryPercent, pct)
                 self.update(\.charging, isCharging)
+                self.lowBatteryNotifier.notify(deviceName: self.deviceName, percent: pct, charging: isCharging)
                 self.update(\.timeEstimate, estimate)
                 self.update(\.batterySamples, snap.samples)
                 self.update(\.previousCycleSamples, snap.previous)

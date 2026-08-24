@@ -29,6 +29,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         // user without it is always walked through it rather than left with a silently-dead app.
         // Button remapping additionally needs Accessibility (optional; surfaced in the same window).
         permissions.recheck()
+        LowBatteryNotifier.requestAuthorizationIfNeeded()
         // A manual button-remap edit (outside applying a profile) means the live config no
         // longer matches whichever profile was last applied — let MouseController know so it
         // can drop the stale "active" highlight.
