@@ -6,6 +6,8 @@ expect rough edges until 1.0.
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-08-24
+
 ### Added
 - **The menu bar icon shows a lightning bolt while the mouse is charging**, in place of the
  mouse's button-split line — the same at-a-glance cue macOS gives for its own battery, so
