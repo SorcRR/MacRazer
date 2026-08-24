@@ -4,13 +4,12 @@
 import Foundation
 import UserNotifications
 
-/// Fires a system notification once when the mouse's battery drops below the same
-/// threshold the UI itself already treats as "low" (see `Color.batteryLow`, <15%).
+/// Fires a system notification once when the mouse's battery drops below
+/// `batteryLowThresholdPercent` — the same cutoff the UI itself already treats as "low".
 ///
 /// One notification per discharge episode: charging or a reading back at/above the
 /// threshold re-arms it, so the ~15s poll cadence can't repeat the same alert every tick.
 final class LowBatteryNotifier {
-    static let threshold = 15
     private var armed = true
 
     /// Ask for notification permission once, early — so the system prompt appears at
@@ -22,11 +21,18 @@ final class LowBatteryNotifier {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
     }
 
+    /// Re-arms the notification for a newly-connected physical mouse — otherwise a unit
+    /// swap (two mice sharing a session) would inherit the previous mouse's "already
+    /// notified" state and stay silent even though this one was never alerted on.
+    func deviceChanged() {
+        armed = true
+    }
+
     /// Call on every battery reading. Charging or climbing back to/above the threshold
     /// re-arms the notification for the next time the mouse drops low.
     func notify(deviceName: String?, percent: Int, charging: Bool) {
         guard Bundle.main.bundleIdentifier != nil else { return }
-        guard !charging, percent < Self.threshold else {
+        guard !charging, percent < batteryLowThresholdPercent else {
             armed = true
             return
         }

@@ -753,6 +753,11 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 self.profiles = loadedProfiles
                 self.activeProfileID = loadedActiveID
                 self.profilesLoadedForKey = key
+                // A new physical mouse — `notify()` only ever runs here on the main queue,
+                // so re-arm here too rather than from the io-queue caller above, or the two
+                // would race on `armed`. Otherwise this unit would silently inherit the
+                // previous mouse's "already notified" state and never alert on its own.
+                self.lowBatteryNotifier.deviceChanged()
             }
         }
         let name = d.productName

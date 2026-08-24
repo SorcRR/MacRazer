@@ -19,11 +19,16 @@ func sectionLabel(_ text: String, _ symbol: String) -> some View {
         .foregroundStyle(.secondary)
 }
 
+/// The "low battery" cutoff shared by every consumer that needs to agree on it: this file's
+/// color band, the battery-percent readout in PopoverView, and LowBatteryNotifier's alert.
+/// One constant so they can't silently drift apart.
+let batteryLowThresholdPercent = 15
+
 /// Battery-state color for a given percent — the same low/mid/full thresholds as the battery
 /// card's level bar and gauge, shared so the usage graph's discharge curve matches it exactly.
 func batteryLevelColor(forPercent pct: Int) -> Color {
     switch pct {
-    case ..<15: return .batteryLow
+    case ..<batteryLowThresholdPercent: return .batteryLow
     case ..<40: return .batteryMid
     default: return .batteryFull
     }
