@@ -44,8 +44,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         }
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        let icon = MenuBarIcon.mouse(pointSize: 21, razerCutout: false)
-        statusItem.button?.image = icon
+        statusItem.button?.image = Self.menuBarIcon(charging: false)
         statusItem.button?.imagePosition = .imageLeading
         statusItem.button?.imageHugsTitle = true
         statusItem.button?.title = " …"
@@ -80,6 +79,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
             .removeDuplicates()
             .receive(on: RunLoop.main)
             .sink { [weak self] text in self?.statusItem.button?.title = text }
+            .store(in: &cancellables)
+
+        // Swap the mark for its bolt variant while the mouse is on the charger — the same
+        // at-a-glance cue macOS gives for its own battery, without needing the popover.
+        // Only the two states exist, so the images are cached rather than redrawn per event.
+        controller.$charging
+            .removeDuplicates()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] charging in
+                self?.statusItem.button?.image = Self.menuBarIcon(charging: charging)
+            }
             .store(in: &cancellables)
 
         // When disconnected, keep the icon's normal adaptive (template) colour but dim it via
@@ -271,6 +281,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         updateTimer?.invalidate()
         controller.flushHistoryToDisk()
     }
+
+    // MARK: - Menu bar mark
+
+    /// The status-item mark, in its idle and charging variants. Drawing is cheap but this
+    /// runs on every charge-state change for the app's lifetime, so both are built once.
+    private static let idleIcon = MenuBarIcon.mouse(pointSize: 21, razerCutout: false)
+    private static let chargingIcon = MenuBarIcon.mouse(pointSize: 21, razerCutout: false, charging: true)
+    private static func menuBarIcon(charging: Bool) -> NSImage { charging ? chargingIcon : idleIcon }
 
     // MARK: - Notifications
 

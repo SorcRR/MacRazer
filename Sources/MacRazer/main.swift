@@ -121,7 +121,13 @@ case "render-permissions":
 case "icon":
     // Render the menu bar mark to a PNG for visual inspection.
     let path = args.dropFirst().first ?? "icon-preview.png"
-    MenuBarIcon.writePreview(to: path, size: 256)
+    // Optional trailing size, so the mark can be checked at real menu bar scale (~21pt @2x)
+    // rather than judged from a downsampled 256px render.
+    let size = args.dropFirst().compactMap { CGFloat(Int($0) ?? 0) }.first { $0 > 0 } ?? 256
+    // `nologo` matches the menu bar's own call (razerCutout: false) so what's previewed is
+    // what ships there.
+    MenuBarIcon.writePreview(to: path, size: size, razerCutout: !args.contains("nologo"),
+                             charging: args.contains("charging"))
     print("Wrote \(path)")
 
 case "icon-models":

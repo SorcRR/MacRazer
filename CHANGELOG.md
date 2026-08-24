@@ -7,6 +7,10 @@ expect rough edges until 1.0.
 ## [Unreleased]
 
 ### Added
+- **The menu bar icon shows a lightning bolt while the mouse is charging**, in place of the
+ mouse's button-split line — the same at-a-glance cue macOS gives for its own battery, so
+ you don't have to open the popover to tell. The body silhouette is unchanged, so only the
+ detail inside it swaps.
 - **A system notification fires once the mouse's battery drops below 15%** (the same
  threshold the battery card already colors red), so you don't have to open the popover to
  notice. One alert per discharge: it re-arms when the mouse is charging or the charge
