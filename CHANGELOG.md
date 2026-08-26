@@ -6,6 +6,32 @@ expect rough edges until 1.0.
 
 ## [Unreleased]
 
+### Added
+- **Razer Basilisk V3 X HyperSpeed support** (PID `0x00B9`), verified on hardware over the
+ 2.4 GHz dongle: battery, DPI, the onboard DPI stage table, polling rate, lighting effects
+ and brightness all read and write. Detection and naming already worked for any Razer mouse;
+ what's new is that this model's controls are confirmed rather than assumed. It takes the
+ Cobra family's `0x1f` transaction id for every command class, including the DPI-stages pair
+ the Basilisk V3 needs an override for. Being AA-cell powered it never reports charging, and
+ it stays on the generic linear estimate rather than the Cobra's learned discharge curve,
+ whose Li-ion behavior doesn't apply.
+- **Razer Basilisk X HyperSpeed** (PID `0x0083`), ported from the OpenRazer tables — no
+ lighting at all, a 16000 DPI ceiling, and `0xFF` transaction ids rather than the Cobra
+ family's `0x1f`. Nobody has run it against hardware yet, so it stays marked unverified: the
+ app will attempt its controls without claiming they work.
+
+### Fixed
+- **The brightness slider now works on mice whose only lit zone is the scroll wheel.** The LED
+ group for brightness was hardcoded to `LOGO_LED`, which the Basilisk V3 X HyperSpeed answers
+ with FAILURE (`0x03`), so dragging the slider silently did nothing on it. Effects and
+ brightness live on different LED groups, and which group answers varies per model, so the id
+ is now a per-model registry field defaulting to the Cobra family's `LOGO_LED` — an unknown
+ mouse behaves exactly as before.
+- **The `brightness` CLI probe no longer stops at the first LED group that refuses.** It exists
+ to discover which group a new model answers on, but a `LOGO_LED` refusal threw before the
+ sweep started — precisely the case it was written for. It now reports LOGO, SCROLL, ZERO and
+ BACKLIGHT individually, so a new model's brightness LED can be found in one run.
+
 ## [0.2.1] — 2026-08-24
 
 ### Added
