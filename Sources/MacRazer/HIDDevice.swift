@@ -29,7 +29,7 @@ final class HIDDevice {
         var description: String {
             func hex(_ r: IOReturn) -> String { String(format: "0x%08x", UInt32(bitPattern: r)) }
             switch self {
-            case .notFound: return "Razer Cobra HyperSpeed not found on USB (is the 2.4GHz dongle plugged in?)"
+            case .notFound: return "No Razer mouse found on USB (is the cable or 2.4GHz dongle plugged in?)"
             case .openFailed(let r): return "IOHIDDeviceOpen failed: \(hex(r))"
             case .setReportFailed(let r): return "SetReport failed: \(hex(r))"
             case .getReportFailed(let r): return "GetReport failed: \(hex(r))"

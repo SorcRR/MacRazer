@@ -34,6 +34,44 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(txn(0x0099, 0x04, 0x06), 0xff) // set DPI stages
         XCTAssertEqual(txn(0x0099, 0x04, 0x86), 0xff) // get DPI stages
         XCTAssertEqual(txn(0x0099, matrix, 0x02), 0x1f) // lighting
+        // Basilisk V3 X HyperSpeed: 0x1f for every class (hardware-verified — battery,
+        // DPI, polling and scroll brightness all answer). Its older sibling, the plain
+        // Basilisk X HyperSpeed, takes 0xFF everywhere per razermouse_driver.c.
+        for cls in [misc, matrix] {
+            XCTAssertEqual(txn(0x00B9, cls), 0x1f)
+            XCTAssertEqual(txn(0x0083, cls), 0xff)
+        }
+    }
+
+    /// The brightness LED id is not the same across models and a wrong one is not a silent
+    /// no-op — the device answers FAILURE (0x03) and the brightness slider stops working.
+    func testBrightnessLedPerModel() {
+        // Cobra family: only LOGO_LED answers (ZERO/BACKLIGHT refuse).
+        XCTAssertEqual(RazerDevices.brightnessLed(pid: 0x00DB), Razer.logoLed)
+        XCTAssertEqual(RazerDevices.brightnessLed(pid: 0x00A3), Razer.logoLed)
+        // Basilisk V3 X HyperSpeed lights only its scroll wheel — hardware-verified that
+        // SCROLL_LED answers and LOGO, ZERO and BACKLIGHT all return 0x03.
+        XCTAssertEqual(RazerDevices.brightnessLed(pid: 0x00B9), Razer.scrollLed)
+        // Unknown models keep the Cobra-family default.
+        XCTAssertEqual(RazerDevices.brightnessLed(pid: 0x9999), Razer.logoLed)
+        XCTAssertEqual(RazerDevices.brightnessLed(pid: nil), Razer.logoLed)
+    }
+
+    /// The two Basilisk HyperSpeed models differ in exactly the ways that matter for the
+    /// UI: the V3 X has scroll lighting and a higher ceiling, the plain X has no lighting.
+    func testBasiliskHyperSpeedCapabilities() {
+        XCTAssertTrue(RazerDevices.hasBattery(pid: 0x00B9))
+        XCTAssertTrue(RazerDevices.hasLighting(pid: 0x00B9))
+        XCTAssertEqual(RazerDevices.maxDPI(pid: 0x00B9), 18000)
+        XCTAssertEqual(RazerDevices.connection(pid: 0x00B9), .wirelessDongle)
+
+        XCTAssertTrue(RazerDevices.hasBattery(pid: 0x0083))
+        XCTAssertFalse(RazerDevices.hasLighting(pid: 0x0083), "the plain X HyperSpeed has no RGB at all")
+        XCTAssertEqual(RazerDevices.maxDPI(pid: 0x0083), 16000)
+
+        // Both are AA-cell mice, so neither shares the Cobra's learned discharge curve.
+        XCTAssertNil(RazerDevices.dischargeCurveModelKey(pid: 0x00B9))
+        XCTAssertNil(RazerDevices.dischargeCurveModelKey(pid: 0x0083))
     }
 
     func testConnectionKind() {

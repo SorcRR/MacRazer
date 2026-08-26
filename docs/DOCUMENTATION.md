@@ -3,8 +3,9 @@
 A native macOS menu bar app to control Razer mice: battery, DPI, polling rate, RGB lighting,
 brightness, and software button remapping. Razer's Synapse does not support macOS, so this
 app talks to the mouse directly over USB HID. It is tested on, and works best with, the
-Razer Cobra HyperSpeed and the Razer Atheris. By design it detects and tries to control any
-Razer mouse using the same protocol family, but models beyond those two are untested.
+Razer Cobra HyperSpeed, the Razer Atheris and the Razer Basilisk V3 X HyperSpeed. By design
+it detects and tries to control any Razer mouse using the same protocol family, but models
+beyond those three are untested.
 
 This document explains how the app is built and how every feature works, so a future Claude
 session or a human can pick it up cold. See also:
@@ -91,14 +92,19 @@ Built in [`RazerCommands.swift`](../Sources/MacRazer/RazerCommands.swift). VID `
 | Get / Set DPI | `0x04` / `0x85` / `0x05` | `0x07` | VARSTORE + big-endian x/y; clamp **100-45000** (arbitrary DPI). |
 | Get / Set poll | `0x00` / `0x85` / `0x05` | `0x01` | 1000->`0x01`, 500->`0x02`, 125->`0x08` (basic set only). |
 | Lighting effect | `0x0F` / `0x02` | varies | extended-matrix on **ZERO_LED (0x00)**; effect ids: none `0x00`, static `0x01`, spectrum `0x03`, wave `0x04`. |
-| Get / Set brightness | `0x0F` / `0x84` / `0x04` | `0x03` | value 0-255. **Lives on LOGO_LED (0x04)**, not ZERO_LED, see quirk below. |
+| Get / Set brightness | `0x0F` / `0x84` / `0x04` | `0x03` | value 0-255. LED group is **per model** (`RazerDevices.brightnessLed`), never ZERO_LED — see quirk below. |
 
 ### 3.4 Hardware quirks (discovered by testing, important!)
 - **Battery works over the 2.4 GHz dongle.** The OpenRazer PR author thought it didn't; the
  real fix was the 31 ms wait + targeting the correct interface.
-- **Brightness is on `LOGO_LED` (0x04), not `ZERO_LED`.** Reading brightness on ZERO_LED or
- BACKLIGHT returns status `0x03` (failure). Colors/effects use ZERO_LED; brightness uses
- LOGO_LED. Verified live.
+- **Brightness lives on a different LED group than effects, and which one is per model.**
+ Colors/effects are driven on ZERO_LED for every model so far, but brightness is not: the
+ Cobra family answers only on `LOGO_LED` (0x04), while the Basilisk V3 X HyperSpeed — whose
+ only lit zone is the scroll wheel — answers only on `SCROLL_LED` (0x01). Every other group
+ returns status `0x03` (failure), so a wrong id is not a silent no-op: the brightness slider
+ simply stops working. The id is a registry field (`RazerDevices.brightnessLed`, default
+ `LOGO_LED`); `swift run MacRazer brightness` sweeps all four groups to find it on a new
+ model. Both verified live.
 - **Lighting is one group.** The "4 zones" in marketing aren't independently addressable;
  everything is driven together via ZERO_LED.
 - **Transient garbage on reconnect.** Right after a USB reconnect the battery can read 0x00
@@ -259,7 +265,8 @@ right-click->Open). A clean install needs Developer ID + notarization (paid Appl
 Detection + name display already work for any Razer mouse (read-only, via the USB product
 string). To make the **controls** verified for another model:
 1. Add its PID/name to `RazerDevices.known` with `fullySupported: true` and the right
- `hasBattery`.
+ `hasBattery` / `hasLighting` / `maxDPI`. If its brightness answers on a group other than
+ `LOGO_LED`, set `brightnessLed` too.
 2. Confirm its command dialect matches the Cobra Pro set (transaction id, command variants,
  max DPI, poll rates, LED layout, brightness LED). Port any per-device specifics from
  OpenRazer's `razermouse_driver.c` switch statements / `daemon/.../mouse.py` METHODS.
@@ -281,7 +288,7 @@ swift run MacRazer battery # read battery %
 swift run MacRazer dpi [x] [y] # read / set DPI
 swift run MacRazer poll [125|500|1000]
 swift run MacRazer rgb static ff0000 # or: spectrum | wave | off
-swift run MacRazer brightness [0-100] # probes ZERO/BACKLIGHT/LOGO LEDs
+swift run MacRazer brightness [0-100] # sweeps LOGO/SCROLL/ZERO/BACKLIGHT LEDs
 swift run MacRazer icon out.png # render the menu bar icon
 swift run MacRazer render-ui [offline|color] out.png # render the popover (dev)
 swift run MacRazer render-remap out.png

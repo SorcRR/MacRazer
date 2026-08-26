@@ -50,6 +50,13 @@ struct RazerDeviceInfo {
     /// DPI-stages pair (0x04/0x06 and 0x04/0x86), which it shares with the plain Cobra's
     /// 0xFF group.
     var transactionOverrides: [UInt16: UInt8] = [:]
+    /// Which LED group answers the extended-matrix *brightness* commands (class 0x0F,
+    /// 0x04/0x84). Not the same id the effect commands take: the Cobra family drives
+    /// effects as one group via ZERO_LED but only answers brightness on LOGO_LED, and the
+    /// Basilisk V3 X HyperSpeed — whose only lit zone is the scroll wheel — answers on
+    /// SCROLL_LED and returns FAILURE (0x03) for LOGO, ZERO and BACKLIGHT alike
+    /// (hardware-verified via the `brightness` probe).
+    var brightnessLed: UInt8 = Razer.logoLed
     let connection: RazerConnection
     let silhouette: RazerMouseSilhouette
     /// Model key for the learned per-percent discharge curve (see `DischargeCurveModel`), or nil
@@ -78,6 +85,14 @@ enum RazerDevices {
         // OpenRazer uses 0xFF for the Atheris, but 0x1f is what this app was hardware-tested
         // with (README) — verified behavior wins over the reference here.
         .init(pid: 0x0062, name: "Razer Atheris", fullySupported: true, hasBattery: true, hasLighting: false, maxDPI: 7200, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .atheris, dischargeCurveModelKey: nil),
+        // Basilisk V3 X HyperSpeed: AA-cell wireless (2.4 GHz dongle or Bluetooth — no
+        // charging, so `is_charging` is always false). Scroll-wheel-only lighting. 0x1f
+        // everywhere per razermouse_driver.c; hardware-verified with this app.
+        .init(pid: 0x00B9, name: "Razer Basilisk V3 X HyperSpeed", fullySupported: true, hasBattery: true, hasLighting: true, maxDPI: 18000, transactionId: 0x1f, matrixTransactionId: 0x1f, brightnessLed: Razer.scrollLed, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
+        // Basilisk X HyperSpeed: the older AA-cell sibling — no lighting at all, and
+        // razermouse_driver.c gives it 0xFF for every command it supports. Not verified
+        // on hardware by us.
+        .init(pid: 0x0083, name: "Razer Basilisk X HyperSpeed", fullySupported: false, hasBattery: true, hasLighting: false, maxDPI: 16000, transactionId: 0xff, matrixTransactionId: 0xff, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
         // Basilisk V3 (user-reported working): wired-only, 11-zone lighting. Per
         // razermouse_driver.c it takes 0x1f everywhere except the DPI-stages pair, which it
         // shares with the plain Cobra's 0xFF group. Not yet re-verified on hardware by us.
@@ -108,4 +123,9 @@ enum RazerDevices {
     }
     static func silhouette(pid: Int?) -> RazerMouseSilhouette { pid.flatMap { info(pid: $0)?.silhouette } ?? .cobra }
     static func dischargeCurveModelKey(pid: Int) -> String? { info(pid: pid)?.dischargeCurveModelKey }
+    /// LED group for brightness get/set. Unknown models fall back to LOGO_LED, the id the
+    /// Cobra family answers on.
+    static func brightnessLed(pid: Int?) -> UInt8 {
+        pid.flatMap { info(pid: $0)?.brightnessLed } ?? Razer.logoLed
+    }
 }
