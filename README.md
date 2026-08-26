@@ -47,12 +47,32 @@ the mouse connects, disconnects, or sleeps.
 |---|---|
 | Razer Cobra HyperSpeed (wired + wireless) | Tested, works best |
 | Razer Atheris | Tested, works best |
+| Razer Basilisk V3 X HyperSpeed | Tested, works best |
 | Razer Basilisk V3 | In the registry; user-reported working |
+| Razer Basilisk X HyperSpeed | In the registry; not yet hardware-verified |
 | Razer Cobra, Cobra Pro (wired + wireless) | Same protocol, not yet hardware-verified here |
 | Any other Razer mouse | Detected and named; should work, but untested |
 
 Adding a model is a small change to a registry plus on-hardware verification. See
 [CONTRIBUTING.md](CONTRIBUTING.md).
+
+### Buttons MacRazer cannot see
+
+Remapping works by watching macOS mouse events, so it can only reach buttons the mouse
+actually reports to the Mac. Some buttons are handled *inside* the mouse and never send
+anything — no app can detect those, MacRazer included.
+
+The clearest example is the **Basilisk's multi-function trigger** (the third side button),
+which ships assigned to **Razer Hypershift**. Hypershift is a modifier: held down, it
+switches every other button to a second onboard layer. The firmware resolves that layer
+itself, so pressing the trigger alone puts no report on the wire at all — verified by
+watching every HID interface the mouse exposes while it was pressed.
+
+To make it remappable, reassign it from Hypershift to a normal key or mouse button in
+Razer Synapse (Windows only — Razer dropped macOS support). The assignment is stored in the
+mouse's onboard memory, so it persists on the Mac afterwards and MacRazer will then see the
+button like any other. MacRazer deliberately does not reprogram onboard assignments itself;
+that would mean reverse-engineering Synapse, which Razer's EULA forbids.
 
 ### Known limitation: two identical mice without a hardware serial
 

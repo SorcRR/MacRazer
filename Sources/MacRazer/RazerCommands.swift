@@ -27,6 +27,7 @@ enum Razer {
     // LED ids (razercommon.h)
     static let backlightLed: UInt8 = 0x05
     static let logoLed: UInt8 = 0x04
+    static let scrollLed: UInt8 = 0x01
 }
 
 /// RGB triple.
@@ -236,8 +237,11 @@ enum RazerCommands {
 
     /// razer_chroma_extended_matrix_brightness(VARSTORE, led, brightness)
     ///   get_razer_report(0x0F, 0x04, 0x03); args: store, led, brightness (0–255)
-    /// NOTE: on the Cobra HyperSpeed brightness only works on the LOGO LED (0x04); ZERO_LED
-    /// and BACKLIGHT return status 0x03 (failure). Verified on hardware.
+    /// NOTE: brightness lives on a different LED group than the effect commands, and which
+    /// group varies per model — the Cobra HyperSpeed answers only on LOGO_LED (0x04), the
+    /// Basilisk V3 X HyperSpeed only on SCROLL_LED (0x01), and every other group returns
+    /// status 0x03 (failure). Callers pass the model's id from `RazerDevices.brightnessLed`;
+    /// the LOGO_LED default here is the Cobra-family value. Both verified on hardware.
     static func setBrightness(_ value: UInt8, led: UInt8 = Razer.logoLed) -> RazerReport {
         var r = RazerReport(commandClass: 0x0F, commandId: 0x04, dataSize: 0x03)
         r.arguments[0] = Razer.varstore
