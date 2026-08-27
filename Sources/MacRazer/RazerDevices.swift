@@ -82,6 +82,10 @@ enum RazerDevices {
         // razermouse_driver.c it takes 0x1f everywhere except the DPI-stages pair, which it
         // shares with the plain Cobra's 0xFF group. Not yet re-verified on hardware by us.
         .init(pid: 0x0099, name: "Razer Basilisk V3", fullySupported: false, hasBattery: false, hasLighting: true, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, transactionOverrides: [0x0406: 0xff, 0x0486: 0xff], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
+        // Orochi2013
+        .init(pid: 0x0039, name: "Razer Orochi 2013", fullySupported: false, hasBattery: true, hasLighting: false, maxDPI: 6400, transactionId: 0x1f, matrixTransactionId: 0x1f, transactionOverrides: [0x0406: 0xff, 0x0486: 0xff], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
+        // Viper Ultimate
+        .init(pid: 0x007b, name: "Razer Ultimate", fullySupported: false, hasBattery: true, hasLighting: true, maxDPI: 20000, transactionId: 0x1f, matrixTransactionId: 0x1f, transactionOverrides: [0x0406: 0xff, 0x0486: 0xff], connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
     ]
 
     static func info(pid: Int) -> RazerDeviceInfo? { known.first { $0.pid == pid } }
