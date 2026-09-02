@@ -37,6 +37,14 @@ expect rough edges until 1.0.
  nowhere to put an "About", and that line is already where people look to answer "what am I
  running" — so it doubles as the way there instead of costing the popover another row. It
  stays quiet at rest and picks up the accent colour and an underline on hover.
+- **The charging bolt in the menu bar icon now fills the mouse body.** It was drawn to the
+ scale of the button-split line it replaces — which is a detail, not a signal, and at ~21pt
+ in a menu bar seen out of the corner of the eye it read as a smudge rather than a bolt. It
+ now spans from just under the scroll wheel to just inside the base, with clearance at both
+ ends so it never merges into the silhouette. The body shape is untouched, so the icon still
+ reads as the same mouse. The Razer triskelion is no longer drawn in the charging variant —
+ the bolt occupies the space it sat in, and two marks on top of each other read as neither
+ (the menu bar never drew it anyway; this keeps every other caller sane).
 - **"Check for Updates…" in the menu bar right-click menu.** The background check runs once a
  day; this asks for one now, and is the only way back to the update card after dismissing a
  version.

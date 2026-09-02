@@ -66,8 +66,8 @@ enum MenuBarIcon {
                                cornerWidth: wheelW / 2, cornerHeight: wheelW / 2, transform: nil)
             ctx.addPath(wheel)
 
-            // Button-split line below the wheel — replaced by a charging bolt in the same
-            // slot, so the body silhouette stays identical and only the detail changes.
+            // Button-split line below the wheel — replaced by the charging bolt below, so the
+            // body silhouette stays identical and only what's inside it changes.
             if !charging {
                 ctx.move(to: P(0, 0.13))
                 ctx.addLine(to: P(0, -0.10))
@@ -94,7 +94,14 @@ enum MenuBarIcon {
             if charging {
                 // Classic 6-point flash, in units of the bolt's own half-width/half-height
                 // so the proportions hold at any icon size.
-                let boltHalfW = 0.16, boltHalfH = 0.145, yOff: CGFloat = 0.015
+                //
+                // Sized to fill the body rather than to replace the button-split line it
+                // stands in for: this mark is read at ~21pt in a menu bar, out of the corner
+                // of the eye, and a detail-sized glyph there is a smudge. It spans from just
+                // under the scroll wheel (0.16) down to just inside the base stroke (-0.46
+                // plus half the line width), keeping a hair of clearance at both ends so the
+                // bolt never merges into the silhouette.
+                let boltHalfW = 0.31, boltHalfH = 0.275, yOff: CGFloat = -0.128
                 func B(_ x: CGFloat, _ y: CGFloat) -> CGPoint { P(x * boltHalfW, y * boltHalfH + yOff) }
                 let bolt = CGMutablePath()
                 bolt.move(to: B(0.35, 1.00))     // top tip
@@ -109,8 +116,11 @@ enum MenuBarIcon {
                 ctx.fillPath()
             }
 
-            // Triskelion mark near the base.
-            if razerCutout {
+            // Triskelion mark near the base — but not while charging: the bolt now occupies
+            // the body the triskelion sits in, and two marks on top of each other read as
+            // neither. The menu bar passes `razerCutout: false` anyway; this keeps the
+            // charging variant sane for every other caller.
+            if razerCutout && !charging {
                 let center = P(0, -0.29)
                 let r = s * 0.105
                 for k in 0..<3 {
