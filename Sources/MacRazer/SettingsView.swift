@@ -173,9 +173,6 @@ struct SettingsView: View {
                 ? "Version \(latest) is available and will install itself shortly."
                 : "Version \(latest) is available."
         }
-        // `checkGeneration` is read purely so SwiftUI treats this text as depending on it —
-        // `lastCheckedAt` lives in UserDefaults and publishes nothing of its own.
-        _ = updateChecker.checkGeneration
         guard let last = updateChecker.lastCheckedAt else {
             return "Not checked yet. MacRazer checks once a day."
         }

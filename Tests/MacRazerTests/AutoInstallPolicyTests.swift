@@ -16,7 +16,7 @@ final class AutoInstallPolicyTests: XCTestCase {
 
     func testInstallsWhenEverythingPermitsIt() {
         var p = AutoInstallPolicy()
-        XCTAssertTrue(p.shouldInstall(conditions()))
+        XCTAssertEqual(p.versionToInstall(conditions()), "2.0.0")
     }
 
     func testEachConditionAloneIsEnoughToRefuse() {
@@ -29,44 +29,44 @@ final class AutoInstallPolicyTests: XCTestCase {
             ("popover open", conditions(popover: true)),
         ] {
             var p = AutoInstallPolicy()
-            XCTAssertFalse(p.shouldInstall(c), "should have refused: \(name)")
+            XCTAssertNil(p.versionToInstall(c), "should have refused: \(name)")
         }
     }
 
     func testOnlyAttemptsAVersionOnce() {
         var p = AutoInstallPolicy()
-        XCTAssertTrue(p.shouldInstall(conditions()))
+        XCTAssertEqual(p.versionToInstall(conditions()), "2.0.0")
         // Every popover close re-asks. A payload that can't be installed must not be
         // re-downloaded each time to reach the same verdict.
-        XCTAssertFalse(p.shouldInstall(conditions()))
-        XCTAssertFalse(p.shouldInstall(conditions()))
+        XCTAssertNil(p.versionToInstall(conditions()))
+        XCTAssertNil(p.versionToInstall(conditions()))
     }
 
     func testANewerReleaseIsStillTriedAfterAnEarlierOneFailed() {
         // Attempts are keyed by version, not a single spent flag — otherwise one bad release
         // would disable automatic updates for every release after it.
         var p = AutoInstallPolicy()
-        XCTAssertTrue(p.shouldInstall(conditions(version: "2.0.0")))
-        XCTAssertFalse(p.shouldInstall(conditions(version: "2.0.0")))
-        XCTAssertTrue(p.shouldInstall(conditions(version: "2.0.1")))
+        XCTAssertEqual(p.versionToInstall(conditions(version: "2.0.0")), "2.0.0")
+        XCTAssertNil(p.versionToInstall(conditions(version: "2.0.0")))
+        XCTAssertEqual(p.versionToInstall(conditions(version: "2.0.1")), "2.0.1")
     }
 
     func testRetryLaterRearmsTheSameVersion() {
         // The transient case: a dropped connection must not cost automatic updates until the
         // user next relaunches, which for a login-item menu bar app can be weeks.
         var p = AutoInstallPolicy()
-        XCTAssertTrue(p.shouldInstall(conditions()))
-        XCTAssertFalse(p.shouldInstall(conditions()))
+        XCTAssertEqual(p.versionToInstall(conditions()), "2.0.0")
+        XCTAssertNil(p.versionToInstall(conditions()))
         p.retryLater("2.0.0")
-        XCTAssertTrue(p.shouldInstall(conditions()))
+        XCTAssertEqual(p.versionToInstall(conditions()), "2.0.0")
     }
 
     func testRefusalDoesNotSpendTheAttempt() {
         // Being refused because the popover was open is not an attempt — the next close has to
         // still be able to install.
         var p = AutoInstallPolicy()
-        XCTAssertFalse(p.shouldInstall(conditions(popover: true)))
-        XCTAssertTrue(p.shouldInstall(conditions(popover: false)))
+        XCTAssertNil(p.versionToInstall(conditions(popover: true)))
+        XCTAssertEqual(p.versionToInstall(conditions(popover: false)), "2.0.0")
     }
 
     func testPermanentFailuresAreNotRetried() {
@@ -75,7 +75,6 @@ final class AutoInstallPolicyTests: XCTestCase {
         XCTAssertTrue(p.isPermanent(UpdateInstallError.rejected(.wrongApp)))
         XCTAssertTrue(p.isPermanent(UpdateInstallError.rejected(.notNewer("1.0.0"))))
         XCTAssertTrue(p.isPermanent(UpdateInstallError.signatureInvalid))
-        XCTAssertTrue(p.isPermanent(UpdateInstallError.notWritable))
     }
 
     func testTransientFailuresAreRetried() {
@@ -83,6 +82,9 @@ final class AutoInstallPolicyTests: XCTestCase {
         // A busy volume, a disk that gets emptied, a half-written download — all worth
         // another go on the next opportunity.
         XCTAssertFalse(p.isPermanent(UpdateInstallError.mountFailed))
+        // Describes the environment, not the payload: a permissions repair or a security tool
+        // holding the bundle clears, and the user can fix it while the app keeps running.
+        XCTAssertFalse(p.isPermanent(UpdateInstallError.notWritable))
         XCTAssertFalse(p.isPermanent(UpdateInstallError.copyFailed("busy")))
         XCTAssertFalse(p.isPermanent(UpdateInstallError.swapFailed("in use")))
         // Not an install error at all: the download itself failed.

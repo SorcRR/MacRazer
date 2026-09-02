@@ -77,10 +77,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
                 // `openingSettings` suppresses the auto-install that `popoverDidClose`
                 // normally triggers: the user asked for a window, and answering that by
                 // silently replacing the app and relaunching would take the window with it.
+                //
+                // Cleared on the next runloop turn, not on the next line. AppKit does not
+                // promise that `popoverDidClose(_:)` runs synchronously inside
+                // `performClose(_:)`, and clearing it immediately would make this guard
+                // silently inert the moment that delivery is deferred — leaving a
+                // timing-dependent bug that restarts the app instead of opening a window.
                 self?.openingSettings = true
                 self?.popover.performClose(nil)
-                self?.openingSettings = false
                 self?.settingsWindow.show()
+                DispatchQueue.main.async { self?.openingSettings = false }
             }))
         hosting.sizingOptions = [.preferredContentSize] // popover auto-fits the SwiftUI content
         popover.contentViewController = hosting
@@ -341,16 +347,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     /// the ordinary update card, so a broken auto-install can't quietly strand anyone on an
     /// old version.
     private func autoInstallIfEnabled(available: String? = nil) {
-        let version = available ?? updateChecker.latestVersion
         let conditions = AutoInstallPolicy.Conditions(
-            availableVersion: version,
+            availableVersion: available ?? updateChecker.latestVersion,
             enabled: updateChecker.autoInstallEnabled,
             canInstallInPlace: updateChecker.canInstallInPlace,
             busy: updateChecker.isBusy,
             // A programmatic close on the way to opening Settings is not the user putting the
             // popover away, and must not be read as permission to restart the app.
             popoverVisible: popover.isShown || openingSettings)
-        guard autoInstallPolicy.shouldInstall(conditions), let version else { return }
+        // The policy returns the version it approved rather than a Bool: it records the
+        // attempt as part of deciding, so a caller that had to re-unwrap afterwards could
+        // silently drop a version already marked as spent.
+        guard let version = autoInstallPolicy.versionToInstall(conditions) else { return }
         Task { [weak self] in
             guard let self else { return }
             await self.updateChecker.downloadAndInstall()

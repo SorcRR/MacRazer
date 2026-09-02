@@ -40,9 +40,14 @@ final class UpdateChecker: ObservableObject {
     /// `AutoInstallPolicy` can tell a dropped connection from a payload that will never work.
     private(set) var lastInstallError: Error?
 
-    /// Bumped whenever anything the settings window reads from `UserDefaults` rather than from
-    /// a published property changes — currently `lastCheckedAt`. Without it that line refreshes
-    /// only by luck, riding on whatever *other* publish happened to fire at the same moment.
+    /// Bumped whenever something the UI reads from `UserDefaults` rather than from a published
+    /// property changes — currently `lastCheckedAt`, which the settings window shows.
+    ///
+    /// Being `@Published` is the entire mechanism: an `ObservableObject` invalidates its
+    /// observers through `objectWillChange`, whatever properties their bodies happen to read
+    /// (per-property tracking is `@Observable`, which this is not). So nothing needs to *read*
+    /// this for it to work — bumping it is what re-renders the view, and what stops "last
+    /// checked" from refreshing only by luck, riding on whatever other publish fired nearby.
     @Published private(set) var checkGeneration = 0
 
     /// Install updates without asking. **Off by default**: installing and relaunching behind

@@ -31,14 +31,18 @@ struct AutoInstallPolicy {
         let popoverVisible: Bool
     }
 
-    /// Whether to start an automatic install now. Records the attempt, so calling it twice for
-    /// the same version returns true at most once.
-    mutating func shouldInstall(_ c: Conditions) -> Bool {
+    /// The version to install now, or nil to do nothing. Records the attempt, so asking twice
+    /// for the same version yields it at most once.
+    ///
+    /// Returns the version rather than a Bool because deciding and recording happen together:
+    /// a caller that got `true` and then re-derived the version itself could act on a
+    /// different one — or fail to unwrap it and drop a version already marked as spent.
+    mutating func versionToInstall(_ c: Conditions) -> String? {
         guard let version = c.availableVersion,
               c.enabled, c.canInstallInPlace, !c.busy, !c.popoverVisible,
-              !attempted.contains(version) else { return false }
+              !attempted.contains(version) else { return nil }
         attempted.insert(version)
-        return true
+        return version
     }
 
     /// An attempt failed for a reason that a later try could get past — the network dropped,
@@ -54,10 +58,14 @@ struct AutoInstallPolicy {
     /// on every popover close to reach the same verdict.
     func isPermanent(_ error: Error) -> Bool {
         switch error as? UpdateInstallError {
-        case .rejected, .signatureInvalid, .notWritable: return true
-        // Mount, copy and swap failures are all plausibly transient (a busy volume, a full
-        // disk that gets emptied, a half-written download); nil means it wasn't an install
-        // error at all, i.e. the download failed, which is the transient case by definition.
+        // Only these two are verdicts about the *payload*, and a second download of the same
+        // release cannot change them.
+        case .rejected, .signatureInvalid: return true
+        // Everything else describes the environment at one moment and can come right: a busy
+        // volume, a full disk that gets emptied, a half-written download, and `notWritable` —
+        // a permissions repair or a security tool holding the bundle clears, and the user can
+        // fix it themselves while the app keeps running. nil means it wasn't an install error
+        // at all, i.e. the download failed, which is the transient case by definition.
         default: return false
         }
     }

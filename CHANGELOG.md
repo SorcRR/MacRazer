@@ -8,7 +8,9 @@ expect rough edges until 1.0.
 
 ### Fixed
 - **Clicking the gear in the popover footer could install an update and restart the app**
- instead of opening Settings. Opening the window closes the popover programmatically, which
+ instead of opening Settings (and the first fix for it only worked if AppKit happened to
+ deliver the close callback synchronously, which it does not promise — the suppression now
+ spans a runloop turn, so it holds either way). Opening the window closes the popover programmatically, which
  fired the same "popover closed, safe to install now" trigger as the user putting it away —
  so with automatic installs on and an update pending, asking for Settings could take the
  whole app out from under you. A programmatic close on the way to a window is no longer read
