@@ -30,8 +30,12 @@ final class UpdateInstallerTests: XCTestCase {
         // the rest of the run, and every later `hdiutil create -volname MacRazerTest` would
         // then mount as "MacRazerTest 1". `appBundle(atRootOf:)` still resolves that, so the
         // damage would surface as confusing passes rather than an honest error.
-        if FileManager.default.fileExists(atPath: "/Volumes/MacRazerTest") {
-            shell("/usr/bin/hdiutil", ["detach", "/Volumes/MacRazerTest", "-force", "-quiet"])
+        // Every MacRazerTest* volume, not just the unsuffixed one: a leak makes the *next*
+        // image mount as "MacRazerTest 1", so cleaning only the plain name recovers the first
+        // leak and lets the cascade it causes run for the rest of the suite.
+        for volume in (try? FileManager.default.contentsOfDirectory(atPath: "/Volumes")) ?? []
+        where volume.hasPrefix("MacRazerTest") {
+            shell("/usr/bin/hdiutil", ["detach", "/Volumes/\(volume)", "-force", "-quiet"])
         }
         if let root { try? FileManager.default.removeItem(at: root) }
         try super.tearDownWithError()
