@@ -21,6 +21,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     private lazy var permissionsWindow = PermissionsWindowController(model: permissions, controller: controller)
     private let updateChecker = UpdateChecker()
     private let launchAtLogin = LaunchAtLogin()
+    private lazy var settingsWindow = SettingsWindowController(
+        controller: controller, launchAtLogin: launchAtLogin, updateChecker: updateChecker,
+        onAutoInstallChanged: { [weak self] in self?.autoInstallSettingChanged() })
+    /// Decides whether an automatic install may start; see `AutoInstallPolicy`.
+    private var autoInstallPolicy = AutoInstallPolicy()
     private var updateTimer: Timer?
     private var updateBadgeView: NSView?
     private var appearanceObserver: NSKeyValueObservation?
@@ -60,7 +65,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         // logo have poor contrast on the light-mode grey material; dark is also the gaming
         // aesthetic and makes the green pop.
         popover.appearance = NSAppearance(named: .darkAqua)
-        let hosting = NSHostingController(rootView: PopoverView(controller: controller, remapper: remapper, updateChecker: updateChecker, launchAtLogin: launchAtLogin))
+        let hosting = NSHostingController(rootView: PopoverView(
+            controller: controller, remapper: remapper, updateChecker: updateChecker,
+            launchAtLogin: launchAtLogin,
+            onOpenSettings: { [weak self] in
+                // Close first: the popover is transient and would dismiss itself the moment
+                // the window takes focus, which looks like the click did two things.
+                //
+                // Closing here would normally trigger an auto-install, which would relaunch
+                // the app out from under the window the user just asked for. That is handled
+                // in `popoverDidClose` by looking at whether this window came up — see there.
+                self?.popover.performClose(nil)
+                self?.settingsWindow.show()
+            }))
         hosting.sizingOptions = [.preferredContentSize] // popover auto-fits the SwiftUI content
         popover.contentViewController = hosting
 
@@ -148,8 +165,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         // Update check: once now (throttled internally to once/24h), then a daily timer so a
         // long-running session still notices new releases without a relaunch.
         updateChecker.$latestVersion
+            // A check republishes the same version every day; without this the auto-install
+            // gate would be re-evaluated on each one.
+            .removeDuplicates()
             .receive(on: RunLoop.main)
-            .sink { [weak self] version in self?.setUpdateBadge(visible: version != nil) }
+            .sink { [weak self] version in
+                self?.setUpdateBadge(visible: version != nil)
+                // The published value, not a re-read of the property: `@Published` emits in
+                // `willSet`, so the object still holds the old version at this point. The
+                // `.receive(on:)` above happens to defer past that today, but the gate must
+                // not depend on an operator that looks removable.
+                self?.autoInstallIfEnabled(available: version)
+            }
             .store(in: &cancellables)
         Task { await updateChecker.checkForUpdatesIfDue() }
         let timer = Timer(timeInterval: 24 * 60 * 60, repeats: true) { [weak self] _ in
@@ -242,6 +269,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         setup.target = self
         menu.addItem(setup)
 
+        let settings = NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
+        settings.target = self
+        menu.addItem(settings)
+
         // The background check runs once a day; this is the way to ask for one now, and it
         // also un-dismisses a version the user waved away earlier.
         let update = NSMenuItem(title: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "")
@@ -279,13 +310,64 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         }
     }
     @objc private func openRemap() { remapWindow.show() }
+    @objc private func openSettings() { settingsWindow.show() }
+
+    /// Turning the setting on with an update already found is the one moment a user is
+    /// watching for it to act, and neither of the other triggers fires then: `latestVersion`
+    /// hasn't changed (so the deduplicated sink stays quiet) and the popover was never open.
+    private func autoInstallSettingChanged() { autoInstallIfEnabled() }
     @objc private func openPermissions() { permissionsWindow.show() }
     @objc private func quit() { NSApplication.shared.terminate(nil) }
 
     // MARK: - NSPopoverDelegate
 
     func popoverDidShow(_ notification: Notification) { controller.setPopoverVisible(true) }
-    func popoverDidClose(_ notification: Notification) { controller.setPopoverVisible(false) }
+    func popoverDidClose(_ notification: Notification) {
+        controller.setPopoverVisible(false)
+        // An update found while the popover was open was deliberately left alone; now that
+        // it's closed, the restart is no longer disruptive — unless the close was on the way
+        // to opening Settings, in which case relaunching would take that window with it.
+        //
+        // Deferred a turn so the answer is a fact rather than a race. Two earlier attempts
+        // used a flag set around `performClose`, which only worked if AppKit delivered this
+        // callback at a particular moment it never promised to. By the next runloop turn the
+        // settings window has either come up or it hasn't, and `autoInstallIfEnabled` reads
+        // that directly.
+        DispatchQueue.main.async { [weak self] in self?.autoInstallIfEnabled() }
+    }
+
+    // MARK: - Automatic updates
+
+    /// Silent install, when the user has switched it on. Deliberately never while the popover
+    /// is open: the install ends in a relaunch, and pulling the window out from under someone
+    /// mid-click is worse than waiting for the next opportunity. A failure falls through to
+    /// the ordinary update card, so a broken auto-install can't quietly strand anyone on an
+    /// old version.
+    private func autoInstallIfEnabled(available: String? = nil) {
+        let conditions = AutoInstallPolicy.Conditions(
+            availableVersion: available ?? updateChecker.latestVersion,
+            enabled: updateChecker.autoInstallEnabled,
+            canInstallInPlace: updateChecker.canInstallInPlace,
+            busy: updateChecker.isBusy,
+            // Neither surface may be yanked away mid-use: the popover for the reason above,
+            // and the settings window because closing the popover to open it must not be read
+            // as permission to restart the app.
+            popoverVisible: popover.isShown || settingsWindow.isVisible)
+        // The policy returns the version it approved rather than a Bool: it records the
+        // attempt as part of deciding, so a caller that had to re-unwrap afterwards could
+        // silently drop a version already marked as spent.
+        guard let version = autoInstallPolicy.versionToInstall(conditions) else { return }
+        Task { [weak self] in
+            guard let self else { return }
+            await self.updateChecker.downloadAndInstall()
+            // A dropped connection must not cost the user automatic updates until they next
+            // relaunch — this app starts at login and can run for weeks.
+            if let error = self.updateChecker.lastInstallError,
+               !self.autoInstallPolicy.isPermanent(error) {
+                self.autoInstallPolicy.retryLater(version)
+            }
+        }
+    }
 
     // MARK: - Foreground
 

@@ -7,6 +7,22 @@ expect rough edges until 1.0.
 ## [Unreleased]
 
 ### Added
+- **A real Settings window** (menu bar right-click › Settings…, or the gear in the popover
+ footer). The popover is for the *mouse* — DPI, polling, lighting, battery. App-level
+ settings are set once and rarely revisited, and they need room to explain themselves; a
+ sixth card on the bottom of an already-long popover was the wrong shape for both, so they
+ moved out. "Show battery % in menu bar" moved with them.
+- **"Install updates automatically" — off by default.** On, MacRazer downloads, replaces
+ itself and relaunches on its own when a new version appears. Off (the default), you get the
+ dot on the menu bar icon and the update card, as before: installing and relaunching behind
+ someone's back is a much bigger thing to do to them than a badge, and this app isn't
+ Apple-notarised, so opting in should be deliberate. An automatic install never starts while
+ the popover is open — the install ends in a relaunch, and pulling the window out from under
+ someone mid-click is worse than waiting for it to close, which is the next thing that
+ triggers it. Each version is attempted once per launch, so a payload that can't be installed
+ doesn't re-download itself every time the popover closes, and any failure falls through to
+ the ordinary update card rather than quietly stranding you on an old version.
+- **"Start MacRazer at login" (on by default), in the new Settings window.** A menu bar
 - **Tests for the in-place installer itself**, against real signed bundles inside real disk
  images — the one code path that deletes the user's installed application had no automated
  coverage at all, only unit tests of the pure predicate feeding it. Every refusal (older
@@ -67,6 +83,30 @@ expect rough edges until 1.0.
  sub-second pure-layer run, now says what the job actually does.
 
 ### Fixed
+- **Clicking the gear in the popover footer could install an update and restart the app**
+ instead of opening Settings. The check is deferred a runloop turn and then asks whether the
+ settings window actually came up — two earlier attempts used a flag set around the close,
+ which only held if AppKit delivered that callback at a moment it never promised to. Opening the window closes the popover programmatically, which
+ fired the same "popover closed, safe to install now" trigger as the user putting it away —
+ so with automatic installs on and an update pending, asking for Settings could take the
+ whole app out from under you. A programmatic close on the way to a window is no longer read
+ as permission.
+- **Turning "install updates automatically" on now acts on an update that is already known.**
+ Neither trigger fired in that case — the version hadn't changed, so the deduplicated
+ subscription stayed quiet, and the popover had never been open to close — so the setting did
+ nothing for up to a day, at exactly the moment the user was watching it.
+- **A dropped connection no longer costs you automatic updates until the next relaunch.**
+ Every version got one attempt per launch regardless of why it failed; for an app that starts
+ at login and runs for weeks, one bad moment meant no automatic update for weeks. Failures
+ that will fail again (wrong payload, broken signature, unwritable target) still spend the
+ attempt; transient ones are retried at the next opportunity.
+- The Updates section can now install what it tells you about, instead of pointing at the
+ popover — and stops claiming you have to, when automatic installs will do it for you. It
+ also shows install progress, and "Check Now" is disabled while an install runs rather than
+ doing nothing when pressed.
+- "Last checked" is a stored published value written when a check succeeds, rather than a
+ computed read of `UserDefaults` that refreshed only because some other property happened to
+ change nearby.
 - **A verbose `hdiutil` or `ditto` failure could hang an update install forever.** The
  subprocess helper drained the child's stdout to EOF and only then its stderr; a child that
  fills the stderr pipe in the meantime blocks, and the parent never stops waiting on stdout.
@@ -111,7 +151,6 @@ expect rough edges until 1.0.
  for exactly this reason).
 - Removed `UpdateInstallError.notInstalled`, which carried a user-facing message it could
  never show.
-
 - **`Scripts/build-app.sh` no longer appears to hang at the codesigning step.** macOS gates
  the signing key behind two things, not one: `security import -T /usr/bin/codesign` (which
  `setup-signing.sh` already did) puts codesign on the key's ACL, but since macOS 10.12 the

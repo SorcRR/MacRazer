@@ -32,6 +32,33 @@ final class UpdateChecker: ObservableObject {
     @Published private(set) var latestVersion: String?
     @Published private(set) var phase: Phase = .idle
     @Published var downloadError: String?
+    /// A check is in flight. Only the manual "Check Now" needs this — the daily background
+    /// check has nothing to say while it runs.
+    @Published private(set) var isChecking = false
+
+    /// The error from the last failed install, kept raw (not just its message) so
+    /// `AutoInstallPolicy` can tell a dropped connection from a payload that will never work.
+    private(set) var lastInstallError: Error?
+
+    /// When the last successful check ran, shown by the settings window so "no update" reads
+    /// as a fresh answer rather than a shrug.
+    ///
+    /// A stored published property, seeded from `UserDefaults` and written alongside it. It
+    /// was a computed read of the default, which published nothing, so the line refreshed only
+    /// because some *other* property happened to change around each check — first `isChecking`,
+    /// then a write-only counter added to make that deliberate. Storing it removes the
+    /// question: the value the view reads is the value that publishes.
+    @Published private(set) var lastCheckedAt: Date? =
+        UserDefaults.standard.object(forKey: UpdateChecker.lastCheckKey) as? Date
+
+    /// Install updates without asking. **Off by default**: installing and relaunching behind
+    /// someone's back is a much bigger thing to do to them than putting a dot on the menu bar,
+    /// and this app isn't Apple-notarised — opting in should be deliberate. The caller decides
+    /// *when* an automatic install is acceptable (`AppDelegate` won't start one with the
+    /// popover open); this flag only says whether it may.
+    @Published var autoInstallEnabled: Bool = UserDefaults.standard.bool(forKey: UpdateChecker.autoInstallKey) {
+        didSet { UserDefaults.standard.set(autoInstallEnabled, forKey: Self.autoInstallKey) }
+    }
 
     private let releaseAPIURL = URL(string: "https://api.github.com/repos/SorcRR/MacRazer/releases/latest")!
     private let dmgURL = URL(string: "https://github.com/SorcRR/MacRazer/releases/latest/download/MacRazer.dmg")!
@@ -40,12 +67,15 @@ final class UpdateChecker: ObservableObject {
     private static let dismissedKey = "dismissedUpdateVersion"
     private static let lastCheckKey = "lastUpdateCheckDate"
     private static let lastFoundKey = "lastFoundUpdateVersion"
+    private static let autoInstallKey = "autoInstallUpdates"
 
     private struct GitHubRelease: Decodable {
         let tag_name: String
     }
 
-    private var currentVersion: String {
+    /// The bundle's version, or "0" under `swift run` where there is no bundle — which
+    /// compares older than any real release, so a dev build always sees an update available.
+    var currentVersion: String {
         (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "0"
     }
 
@@ -58,8 +88,7 @@ final class UpdateChecker: ObservableObject {
     /// Checks at most once per `checkInterval`, regardless of how often this is called — safe to
     /// call on every launch and from a repeating timer.
     func checkForUpdatesIfDue() async {
-        let last = UserDefaults.standard.object(forKey: Self.lastCheckKey) as? Date
-        if let last, Date().timeIntervalSince(last) < checkInterval {
+        if let last = lastCheckedAt, Date().timeIntervalSince(last) < checkInterval {
             // Within the throttle window, surface what the last successful check already
             // found — otherwise a relaunch forgets a known update for up to a day.
             restoreLastFound()
@@ -82,6 +111,8 @@ final class UpdateChecker: ObservableObject {
         // swap-and-relaunch already in flight. There is also nothing to learn: we are already
         // installing the newest thing we know about.
         guard !isBusy else { return }
+        isChecking = true
+        defer { isChecking = false }
         do {
             let (data, _) = try await URLSession.shared.data(from: releaseAPIURL)
             let release = try JSONDecoder().decode(GitHubRelease.self, from: data)
@@ -94,8 +125,10 @@ final class UpdateChecker: ObservableObject {
             // Only a *successful* check counts against the daily throttle: a failed one
             // (offline right after wake is common) should retry on the next opportunity,
             // not silence update notices for a day.
-            UserDefaults.standard.set(Date(), forKey: Self.lastCheckKey)
+            let checkedAt = Date()
+            UserDefaults.standard.set(checkedAt, forKey: Self.lastCheckKey)
             UserDefaults.standard.set(remote, forKey: Self.lastFoundKey)
+            lastCheckedAt = checkedAt
             let dismissed = UserDefaults.standard.string(forKey: Self.dismissedKey)
             if Self.isNewer(remote, than: currentVersion), remote != dismissed {
                 latestVersion = remote
@@ -138,6 +171,7 @@ final class UpdateChecker: ObservableObject {
             return
         }
         downloadError = nil
+        lastInstallError = nil
         phase = .downloading(0)
         let bundleID = Bundle.main.bundleIdentifier
         let current = currentVersion
@@ -155,6 +189,7 @@ final class UpdateChecker: ObservableObject {
             relaunch(at: target)
         } catch {
             phase = .idle
+            lastInstallError = error
             downloadError = (error as? LocalizedError)?.errorDescription
                 ?? "The update couldn't be installed. Try downloading it manually."
         }
