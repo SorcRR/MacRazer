@@ -13,17 +13,23 @@ final class SettingsWindowController {
     private let launchAtLogin: LaunchAtLogin
     private let updateChecker: UpdateChecker
 
-    init(controller: MouseController, launchAtLogin: LaunchAtLogin, updateChecker: UpdateChecker) {
+    /// Called when the "install automatically" switch is flipped — see `SettingsView`.
+    private let onAutoInstallChanged: () -> Void
+
+    init(controller: MouseController, launchAtLogin: LaunchAtLogin, updateChecker: UpdateChecker,
+         onAutoInstallChanged: @escaping () -> Void) {
         self.controller = controller
         self.launchAtLogin = launchAtLogin
         self.updateChecker = updateChecker
+        self.onAutoInstallChanged = onAutoInstallChanged
     }
 
     func show() {
         if window == nil {
             let root = SettingsView(controller: controller, launchAtLogin: launchAtLogin,
                                     updateChecker: updateChecker,
-                                    onDone: { [weak self] in self?.window?.close() })
+                                    onDone: { [weak self] in self?.window?.close() },
+                                    onAutoInstallChanged: onAutoInstallChanged)
             let hosting = NSHostingController(rootView: root)
             hosting.sizingOptions = [.preferredContentSize]
             let w = NSWindow(contentViewController: hosting)

@@ -136,17 +136,22 @@ case "render-ui":
         ? AnyView(UsageGraphView(controller: controller, onBack: {}))
         : args.contains("profiles")
         ? AnyView(ProfilesView(controller: controller, remapper: ButtonRemapper(), onBack: {}))
-        : AnyView(PopoverView(controller: controller, remapper: ButtonRemapper(), updateChecker: updateChecker, launchAtLogin: launchAtLogin))
+        : AnyView(PopoverView(controller: controller, remapper: ButtonRemapper(), updateChecker: updateChecker,
+                              launchAtLogin: launchAtLogin, onOpenSettings: {})) // no windows in a render
     writeViewPNG(rootView, to: path)
 
 case "render-settings":
     _ = NSApplication.shared
-    let settingsPath = args.dropFirst().first ?? "settings-preview.png"
+    let settingsPath = args.dropFirst().first { $0 != "update" } ?? "settings-preview.png"
     let sc = MouseController()
     sc.loadPreviewState()
     let sl = LaunchAtLogin()
     sl.loadPreviewState()
-    writeViewPNG(SettingsView(controller: sc, launchAtLogin: sl, updateChecker: UpdateChecker()),
+    let su = UpdateChecker()
+    // `update` shows the Updates section in its available state, which is the only way to see
+    // the Install Now button without waiting for a real release.
+    if args.contains("update") { su.loadPreviewState() }
+    writeViewPNG(SettingsView(controller: sc, launchAtLogin: sl, updateChecker: su),
                  to: settingsPath)
 
 case "render-remap":

@@ -7,6 +7,27 @@ expect rough edges until 1.0.
 ## [Unreleased]
 
 ### Fixed
+- **Clicking the gear in the popover footer could install an update and restart the app**
+ instead of opening Settings. Opening the window closes the popover programmatically, which
+ fired the same "popover closed, safe to install now" trigger as the user putting it away —
+ so with automatic installs on and an update pending, asking for Settings could take the
+ whole app out from under you. A programmatic close on the way to a window is no longer read
+ as permission.
+- **Turning "install updates automatically" on now acts on an update that is already known.**
+ Neither trigger fired in that case — the version hadn't changed, so the deduplicated
+ subscription stayed quiet, and the popover had never been open to close — so the setting did
+ nothing for up to a day, at exactly the moment the user was watching it.
+- **A dropped connection no longer costs you automatic updates until the next relaunch.**
+ Every version got one attempt per launch regardless of why it failed; for an app that starts
+ at login and runs for weeks, one bad moment meant no automatic update for weeks. Failures
+ that will fail again (wrong payload, broken signature, unwritable target) still spend the
+ attempt; transient ones are retried at the next opportunity.
+- The Updates section can now install what it tells you about, instead of pointing at the
+ popover — and stops claiming you have to, when automatic installs will do it for you. It
+ also shows install progress, and "Check Now" is disabled while an install runs rather than
+ doing nothing when pressed.
+- "Last checked" refreshes when a check actually finishes, rather than riding on whatever
+ other publish happened to fire at the same time.
 - **A verbose `hdiutil` or `ditto` failure could hang an update install forever.** The
  subprocess helper drained the child's stdout to EOF and only then its stderr; a child that
  fills the stderr pipe in the meantime blocks, and the parent never stops waiting on stdout.

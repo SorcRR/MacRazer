@@ -27,8 +27,10 @@ struct PopoverView: View {
     @ObservedObject var updateChecker: UpdateChecker
     @ObservedObject var launchAtLogin: LaunchAtLogin
     /// Opening a window is the owner's job — the popover doesn't know about window controllers.
-    /// Defaulted so the `render-ui` preview can build the view without one.
-    var onOpenSettings: () -> Void = {}
+    /// Deliberately not defaulted: a no-op default would let a future call site forget the
+    /// handler and ship a gear button that depresses and does nothing, with no compiler error.
+    /// The preview passes an explicit `{}`.
+    var onOpenSettings: () -> Void
 
     enum Page { case main, color, buttons, usage, profiles }
     @State private var page: Page = .main

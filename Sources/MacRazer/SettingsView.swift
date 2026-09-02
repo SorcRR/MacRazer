@@ -15,6 +15,10 @@ struct SettingsView: View {
     @ObservedObject var launchAtLogin: LaunchAtLogin
     @ObservedObject var updateChecker: UpdateChecker
     var onDone: (() -> Void)?
+    /// Called when "install automatically" is switched, so the owner can act on an update that
+    /// is *already* known — the one moment the user is watching for the setting to do
+    /// something, and the moment none of the other triggers fire.
+    var onAutoInstallChanged: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -96,7 +100,10 @@ struct SettingsView: View {
             title: "Install updates automatically",
             detail: "Download, replace and relaunch on its own when a new version appears. "
                 + "Never while the popover is open.",
-            isOn: $updateChecker.autoInstallEnabled,
+            isOn: Binding(
+                get: { updateChecker.autoInstallEnabled },
+                set: { updateChecker.autoInstallEnabled = $0; onAutoInstallChanged?() }
+            ),
             enabled: updateChecker.canInstallInPlace
         ) {
             if !updateChecker.canInstallInPlace {
@@ -120,6 +127,16 @@ struct SettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)
+            // An update is available: this section is where the app puts everything about
+            // updating, so it should be able to do it rather than send the user to the popover.
+            if updateChecker.latestVersion != nil, !updateChecker.isBusy {
+                Button("Install Now") {
+                    Task { await updateChecker.downloadAndInstall() }
+                }
+                .controlSize(.small)
+                .buttonStyle(.borderedProminent)
+                .tint(.razerGreen)
+            }
             Button {
                 Task { await updateChecker.checkForUpdatesNow(userRequested: true) }
             } label: {
@@ -130,20 +147,39 @@ struct SettingsView: View {
                 }
             }
             .controlSize(.small)
-            .disabled(updateChecker.isChecking)
+            // `checkForUpdatesNow` returns immediately while an install runs; without `isBusy`
+            // here the button would depress and do nothing, which reads as broken.
+            .disabled(updateChecker.isChecking || updateChecker.isBusy)
         }
     }
 
+    /// Built once for the process: formatter construction resolves a locale and a calendar,
+    /// and this is read from a view body that re-renders on every publish from three observed
+    /// objects — including the controller's battery sample every ~15s.
+    private static let relativeDate = RelativeDateTimeFormatter()
+
     private var checkStatusText: String {
         if updateChecker.isChecking { return "Checking…" }
-        if let latest = updateChecker.latestVersion {
-            return "Version \(latest) is available — open the popover to install it."
+        switch updateChecker.phase {
+        case .downloading(let f): return "Downloading the update… \(Int(f * 100))%"
+        case .installing: return "Installing the update…"
+        case .restarting: return "Restarting into the new version…"
+        case .needsRestart: return "Update installed — quit and reopen MacRazer to use it."
+        case .idle: break
         }
+        if let latest = updateChecker.latestVersion {
+            // Don't tell someone to go and do a thing the app is about to do for them.
+            return updateChecker.autoInstallEnabled
+                ? "Version \(latest) is available and will install itself shortly."
+                : "Version \(latest) is available."
+        }
+        // `checkGeneration` is read purely so SwiftUI treats this text as depending on it —
+        // `lastCheckedAt` lives in UserDefaults and publishes nothing of its own.
+        _ = updateChecker.checkGeneration
         guard let last = updateChecker.lastCheckedAt else {
             return "Not checked yet. MacRazer checks once a day."
         }
-        let when = RelativeDateTimeFormatter().localizedString(for: last, relativeTo: Date())
-        return "Up to date — last checked \(when)."
+        return "Up to date — last checked \(Self.relativeDate.localizedString(for: last, relativeTo: Date()))."
     }
 
     // MARK: Building blocks

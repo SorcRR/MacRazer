@@ -22,13 +22,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     private let updateChecker = UpdateChecker()
     private let launchAtLogin = LaunchAtLogin()
     private lazy var settingsWindow = SettingsWindowController(
-        controller: controller, launchAtLogin: launchAtLogin, updateChecker: updateChecker)
-    /// Versions an automatic install has already been tried on, so a payload that can't be
-    /// installed is attempted once — not re-downloaded every time the popover closes.
-    private var autoInstallAttempted = Set<String>()
+        controller: controller, launchAtLogin: launchAtLogin, updateChecker: updateChecker,
+        onAutoInstallChanged: { [weak self] in self?.autoInstallSettingChanged() })
+    /// Decides whether an automatic install may start; see `AutoInstallPolicy`.
+    private var autoInstallPolicy = AutoInstallPolicy()
     private var updateTimer: Timer?
     private var updateBadgeView: NSView?
     private var appearanceObserver: NSKeyValueObservation?
+    /// True only across the programmatic popover close that precedes opening Settings.
+    private var openingSettings = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Razer HID devices enumerate as a keyboard/mouse, so macOS gates opening them behind
@@ -71,7 +73,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
             onOpenSettings: { [weak self] in
                 // Close first: the popover is transient and would dismiss itself the moment
                 // the window takes focus, which looks like the click did two things.
+                //
+                // `openingSettings` suppresses the auto-install that `popoverDidClose`
+                // normally triggers: the user asked for a window, and answering that by
+                // silently replacing the app and relaunching would take the window with it.
+                self?.openingSettings = true
                 self?.popover.performClose(nil)
+                self?.openingSettings = false
                 self?.settingsWindow.show()
             }))
         hosting.sizingOptions = [.preferredContentSize] // popover auto-fits the SwiftUI content
@@ -167,7 +175,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
             .receive(on: RunLoop.main)
             .sink { [weak self] version in
                 self?.setUpdateBadge(visible: version != nil)
-                self?.autoInstallIfEnabled()
+                // The published value, not a re-read of the property: `@Published` emits in
+                // `willSet`, so the object still holds the old version at this point. The
+                // `.receive(on:)` above happens to defer past that today, but the gate must
+                // not depend on an operator that looks removable.
+                self?.autoInstallIfEnabled(available: version)
             }
             .store(in: &cancellables)
         Task { await updateChecker.checkForUpdatesIfDue() }
@@ -303,6 +315,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     }
     @objc private func openRemap() { remapWindow.show() }
     @objc private func openSettings() { settingsWindow.show() }
+
+    /// Turning the setting on with an update already found is the one moment a user is
+    /// watching for it to act, and neither of the other triggers fires then: `latestVersion`
+    /// hasn't changed (so the deduplicated sink stays quiet) and the popover was never open.
+    private func autoInstallSettingChanged() { autoInstallIfEnabled() }
     @objc private func openPermissions() { permissionsWindow.show() }
     @objc private func quit() { NSApplication.shared.terminate(nil) }
 
@@ -323,15 +340,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     /// mid-click is worse than waiting for the next opportunity. A failure falls through to
     /// the ordinary update card, so a broken auto-install can't quietly strand anyone on an
     /// old version.
-    private func autoInstallIfEnabled() {
-        guard let version = updateChecker.latestVersion,
-              updateChecker.autoInstallEnabled,
-              updateChecker.canInstallInPlace,
-              !updateChecker.isBusy,
-              !popover.isShown,
-              !autoInstallAttempted.contains(version) else { return }
-        autoInstallAttempted.insert(version)
-        Task { await updateChecker.downloadAndInstall() }
+    private func autoInstallIfEnabled(available: String? = nil) {
+        let version = available ?? updateChecker.latestVersion
+        let conditions = AutoInstallPolicy.Conditions(
+            availableVersion: version,
+            enabled: updateChecker.autoInstallEnabled,
+            canInstallInPlace: updateChecker.canInstallInPlace,
+            busy: updateChecker.isBusy,
+            // A programmatic close on the way to opening Settings is not the user putting the
+            // popover away, and must not be read as permission to restart the app.
+            popoverVisible: popover.isShown || openingSettings)
+        guard autoInstallPolicy.shouldInstall(conditions), let version else { return }
+        Task { [weak self] in
+            guard let self else { return }
+            await self.updateChecker.downloadAndInstall()
+            // A dropped connection must not cost the user automatic updates until they next
+            // relaunch — this app starts at login and can run for weeks.
+            if let error = self.updateChecker.lastInstallError,
+               !self.autoInstallPolicy.isPermanent(error) {
+                self.autoInstallPolicy.retryLater(version)
+            }
+        }
     }
 
     // MARK: - Foreground

@@ -36,6 +36,15 @@ final class UpdateChecker: ObservableObject {
     /// check has nothing to say while it runs.
     @Published private(set) var isChecking = false
 
+    /// The error from the last failed install, kept raw (not just its message) so
+    /// `AutoInstallPolicy` can tell a dropped connection from a payload that will never work.
+    private(set) var lastInstallError: Error?
+
+    /// Bumped whenever anything the settings window reads from `UserDefaults` rather than from
+    /// a published property changes — currently `lastCheckedAt`. Without it that line refreshes
+    /// only by luck, riding on whatever *other* publish happened to fire at the same moment.
+    @Published private(set) var checkGeneration = 0
+
     /// Install updates without asking. **Off by default**: installing and relaunching behind
     /// someone's back is a much bigger thing to do to them than putting a dot on the menu bar,
     /// and this app isn't Apple-notarised — opting in should be deliberate. The caller decides
@@ -119,6 +128,7 @@ final class UpdateChecker: ObservableObject {
             // not silence update notices for a day.
             UserDefaults.standard.set(Date(), forKey: Self.lastCheckKey)
             UserDefaults.standard.set(remote, forKey: Self.lastFoundKey)
+            checkGeneration &+= 1 // makes `lastCheckedAt` observable
             let dismissed = UserDefaults.standard.string(forKey: Self.dismissedKey)
             if Self.isNewer(remote, than: currentVersion), remote != dismissed {
                 latestVersion = remote
@@ -161,6 +171,7 @@ final class UpdateChecker: ObservableObject {
             return
         }
         downloadError = nil
+        lastInstallError = nil
         phase = .downloading(0)
         let bundleID = Bundle.main.bundleIdentifier
         let current = currentVersion
@@ -178,6 +189,7 @@ final class UpdateChecker: ObservableObject {
             relaunch(at: target)
         } catch {
             phase = .idle
+            lastInstallError = error
             downloadError = (error as? LocalizedError)?.errorDescription
                 ?? "The update couldn't be installed. Try downloading it manually."
         }
