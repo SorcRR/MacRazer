@@ -6,52 +6,6 @@ expect rough edges until 1.0.
 
 ## [Unreleased]
 
-### Fixed
-- **A verbose `hdiutil` or `ditto` failure could hang an update install forever.** The
- subprocess helper drained the child's stdout to EOF and only then its stderr; a child that
- fills the stderr pipe in the meantime blocks, and the parent never stops waiting on stdout.
- Both pipes are now drained concurrently. The symptom would have been "Installing…" on screen
- with no timeout and no way out but quitting.
-- **The `login-item` diagnostic no longer turns the login item on.** Registering happened in
- `LaunchAtLogin.init`, so merely constructing the model — which the read-only report does —
- changed the user's system and then reported the state it had just created. Applying the
- default is now an explicit call the app delegate makes at launch.
-- **Apps installed on a second volume get the login item and self-updates again.** Every path
- under `/Volumes/` was rejected to catch a mounted disk image, which also caught external
- drives and secondary volumes — those users were told to move MacRazer to an Applications
- folder it was already in. A disk image is now recognised by being read-only, which is the
- property that actually distinguishes it from a disk.
-- **A version check landing mid-install can no longer erase the progress bar.** The popover's
- update card is mounted on `latestVersion`, so a background check resolving to "nothing
- newer" during a download or bundle swap made the whole card vanish while the install carried
- on invisibly. Checks are now skipped while one is in flight.
-- **A failed manual "Check for Updates…" no longer spends the user's dismissal.** The
- dismissed version was cleared before the request; if that then failed, the dismissal was gone
- and the previously-waved-away version came back having learned nothing. It's cleared only
- once a check succeeds.
-- **The installed copy is verified, not just the one on the disk image.** The signature was
- checked on the mounted payload and a `ditto` copy of it was what actually got installed —
- the artifact placed on disk was never itself verified, in the last moment before a working
- app is unlinked.
-- **Copy and swap failures now say what went wrong.** Both carried the underlying `ditto`
- stderr or `FileManager` error and both threw it away; that detail now goes to stderr, as
- elsewhere in the app. These are the hardest install failures to reproduce and were the only
- ones reporting nothing.
-- **The download delegate's shared state is under a lock** rather than under an argument about
- ordering — it is written by the caller and read on the URL session's delegate queue, and
- nothing in the code established visibility between the two.
-- Downloaded DMGs no longer accumulate in the temp directory: the manual-download path can't
- delete a file the user still has to open, so each one leaked a few megabytes forever. Ones
- older than an hour are swept at the start of the next download — the age limit matters, since
- the download handed to Finder a minute ago may not have been opened yet, or may be mounted,
- and deleting a mounted image's backing file is worse than the leak.
-- `LaunchAtLogin.isSupported` is `@Published`, so changing it actually refreshes the switch.
-- The enlarged charging bolt no longer overlaps the Cobra Pro's DPI clutch button (unreachable
- today — only the generic body ever draws charging — but the triskelion was already guarded
- for exactly this reason).
-- Removed `UpdateInstallError.notInstalled`, which carried a user-facing message it could
- never show.
-
 ### Added
 - **Tests for the in-place installer itself**, against real signed bundles inside real disk
  images — the one code path that deletes the user's installed application had no automated
@@ -107,6 +61,75 @@ expect rough edges until 1.0.
 - **"Check for Updates…" in the menu bar right-click menu.** The background check runs once a
  day; this asks for one now, and is the only way back to the update card after dismissing a
  version.
+- **CI checks the packaging scripts.** They are as much a part of shipping as the Swift is,
+ and nothing verified they even parsed — a stray quote would have surfaced only when someone
+ next tried to cut a release. The workflow's header comment, which still described a
+ sub-second pure-layer run, now says what the job actually does.
+
+### Fixed
+- **A verbose `hdiutil` or `ditto` failure could hang an update install forever.** The
+ subprocess helper drained the child's stdout to EOF and only then its stderr; a child that
+ fills the stderr pipe in the meantime blocks, and the parent never stops waiting on stdout.
+ Both pipes are now drained concurrently. The symptom would have been "Installing…" on screen
+ with no timeout and no way out but quitting.
+- **The `login-item` diagnostic no longer turns the login item on.** Registering happened in
+ `LaunchAtLogin.init`, so merely constructing the model — which the read-only report does —
+ changed the user's system and then reported the state it had just created. Applying the
+ default is now an explicit call the app delegate makes at launch.
+- **Apps installed on a second volume get the login item and self-updates again.** Every path
+ under `/Volumes/` was rejected to catch a mounted disk image, which also caught external
+ drives and secondary volumes — those users were told to move MacRazer to an Applications
+ folder it was already in. A disk image is now recognised by being read-only, which is the
+ property that actually distinguishes it from a disk.
+- **A version check landing mid-install can no longer erase the progress bar.** The popover's
+ update card is mounted on `latestVersion`, so a background check resolving to "nothing
+ newer" during a download or bundle swap made the whole card vanish while the install carried
+ on invisibly. Checks are now skipped while one is in flight.
+- **A failed manual "Check for Updates…" no longer spends the user's dismissal.** The
+ dismissed version was cleared before the request; if that then failed, the dismissal was gone
+ and the previously-waved-away version came back having learned nothing. It's cleared only
+ once a check succeeds.
+- **The installed copy is verified, not just the one on the disk image.** The signature was
+ checked on the mounted payload and a `ditto` copy of it was what actually got installed —
+ the artifact placed on disk was never itself verified, in the last moment before a working
+ app is unlinked.
+- **Copy and swap failures now say what went wrong.** Both carried the underlying `ditto`
+ stderr or `FileManager` error and both threw it away; that detail now goes to stderr, as
+ elsewhere in the app. These are the hardest install failures to reproduce and were the only
+ ones reporting nothing.
+- **The download delegate's shared state is under a lock** rather than under an argument about
+ ordering — it is written by the caller and read on the URL session's delegate queue, and
+ nothing in the code established visibility between the two.
+- Downloaded DMGs no longer accumulate in the temp directory: the manual-download path can't
+ delete a file the user still has to open, so each one leaked a few megabytes forever. Ones
+ older than an hour are swept at the start of the next download — the age limit matters, since
+ the download handed to Finder a minute ago may not have been opened yet, or may be mounted,
+ and deleting a mounted image's backing file is worse than the leak.
+- `LaunchAtLogin.isSupported` is `@Published`, so changing it actually refreshes the switch.
+- The enlarged charging bolt no longer overlaps the Cobra Pro's DPI clutch button (unreachable
+ today — only the generic body ever draws charging — but the triskelion was already guarded
+ for exactly this reason).
+- Removed `UpdateInstallError.notInstalled`, which carried a user-facing message it could
+ never show.
+
+- **`Scripts/build-app.sh` no longer appears to hang at the codesigning step.** macOS gates
+ the signing key behind two things, not one: `security import -T /usr/bin/codesign` (which
+ `setup-signing.sh` already did) puts codesign on the key's ACL, but since macOS 10.12 the
+ key's *partition list* also has to name it — and nothing was setting that. So every build
+ stopped on a GUI "codesign wants to use your keychain" prompt, which in a scripted or CI
+ build with nobody watching is indistinguishable from a hang. `setup-signing.sh` now sets the
+ partition list via `./Scripts/setup-signing.sh --repair`, and `build-app.sh` names the pause
+ — but only once signing has actually been stalled for five seconds, rather than printing the
+ advice on every build including the ones where it no longer applies.
+
+ The repair is behind a flag because it prompts for your keychain password and rewrites the
+ key's access list: a bare `setup-signing.sh` checks and creates, and says nothing else. It
+ also refuses to run non-interactively rather than blocking on a password dialog nobody can
+ click — which would have reproduced the very hang it exists to fix.
+- **`setup-signing.sh` no longer mangles a keychain path containing a space.** It stripped
+ every space to remove the indentation `security default-keychain` prints, which also broke
+ any home directory derived from a full name. That variable had never been used before this
+ change, so nothing had exercised it.
 
 ## [0.2.1] — 2026-08-24
 

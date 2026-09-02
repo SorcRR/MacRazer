@@ -1,6 +1,9 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-# Build + unit tests on every push/PR. No hardware in CI, so this covers the pure layers:
-# protocol codec, command builders/parsers, battery/discharge models, persistence.
+# Build + unit tests on every push/PR, plus a syntax and lint pass over the packaging
+# scripts. No hardware in CI, so the Swift tests cover what runs without a mouse attached:
+# the protocol codec, command builders/parsers, battery/discharge models, persistence — and
+# the in-place updater, which builds and mounts its own disk images, so the job is no longer
+# the sub-second pure-layer run this comment used to describe.
 name: CI
 
 on:
@@ -17,6 +20,20 @@ jobs:
         uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: latest-stable
+      # The packaging scripts are as much a part of shipping as the Swift is, and nothing
+      # checked they even parsed — a stray quote would only surface when someone tried to cut
+      # a release. shellcheck is preinstalled on the macOS runners; skip rather than fail if
+      # that ever changes.
+      - name: Check shell scripts
+        run: |
+          bash -n Scripts/*.sh
+          if command -v shellcheck >/dev/null; then
+            # -S error only: these scripts predate any linting, and the point here is to
+            # catch what would actually break a release, not to relitigate their style.
+            shellcheck -S error Scripts/*.sh
+          else
+            echo "shellcheck unavailable on this runner — syntax check only"
+          fi
       - name: Build
         run: swift build
       - name: Test
