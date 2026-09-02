@@ -7,25 +7,31 @@ import Foundation
 /// updater both have to agree on before they act.
 ///
 /// Each feature writes down (or overwrites) a path that must still mean "MacRazer" later:
-/// after a reboot for the login item, after the swap for the updater. Three locations break
-/// that promise and are treated as "not installed yet":
+/// after a reboot for the login item, after the swap for the updater. What breaks that
+/// promise:
 ///
-/// - **a mounted disk image** (`/Volumes/…`) — the app is being run straight out of the DMG
-///   without ever being dragged to Applications; the path is gone on eject, and the volume is
-///   read-only besides;
 /// - **app translocation** (`…/AppTranslocation/…`) — Gatekeeper's randomized read-only copy
 ///   of a still-quarantined app, discarded when it quits;
-/// - **the temp directories** — a staging copy, never an installation.
+/// - **the temp directories** — a staging copy, never an installation;
+/// - **a read-only volume** — overwhelmingly a mounted disk image, i.e. the app run straight
+///   out of the DMG without ever being dragged across.
 ///
 /// A bundle that isn't an `.app` at all covers the remaining case: `swift run`, where
 /// `Bundle.main` is the SwiftPM binary's directory in `.build`.
+///
+/// Note what is deliberately *not* here: a `/Volumes/` prefix. Mounted images live there, but
+/// so do secondary internal volumes and external drives where people quite reasonably keep
+/// their applications — banning the prefix outright told those users to "move MacRazer to
+/// your Applications folder" when it already was in one. Read-only is the property that
+/// actually separates a disk image from a disk.
 enum AppLocation {
     /// Locations that exist for one session, not for the next boot.
     private static let transientPrefixes = [
-        "/Volumes/", "/private/var/folders/", "/var/folders/", "/private/tmp/", "/tmp/",
+        "/private/var/folders/", "/var/folders/", "/private/tmp/", "/tmp/",
     ]
 
-    /// Whether `path` is somewhere a login item or an in-place update may point at.
+    /// The path-shape half of the test — pure, so it stays unit-testable. `installedBundleURL`
+    /// adds the volume check, which needs the filesystem.
     static func isStableInstall(_ path: String) -> Bool {
         // A trailing slash is legal in a bundle path and would defeat the suffix check.
         var p = path
@@ -41,6 +47,15 @@ enum AppLocation {
     /// from a mounted image, or when translocated.
     static var installedBundleURL: URL? {
         let url = Bundle.main.bundleURL
-        return isStableInstall(url.path) ? url : nil
+        guard isStableInstall(url.path), !isOnReadOnlyVolume(url) else { return nil }
+        return url
+    }
+
+    /// A read-only volume can't hold an install we could update, and a login item pointing
+    /// into one is pointing at something ejectable. An unreadable resource value is treated as
+    /// writable: failing open keeps a working install working, and the updater checks
+    /// writability again for itself before it touches anything.
+    private static func isOnReadOnlyVolume(_ url: URL) -> Bool {
+        (try? url.resourceValues(forKeys: [.volumeIsReadOnlyKey]))?.volumeIsReadOnly ?? false
     }
 }

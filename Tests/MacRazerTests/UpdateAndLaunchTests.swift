@@ -11,10 +11,14 @@ final class AppLocationTests: XCTestCase {
         XCTAssertTrue(AppLocation.isStableInstall("/Applications/MacRazer.app/"), "trailing slash")
     }
 
-    func testRunningFromTheDiskImageIsNotAnInstall() {
-        // The commonest case by far: launched straight out of the mounted DMG, never dragged
-        // across. A login item recorded there points at nothing once the image is ejected.
-        XCTAssertFalse(AppLocation.isStableInstall("/Volumes/MacRazer/MacRazer.app"))
+    func testAppsOnOtherVolumesAreStableByPath() {
+        // /Volumes/ used to be rejected outright to catch a mounted DMG, which also caught
+        // every external drive and secondary volume people keep applications on — and told
+        // them to move MacRazer to an Applications folder it was already in. A mounted image
+        // is now separated from a disk by being read-only, which `installedBundleURL` checks
+        // against the live filesystem; the path shape alone can't tell them apart.
+        XCTAssertTrue(AppLocation.isStableInstall("/Volumes/Media/Applications/MacRazer.app"))
+        XCTAssertTrue(AppLocation.isStableInstall("/Volumes/MacRazer/MacRazer.app"))
     }
 
     func testTranslocatedAndTemporaryCopiesAreNotInstalls() {
