@@ -60,6 +60,14 @@ expect rough edges until 1.0.
  reads as the same mouse. The Razer triskelion is no longer drawn in the charging variant —
  the bolt occupies the space it sat in, and two marks on top of each other read as neither
  (the menu bar never drew it anyway; this keeps every other caller sane).
+- **And the bolt is yellow.** That costs the charging mark its template-image status: macOS
+ recolors template images to match the menu bar and throws any colour in them away — the same
+ reason the update dot is a subview rather than part of the icon. So the charging icon is now
+ drawn for a specific menu bar instead: white body with a bright yellow bolt on a dark one,
+ black body with a deeper amber on a light one, because system yellow vanishes against white.
+ It's repainted when the menu bar switches between light and dark, which the template image
+ used to get for free. The idle mark is untouched and still a template. `MacRazer icon …
+ charging light` previews the light-mode pairing.
 - **"Check for Updates…" in the menu bar right-click menu.** The background check runs once a
  day; this asks for one now, and is the only way back to the update card after dismissing a
  version.

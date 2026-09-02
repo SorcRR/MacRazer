@@ -169,7 +169,7 @@ case "icon":
     // Render the menu bar mark to a PNG for visual inspection.
     // Flags and the optional size are bare words, so they must be excluded from the
     // positional path — otherwise `icon charging` writes a file literally named "charging".
-    let iconFlags: Set<String> = ["charging", "nologo"]
+    let iconFlags: Set<String> = ["charging", "nologo", "light"]
     let iconArgs = args.dropFirst()
     let path = iconArgs.first { !iconFlags.contains($0) && Int($0) == nil } ?? "icon-preview.png"
     // Optional size, so the mark can be checked at real menu bar scale (~21pt @2x) rather
@@ -179,7 +179,8 @@ case "icon":
     // `nologo` matches the menu bar's own call (razerCutout: false) so what's previewed is
     // what ships there.
     guard MenuBarIcon.writePreview(to: path, size: size, razerCutout: !iconArgs.contains("nologo"),
-                                   charging: iconArgs.contains("charging")) else {
+                                   charging: iconArgs.contains("charging"),
+                                   lightMenuBar: iconArgs.contains("light")) else {
         print("Render failed")
         exit(1)
     }

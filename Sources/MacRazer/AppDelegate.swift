@@ -28,6 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     private var autoInstallAttempted = Set<String>()
     private var updateTimer: Timer?
     private var updateBadgeView: NSView?
+    private var appearanceObserver: NSKeyValueObservation?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Razer HID devices enumerate as a keyboard/mouse, so macOS gates opening them behind
@@ -46,7 +47,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         }
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        statusItem.button?.image = Self.menuBarIcon(charging: false)
+        statusItem.button?.image = menuBarIcon(charging: false)
         statusItem.button?.imagePosition = .imageLeading
         statusItem.button?.imageHugsTitle = true
         statusItem.button?.title = " …"
@@ -98,7 +99,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
             .removeDuplicates()
             .receive(on: RunLoop.main)
             .sink { [weak self] charging in
-                self?.statusItem.button?.image = Self.menuBarIcon(charging: charging)
+                self?.statusItem.button?.image = self?.menuBarIcon(charging: charging)
             }
             .store(in: &cancellables)
 
@@ -173,6 +174,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         }
         RunLoop.main.add(timer, forMode: .common)
         updateTimer = timer
+
+        // The charging mark is drawn for one appearance; watch for the menu bar flipping.
+        appearanceObserver = statusItem.button?.observe(\.effectiveAppearance) { [weak self] _, _ in
+            Task { @MainActor in self?.refreshMenuBarIcon() }
+        }
     }
 
     /// Small red dot over the status-item icon when an update is available. A subview rather
@@ -342,16 +348,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     func applicationWillTerminate(_ notification: Notification) {
         monitor?.invalidate()
         updateTimer?.invalidate()
+        appearanceObserver?.invalidate()
         controller.flushHistoryToDisk()
     }
 
     // MARK: - Menu bar mark
 
-    /// The status-item mark, in its idle and charging variants. Drawing is cheap but this
-    /// runs on every charge-state change for the app's lifetime, so both are built once.
+    /// The status-item mark. The idle one is a template image macOS recolors itself, so it is
+    /// drawn once and reused. The charging one carries a yellow bolt, which a template image
+    /// would discard — so it is drawn for a specific appearance and has to be redrawn when
+    /// that changes (see `appearanceObserver`). Both only happen on plug/unplug or a theme
+    /// switch, so the redraw costs nothing worth caching around.
     private static let idleIcon = MenuBarIcon.mouse(pointSize: 21, razerCutout: false)
-    private static let chargingIcon = MenuBarIcon.mouse(pointSize: 21, razerCutout: false, charging: true)
-    private static func menuBarIcon(charging: Bool) -> NSImage { charging ? chargingIcon : idleIcon }
+
+    private func menuBarIcon(charging: Bool) -> NSImage {
+        guard charging else { return Self.idleIcon }
+        return MenuBarIcon.mouse(pointSize: 21, razerCutout: false, charging: true,
+                                 appearance: statusItem.button?.effectiveAppearance)
+    }
+
+    /// Repaint the charging mark when the menu bar flips between light and dark. Nothing else
+    /// does it for us: the idle mark is a template image and adapts on its own, but the
+    /// coloured charging one is a fixed bitmap for whichever appearance drew it.
+    private func refreshMenuBarIcon() {
+        statusItem?.button?.image = menuBarIcon(charging: controller.charging)
+    }
 
     // MARK: - Notifications
 
