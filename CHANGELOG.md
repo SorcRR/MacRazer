@@ -6,6 +6,17 @@ expect rough edges until 1.0.
 
 ## [Unreleased]
 
+### Fixed
+- **`Scripts/build-app.sh` no longer appears to hang at the codesigning step.** macOS gates
+ the signing key behind two things, not one: `security import -T /usr/bin/codesign` (which
+ `setup-signing.sh` already did) puts codesign on the key's ACL, but since macOS 10.12 the
+ key's *partition list* also has to name it — and nothing was setting that. So every build
+ stopped on a GUI "codesign wants to use your keychain" prompt, which in a scripted or CI
+ build with nobody watching is indistinguishable from a hang. `setup-signing.sh` now sets the
+ partition list, and is safe to re-run purely to apply it to an identity you already have;
+ `build-app.sh` names the pause when it happens, so the next person doesn't kill a build that
+ was only waiting for a click.
+
 ## [0.2.1] — 2026-08-24
 
 ### Added

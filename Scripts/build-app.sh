@@ -30,6 +30,10 @@ cp Packaging/Info.plist "${APP}/Contents/Info.plist"
 SIGN_ID="MacRazer Self-Signed"
 if security find-identity -p codesigning 2>/dev/null | grep -q "${SIGN_ID}"; then
     echo "▸ Codesigning with stable identity '${SIGN_ID}'…"
+    # If this is where the build appears to hang, it isn't: macOS is showing a GUI keychain
+    # prompt for the private key, and a background/CI build has nobody to click it.
+    echo "  (stops here? macOS is asking for keychain access — click 'Always Allow', or run"
+    echo "   ./Scripts/setup-signing.sh once to stop it asking at all)"
     codesign --force --sign "${SIGN_ID}" --identifier com.macrazer.menubar --timestamp=none "${APP}"
 else
     echo "▸ Ad-hoc codesigning (run Scripts/setup-signing.sh for a stable identity)…"
