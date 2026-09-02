@@ -41,8 +41,10 @@ expect rough edges until 1.0.
  ordering — it is written by the caller and read on the URL session's delegate queue, and
  nothing in the code established visibility between the two.
 - Downloaded DMGs no longer accumulate in the temp directory: the manual-download path can't
- delete a file the user still has to open, so each one leaked a few megabytes forever. Stale
- ones are swept at the start of the next download.
+ delete a file the user still has to open, so each one leaked a few megabytes forever. Ones
+ older than an hour are swept at the start of the next download — the age limit matters, since
+ the download handed to Finder a minute ago may not have been opened yet, or may be mounted,
+ and deleting a mounted image's backing file is worse than the leak.
 - `LaunchAtLogin.isSupported` is `@Published`, so changing it actually refreshes the switch.
 - The enlarged charging bolt no longer overlaps the Cobra Pro's DPI clutch button (unreachable
  today — only the generic body ever draws charging — but the triskelion was already guarded

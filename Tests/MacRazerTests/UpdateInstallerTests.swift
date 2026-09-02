@@ -25,6 +25,14 @@ final class UpdateInstallerTests: XCTestCase {
     }
 
     override func tearDownWithError() throws {
+        // `installInPlace` detaches in a `defer`, so the normal paths clean up after
+        // themselves — but a failure hard enough to skip it would leave the volume mounted for
+        // the rest of the run, and every later `hdiutil create -volname MacRazerTest` would
+        // then mount as "MacRazerTest 1". `appBundle(atRootOf:)` still resolves that, so the
+        // damage would surface as confusing passes rather than an honest error.
+        if FileManager.default.fileExists(atPath: "/Volumes/MacRazerTest") {
+            shell("/usr/bin/hdiutil", ["detach", "/Volumes/MacRazerTest", "-force", "-quiet"])
+        }
         if let root { try? FileManager.default.removeItem(at: root) }
         try super.tearDownWithError()
     }

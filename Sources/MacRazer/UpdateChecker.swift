@@ -203,15 +203,30 @@ final class UpdateChecker: ObservableObject {
         }
     }
 
-    /// The manual-DMG path can't delete its own download — the user still has to open it —
-    /// so nothing ever cleaned those up and each one left several megabytes behind for good.
-    /// Sweeping at the start of the next download is the natural moment: by then every earlier
-    /// directory has served its purpose.
+    /// The manual-DMG path can't delete its own download — the user still has to open it — so
+    /// nothing ever cleaned those up and each one left several megabytes behind for good.
+    ///
+    /// Only directories older than `staleAfter` go, and that age limit is the whole point
+    /// rather than a tidiness detail: "everything earlier has served its purpose" is false for
+    /// the download we handed to Finder a minute ago. The user may not have opened it yet, or
+    /// may have it mounted — and deleting a mounted image's backing file leaves the volume
+    /// broken, which is worse than the leak this is fixing.
+    ///
+    /// An image still mounted from more than an hour ago is the residual case, and the
+    /// accepted trade: by then the user has either installed from it or forgotten it.
+    private static let staleAfter: TimeInterval = 60 * 60
+
     private static func sweepStaleDownloads() {
         let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
         let entries = (try? FileManager.default.contentsOfDirectory(
-            at: tmp, includingPropertiesForKeys: nil, options: [.skipsSubdirectoryDescendants])) ?? []
+            at: tmp, includingPropertiesForKeys: [.creationDateKey],
+            options: [.skipsSubdirectoryDescendants])) ?? []
+        let cutoff = Date().addingTimeInterval(-staleAfter)
         for entry in entries where entry.lastPathComponent.hasPrefix("MacRazerUpdate-") {
+            // No readable creation date: leave it alone. Erring towards a leak beats erring
+            // towards deleting a file someone is using.
+            guard let created = (try? entry.resourceValues(forKeys: [.creationDateKey]))?.creationDate,
+                  created < cutoff else { continue }
             try? FileManager.default.removeItem(at: entry)
         }
     }
