@@ -124,6 +124,11 @@ signature on every rebuild, which resets the grant, so either run `Scripts/setup
 once (it creates a stable self-signed identity that `build-app.sh` then uses) or develop with
 `swift run MacRazer`, which inherits your Terminal's grants.
 
+If a build seems to stop dead at the codesigning step, it hasn't crashed: macOS is showing a
+keychain prompt for the signing key (the build script says so once it has been waiting a few
+seconds). Click **Always Allow** (not Allow), then run `Scripts/setup-signing.sh --repair`
+once to grant codesign standing access so nothing prompts again.
+
 ## Command-line diagnostics
 
 The same binary runs read-only probes when given a subcommand (handy for verifying a new
