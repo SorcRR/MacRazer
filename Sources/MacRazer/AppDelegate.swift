@@ -32,6 +32,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         // user without it is always walked through it rather than left with a silently-dead app.
         // Button remapping additionally needs Accessibility (optional; surfaced in the same window).
         permissions.recheck()
+        // Explicit, not a side effect of constructing the model — see the doc comment there.
+        launchAtLogin.applyDefaultOnFirstRun()
         LowBatteryNotifier.configureNotifications(delegate: self)
         // A manual button-remap edit (outside applying a profile) means the live config no
         // longer matches whichever profile was last applied — let MouseController know so it

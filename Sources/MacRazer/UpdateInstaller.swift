@@ -33,7 +33,6 @@ enum UpdatePayloadCheck {
 }
 
 enum UpdateInstallError: LocalizedError, Equatable {
-    case notInstalled
     case notWritable
     case mountFailed
     case noAppInImage
@@ -44,8 +43,6 @@ enum UpdateInstallError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .notInstalled:
-            return "Move MacRazer to your Applications folder first, then updates install themselves."
         case .notWritable:
             return "MacRazer can't write to its own folder — install the update manually."
         case .mountFailed:
@@ -131,15 +128,35 @@ enum UpdateInstaller {
         // faithfully (ACLs, xattrs, symlinks), and a copy that loses any of those loses the
         // code signature with them.
         let copy = run("/usr/bin/ditto", [payload.path, staged.path])
-        guard copy.status == 0 else { throw UpdateInstallError.copyFailed(copy.errorText) }
+        guard copy.status == 0 else {
+            throw log(.copyFailed(copy.errorText))
+        }
         stripQuarantine(from: staged)
+        // Verify the copy, not just the original. `ditto` can report success and still leave
+        // a bundle the seal no longer covers (a truncated write on a full disk, an xattr it
+        // declined to carry), and this is the last moment before a working app is unlinked.
+        try verifySignature(of: staged)
 
         do {
             _ = try FileManager.default.replaceItemAt(target, withItemAt: staged)
         } catch {
-            throw UpdateInstallError.swapFailed(error.localizedDescription)
+            throw log(.swapFailed(error.localizedDescription))
         }
         return version ?? currentVersion
+    }
+
+    /// Copy/swap failures depend on disk state, permissions and volume layout — the hardest
+    /// class to reproduce from a bug report, and the only one whose detail we actually capture.
+    /// The user-facing string stays short; the detail goes where the other subsystems put
+    /// theirs (`HIDMonitor`, `MenuBarIcon.writePreview`).
+    private static func log(_ error: UpdateInstallError) -> UpdateInstallError {
+        let detail: String
+        switch error {
+        case .copyFailed(let text), .swapFailed(let text): detail = text
+        default: detail = ""
+        }
+        FileHandle.standardError.write(Data("[MacRazer] update install failed: \(error) \(detail)\n".utf8))
+        return error
     }
 
     // MARK: - Disk image
@@ -230,10 +247,20 @@ enum UpdateInstaller {
         } catch {
             return ProcessResult(status: -1, output: Data(), errorText: error.localizedDescription)
         }
-        // Drain before waiting: hdiutil's plist is comfortably larger than a pipe buffer, and
-        // waiting first would deadlock against a child blocked on a full pipe.
+        // Both pipes have to be drained *concurrently*, and drained before waiting.
+        //
+        // Waiting first deadlocks against a child blocked on a full pipe — hdiutil's plist is
+        // comfortably larger than a pipe buffer. But draining one to EOF and only then the
+        // other deadlocks too, whenever the child fills the second pipe while we are still
+        // blocked on the first: a verbose hdiutil or ditto failure writing tens of KB to
+        // stderr is exactly that shape, and it would hang the install with no timeout.
+        nonisolated(unsafe) var errData = Data()
+        let group = DispatchGroup()
+        DispatchQueue.global(qos: .userInitiated).async(group: group) {
+            errData = err.fileHandleForReading.readDataToEndOfFile()
+        }
         let outData = out.fileHandleForReading.readDataToEndOfFile()
-        let errData = err.fileHandleForReading.readDataToEndOfFile()
+        group.wait() // also the happens-before edge that makes errData safe to read here
         process.waitUntilExit()
         return ProcessResult(
             status: process.terminationStatus, output: outData,

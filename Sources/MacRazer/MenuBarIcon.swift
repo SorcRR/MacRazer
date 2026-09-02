@@ -112,7 +112,11 @@ enum MenuBarIcon {
             }
 
             // Cobra Pro/HyperSpeed add a visible on-the-fly DPI clutch button behind the wheel.
-            if silhouette == .cobraPro {
+            // Suppressed while charging for the same reason as the triskelion below: the
+            // enlarged bolt runs straight through this rect, and two marks overlapping read as
+            // neither. Unreachable today (only `.cobra` ever charges), but the next per-model
+            // charging icon should not have to rediscover it.
+            if silhouette == .cobraPro && !charging {
                 let dpi = CGRect(x: cx - wheelW * 0.55, y: cy - 0.02 * s, width: wheelW * 1.1, height: s * 0.05)
                 ctx.addPath(CGPath(roundedRect: dpi, cornerWidth: s * 0.025, cornerHeight: s * 0.025, transform: nil))
             }

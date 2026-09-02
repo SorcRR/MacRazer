@@ -29,14 +29,13 @@ final class LaunchAtLogin: ObservableObject {
     /// False under `swift run`, and when the app is running from a mounted DMG or a
     /// translocated copy: a login item recorded there points at a path that won't be MacRazer
     /// (or won't exist) at the next boot. See `AppLocation`.
-    private(set) var isSupported: Bool
+    @Published private(set) var isSupported: Bool
 
     private static let appliedDefaultKey = "launchAtLoginDefaultApplied"
 
     init() {
         isSupported = AppLocation.installedBundleURL != nil
         refresh()
-        applyDefaultOnFirstRun()
     }
 
     /// Re-read the system's view. Cheap, and called whenever the app comes back to the
@@ -89,10 +88,18 @@ final class LaunchAtLogin: ObservableObject {
         needsApproval = false
     }
 
-    /// The default, applied once. Failure is deliberately *not* recorded as applied: the most
-    /// likely cause is a first launch macOS hasn't settled yet, and the retry next launch
-    /// costs nothing, whereas recording it would quietly cost the user the feature forever.
-    private func applyDefaultOnFirstRun() {
+    /// The default, applied once — called explicitly by `AppDelegate` at launch, deliberately
+    /// **not** from `init`.
+    ///
+    /// Registering a login item is a change to the user's system, and it must not be something
+    /// merely constructing this object does: `main.swift`'s `login-item` command builds one to
+    /// *report* status, and while this lived in the initializer that read-only diagnostic
+    /// turned the login item on and then reported the state it had just created.
+    ///
+    /// Failure is deliberately not recorded as applied: the most likely cause is a first
+    /// launch macOS hasn't settled yet, and the retry next launch costs nothing, whereas
+    /// recording it would quietly cost the user the feature forever.
+    func applyDefaultOnFirstRun() {
         guard isSupported, !UserDefaults.standard.bool(forKey: Self.appliedDefaultKey) else { return }
         // Already registered — the user added MacRazer to Login Items by hand under an older
         // build. Nothing to do, and nothing to undo later.

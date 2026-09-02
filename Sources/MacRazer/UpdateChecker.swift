@@ -76,11 +76,21 @@ final class UpdateChecker: ObservableObject {
     /// would be a no-op for exactly the people who dismissed the card and later changed their
     /// mind — the only ones who'd think to use it.
     func checkForUpdatesNow(userRequested: Bool = false) async {
-        if userRequested { UserDefaults.standard.removeObject(forKey: Self.dismissedKey) }
+        // Never while installing. A check that resolves to "nothing newer" clears
+        // `latestVersion`, and the popover's whole update card is mounted on that — so a
+        // background check landing mid-install would erase the progress bar out from under a
+        // swap-and-relaunch already in flight. There is also nothing to learn: we are already
+        // installing the newest thing we know about.
+        guard !isBusy else { return }
         do {
             let (data, _) = try await URLSession.shared.data(from: releaseAPIURL)
             let release = try JSONDecoder().decode(GitHubRelease.self, from: data)
             let remote = release.tag_name.hasPrefix("v") ? String(release.tag_name.dropFirst()) : release.tag_name
+            // Only *now* drop a previous dismissal — after the check actually succeeded.
+            // Clearing it up front spent the user's decision even when the request then
+            // failed, and `restoreLastFound()` would resurrect the very version they had
+            // dismissed, having learned nothing.
+            if userRequested { UserDefaults.standard.removeObject(forKey: Self.dismissedKey) }
             // Only a *successful* check counts against the daily throttle: a failed one
             // (offline right after wake is common) should retry on the next opportunity,
             // not silence update notices for a day.
@@ -169,6 +179,7 @@ final class UpdateChecker: ObservableObject {
     /// Downloads into a fresh temp directory, so the caller can delete the whole thing without
     /// worrying about what else might be sharing a filename in `/tmp`.
     private func downloadDMG() async throws -> URL {
+        Self.sweepStaleDownloads()
         let dir = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("MacRazerUpdate-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -189,6 +200,19 @@ final class UpdateChecker: ObservableObject {
             // with it — otherwise every offline retry leaves one behind.
             try? FileManager.default.removeItem(at: dir)
             throw error
+        }
+    }
+
+    /// The manual-DMG path can't delete its own download — the user still has to open it —
+    /// so nothing ever cleaned those up and each one left several megabytes behind for good.
+    /// Sweeping at the start of the next download is the natural moment: by then every earlier
+    /// directory has served its purpose.
+    private static func sweepStaleDownloads() {
+        let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
+        let entries = (try? FileManager.default.contentsOfDirectory(
+            at: tmp, includingPropertiesForKeys: nil, options: [.skipsSubdirectoryDescendants])) ?? []
+        for entry in entries where entry.lastPathComponent.hasPrefix("MacRazerUpdate-") {
+            try? FileManager.default.removeItem(at: entry)
         }
     }
 
@@ -227,13 +251,15 @@ final class UpdateChecker: ObservableObject {
 /// `URLSession.download(from:)` reports no progress at all, so this is the delegate form
 /// wrapped back into async/await.
 ///
-/// `@unchecked Sendable` under a stated discipline: every mutable field is touched only on the
-/// session's own delegate queue, which is serial (`maxConcurrentOperationCount = 1`), except
-/// for the two assignments made inside the continuation closure before the task is resumed —
-/// i.e. before any callback can fire.
+/// `@unchecked Sendable`, made safe by an actual lock rather than by an argument about
+/// ordering: `continuation` and `session` are written by the caller and read on the session's
+/// delegate queue, so nothing in this code establishes visibility between the two threads on
+/// its own. `lock` does, and it also makes the resolve-exactly-once rule enforced rather than
+/// merely true — `didFinishDownloadingTo` and `didCompleteWithError` both fire on success.
 private final class ProgressDownload: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
     private let destination: URL
     private let onProgress: @Sendable (Double) -> Void
+    private let lock = NSLock()
     private var continuation: CheckedContinuation<URL, Error>?
     private var session: URLSession?
     /// Last reported whole percent — the callback fires far more often than a progress bar can
@@ -247,22 +273,28 @@ private final class ProgressDownload: NSObject, URLSessionDownloadDelegate, @unc
 
     func run(from url: URL) async throws -> URL {
         try await withCheckedThrowingContinuation { continuation in
-            self.continuation = continuation
             let queue = OperationQueue()
-            queue.maxConcurrentOperationCount = 1 // serial: the state below has no lock
+            queue.maxConcurrentOperationCount = 1
             let session = URLSession(configuration: .ephemeral, delegate: self, delegateQueue: queue)
+            lock.lock()
+            self.continuation = continuation
             self.session = session
+            lock.unlock()
             session.downloadTask(with: url).resume()
         }
     }
 
-    /// Resolves once and once only — `didFinishDownloadingTo` and `didCompleteWithError` both
-    /// fire on a successful download.
+    /// Resolves once and once only.
     private func finish(_ result: Result<URL, Error>) {
-        guard let continuation else { return }
+        lock.lock()
+        guard let continuation else { lock.unlock(); return }
         self.continuation = nil
+        let session = self.session
+        self.session = nil
+        lock.unlock()
+        // Outside the lock: invalidation drains the delegate queue, and resuming hands control
+        // back to the awaiting task — neither belongs under a lock this narrow.
         session?.finishTasksAndInvalidate() // also breaks the session's retain on this delegate
-        session = nil
         continuation.resume(with: result)
     }
 
