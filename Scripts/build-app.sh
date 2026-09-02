@@ -40,6 +40,11 @@ if security find-identity -p codesigning 2>/dev/null | grep -q "${SIGN_ID}"; the
     # "still signing" about a build that finished in half a second. The file existing means
     # codesign has not returned — nothing else can claim it.
     DONE_FLAG="$(mktemp -t macrazer-codesign)"
+    # The explicit `rm -f` below is what stops the watchdog promptly; this is the safety net
+    # for the paths that never reach it — Ctrl-C while waiting on the keychain prompt, which
+    # is the exact situation this watchdog exists for. `:-` because the trap is script-wide
+    # and `set -u` would fire on the ad-hoc branch, where DONE_FLAG is never set.
+    trap 'rm -f "${DONE_FLAG:-}"' EXIT
     codesign --force --sign "${SIGN_ID}" --identifier com.macrazer.menubar --timestamp=none "${APP}" &
     CODESIGN_PID=$!
     (
