@@ -21,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     private lazy var permissionsWindow = PermissionsWindowController(model: permissions, controller: controller)
     private let updateChecker = UpdateChecker()
     private let launchAtLogin = LaunchAtLogin()
+    private lazy var aboutWindow = AboutWindowController()
     private lazy var settingsWindow = SettingsWindowController(
         controller: controller, launchAtLogin: launchAtLogin, updateChecker: updateChecker,
         onAutoInstallChanged: { [weak self] in self?.autoInstallSettingChanged() })
@@ -269,6 +270,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         setup.target = self
         menu.addItem(setup)
 
+        // About before Settings, as macOS orders them in an app menu.
+        let about = NSMenuItem(title: "About MacRazer", action: #selector(openAbout), keyEquivalent: "")
+        about.target = self
+        menu.addItem(about)
+
         let settings = NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
         settings.target = self
         menu.addItem(settings)
@@ -311,6 +317,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     }
     @objc private func openRemap() { remapWindow.show() }
     @objc private func openSettings() { settingsWindow.show() }
+    @objc private func openAbout() { aboutWindow.show() }
 
     /// Turning the setting on with an update already found is the one moment a user is
     /// watching for it to act, and neither of the other triggers fires then: `latestVersion`

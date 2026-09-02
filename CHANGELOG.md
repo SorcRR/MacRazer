@@ -7,6 +7,15 @@ expect rough edges until 1.0.
 ## [Unreleased]
 
 ### Added
+- **An About window** (menu bar right-click › About MacRazer). Version and build, the
+ developer, and the three things this app actually owes the person reading it: that it is
+ **not affiliated with Razer Inc.** and uses their marks only to describe compatibility; that
+ the device protocol was **ported from OpenRazer** — whose reverse-engineering this is built
+ on, and which is why the project is GPL — crediting PR #2583 by dyharlan and z3ntu for Cobra
+ HyperSpeed; and the licence and no-warranty terms, with a link to the source. Those facts
+ lived only in `NOTICE.md`, where a user never sees them. Plus a **Report an Issue** link and
+ a **tip** link. No email address: reports go to GitHub Issues, where they can be tracked and
+ where there is nothing for scrapers to harvest out of a public binary.
 - **A real Settings window** (menu bar right-click › Settings…, or the gear in the popover
  footer). The popover is for the *mouse* — DPI, polling, lighting, battery. App-level
  settings are set once and rarely revisited, and they need room to explain themselves; a
@@ -83,6 +92,10 @@ expect rough edges until 1.0.
  sub-second pure-layer run, now says what the job actually does.
 
 ### Fixed
+- Preview renders (`render-ui`, `render-settings`, `render-about`, …) now force dark, as every
+ surface they stand in for does. `.secondary` and `.tertiary` were resolving for light mode
+ and drawing near-black on the dark backdrop, so every preview looked like it had a contrast
+ bug it didn't have.
 - **Clicking the gear in the popover footer could install an update and restart the app**
  instead of opening Settings. The check is deferred a runloop turn and then asks whether the
  settings window actually came up — two earlier attempts used a flag set around the close,

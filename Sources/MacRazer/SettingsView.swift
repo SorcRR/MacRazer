@@ -23,13 +23,13 @@ struct SettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             header
-            section("General") {
+            titledSection("General") {
                 launchAtLoginRow
                 // Hidden rather than disabled for a mouse with no battery: there is no
                 // percentage to show, so the switch would be a promise about nothing.
                 if controller.deviceHasBattery { batteryPercentRow }
             }
-            section("Updates") {
+            titledSection("Updates") {
                 autoInstallRow
                 versionRow
             }
@@ -206,19 +206,6 @@ struct SettingsView: View {
             .font(.system(size: 11))
             .foregroundStyle(color)
             .fixedSize(horizontal: false, vertical: true)
-    }
-
-    private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(title.uppercased())
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(.tertiary)
-                .kerning(0.6)
-            content()
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 12))
     }
 
     private var footer: some View {

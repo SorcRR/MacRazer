@@ -12,6 +12,23 @@ func card<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
         .background(Color.primary.opacity(0.10), in: RoundedRectangle(cornerRadius: 13))
 }
 
+/// A card with a small uppercase heading — the window-sized counterpart to `card`, shared by
+/// the Settings and About windows so their sections can't drift apart. Slightly flatter and
+/// tighter-cornered than `card`: those sit on the popover's dark material, these on a plain
+/// window background where the popover's contrast would read as heavy.
+func titledSection<Content: View>(_ title: String, @ViewBuilder _ content: () -> Content) -> some View {
+    VStack(alignment: .leading, spacing: 12) {
+        Text(title.uppercased())
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(.tertiary)
+            .kerning(0.6)
+        content()
+    }
+    .padding(14)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(Color.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 12))
+}
+
 /// Small secondary-styled section heading used inside cards.
 func sectionLabel(_ text: String, _ symbol: String) -> some View {
     Label(text, systemImage: symbol)
