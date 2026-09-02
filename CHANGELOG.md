@@ -9,7 +9,8 @@ expect rough edges until 1.0.
 ### Added
 - **CI checks the packaging scripts.** They are as much a part of shipping as the Swift is,
  and nothing verified they even parsed — a stray quote would have surfaced only when someone
- next tried to cut a release.
+ next tried to cut a release. The workflow's header comment, which still described a
+ sub-second pure-layer run, now says what the job actually does.
 
 ### Fixed
 - **`Scripts/build-app.sh` no longer appears to hang at the codesigning step.** macOS gates

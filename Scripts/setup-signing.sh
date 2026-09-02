@@ -25,6 +25,11 @@ case "${1:-}" in
     "") ;;
     *) echo "Usage: $0 [--repair]" >&2; exit 64 ;;
 esac
+# Reject trailing arguments too, rather than silently ignoring a typo'd second flag.
+if [ "$#" -gt 1 ]; then
+    echo "Usage: $0 [--repair]" >&2
+    exit 64
+fi
 
 CERT_NAME="MacRazer Self-Signed"
 # `security default-keychain` prints the path indented and quoted. Strip exactly that —
@@ -74,8 +79,10 @@ allow_codesign_access() {
 if security find-identity -p codesigning 2>/dev/null | grep -q "${CERT_NAME}"; then
     echo "✓ Code-signing identity '${CERT_NAME}' already exists."
     if [ "${REPAIR}" -eq 1 ]; then
-        allow_codesign_access   # exit status propagates via the trailing exit below
-        exit $?
+        # Both arms spelled out: under `set -e` a bare call that returns non-zero aborts the
+        # script right there, so a following `exit $?` would be dead code on the failure path
+        # — and anything added between the two would silently not run.
+        if allow_codesign_access; then exit 0; else exit 1; fi
     fi
     echo "  If builds stop on a 'codesign wants to use your keychain' prompt, run:"
     echo "    ./Scripts/setup-signing.sh --repair"

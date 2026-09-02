@@ -1,6 +1,9 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
-# Build + unit tests on every push/PR. No hardware in CI, so this covers the pure layers:
-# protocol codec, command builders/parsers, battery/discharge models, persistence.
+# Build + unit tests on every push/PR, plus a syntax and lint pass over the packaging
+# scripts. No hardware in CI, so the Swift tests cover what runs without a mouse attached:
+# the protocol codec, command builders/parsers, battery/discharge models, persistence — and
+# the in-place updater, which builds and mounts its own disk images, so the job is no longer
+# the sub-second pure-layer run this comment used to describe.
 name: CI
 
 on:
