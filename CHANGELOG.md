@@ -6,6 +6,41 @@ expect rough edges until 1.0.
 
 ## [Unreleased]
 
+### Added
+- **"Start MacRazer at login" (on by default) in the popover's settings card.** A menu bar
+ battery meter that silently stops existing after every reboot, until you remember to go and
+ open it, isn't a battery meter. Backed by `SMAppService.mainApp`, so MacRazer also appears
+ in System Settings › General › Login Items and can be switched off from there — the toggle
+ reads the system's registration rather than a preference of its own, and re-reads it
+ whenever the app comes back to the foreground, so the two can't disagree. The default is
+ applied exactly once, on the first launch of a build that has it; after that the user's
+ choice is the record and no later launch undoes it. The switch is disabled, with an
+ explanation, when the app is running from the mounted DMG, from a translocated copy, or
+ under `swift run` — a login item recorded at any of those paths points at nothing after a
+ reboot.
+- **"Update & Restart": the update card now installs the update instead of handing you a
+ DMG to drag.** Downloads with a real progress bar (a multi-megabyte download behind a bare
+ spinner is indistinguishable from a hang), then mounts the image, checks that what's inside
+ really is a newer MacRazer with an intact code signature, swaps the bundle atomically and
+ relaunches into the new version. The swap is in place — same path, same signing identity —
+ which is what keeps the Input Monitoring grant and the login item pointing at the app
+ instead of silently costing you both. Nothing is deleted until a verified replacement is
+ staged, so a refused or failed install leaves the working app exactly where it was.
+ Wherever an in-place install isn't possible (running from the image itself, a translocated
+ copy, or a folder you can't write to) the card falls back to the old download-the-DMG
+ behaviour, and offers that as a second chance if an install fails.
+- **A `login-item [on|off]` CLI diagnostic.** The login-item registration is the one piece of
+ app state that lives in the system rather than in MacRazer's own defaults, so it can't be
+ checked by reading a file; this reports it, and `on`/`off` drive the same code the popover
+ switch does — which also makes it the repair path when the menu bar item isn't reachable.
+- **The version in the popover footer is now a link to the project page.** A menu bar app has
+ nowhere to put an "About", and that line is already where people look to answer "what am I
+ running" — so it doubles as the way there instead of costing the popover another row. It
+ stays quiet at rest and picks up the accent colour and an underline on hover.
+- **"Check for Updates…" in the menu bar right-click menu.** The background check runs once a
+ day; this asks for one now, and is the only way back to the update card after dismissing a
+ version.
+
 ## [0.2.1] — 2026-08-24
 
 ### Added

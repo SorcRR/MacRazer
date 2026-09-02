@@ -20,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     private lazy var permissions = PermissionsModel(remapper: remapper, controller: controller)
     private lazy var permissionsWindow = PermissionsWindowController(model: permissions, controller: controller)
     private let updateChecker = UpdateChecker()
+    private let launchAtLogin = LaunchAtLogin()
     private var updateTimer: Timer?
     private var updateBadgeView: NSView?
 
@@ -56,7 +57,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         // logo have poor contrast on the light-mode grey material; dark is also the gaming
         // aesthetic and makes the green pop.
         popover.appearance = NSAppearance(named: .darkAqua)
-        let hosting = NSHostingController(rootView: PopoverView(controller: controller, remapper: remapper, updateChecker: updateChecker))
+        let hosting = NSHostingController(rootView: PopoverView(controller: controller, remapper: remapper, updateChecker: updateChecker, launchAtLogin: launchAtLogin))
         hosting.sizingOptions = [.preferredContentSize] // popover auto-fits the SwiftUI content
         popover.contentViewController = hosting
 
@@ -233,6 +234,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         setup.target = self
         menu.addItem(setup)
 
+        // The background check runs once a day; this is the way to ask for one now, and it
+        // also un-dismisses a version the user waved away earlier.
+        let update = NSMenuItem(title: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "")
+        update.target = self
+        menu.addItem(update)
+
         menu.addItem(.separator())
 
         let quit = NSMenuItem(title: "Quit MacRazer", action: #selector(quit), keyEquivalent: "q")
@@ -255,6 +262,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     }
 
     @objc private func refreshNow() { controller.refreshAll() }
+    @objc private func checkForUpdates() {
+        Task {
+            await updateChecker.checkForUpdatesNow(userRequested: true)
+            // Open the popover either way: with an update it shows the card, without one it
+            // shows the version in the footer — both answer "am I up to date?".
+            if !popover.isShown { togglePopover() }
+        }
+    }
     @objc private func openRemap() { remapWindow.show() }
     @objc private func openPermissions() { permissionsWindow.show() }
     @objc private func quit() { NSApplication.shared.terminate(nil) }
@@ -271,8 +286,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     func applicationDidBecomeActive(_ notification: Notification) {
         permissions.recheck()
         // Same reason as the permission recheck: the user may have just flipped the
-        // Notifications switch in System Settings and come back.
+        // Notifications switch — or MacRazer's Login Items entry — in System Settings and
+        // come back.
         controller.refreshNotificationAuthorization()
+        launchAtLogin.refresh()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
