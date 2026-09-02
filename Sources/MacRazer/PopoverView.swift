@@ -26,6 +26,9 @@ struct PopoverView: View {
     @ObservedObject var remapper: ButtonRemapper
     @ObservedObject var updateChecker: UpdateChecker
     @ObservedObject var launchAtLogin: LaunchAtLogin
+    /// Opening a window is the owner's job — the popover doesn't know about window controllers.
+    /// Defaulted so the `render-ui` preview can build the view without one.
+    var onOpenSettings: () -> Void = {}
 
     enum Page { case main, color, buttons, usage, profiles }
     @State private var page: Page = .main
@@ -40,6 +43,7 @@ struct PopoverView: View {
     /// Recallable custom DPI — persisted per-mouse, and never above the mouse's max.
     @State private var customDPI: Int = 8000
     @State private var versionHovered = false
+    @State private var gearHovered = false
 
     private let pollRates = RazerCommands.supportedPollingRates
     private let defaultStages = [400, 800, 1600, 3200, 6400]
@@ -164,7 +168,6 @@ struct PopoverView: View {
             // Profiles bundle the sections above (plus remaps) into presets — placed after
             // them so the page reads "here are the controls, here's how to save/recall them".
             profilesCard.disabled(!controller.connected).opacity(controller.connected ? 1 : 0.45)
-            settingsCard
             footer
         }
         .padding(12)
@@ -838,60 +841,6 @@ struct PopoverView: View {
         .opacity(controller.connected ? 1 : 0.45)
     }
 
-    // MARK: Settings
-
-    private var settingsCard: some View {
-        card {
-            VStack(alignment: .leading, spacing: 9) {
-                if controller.deviceHasBattery {
-                    Toggle(isOn: Binding(
-                        get: { controller.showPercentInMenuBar },
-                        set: { controller.showPercentInMenuBar = $0 }
-                    )) {
-                        Text("Show battery % in menu bar")
-                            .font(.system(size: 12))
-                    }
-                }
-                launchAtLoginSetting
-            }
-            .toggleStyle(.switch)
-            .tint(.razerGreen)
-            .controlSize(.small)
-        }
-    }
-
-    private var launchAtLoginSetting: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Toggle(isOn: Binding(
-                get: { launchAtLogin.isEnabled },
-                set: { launchAtLogin.setEnabled($0) }
-            )) {
-                Text("Start MacRazer at login")
-                    .font(.system(size: 12))
-            }
-            .disabled(!launchAtLogin.isSupported)
-            // Shown rather than hidden when unavailable: running straight from the disk image
-            // is a real thing people do, and "why is this switch dead" deserves an answer.
-            if !launchAtLogin.isSupported {
-                settingNote("Move MacRazer to your Applications folder to use this.")
-            } else if let error = launchAtLogin.lastError {
-                settingNote(error, color: .batteryLow)
-            } else if launchAtLogin.needsApproval {
-                Button("Approve MacRazer in Login Items…") { launchAtLogin.openLoginItemsSettings() }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 10.5))
-                    .foregroundStyle(Color.razerGreen)
-            }
-        }
-    }
-
-    private func settingNote(_ text: String, color: Color = .secondary) -> some View {
-        Text(text)
-            .font(.system(size: 10.5))
-            .foregroundStyle(color)
-            .fixedSize(horizontal: false, vertical: true)
-    }
-
     // MARK: Footer
 
     /// Real bundle version (e.g. "0.1.1"); falls back for non-bundled dev runs (`swift run`).
@@ -920,6 +869,18 @@ struct PopoverView: View {
             .help("Open the MacRazer website")
             Text(verbatim: "· unofficial").font(.system(size: 11)).foregroundStyle(.tertiary)
             Spacer()
+            Button(action: onOpenSettings) {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 12.5))
+                    // Same hover treatment as the version link beside it — a footer this
+                    // quiet needs the cue, and two different ones would be noise.
+                    .foregroundStyle(gearHovered ? AnyShapeStyle(Color.razerGreen) : AnyShapeStyle(.secondary))
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .onHover { gearHovered = $0 }
+            .help("MacRazer settings")
+            .padding(.trailing, 6)
             Button("Quit") { NSApplication.shared.terminate(nil) }
                 .buttonStyle(.borderless)
                 .font(.system(size: 12))

@@ -7,7 +7,22 @@ expect rough edges until 1.0.
 ## [Unreleased]
 
 ### Added
-- **"Start MacRazer at login" (on by default) in the popover's settings card.** A menu bar
+- **A real Settings window** (menu bar right-click › Settings…, or the gear in the popover
+ footer). The popover is for the *mouse* — DPI, polling, lighting, battery. App-level
+ settings are set once and rarely revisited, and they need room to explain themselves; a
+ sixth card on the bottom of an already-long popover was the wrong shape for both, so they
+ moved out. "Show battery % in menu bar" moved with them.
+- **"Install updates automatically" — off by default.** On, MacRazer downloads, replaces
+ itself and relaunches on its own when a new version appears. Off (the default), you get the
+ dot on the menu bar icon and the update card, as before: installing and relaunching behind
+ someone's back is a much bigger thing to do to them than a badge, and this app isn't
+ Apple-notarised, so opting in should be deliberate. An automatic install never starts while
+ the popover is open — the install ends in a relaunch, and pulling the window out from under
+ someone mid-click is worse than waiting for it to close, which is the next thing that
+ triggers it. Each version is attempted once per launch, so a payload that can't be installed
+ doesn't re-download itself every time the popover closes, and any failure falls through to
+ the ordinary update card rather than quietly stranding you on an old version.
+- **"Start MacRazer at login" (on by default), in the new Settings window.** A menu bar
  battery meter that silently stops existing after every reboot, until you remember to go and
  open it, isn't a battery meter. Backed by `SMAppService.mainApp`, so MacRazer also appears
  in System Settings › General › Login Items and can be switched off from there — the toggle

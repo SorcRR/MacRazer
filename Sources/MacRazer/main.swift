@@ -139,6 +139,16 @@ case "render-ui":
         : AnyView(PopoverView(controller: controller, remapper: ButtonRemapper(), updateChecker: updateChecker, launchAtLogin: launchAtLogin))
     writeViewPNG(rootView, to: path)
 
+case "render-settings":
+    _ = NSApplication.shared
+    let settingsPath = args.dropFirst().first ?? "settings-preview.png"
+    let sc = MouseController()
+    sc.loadPreviewState()
+    let sl = LaunchAtLogin()
+    sl.loadPreviewState()
+    writeViewPNG(SettingsView(controller: sc, launchAtLogin: sl, updateChecker: UpdateChecker()),
+                 to: settingsPath)
+
 case "render-remap":
     _ = NSApplication.shared
     let path = args.dropFirst().first ?? "remap-preview.png"

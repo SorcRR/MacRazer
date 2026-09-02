@@ -32,6 +32,18 @@ final class UpdateChecker: ObservableObject {
     @Published private(set) var latestVersion: String?
     @Published private(set) var phase: Phase = .idle
     @Published var downloadError: String?
+    /// A check is in flight. Only the manual "Check Now" needs this — the daily background
+    /// check has nothing to say while it runs.
+    @Published private(set) var isChecking = false
+
+    /// Install updates without asking. **Off by default**: installing and relaunching behind
+    /// someone's back is a much bigger thing to do to them than putting a dot on the menu bar,
+    /// and this app isn't Apple-notarised — opting in should be deliberate. The caller decides
+    /// *when* an automatic install is acceptable (`AppDelegate` won't start one with the
+    /// popover open); this flag only says whether it may.
+    @Published var autoInstallEnabled: Bool = UserDefaults.standard.bool(forKey: UpdateChecker.autoInstallKey) {
+        didSet { UserDefaults.standard.set(autoInstallEnabled, forKey: Self.autoInstallKey) }
+    }
 
     private let releaseAPIURL = URL(string: "https://api.github.com/repos/SorcRR/MacRazer/releases/latest")!
     private let dmgURL = URL(string: "https://github.com/SorcRR/MacRazer/releases/latest/download/MacRazer.dmg")!
@@ -40,13 +52,22 @@ final class UpdateChecker: ObservableObject {
     private static let dismissedKey = "dismissedUpdateVersion"
     private static let lastCheckKey = "lastUpdateCheckDate"
     private static let lastFoundKey = "lastFoundUpdateVersion"
+    private static let autoInstallKey = "autoInstallUpdates"
 
     private struct GitHubRelease: Decodable {
         let tag_name: String
     }
 
-    private var currentVersion: String {
+    /// The bundle's version, or "0" under `swift run` where there is no bundle — which
+    /// compares older than any real release, so a dev build always sees an update available.
+    var currentVersion: String {
         (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "0"
+    }
+
+    /// When the last successful check ran — the settings window shows it, so "no update" reads
+    /// as a fresh answer rather than a shrug.
+    var lastCheckedAt: Date? {
+        UserDefaults.standard.object(forKey: Self.lastCheckKey) as? Date
     }
 
     var isBusy: Bool { phase != .idle }
@@ -77,6 +98,8 @@ final class UpdateChecker: ObservableObject {
     /// mind — the only ones who'd think to use it.
     func checkForUpdatesNow(userRequested: Bool = false) async {
         if userRequested { UserDefaults.standard.removeObject(forKey: Self.dismissedKey) }
+        isChecking = true
+        defer { isChecking = false }
         do {
             let (data, _) = try await URLSession.shared.data(from: releaseAPIURL)
             let release = try JSONDecoder().decode(GitHubRelease.self, from: data)

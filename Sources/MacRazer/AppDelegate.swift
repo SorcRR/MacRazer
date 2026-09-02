@@ -21,6 +21,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     private lazy var permissionsWindow = PermissionsWindowController(model: permissions, controller: controller)
     private let updateChecker = UpdateChecker()
     private let launchAtLogin = LaunchAtLogin()
+    private lazy var settingsWindow = SettingsWindowController(
+        controller: controller, launchAtLogin: launchAtLogin, updateChecker: updateChecker)
+    /// Versions an automatic install has already been tried on, so a payload that can't be
+    /// installed is attempted once — not re-downloaded every time the popover closes.
+    private var autoInstallAttempted = Set<String>()
     private var updateTimer: Timer?
     private var updateBadgeView: NSView?
 
@@ -57,7 +62,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         // logo have poor contrast on the light-mode grey material; dark is also the gaming
         // aesthetic and makes the green pop.
         popover.appearance = NSAppearance(named: .darkAqua)
-        let hosting = NSHostingController(rootView: PopoverView(controller: controller, remapper: remapper, updateChecker: updateChecker, launchAtLogin: launchAtLogin))
+        let hosting = NSHostingController(rootView: PopoverView(
+            controller: controller, remapper: remapper, updateChecker: updateChecker,
+            launchAtLogin: launchAtLogin,
+            onOpenSettings: { [weak self] in
+                // Close first: the popover is transient and would dismiss itself the moment
+                // the window takes focus, which looks like the click did two things.
+                self?.popover.performClose(nil)
+                self?.settingsWindow.show()
+            }))
         hosting.sizingOptions = [.preferredContentSize] // popover auto-fits the SwiftUI content
         popover.contentViewController = hosting
 
@@ -145,8 +158,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         // Update check: once now (throttled internally to once/24h), then a daily timer so a
         // long-running session still notices new releases without a relaunch.
         updateChecker.$latestVersion
+            // A check republishes the same version every day; without this the auto-install
+            // gate would be re-evaluated on each one.
+            .removeDuplicates()
             .receive(on: RunLoop.main)
-            .sink { [weak self] version in self?.setUpdateBadge(visible: version != nil) }
+            .sink { [weak self] version in
+                self?.setUpdateBadge(visible: version != nil)
+                self?.autoInstallIfEnabled()
+            }
             .store(in: &cancellables)
         Task { await updateChecker.checkForUpdatesIfDue() }
         let timer = Timer(timeInterval: 24 * 60 * 60, repeats: true) { [weak self] _ in
@@ -234,6 +253,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         setup.target = self
         menu.addItem(setup)
 
+        let settings = NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
+        settings.target = self
+        menu.addItem(settings)
+
         // The background check runs once a day; this is the way to ask for one now, and it
         // also un-dismisses a version the user waved away earlier.
         let update = NSMenuItem(title: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "")
@@ -271,13 +294,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         }
     }
     @objc private func openRemap() { remapWindow.show() }
+    @objc private func openSettings() { settingsWindow.show() }
     @objc private func openPermissions() { permissionsWindow.show() }
     @objc private func quit() { NSApplication.shared.terminate(nil) }
 
     // MARK: - NSPopoverDelegate
 
     func popoverDidShow(_ notification: Notification) { controller.setPopoverVisible(true) }
-    func popoverDidClose(_ notification: Notification) { controller.setPopoverVisible(false) }
+    func popoverDidClose(_ notification: Notification) {
+        controller.setPopoverVisible(false)
+        // An update found while the popover was open was deliberately left alone; now that
+        // it's closed, the restart is no longer disruptive.
+        autoInstallIfEnabled()
+    }
+
+    // MARK: - Automatic updates
+
+    /// Silent install, when the user has switched it on. Deliberately never while the popover
+    /// is open: the install ends in a relaunch, and pulling the window out from under someone
+    /// mid-click is worse than waiting for the next opportunity. A failure falls through to
+    /// the ordinary update card, so a broken auto-install can't quietly strand anyone on an
+    /// old version.
+    private func autoInstallIfEnabled() {
+        guard let version = updateChecker.latestVersion,
+              updateChecker.autoInstallEnabled,
+              updateChecker.canInstallInPlace,
+              !updateChecker.isBusy,
+              !popover.isShown,
+              !autoInstallAttempted.contains(version) else { return }
+        autoInstallAttempted.insert(version)
+        Task { await updateChecker.downloadAndInstall() }
+    }
 
     // MARK: - Foreground
 
