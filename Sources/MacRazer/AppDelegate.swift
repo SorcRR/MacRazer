@@ -29,8 +29,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     private var updateTimer: Timer?
     private var updateBadgeView: NSView?
     private var appearanceObserver: NSKeyValueObservation?
-    /// True only across the programmatic popover close that precedes opening Settings.
-    private var openingSettings = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Razer HID devices enumerate as a keyboard/mouse, so macOS gates opening them behind
@@ -74,19 +72,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
                 // Close first: the popover is transient and would dismiss itself the moment
                 // the window takes focus, which looks like the click did two things.
                 //
-                // `openingSettings` suppresses the auto-install that `popoverDidClose`
-                // normally triggers: the user asked for a window, and answering that by
-                // silently replacing the app and relaunching would take the window with it.
-                //
-                // Cleared on the next runloop turn, not on the next line. AppKit does not
-                // promise that `popoverDidClose(_:)` runs synchronously inside
-                // `performClose(_:)`, and clearing it immediately would make this guard
-                // silently inert the moment that delivery is deferred — leaving a
-                // timing-dependent bug that restarts the app instead of opening a window.
-                self?.openingSettings = true
+                // Closing here would normally trigger an auto-install, which would relaunch
+                // the app out from under the window the user just asked for. That is handled
+                // in `popoverDidClose` by looking at whether this window came up — see there.
                 self?.popover.performClose(nil)
                 self?.settingsWindow.show()
-                DispatchQueue.main.async { self?.openingSettings = false }
             }))
         hosting.sizingOptions = [.preferredContentSize] // popover auto-fits the SwiftUI content
         popover.contentViewController = hosting
@@ -335,8 +325,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     func popoverDidClose(_ notification: Notification) {
         controller.setPopoverVisible(false)
         // An update found while the popover was open was deliberately left alone; now that
-        // it's closed, the restart is no longer disruptive.
-        autoInstallIfEnabled()
+        // it's closed, the restart is no longer disruptive — unless the close was on the way
+        // to opening Settings, in which case relaunching would take that window with it.
+        //
+        // Deferred a turn so the answer is a fact rather than a race. Two earlier attempts
+        // used a flag set around `performClose`, which only worked if AppKit delivered this
+        // callback at a particular moment it never promised to. By the next runloop turn the
+        // settings window has either come up or it hasn't, and `autoInstallIfEnabled` reads
+        // that directly.
+        DispatchQueue.main.async { [weak self] in self?.autoInstallIfEnabled() }
     }
 
     // MARK: - Automatic updates
@@ -352,9 +349,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
             enabled: updateChecker.autoInstallEnabled,
             canInstallInPlace: updateChecker.canInstallInPlace,
             busy: updateChecker.isBusy,
-            // A programmatic close on the way to opening Settings is not the user putting the
-            // popover away, and must not be read as permission to restart the app.
-            popoverVisible: popover.isShown || openingSettings)
+            // Neither surface may be yanked away mid-use: the popover for the reason above,
+            // and the settings window because closing the popover to open it must not be read
+            // as permission to restart the app.
+            popoverVisible: popover.isShown || settingsWindow.isVisible)
         // The policy returns the version it approved rather than a Bool: it records the
         // attempt as part of deciding, so a caller that had to re-unwrap afterwards could
         // silently drop a version already marked as spent.

@@ -8,9 +8,9 @@ expect rough edges until 1.0.
 
 ### Fixed
 - **Clicking the gear in the popover footer could install an update and restart the app**
- instead of opening Settings (and the first fix for it only worked if AppKit happened to
- deliver the close callback synchronously, which it does not promise — the suppression now
- spans a runloop turn, so it holds either way). Opening the window closes the popover programmatically, which
+ instead of opening Settings. The check is deferred a runloop turn and then asks whether the
+ settings window actually came up — two earlier attempts used a flag set around the close,
+ which only held if AppKit delivered that callback at a moment it never promised to. Opening the window closes the popover programmatically, which
  fired the same "popover closed, safe to install now" trigger as the user putting it away —
  so with automatic installs on and an update pending, asking for Settings could take the
  whole app out from under you. A programmatic close on the way to a window is no longer read
@@ -28,8 +28,9 @@ expect rough edges until 1.0.
  popover — and stops claiming you have to, when automatic installs will do it for you. It
  also shows install progress, and "Check Now" is disabled while an install runs rather than
  doing nothing when pressed.
-- "Last checked" refreshes when a check actually finishes, rather than riding on whatever
- other publish happened to fire at the same time.
+- "Last checked" is a stored published value written when a check succeeds, rather than a
+ computed read of `UserDefaults` that refreshed only because some other property happened to
+ change nearby.
 - **A verbose `hdiutil` or `ditto` failure could hang an update install forever.** The
  subprocess helper drained the child's stdout to EOF and only then its stderr; a child that
  fills the stderr pipe in the meantime blocks, and the parent never stops waiting on stdout.

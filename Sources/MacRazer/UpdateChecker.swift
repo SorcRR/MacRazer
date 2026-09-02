@@ -40,15 +40,16 @@ final class UpdateChecker: ObservableObject {
     /// `AutoInstallPolicy` can tell a dropped connection from a payload that will never work.
     private(set) var lastInstallError: Error?
 
-    /// Bumped whenever something the UI reads from `UserDefaults` rather than from a published
-    /// property changes — currently `lastCheckedAt`, which the settings window shows.
+    /// When the last successful check ran, shown by the settings window so "no update" reads
+    /// as a fresh answer rather than a shrug.
     ///
-    /// Being `@Published` is the entire mechanism: an `ObservableObject` invalidates its
-    /// observers through `objectWillChange`, whatever properties their bodies happen to read
-    /// (per-property tracking is `@Observable`, which this is not). So nothing needs to *read*
-    /// this for it to work — bumping it is what re-renders the view, and what stops "last
-    /// checked" from refreshing only by luck, riding on whatever other publish fired nearby.
-    @Published private(set) var checkGeneration = 0
+    /// A stored published property, seeded from `UserDefaults` and written alongside it. It
+    /// was a computed read of the default, which published nothing, so the line refreshed only
+    /// because some *other* property happened to change around each check — first `isChecking`,
+    /// then a write-only counter added to make that deliberate. Storing it removes the
+    /// question: the value the view reads is the value that publishes.
+    @Published private(set) var lastCheckedAt: Date? =
+        UserDefaults.standard.object(forKey: UpdateChecker.lastCheckKey) as? Date
 
     /// Install updates without asking. **Off by default**: installing and relaunching behind
     /// someone's back is a much bigger thing to do to them than putting a dot on the menu bar,
@@ -78,12 +79,6 @@ final class UpdateChecker: ObservableObject {
         (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "0"
     }
 
-    /// When the last successful check ran — the settings window shows it, so "no update" reads
-    /// as a fresh answer rather than a shrug.
-    var lastCheckedAt: Date? {
-        UserDefaults.standard.object(forKey: Self.lastCheckKey) as? Date
-    }
-
     var isBusy: Bool { phase != .idle }
 
     /// Whether the one-click "Update & Restart" path is available, or the card should offer
@@ -93,8 +88,7 @@ final class UpdateChecker: ObservableObject {
     /// Checks at most once per `checkInterval`, regardless of how often this is called — safe to
     /// call on every launch and from a repeating timer.
     func checkForUpdatesIfDue() async {
-        let last = UserDefaults.standard.object(forKey: Self.lastCheckKey) as? Date
-        if let last, Date().timeIntervalSince(last) < checkInterval {
+        if let last = lastCheckedAt, Date().timeIntervalSince(last) < checkInterval {
             // Within the throttle window, surface what the last successful check already
             // found — otherwise a relaunch forgets a known update for up to a day.
             restoreLastFound()
@@ -131,9 +125,10 @@ final class UpdateChecker: ObservableObject {
             // Only a *successful* check counts against the daily throttle: a failed one
             // (offline right after wake is common) should retry on the next opportunity,
             // not silence update notices for a day.
-            UserDefaults.standard.set(Date(), forKey: Self.lastCheckKey)
+            let checkedAt = Date()
+            UserDefaults.standard.set(checkedAt, forKey: Self.lastCheckKey)
             UserDefaults.standard.set(remote, forKey: Self.lastFoundKey)
-            checkGeneration &+= 1 // makes `lastCheckedAt` observable
+            lastCheckedAt = checkedAt
             let dismissed = UserDefaults.standard.string(forKey: Self.dismissedKey)
             if Self.isNewer(remote, than: currentVersion), remote != dismissed {
                 latestVersion = remote
