@@ -6,6 +6,32 @@ expect rough edges until 1.0.
 
 ## [Unreleased]
 
+### Added
+- **CI checks the packaging scripts.** They are as much a part of shipping as the Swift is,
+ and nothing verified they even parsed — a stray quote would have surfaced only when someone
+ next tried to cut a release. The workflow's header comment, which still described a
+ sub-second pure-layer run, now says what the job actually does.
+
+### Fixed
+- **`Scripts/build-app.sh` no longer appears to hang at the codesigning step.** macOS gates
+ the signing key behind two things, not one: `security import -T /usr/bin/codesign` (which
+ `setup-signing.sh` already did) puts codesign on the key's ACL, but since macOS 10.12 the
+ key's *partition list* also has to name it — and nothing was setting that. So every build
+ stopped on a GUI "codesign wants to use your keychain" prompt, which in a scripted or CI
+ build with nobody watching is indistinguishable from a hang. `setup-signing.sh` now sets the
+ partition list via `./Scripts/setup-signing.sh --repair`, and `build-app.sh` names the pause
+ — but only once signing has actually been stalled for five seconds, rather than printing the
+ advice on every build including the ones where it no longer applies.
+
+ The repair is behind a flag because it prompts for your keychain password and rewrites the
+ key's access list: a bare `setup-signing.sh` checks and creates, and says nothing else. It
+ also refuses to run non-interactively rather than blocking on a password dialog nobody can
+ click — which would have reproduced the very hang it exists to fix.
+- **`setup-signing.sh` no longer mangles a keychain path containing a space.** It stripped
+ every space to remove the indentation `security default-keychain` prints, which also broke
+ any home directory derived from a full name. That variable had never been used before this
+ change, so nothing had exercised it.
+
 ## [0.2.1] — 2026-08-24
 
 ### Added
