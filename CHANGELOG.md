@@ -7,12 +7,111 @@ expect rough edges until 1.0.
 ## [Unreleased]
 
 ### Added
+- **Tests for the in-place installer itself**, against real signed bundles inside real disk
+ images — the one code path that deletes the user's installed application had no automated
+ coverage at all, only unit tests of the pure predicate feeding it. Every refusal (older
+ payload, same version, wrong app, tampered bundle, unmountable image, image with no app)
+ asserts the installed bundle is still there and still the old version.
+- **"Start MacRazer at login" (on by default) in the popover's settings card.** A menu bar
+ battery meter that silently stops existing after every reboot, until you remember to go and
+ open it, isn't a battery meter. Backed by `SMAppService.mainApp`, so MacRazer also appears
+ in System Settings › General › Login Items and can be switched off from there — the toggle
+ reads the system's registration rather than a preference of its own, and re-reads it
+ whenever the app comes back to the foreground, so the two can't disagree. The default is
+ applied exactly once, on the first launch of a build that has it; after that the user's
+ choice is the record and no later launch undoes it. The switch is disabled, with an
+ explanation, when the app is running from the mounted DMG, from a translocated copy, or
+ under `swift run` — a login item recorded at any of those paths points at nothing after a
+ reboot.
+- **"Update & Restart": the update card now installs the update instead of handing you a
+ DMG to drag.** Downloads with a real progress bar (a multi-megabyte download behind a bare
+ spinner is indistinguishable from a hang), then mounts the image, checks that what's inside
+ really is a newer MacRazer with an intact code signature, swaps the bundle atomically and
+ relaunches into the new version. The swap is in place — same path, same signing identity —
+ which is what keeps the Input Monitoring grant and the login item pointing at the app
+ instead of silently costing you both. Nothing is deleted until a verified replacement is
+ staged, so a refused or failed install leaves the working app exactly where it was.
+ Wherever an in-place install isn't possible (running from the image itself, a translocated
+ copy, or a folder you can't write to) the card falls back to the old download-the-DMG
+ behaviour, and offers that as a second chance if an install fails.
+- **A `login-item [on|off]` CLI diagnostic.** The login-item registration is the one piece of
+ app state that lives in the system rather than in MacRazer's own defaults, so it can't be
+ checked by reading a file; this reports it, and `on`/`off` drive the same code the popover
+ switch does — which also makes it the repair path when the menu bar item isn't reachable.
+- **The version in the popover footer is now a link to the project page.** A menu bar app has
+ nowhere to put an "About", and that line is already where people look to answer "what am I
+ running" — so it doubles as the way there instead of costing the popover another row. It
+ stays quiet at rest and picks up the accent colour and an underline on hover.
+- **The charging bolt in the menu bar icon now fills the mouse body.** It was drawn to the
+ scale of the button-split line it replaces — which is a detail, not a signal, and at ~21pt
+ in a menu bar seen out of the corner of the eye it read as a smudge rather than a bolt. It
+ now spans from just under the scroll wheel to just inside the base, with clearance at both
+ ends so it never merges into the silhouette. The body shape is untouched, so the icon still
+ reads as the same mouse. The Razer triskelion is no longer drawn in the charging variant —
+ the bolt occupies the space it sat in, and two marks on top of each other read as neither
+ (the menu bar never drew it anyway; this keeps every other caller sane).
+- **And the bolt is yellow.** That costs the charging mark its template-image status: macOS
+ recolors template images to match the menu bar and throws any colour in them away — the same
+ reason the update dot is a subview rather than part of the icon. So the charging icon is now
+ drawn for a specific menu bar instead: white body with a bright yellow bolt on a dark one,
+ black body with a deeper amber on a light one, because system yellow vanishes against white.
+ It's repainted when the menu bar switches between light and dark, which the template image
+ used to get for free. The idle mark is untouched and still a template. `MacRazer icon …
+ charging light` previews the light-mode pairing.
+- **"Check for Updates…" in the menu bar right-click menu.** The background check runs once a
+ day; this asks for one now, and is the only way back to the update card after dismissing a
+ version.
 - **CI checks the packaging scripts.** They are as much a part of shipping as the Swift is,
  and nothing verified they even parsed — a stray quote would have surfaced only when someone
  next tried to cut a release. The workflow's header comment, which still described a
  sub-second pure-layer run, now says what the job actually does.
 
 ### Fixed
+- **A verbose `hdiutil` or `ditto` failure could hang an update install forever.** The
+ subprocess helper drained the child's stdout to EOF and only then its stderr; a child that
+ fills the stderr pipe in the meantime blocks, and the parent never stops waiting on stdout.
+ Both pipes are now drained concurrently. The symptom would have been "Installing…" on screen
+ with no timeout and no way out but quitting.
+- **The `login-item` diagnostic no longer turns the login item on.** Registering happened in
+ `LaunchAtLogin.init`, so merely constructing the model — which the read-only report does —
+ changed the user's system and then reported the state it had just created. Applying the
+ default is now an explicit call the app delegate makes at launch.
+- **Apps installed on a second volume get the login item and self-updates again.** Every path
+ under `/Volumes/` was rejected to catch a mounted disk image, which also caught external
+ drives and secondary volumes — those users were told to move MacRazer to an Applications
+ folder it was already in. A disk image is now recognised by being read-only, which is the
+ property that actually distinguishes it from a disk.
+- **A version check landing mid-install can no longer erase the progress bar.** The popover's
+ update card is mounted on `latestVersion`, so a background check resolving to "nothing
+ newer" during a download or bundle swap made the whole card vanish while the install carried
+ on invisibly. Checks are now skipped while one is in flight.
+- **A failed manual "Check for Updates…" no longer spends the user's dismissal.** The
+ dismissed version was cleared before the request; if that then failed, the dismissal was gone
+ and the previously-waved-away version came back having learned nothing. It's cleared only
+ once a check succeeds.
+- **The installed copy is verified, not just the one on the disk image.** The signature was
+ checked on the mounted payload and a `ditto` copy of it was what actually got installed —
+ the artifact placed on disk was never itself verified, in the last moment before a working
+ app is unlinked.
+- **Copy and swap failures now say what went wrong.** Both carried the underlying `ditto`
+ stderr or `FileManager` error and both threw it away; that detail now goes to stderr, as
+ elsewhere in the app. These are the hardest install failures to reproduce and were the only
+ ones reporting nothing.
+- **The download delegate's shared state is under a lock** rather than under an argument about
+ ordering — it is written by the caller and read on the URL session's delegate queue, and
+ nothing in the code established visibility between the two.
+- Downloaded DMGs no longer accumulate in the temp directory: the manual-download path can't
+ delete a file the user still has to open, so each one leaked a few megabytes forever. Ones
+ older than an hour are swept at the start of the next download — the age limit matters, since
+ the download handed to Finder a minute ago may not have been opened yet, or may be mounted,
+ and deleting a mounted image's backing file is worse than the leak.
+- `LaunchAtLogin.isSupported` is `@Published`, so changing it actually refreshes the switch.
+- The enlarged charging bolt no longer overlaps the Cobra Pro's DPI clutch button (unreachable
+ today — only the generic body ever draws charging — but the triskelion was already guarded
+ for exactly this reason).
+- Removed `UpdateInstallError.notInstalled`, which carried a user-facing message it could
+ never show.
+
 - **`Scripts/build-app.sh` no longer appears to hang at the codesigning step.** macOS gates
  the signing key behind two things, not one: `security import -T /usr/bin/codesign` (which
  `setup-signing.sh` already did) puts codesign on the key's ACL, but since macOS 10.12 the

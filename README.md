@@ -37,6 +37,12 @@ Razer mice that use the same HID protocol family, but those are untested, so tre
   (no lighting on the Atheris, no battery UI on wired-only mice).
 - Settings are written to the mouse's **onboard memory** where supported, so they persist when
   the app is not running.
+- **Starts at login** (on by default, switchable in the popover and in System Settings ›
+  General › Login Items), so the menu bar item is there after a reboot.
+- **Updates install themselves**: when a new release is out, "Update & Restart" downloads it,
+  checks it, replaces the installed app and relaunches — no dragging a DMG. It falls back to
+  the plain DMG download when MacRazer is somewhere it can't replace itself (still on the disk
+  image, or in a folder you can't write to).
 
 Settings persist across app restarts and reconnects, and the menu bar updates on its own when
 the mouse connects, disconnects, or sleeps.

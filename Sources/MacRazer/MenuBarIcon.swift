@@ -7,11 +7,38 @@ import AppKit
 /// `RazerDevices` — the registry — so adding a mouse doesn't touch drawing code.)
 enum MenuBarIcon {
 
+    /// Razer yellow-green is the brand's; this is a battery-charging yellow, picked to read
+    /// against a menu bar rather than to match the logo. Two of them, because one doesn't
+    /// work in both places: system yellow disappears into a white menu bar, and the darker
+    /// amber that fixes that looks muddy on black.
+    static let chargingYellowOnDark = NSColor(red: 1.00, green: 0.84, blue: 0.13, alpha: 1)  // #FFD621
+    static let chargingYellowOnLight = NSColor(red: 0.85, green: 0.58, blue: 0.00, alpha: 1) // #D99400
+
     /// A mouse silhouette with a small Razer triskelion cut into the body (even-odd).
-    /// Template image for the menu bar. `charging` swaps the button-split line for a bolt.
-    static func mouse(pointSize: CGFloat = 16, razerCutout: Bool = true, charging: Bool = false) -> NSImage {
-        let img = drawMouse(size: pointSize, razerCutout: razerCutout, silhouette: .cobra, charging: charging)
-        img.isTemplate = true
+    ///
+    /// The idle mark is a **template** image: macOS recolors it for a light or dark menu bar,
+    /// and inverts it while the item is highlighted, all for free.
+    ///
+    /// The charging mark cannot be, because a template image throws colour away — the same
+    /// reason `AppDelegate` draws the update dot as a subview instead of baking it in. So the
+    /// bolt's yellow costs us the automatic recolouring, and the body colour has to be chosen
+    /// here from `appearance`. `AppDelegate` passes the status item's own effective appearance
+    /// and rebuilds this icon when it changes, since nothing else will.
+    static func mouse(pointSize: CGFloat = 16, razerCutout: Bool = true, charging: Bool = false,
+                      appearance: NSAppearance? = nil) -> NSImage {
+        guard charging else {
+            let img = drawMouse(size: pointSize, razerCutout: razerCutout, silhouette: .cobra)
+            img.isTemplate = true
+            return img
+        }
+        // `currentDrawing()` is the sensible fallback: off the main actor there is no
+        // NSApp to ask, and a caller drawing into a context has already set it.
+        let isDark = (appearance ?? .currentDrawing())
+            .bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        let img = drawMouse(size: pointSize, razerCutout: razerCutout, silhouette: .cobra,
+                            color: isDark ? .white : .black, charging: true,
+                            boltColor: isDark ? chargingYellowOnDark : chargingYellowOnLight)
+        img.isTemplate = false
         return img
     }
 
@@ -27,8 +54,11 @@ enum MenuBarIcon {
         return img
     }
 
+    /// `boltColor` defaults to `color` so every non-menu-bar caller (previews, the app icon)
+    /// keeps drawing a single-colour mark.
     private static func drawMouse(size s: CGFloat, razerCutout: Bool, silhouette: RazerMouseSilhouette,
-                                  color: NSColor = .black, charging: Bool = false) -> NSImage {
+                                  color: NSColor = .black, charging: Bool = false,
+                                  boltColor: NSColor? = nil) -> NSImage {
         NSImage(size: NSSize(width: s, height: s), flipped: false) { rect in
             guard let ctx = NSGraphicsContext.current?.cgContext else { return false }
             let cx = rect.midX, cy = rect.midY
@@ -66,8 +96,8 @@ enum MenuBarIcon {
                                cornerWidth: wheelW / 2, cornerHeight: wheelW / 2, transform: nil)
             ctx.addPath(wheel)
 
-            // Button-split line below the wheel — replaced by a charging bolt in the same
-            // slot, so the body silhouette stays identical and only the detail changes.
+            // Button-split line below the wheel — replaced by the charging bolt below, so the
+            // body silhouette stays identical and only what's inside it changes.
             if !charging {
                 ctx.move(to: P(0, 0.13))
                 ctx.addLine(to: P(0, -0.10))
@@ -82,7 +112,11 @@ enum MenuBarIcon {
             }
 
             // Cobra Pro/HyperSpeed add a visible on-the-fly DPI clutch button behind the wheel.
-            if silhouette == .cobraPro {
+            // Suppressed while charging for the same reason as the triskelion below: the
+            // enlarged bolt runs straight through this rect, and two marks overlapping read as
+            // neither. Unreachable today (only `.cobra` ever charges), but the next per-model
+            // charging icon should not have to rediscover it.
+            if silhouette == .cobraPro && !charging {
                 let dpi = CGRect(x: cx - wheelW * 0.55, y: cy - 0.02 * s, width: wheelW * 1.1, height: s * 0.05)
                 ctx.addPath(CGPath(roundedRect: dpi, cornerWidth: s * 0.025, cornerHeight: s * 0.025, transform: nil))
             }
@@ -94,7 +128,14 @@ enum MenuBarIcon {
             if charging {
                 // Classic 6-point flash, in units of the bolt's own half-width/half-height
                 // so the proportions hold at any icon size.
-                let boltHalfW = 0.16, boltHalfH = 0.145, yOff: CGFloat = 0.015
+                //
+                // Sized to fill the body rather than to replace the button-split line it
+                // stands in for: this mark is read at ~21pt in a menu bar, out of the corner
+                // of the eye, and a detail-sized glyph there is a smudge. It spans from just
+                // under the scroll wheel (0.16) down to just inside the base stroke (-0.46
+                // plus half the line width), keeping a hair of clearance at both ends so the
+                // bolt never merges into the silhouette.
+                let boltHalfW = 0.31, boltHalfH = 0.275, yOff: CGFloat = -0.128
                 func B(_ x: CGFloat, _ y: CGFloat) -> CGPoint { P(x * boltHalfW, y * boltHalfH + yOff) }
                 let bolt = CGMutablePath()
                 bolt.move(to: B(0.35, 1.00))     // top tip
@@ -105,12 +146,15 @@ enum MenuBarIcon {
                 bolt.addLine(to: B(0.00, -0.05)) // jog back to centre
                 bolt.closeSubpath()
                 ctx.addPath(bolt)
-                ctx.setFillColor(color.cgColor)
+                ctx.setFillColor((boltColor ?? color).cgColor)
                 ctx.fillPath()
             }
 
-            // Triskelion mark near the base.
-            if razerCutout {
+            // Triskelion mark near the base — but not while charging: the bolt now occupies
+            // the body the triskelion sits in, and two marks on top of each other read as
+            // neither. The menu bar passes `razerCutout: false` anyway; this keeps the
+            // charging variant sane for every other caller.
+            if razerCutout && !charging {
                 let center = P(0, -0.29)
                 let r = s * 0.105
                 for k in 0..<3 {
@@ -161,10 +205,18 @@ enum MenuBarIcon {
     /// Render a mark to a PNG file (used by the `icon` CLI command for visual verification).
     @discardableResult
     static func writePreview(to path: String, size: CGFloat, silhouette: RazerMouseSilhouette = .cobra,
-                             razerCutout: Bool = true, charging: Bool = false) -> Bool {
+                             razerCutout: Bool = true, charging: Bool = false,
+                             lightMenuBar: Bool = false) -> Bool {
+        // Charging previews reproduce a real menu-bar pairing — body and bolt colour both
+        // depend on it, and the light one is the harder of the two to get right (yellow on
+        // white). Non-charging keeps the brand green: it's a shape check, not a colour one.
         let image = drawMouse(size: size, razerCutout: razerCutout, silhouette: silhouette,
-                              color: NSColor(red: 0x44/255, green: 0xD6/255, blue: 0x2C/255, alpha: 1),
-                              charging: charging)
+                              color: charging ? (lightMenuBar ? .black : .white)
+                                  : NSColor(red: 0x44/255, green: 0xD6/255, blue: 0x2C/255, alpha: 1),
+                              charging: charging,
+                              boltColor: charging
+                                  ? (lightMenuBar ? chargingYellowOnLight : chargingYellowOnDark)
+                                  : nil)
         let px = Int(size)
         guard let rep = NSBitmapImageRep(
             bitmapDataPlanes: nil, pixelsWide: px, pixelsHigh: px,
@@ -174,8 +226,9 @@ enum MenuBarIcon {
 
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
-        // Dark backdrop so the mark is visible in the preview.
-        NSColor(white: 0.12, alpha: 1).setFill()
+        // Backdrop matches the menu bar being previewed — a light-mode mark on a dark square
+        // would tell you nothing about the contrast that actually matters.
+        (lightMenuBar ? NSColor(white: 0.93, alpha: 1) : NSColor(white: 0.12, alpha: 1)).setFill()
         NSRect(x: 0, y: 0, width: CGFloat(px), height: CGFloat(px)).fill()
         image.draw(in: NSRect(x: 0, y: 0, width: CGFloat(px), height: CGFloat(px)))
         NSGraphicsContext.restoreGraphicsState()

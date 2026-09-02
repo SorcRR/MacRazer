@@ -25,6 +25,7 @@ struct PopoverView: View {
     @ObservedObject var controller: MouseController
     @ObservedObject var remapper: ButtonRemapper
     @ObservedObject var updateChecker: UpdateChecker
+    @ObservedObject var launchAtLogin: LaunchAtLogin
 
     enum Page { case main, color, buttons, usage, profiles }
     @State private var page: Page = .main
@@ -38,6 +39,7 @@ struct PopoverView: View {
     @State private var color: Color = .razerGreen
     /// Recallable custom DPI — persisted per-mouse, and never above the mouse's max.
     @State private var customDPI: Int = 8000
+    @State private var versionHovered = false
 
     private let pollRates = RazerCommands.supportedPollingRates
     private let defaultStages = [400, 800, 1600, 3200, 6400]
@@ -162,7 +164,7 @@ struct PopoverView: View {
             // Profiles bundle the sections above (plus remaps) into presets — placed after
             // them so the page reads "here are the controls, here's how to save/recall them".
             profilesCard.disabled(!controller.connected).opacity(controller.connected ? 1 : 0.45)
-            if controller.deviceHasBattery { settingsCard }
+            settingsCard
             footer
         }
         .padding(12)
@@ -426,41 +428,95 @@ struct PopoverView: View {
                         .font(.system(size: 11)).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)
-                Button {
-                    updateChecker.dismiss(version)
-                } label: {
-                    Image(systemName: "xmark").font(.system(size: 9, weight: .bold))
+                // No way out mid-install: dismissing wouldn't stop the swap, it would just
+                // hide the only thing telling the user what's happening.
+                if !updateChecker.isBusy {
+                    Button {
+                        updateChecker.dismiss(version)
+                    } label: {
+                        Image(systemName: "xmark").font(.system(size: 9, weight: .bold))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.tertiary)
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(.tertiary)
             }
             if let error = updateChecker.downloadError {
                 Text(error).font(.system(size: 10.5)).foregroundStyle(Color.batteryLow)
             }
-            Button {
-                Task { await updateChecker.downloadAndOpenDMG() }
-            } label: {
-                HStack(spacing: 6) {
-                    if updateChecker.isDownloading {
-                        ProgressView().controlSize(.small)
-                        Text("Downloading…")
-                    } else {
-                        Image(systemName: "arrow.down.to.line")
-                        Text("Download")
-                    }
-                }
-                .font(.system(size: 11.5, weight: .medium))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 5)
+            switch updateChecker.phase {
+            case .idle: updateActionButton
+            case .downloading(let fraction): updateProgress(fraction)
+            case .installing: updateBusyLabel("Installing…")
+            case .restarting: updateBusyLabel("Restarting…")
+            case .needsRestart: updateNeedsRestart
             }
-            .buttonStyle(.borderedProminent)
-            .tint(.razerGreen)
-            .controlSize(.small)
-            .disabled(updateChecker.isDownloading)
+            // After a failed in-place install the manual route still works — offer it rather
+            // than leaving "install it manually" as advice with no button attached.
+            if updateChecker.downloadError != nil, !updateChecker.isBusy, updateChecker.canInstallInPlace {
+                Button("Download the DMG instead") {
+                    Task { await updateChecker.downloadAndOpenDMG() }
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 11))
+                .foregroundStyle(Color.razerGreen)
+            }
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.razerGreen.opacity(0.12), in: RoundedRectangle(cornerRadius: 13))
+    }
+
+    /// One click for the whole thing where that's possible; the old "fetch the DMG and let the
+    /// user drag it across" wording where it isn't, so the button never promises a restart it
+    /// can't deliver.
+    private var updateActionButton: some View {
+        Button {
+            Task { await updateChecker.downloadAndInstall() }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: updateChecker.canInstallInPlace ? "arrow.triangle.2.circlepath" : "arrow.down.to.line")
+                Text(updateChecker.canInstallInPlace ? "Update & Restart" : "Download")
+            }
+            .font(.system(size: 11.5, weight: .medium))
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 5)
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(.razerGreen)
+        .controlSize(.small)
+    }
+
+    private func updateProgress(_ fraction: Double) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ProgressView(value: fraction)
+                .progressViewStyle(.linear)
+                .tint(.razerGreen)
+            Text("Downloading… \(Int(fraction * 100))%")
+                .font(.system(size: 10.5)).foregroundStyle(.secondary).monospacedDigit()
+        }
+    }
+
+    /// The update is on disk but the relaunch didn't take. Say so plainly and give the one
+    /// action that finishes it — not the error-and-retry treatment a failed install gets.
+    private var updateNeedsRestart: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Update installed. Quit and reopen MacRazer to use it.")
+                .font(.system(size: 11)).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Button("Quit MacRazer") { NSApplication.shared.terminate(nil) }
+                .buttonStyle(.borderedProminent)
+                .tint(.razerGreen)
+                .controlSize(.small)
+                .font(.system(size: 11.5, weight: .medium))
+        }
+    }
+
+    private func updateBusyLabel(_ text: String) -> some View {
+        HStack(spacing: 6) {
+            ProgressView().controlSize(.small)
+            Text(text).font(.system(size: 11)).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: Battery hero
@@ -786,17 +842,54 @@ struct PopoverView: View {
 
     private var settingsCard: some View {
         card {
-            Toggle(isOn: Binding(
-                get: { controller.showPercentInMenuBar },
-                set: { controller.showPercentInMenuBar = $0 }
-            )) {
-                Text("Show battery % in menu bar")
-                    .font(.system(size: 12))
+            VStack(alignment: .leading, spacing: 9) {
+                if controller.deviceHasBattery {
+                    Toggle(isOn: Binding(
+                        get: { controller.showPercentInMenuBar },
+                        set: { controller.showPercentInMenuBar = $0 }
+                    )) {
+                        Text("Show battery % in menu bar")
+                            .font(.system(size: 12))
+                    }
+                }
+                launchAtLoginSetting
             }
             .toggleStyle(.switch)
             .tint(.razerGreen)
             .controlSize(.small)
         }
+    }
+
+    private var launchAtLoginSetting: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Toggle(isOn: Binding(
+                get: { launchAtLogin.isEnabled },
+                set: { launchAtLogin.setEnabled($0) }
+            )) {
+                Text("Start MacRazer at login")
+                    .font(.system(size: 12))
+            }
+            .disabled(!launchAtLogin.isSupported)
+            // Shown rather than hidden when unavailable: running straight from the disk image
+            // is a real thing people do, and "why is this switch dead" deserves an answer.
+            if !launchAtLogin.isSupported {
+                settingNote("Move MacRazer to your Applications folder to use this.")
+            } else if let error = launchAtLogin.lastError {
+                settingNote(error, color: .batteryLow)
+            } else if launchAtLogin.needsApproval {
+                Button("Approve MacRazer in Login Items…") { launchAtLogin.openLoginItemsSettings() }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(Color.razerGreen)
+            }
+        }
+    }
+
+    private func settingNote(_ text: String, color: Color = .secondary) -> some View {
+        Text(text)
+            .font(.system(size: 10.5))
+            .foregroundStyle(color)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     // MARK: Footer
@@ -806,9 +899,26 @@ struct PopoverView: View {
         (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "dev"
     }
 
+    /// The project page. A menu bar app has nowhere to put an "About", and the version line is
+    /// already what people look at to answer "what am I running" — so it doubles as the way
+    /// there, rather than adding another row to a popover that's long enough.
+    private static let websiteURL = URL(string: "https://sorcrr.github.io/MacRazer/")!
+
     private var footer: some View {
-        HStack {
-            Text(verbatim: "v\(appVersion) · unofficial").font(.system(size: 11)).foregroundStyle(.tertiary)
+        HStack(spacing: 4) {
+            Link(destination: Self.websiteURL) {
+                Text(verbatim: "v\(appVersion)")
+                    .font(.system(size: 11))
+                    // Nothing at rest marks it as a link — the footer should stay quiet — so
+                    // hover has to carry the whole affordance: colour and underline together,
+                    // since colour alone is easy to miss at 11pt in tertiary grey.
+                    .foregroundStyle(versionHovered ? AnyShapeStyle(Color.razerGreen) : AnyShapeStyle(.tertiary))
+                    .underline(versionHovered)
+            }
+            .buttonStyle(.plain)
+            .onHover { versionHovered = $0 }
+            .help("Open the MacRazer website")
+            Text(verbatim: "· unofficial").font(.system(size: 11)).foregroundStyle(.tertiary)
             Spacer()
             Button("Quit") { NSApplication.shared.terminate(nil) }
                 .buttonStyle(.borderless)

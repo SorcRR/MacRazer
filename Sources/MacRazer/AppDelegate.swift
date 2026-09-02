@@ -20,8 +20,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     private lazy var permissions = PermissionsModel(remapper: remapper, controller: controller)
     private lazy var permissionsWindow = PermissionsWindowController(model: permissions, controller: controller)
     private let updateChecker = UpdateChecker()
+    private let launchAtLogin = LaunchAtLogin()
     private var updateTimer: Timer?
     private var updateBadgeView: NSView?
+    private var appearanceObserver: NSKeyValueObservation?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Razer HID devices enumerate as a keyboard/mouse, so macOS gates opening them behind
@@ -30,6 +32,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         // user without it is always walked through it rather than left with a silently-dead app.
         // Button remapping additionally needs Accessibility (optional; surfaced in the same window).
         permissions.recheck()
+        // Explicit, not a side effect of constructing the model — see the doc comment there.
+        launchAtLogin.applyDefaultOnFirstRun()
         LowBatteryNotifier.configureNotifications(delegate: self)
         // A manual button-remap edit (outside applying a profile) means the live config no
         // longer matches whichever profile was last applied — let MouseController know so it
@@ -40,7 +44,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         }
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        statusItem.button?.image = Self.menuBarIcon(charging: false)
+        statusItem.button?.image = menuBarIcon(charging: false)
         statusItem.button?.imagePosition = .imageLeading
         statusItem.button?.imageHugsTitle = true
         statusItem.button?.title = " …"
@@ -56,7 +60,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         // logo have poor contrast on the light-mode grey material; dark is also the gaming
         // aesthetic and makes the green pop.
         popover.appearance = NSAppearance(named: .darkAqua)
-        let hosting = NSHostingController(rootView: PopoverView(controller: controller, remapper: remapper, updateChecker: updateChecker))
+        let hosting = NSHostingController(rootView: PopoverView(controller: controller, remapper: remapper, updateChecker: updateChecker, launchAtLogin: launchAtLogin))
         hosting.sizingOptions = [.preferredContentSize] // popover auto-fits the SwiftUI content
         popover.contentViewController = hosting
 
@@ -84,7 +88,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
             .removeDuplicates()
             .receive(on: RunLoop.main)
             .sink { [weak self] charging in
-                self?.statusItem.button?.image = Self.menuBarIcon(charging: charging)
+                self?.statusItem.button?.image = self?.menuBarIcon(charging: charging)
             }
             .store(in: &cancellables)
 
@@ -153,6 +157,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         }
         RunLoop.main.add(timer, forMode: .common)
         updateTimer = timer
+
+        // The charging mark is drawn for one appearance; watch for the menu bar flipping.
+        appearanceObserver = statusItem.button?.observe(\.effectiveAppearance) { [weak self] _, _ in
+            Task { @MainActor in self?.refreshMenuBarIcon() }
+        }
     }
 
     /// Small red dot over the status-item icon when an update is available. A subview rather
@@ -233,6 +242,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         setup.target = self
         menu.addItem(setup)
 
+        // The background check runs once a day; this is the way to ask for one now, and it
+        // also un-dismisses a version the user waved away earlier.
+        let update = NSMenuItem(title: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "")
+        update.target = self
+        menu.addItem(update)
+
         menu.addItem(.separator())
 
         let quit = NSMenuItem(title: "Quit MacRazer", action: #selector(quit), keyEquivalent: "q")
@@ -255,6 +270,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     }
 
     @objc private func refreshNow() { controller.refreshAll() }
+    @objc private func checkForUpdates() {
+        Task {
+            await updateChecker.checkForUpdatesNow(userRequested: true)
+            // Open the popover either way: with an update it shows the card, without one it
+            // shows the version in the footer — both answer "am I up to date?".
+            if !popover.isShown { togglePopover() }
+        }
+    }
     @objc private func openRemap() { remapWindow.show() }
     @objc private func openPermissions() { permissionsWindow.show() }
     @objc private func quit() { NSApplication.shared.terminate(nil) }
@@ -271,23 +294,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     func applicationDidBecomeActive(_ notification: Notification) {
         permissions.recheck()
         // Same reason as the permission recheck: the user may have just flipped the
-        // Notifications switch in System Settings and come back.
+        // Notifications switch — or MacRazer's Login Items entry — in System Settings and
+        // come back.
         controller.refreshNotificationAuthorization()
+        launchAtLogin.refresh()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         monitor?.invalidate()
         updateTimer?.invalidate()
+        appearanceObserver?.invalidate()
         controller.flushHistoryToDisk()
     }
 
     // MARK: - Menu bar mark
 
-    /// The status-item mark, in its idle and charging variants. Drawing is cheap but this
-    /// runs on every charge-state change for the app's lifetime, so both are built once.
+    /// The status-item mark. The idle one is a template image macOS recolors itself, so it is
+    /// drawn once and reused. The charging one carries a yellow bolt, which a template image
+    /// would discard — so it is drawn for a specific appearance and has to be redrawn when
+    /// that changes (see `appearanceObserver`). Both only happen on plug/unplug or a theme
+    /// switch, so the redraw costs nothing worth caching around.
     private static let idleIcon = MenuBarIcon.mouse(pointSize: 21, razerCutout: false)
-    private static let chargingIcon = MenuBarIcon.mouse(pointSize: 21, razerCutout: false, charging: true)
-    private static func menuBarIcon(charging: Bool) -> NSImage { charging ? chargingIcon : idleIcon }
+
+    private func menuBarIcon(charging: Bool) -> NSImage {
+        guard charging else { return Self.idleIcon }
+        return MenuBarIcon.mouse(pointSize: 21, razerCutout: false, charging: true,
+                                 appearance: statusItem.button?.effectiveAppearance)
+    }
+
+    /// Repaint the charging mark when the menu bar flips between light and dark. Nothing else
+    /// does it for us: the idle mark is a template image and adapts on its own, but the
+    /// coloured charging one is a fixed bitmap for whichever appearance drew it.
+    private func refreshMenuBarIcon() {
+        statusItem?.button?.image = menuBarIcon(charging: controller.charging)
+    }
 
     // MARK: - Notifications
 

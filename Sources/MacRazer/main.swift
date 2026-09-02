@@ -10,6 +10,7 @@ import Foundation
 // openrazer/openrazer#2583.
 
 import AppKit
+import ServiceManagement
 import SwiftUI
 
 let args = Array(CommandLine.arguments.dropFirst())
@@ -85,6 +86,37 @@ case "info":
         print("  [\(i)] \(HIDDevice.describe(dev))")
     }
 
+case "login-item":
+    // Report on (and optionally flip) the "Start MacRazer at login" registration — the one
+    // piece of app state that lives in the system rather than in our own defaults, so it can't
+    // be checked by reading a file. `on`/`off` drive the same `LaunchAtLogin.setEnabled` the
+    // popover switch calls, which also makes this the repair path when the GUI isn't reachable.
+    // Only meaningful from the packaged .app: under `swift run` there is no bundle to register.
+    let loginItem = LaunchAtLogin()
+    if let arg = args.dropFirst().first {
+        switch arg {
+        case "on": loginItem.setEnabled(true)
+        case "off": loginItem.setEnabled(false)
+        default:
+            print("Usage: login-item [on|off]")
+            exit(64)
+        }
+        if let failure = loginItem.lastError { print("⚠︎ \(failure)") }
+    }
+    print("Bundle:   \(Bundle.main.bundleURL.path)")
+    print("Eligible: \(loginItem.isSupported ? "yes" : "no — not an installed .app (see AppLocation)")")
+    let status = SMAppService.mainApp.status
+    let described: String
+    switch status {
+    case .enabled: described = "enabled — macOS will start MacRazer at login"
+    case .notRegistered: described = "not registered — the switch is off"
+    case .requiresApproval: described = "requires approval in System Settings › General › Login Items"
+    case .notFound: described = "not found — macOS has no record of this bundle"
+    @unknown default: described = "unknown (raw \(status.rawValue))"
+    }
+    print("Status:   \(described)")
+    print("Default applied once: \(UserDefaults.standard.bool(forKey: "launchAtLoginDefaultApplied"))")
+
 case "render-ui":
     // Render the popover to a PNG for static visual inspection (no device needed).
     _ = NSApplication.shared
@@ -93,13 +125,18 @@ case "render-ui":
     controller.loadPreviewState()
     if args.contains("offline") { controller.setPreviewOffline() }
     if args.contains("bluetooth") { controller.setPreviewBluetooth() }
+    let updateChecker = UpdateChecker()
+    if args.contains("update") { updateChecker.loadPreviewState() }
+    if args.contains("downloading") { updateChecker.loadPreviewState(phase: .downloading(0.42)) }
+    let launchAtLogin = LaunchAtLogin()
+    launchAtLogin.loadPreviewState()
     let rootView: AnyView = args.contains("color")
         ? AnyView(ColorPickerPage(color: .constant(.blue), onBack: {}, onApply: { _ in }))
         : args.contains("usage")
         ? AnyView(UsageGraphView(controller: controller, onBack: {}))
         : args.contains("profiles")
         ? AnyView(ProfilesView(controller: controller, remapper: ButtonRemapper(), onBack: {}))
-        : AnyView(PopoverView(controller: controller, remapper: ButtonRemapper(), updateChecker: UpdateChecker()))
+        : AnyView(PopoverView(controller: controller, remapper: ButtonRemapper(), updateChecker: updateChecker, launchAtLogin: launchAtLogin))
     writeViewPNG(rootView, to: path)
 
 case "render-remap":
@@ -122,7 +159,7 @@ case "icon":
     // Render the menu bar mark to a PNG for visual inspection.
     // Flags and the optional size are bare words, so they must be excluded from the
     // positional path — otherwise `icon charging` writes a file literally named "charging".
-    let iconFlags: Set<String> = ["charging", "nologo"]
+    let iconFlags: Set<String> = ["charging", "nologo", "light"]
     let iconArgs = args.dropFirst()
     let path = iconArgs.first { !iconFlags.contains($0) && Int($0) == nil } ?? "icon-preview.png"
     // Optional size, so the mark can be checked at real menu bar scale (~21pt @2x) rather
@@ -132,7 +169,8 @@ case "icon":
     // `nologo` matches the menu bar's own call (razerCutout: false) so what's previewed is
     // what ships there.
     guard MenuBarIcon.writePreview(to: path, size: size, razerCutout: !iconArgs.contains("nologo"),
-                                   charging: iconArgs.contains("charging")) else {
+                                   charging: iconArgs.contains("charging"),
+                                   lightMenuBar: iconArgs.contains("light")) else {
         print("Render failed")
         exit(1)
     }
@@ -366,6 +404,6 @@ case "rgb":
 
 default:
     print("Unknown command: \(command)")
-    print("Available: info, battery, dpi [x] [y], poll [hz], stages [d1,d2,…] [active], rgb <static rrggbb|spectrum|wave|off>, brightness [pct]")
+    print("Available: info, battery, dpi [x] [y], poll [hz], stages [d1,d2,…] [active], rgb <static rrggbb|spectrum|wave|off>, brightness [pct], login-item [on|off]")
     exit(64)
 }
