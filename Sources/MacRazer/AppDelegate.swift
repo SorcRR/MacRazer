@@ -248,6 +248,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
 
         let menu = NSMenu()
 
+        // First, where macOS puts About in an app menu — above the device header, which is a
+        // title for the items below it rather than an item itself.
+        let about = NSMenuItem(title: "About MacRazer", action: #selector(openAbout), keyEquivalent: "")
+        about.target = self
+        menu.addItem(about)
+        menu.addItem(.separator())
+
         let status = NSMenuItem(title: appMenuStatusTitle(), action: nil, keyEquivalent: "")
         status.isEnabled = false
         menu.addItem(status)
@@ -269,11 +276,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         let setup = NSMenuItem(title: "Setup & Permissions…", action: #selector(openPermissions), keyEquivalent: "")
         setup.target = self
         menu.addItem(setup)
-
-        // About before Settings, as macOS orders them in an app menu.
-        let about = NSMenuItem(title: "About MacRazer", action: #selector(openAbout), keyEquivalent: "")
-        about.target = self
-        menu.addItem(about)
 
         let settings = NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
         settings.target = self

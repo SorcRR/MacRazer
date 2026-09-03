@@ -7,7 +7,7 @@ expect rough edges until 1.0.
 ## [Unreleased]
 
 ### Added
-- **An About window** (menu bar right-click › About MacRazer). Version and build, the
+- **An About window**, first in the menu bar's right-click menu, where macOS puts About. Version and build, the
  developer, and the three things this app actually owes the person reading it: that it is
  **not affiliated with Razer Inc.** and uses their marks only to describe compatibility; that
  the device protocol was **ported from OpenRazer** — whose reverse-engineering this is built
