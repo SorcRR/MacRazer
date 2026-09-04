@@ -12,7 +12,8 @@ swift run MacRazer # menu bar app (uses your Terminal's permission grants)
 swift run MacRazer battery # CLI diagnostics: battery / dpi / poll / rgb / brightness / info
 swift test # unit tests (protocol codec, battery models, persistence — no hardware needed)
 ./Scripts/build-app.sh # build a standalone .app
-./Scripts/make-dmg.sh # package the .app into dist/MacRazer.dmg for a release
+./Scripts/make-dmg.sh # package the .app into dist/MacRazer.dmg
+./Scripts/release.sh 0.3.0 # cut a release: bump every version, close the changelog, build
 ```
 macOS 14+, Swift 6.1 / Xcode 16+. CI runs `swift build && swift test` on pushes to master
 and on every PR; please run the tests locally before opening a PR, and add a test when you
@@ -21,6 +22,21 @@ fix logic in the pure layers (anything without live HID in it).
 `make-dmg.sh` produces an unsigned/self-signed DMG (no paid Apple Developer ID), so it
 triggers a Gatekeeper warning on first launch. That's expected; the README's Install section
 has the bypass steps to link in release notes.
+
+## Cutting a release
+
+Use `./Scripts/release.sh <version>` rather than editing by hand. The version is recorded in
+three places and the changelog in a fourth, and they have to agree: the in-app updater
+compares the GitHub tag against the running bundle's own version, so a release tagged
+`v0.3.0` whose bundle still says `0.2.1` leaves every user with an update badge they can
+never clear. The script bumps all of them, promotes `## [Unreleased]` to a dated version
+heading, builds both DMGs, and refuses outright if the version isn't newer, the tree is
+dirty, you're not on an up-to-date master, or `[Unreleased]` is empty.
+
+It stops before `git commit`, `git tag` and `gh release create`, printing them — review the
+diff first. Attach **both** DMGs to the release: the updater fetches the fixed
+`MacRazer.dmg` name, and the versioned copy makes the Releases page self-describing.
+`--dry-run` shows what it would do.
 
 ## The most valuable contribution: device profiles
 Detection + name work for **any** Razer mouse already (via the USB product string). What's
