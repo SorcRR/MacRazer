@@ -43,6 +43,24 @@ done
 fail() { echo "✗ $*" >&2; exit 1; }
 step() { echo "▸ $*"; }
 
+# Every edit happens before the build, so a build failure would otherwise exit with three
+# files rewritten and nothing said about it — and the obvious retry then refuses with "working
+# tree is dirty", which is true but describes the script's own mess. Say what to run instead.
+TEMP_FILES=""
+EDITS_APPLIED=0
+on_exit() {
+    local status=$?
+    # shellcheck disable=SC2086
+    [ -n "${TEMP_FILES}" ] && rm -f ${TEMP_FILES}
+    if [ "${status}" -ne 0 ] && [ "${EDITS_APPLIED}" -eq 1 ]; then
+        echo >&2
+        echo "✗ Stopped part-way with the release edits already applied. To undo them:" >&2
+        echo "    git checkout -- ${PLIST} ${CHANGELOG} ${SITE}" >&2
+    fi
+    return "${status}"
+}
+trap on_exit EXIT
+
 # --- Preconditions ------------------------------------------------------------------------
 # Every one of these has a failure mode that is worse to discover after the tag is pushed.
 
@@ -54,17 +72,30 @@ echo "${VERSION}" | grep -Eq '^[0-9]+(\.[0-9]+)*$' \
 CURRENT="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "${PLIST}")"
 CURRENT_BUILD="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "${PLIST}")"
 
+# 5: `CURRENT` feeds an unquoted expansion in version_gt below, and comes from the plist
+# rather than from an argument we validated. Hold it to the same shape.
+echo "${CURRENT}" | grep -Eq '^[0-9]+(\.[0-9]+)*$' \
+    || fail "${PLIST} has CFBundleShortVersionString '${CURRENT}', which isn't dotted integers"
+# 3: the build number is incremented, so it has to be one. CFBundleVersion legitimately holds
+# dotted strings in other projects, and the arithmetic would fail with a bare bash error.
+echo "${CURRENT_BUILD}" | grep -Eq '^[0-9]+$' \
+    || fail "${PLIST} has CFBundleVersion '${CURRENT_BUILD}', which isn't an integer to increment"
+
 # Same comparison the app makes, so the script can't approve a release the updater would
 # refuse to install.
 version_gt() {
+    # Word splitting on `.` also globs; both arguments are validated above, and this makes the
+    # function safe on its own terms rather than only in this caller's context.
+    set -f
     local IFS=.
     local -a a=($1) b=($2)
     local i x y
     for ((i = 0; i < ${#a[@]} || i < ${#b[@]}; i++)); do
         x=${a[i]:-0}; y=${b[i]:-0}
-        ((10#$x > 10#$y)) && return 0
-        ((10#$x < 10#$y)) && return 1
+        ((10#$x > 10#$y)) && { set +f; return 0; }
+        ((10#$x < 10#$y)) && { set +f; return 1; }
     done
+    set +f
     return 1
 }
 version_gt "${VERSION}" "${CURRENT}" \
@@ -81,11 +112,22 @@ git fetch -q origin master
 [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/master)" ] \
     || fail "master is not in sync with origin/master — pull or push first"
 
-# An empty Unreleased section means there is nothing to release, and would silently produce a
+# One literal, matched exactly, used by both the check below and the rewrite later.
+#
+# These were written separately and disagreed on the anchor, so a decorated heading like
+# "## [Unreleased] (next)" passed the check and was then silently not rewritten — a release
+# whose changelog had no version heading at all, reported as a success. Sharing a *regex*
+# between them turned out to be its own trap: `awk -v` processes escapes in the value, so
+# `\[Unreleased\]` arrives as `[Unreleased]`, a character class matching one letter. An exact
+# string comparison has no escaping to get wrong and says precisely what is meant.
+UNRELEASED_HEADING='## [Unreleased]'
+
+# An empty Unreleased section means there is nothing to release, and would otherwise produce a
 # version heading with no entries under it.
-UNRELEASED_ENTRIES="$(awk '/^## \[Unreleased\]/{f=1; next} /^## \[/{f=0} f && /^- /' "${CHANGELOG}" | wc -l | tr -d ' ')"
+UNRELEASED_ENTRIES="$(awk -v h="${UNRELEASED_HEADING}" \
+    '$0 == h {f=1; next} /^## \[/{f=0} f && /^- /' "${CHANGELOG}" | wc -l | tr -d ' ')"
 [ "${UNRELEASED_ENTRIES}" -gt 0 ] \
-    || fail "CHANGELOG has no entries under [Unreleased] — nothing to release"
+    || fail "CHANGELOG has no entries under a line reading exactly '${UNRELEASED_HEADING}' — nothing to release"
 
 NEXT_BUILD=$((CURRENT_BUILD + 1))
 TODAY="$(date +%Y-%m-%d)"
@@ -102,6 +144,7 @@ fi
 
 # --- Edits --------------------------------------------------------------------------------
 
+EDITS_APPLIED=1
 step "Bumping ${PLIST}…"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${VERSION}" "${PLIST}"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${NEXT_BUILD}" "${PLIST}"
@@ -109,15 +152,22 @@ step "Bumping ${PLIST}…"
 step "Closing off ${CHANGELOG}…"
 # Insert the new heading directly under [Unreleased]: everything already written falls under
 # it, and [Unreleased] is left empty for the next cycle.
-awk -v ver="${VERSION}" -v today="${TODAY}" '
+CHANGELOG_TMP="$(mktemp -t macrazer-changelog)"
+TEMP_FILES="${TEMP_FILES} ${CHANGELOG_TMP}"
+awk -v ver="${VERSION}" -v today="${TODAY}" -v h="${UNRELEASED_HEADING}" '
     { print }
-    /^## \[Unreleased\]$/ && !done { print ""; print "## [" ver "] — " today; done = 1 }
-' "${CHANGELOG}" > "${CHANGELOG}.tmp" && mv "${CHANGELOG}.tmp" "${CHANGELOG}"
+    $0 == h && !inserted { print ""; print "## [" ver "] — " today; inserted = 1 }
+    END { exit inserted ? 0 : 1 }
+' "${CHANGELOG}" > "${CHANGELOG_TMP}" \
+    || fail "no line reading exactly '${UNRELEASED_HEADING}' in ${CHANGELOG} — nothing was promoted"
+mv "${CHANGELOG_TMP}" "${CHANGELOG}"
 
 step "Updating ${SITE}…"
 # Only the structured-data field is hardcoded; the visible version tags fetch the latest tag
 # from the GitHub API at page load, so they follow on their own.
-sed -i '' "s/\"softwareVersion\": \"${CURRENT}\"/\"softwareVersion\": \"${VERSION}\"/" "${SITE}"
+# Matched by shape, not by the old value: interpolating `0.2.1` into a regex made each dot a
+# wildcard, and the grep below would have been just as happy if that had matched the wrong line.
+sed -i '' "s/\"softwareVersion\": \"[^\"]*\"/\"softwareVersion\": \"${VERSION}\"/" "${SITE}"
 grep -q "\"softwareVersion\": \"${VERSION}\"" "${SITE}" \
     || fail "couldn't update softwareVersion in ${SITE} — is it still there?"
 

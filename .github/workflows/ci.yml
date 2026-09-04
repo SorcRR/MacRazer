@@ -26,14 +26,20 @@ jobs:
       # that ever changes.
       - name: Check shell scripts
         run: |
-          bash -n Scripts/*.sh
+          bash -n Scripts/*.sh Tests/Scripts/*.sh
           if command -v shellcheck >/dev/null; then
             # -S error only: these scripts predate any linting, and the point here is to
             # catch what would actually break a release, not to relitigate their style.
-            shellcheck -S error Scripts/*.sh
+            shellcheck -S error Scripts/*.sh Tests/Scripts/*.sh
           else
             echo "shellcheck unavailable on this runner — syntax check only"
           fi
+      # The release script decides things — which version is newer, where the changelog gets
+      # cut — and `bash -n` only proves it parses. It shipped with two individually-valid
+      # patterns that disagreed with each other, which is the kind of defect only a fixture
+      # test catches.
+      - name: Test shell scripts
+        run: ./Tests/Scripts/release-test.sh
       - name: Build
         run: swift build
       - name: Test

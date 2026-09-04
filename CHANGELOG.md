@@ -17,7 +17,10 @@ expect rough edges until 1.0.
  refuses if the version isn't newer — using the same comparison the app makes — or if the
  tree is dirty, master is out of sync, or `[Unreleased]` is empty, and it verifies the built
  app reports the version being tagged before it says it's done. It stops short of committing,
- tagging and publishing, printing those commands instead.
+ tagging and publishing, printing those commands instead, and if it stops part-way it says how
+ to undo the edits it had already made. `Tests/Scripts/release-test.sh` covers the version
+ comparison and both changelog operations, and CI runs it — `bash -n` and shellcheck prove a
+ script parses, not that two of its patterns agree with each other.
 
 ### Added
 - **An About window**, first in the menu bar's right-click menu, where macOS puts About. Version and build, the
