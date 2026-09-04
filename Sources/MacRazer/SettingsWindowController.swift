@@ -7,7 +7,7 @@ import SwiftUI
 /// Hosts the app's settings in a normal window. Reachable from the menu bar's right-click
 /// menu (⌘,) and from the gear in the popover footer.
 @MainActor
-final class SettingsWindowController {
+final class SettingsWindowController: AppWindowPresenter {
     private var window: NSWindow?
     private let controller: MouseController
     private let launchAtLogin: LaunchAtLogin

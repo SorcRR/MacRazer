@@ -7,7 +7,7 @@ import SwiftUI
 /// Hosts the first-run setup / permissions screen in a normal window. Shown automatically on the
 /// very first launch and reachable any time from the menu bar's "Setup & Permissions…".
 @MainActor
-final class PermissionsWindowController {
+final class PermissionsWindowController: AppWindowPresenter {
     private var window: NSWindow?
     private let model: PermissionsModel
     private let controller: MouseController
@@ -16,6 +16,8 @@ final class PermissionsWindowController {
         self.model = model
         self.controller = controller
     }
+
+    var isVisible: Bool { window?.isVisible ?? false }
 
     func show() {
         if window == nil {

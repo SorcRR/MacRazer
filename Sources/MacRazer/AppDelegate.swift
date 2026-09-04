@@ -321,6 +321,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     @objc private func openSettings() { settingsWindow.show() }
     @objc private func openAbout() { aboutWindow.show() }
 
+    /// Whether the user is currently looking at one of the app's windows.
+    ///
+    /// Touching the lazy controllers here builds the controllers but not their windows — each
+    /// initializer only stores a few references, and the `NSWindow` is still created on the
+    /// first `show()`. So the laziness that matters is intact.
+    private var isShowingAWindow: Bool {
+        let windows: [AppWindowPresenter] = [remapWindow, permissionsWindow, aboutWindow, settingsWindow]
+        return windows.contains { $0.isVisible }
+    }
+
     /// Turning the setting on with an update already found is the one moment a user is
     /// watching for it to act, and neither of the other triggers fires then: `latestVersion`
     /// hasn't changed (so the deduplicated sink stays quiet) and the popover was never open.
@@ -358,10 +368,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
             enabled: updateChecker.autoInstallEnabled,
             canInstallInPlace: updateChecker.canInstallInPlace,
             busy: updateChecker.isBusy,
-            // Neither surface may be yanked away mid-use: the popover for the reason above,
-            // and the settings window because closing the popover to open it must not be read
-            // as permission to restart the app.
-            popoverVisible: popover.isShown || settingsWindow.isVisible)
+            // No surface may be yanked away mid-use: the popover for the reason above, and
+            // any window the app has open, because an install ends in a relaunch. Asked of
+            // every window rather than a named one — enumerating them here is what left the
+            // About window exposed the moment it was added.
+            popoverVisible: popover.isShown || isShowingAWindow)
         // The policy returns the version it approved rather than a Bool: it records the
         // attempt as part of deciding, so a caller that had to re-unwrap afterwards could
         // silently drop a version already marked as spent.

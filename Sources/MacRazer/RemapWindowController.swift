@@ -7,11 +7,13 @@ import SwiftUI
 /// Hosts the button-remapping UI in a normal window (the popover is for quick controls only).
 /// An accessory app can show a window; we just activate first so it comes to the front.
 @MainActor
-final class RemapWindowController {
+final class RemapWindowController: AppWindowPresenter {
     private var window: NSWindow?
     private let remapper: ButtonRemapper
 
     init(remapper: ButtonRemapper) { self.remapper = remapper }
+
+    var isVisible: Bool { window?.isVisible ?? false }
 
     func show() {
         if window == nil {

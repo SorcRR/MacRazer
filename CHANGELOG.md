@@ -92,6 +92,13 @@ expect rough edges until 1.0.
  sub-second pure-layer run, now says what the job actually does.
 
 ### Fixed
+- An automatic update install can no longer relaunch the app out from under a window you have
+ open. The guard named the popover and the Settings window; the About, Configure Buttons and
+ Setup windows were invisible to it, so opening one from the menu bar — which closes the
+ popover, and so arms the check — could have the app replace itself and restart while you were
+ reading it. Every window controller now answers the same `AppWindowPresenter.isVisible`, and
+ the guard asks all of them: enumerating windows at the call site is what left each new one
+ exposed.
 - Preview renders (`render-ui`, `render-settings`, `render-about`, …) now force dark, as every
  surface they stand in for does. `.secondary` and `.tertiary` were resolving for light mode
  and drawing near-black on the dark backdrop, so every preview looked like it had a contrast

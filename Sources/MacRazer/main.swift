@@ -157,12 +157,13 @@ case "render-settings":
     // `update` shows the Updates section in its available state, which is the only way to see
     // the Install Now button without waiting for a real release.
     if args.contains("update") { su.loadPreviewState() }
-    writeViewPNG(SettingsView(controller: sc, launchAtLogin: sl, updateChecker: su),
+    writeViewPNG(SettingsView(controller: sc, launchAtLogin: sl, updateChecker: su, onDone: {}),
                  to: settingsPath)
 
 case "render-about":
     _ = NSApplication.shared
-    writeViewPNG(AboutView(), to: args.dropFirst().first ?? "about-preview.png")
+    let aboutPath = args.dropFirst().first ?? "about-preview.png"
+    writeViewPNG(AboutView(onDone: {}), to: aboutPath) // no window to close in a render
 
 case "render-remap":
     _ = NSApplication.shared

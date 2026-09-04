@@ -6,8 +6,10 @@ import SwiftUI
 
 /// Hosts About MacRazer in a normal window, reached from the menu bar's right-click menu.
 @MainActor
-final class AboutWindowController {
+final class AboutWindowController: AppWindowPresenter {
     private var window: NSWindow?
+
+    var isVisible: Bool { window?.isVisible ?? false }
 
     func show() {
         if window == nil {

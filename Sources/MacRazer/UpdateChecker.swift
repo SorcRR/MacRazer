@@ -60,8 +60,8 @@ final class UpdateChecker: ObservableObject {
         didSet { UserDefaults.standard.set(autoInstallEnabled, forKey: Self.autoInstallKey) }
     }
 
-    private let releaseAPIURL = URL(string: "https://api.github.com/repos/SorcRR/MacRazer/releases/latest")!
-    private let dmgURL = URL(string: "https://github.com/SorcRR/MacRazer/releases/latest/download/MacRazer.dmg")!
+    private let releaseAPIURL = ProjectLinks.latestReleaseAPI
+    private let dmgURL = ProjectLinks.latestDMG
     private let checkInterval: TimeInterval = 24 * 60 * 60
 
     private static let dismissedKey = "dismissedUpdateVersion"
@@ -73,11 +73,7 @@ final class UpdateChecker: ObservableObject {
         let tag_name: String
     }
 
-    /// The bundle's version, or "0" under `swift run` where there is no bundle — which
-    /// compares older than any real release, so a dev build always sees an update available.
-    var currentVersion: String {
-        (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "0"
-    }
+    var currentVersion: String { AppInfo.comparableVersion }
 
     var isBusy: Bool { phase != .idle }
 

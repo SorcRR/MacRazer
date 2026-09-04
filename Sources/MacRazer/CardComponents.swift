@@ -13,9 +13,12 @@ func card<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
 }
 
 /// A card with a small uppercase heading — the window-sized counterpart to `card`, shared by
-/// the Settings and About windows so their sections can't drift apart. Slightly flatter and
-/// tighter-cornered than `card`: those sit on the popover's dark material, these on a plain
-/// window background where the popover's contrast would read as heavy.
+/// the Settings and About windows so their sections can't drift apart.
+///
+/// Flatter and tighter-cornered than `card` (0.07 vs 0.10 fill, radius 12 vs 13) but roomier
+/// inside it (14 vs 12): `card` sits on the popover's dark material at popover width, this
+/// sits on a plain window background at more than twice that, where the popover's contrast
+/// reads as heavy and its padding as cramped.
 func titledSection<Content: View>(_ title: String, @ViewBuilder _ content: () -> Content) -> some View {
     VStack(alignment: .leading, spacing: 12) {
         Text(title.uppercased())
@@ -27,6 +30,17 @@ func titledSection<Content: View>(_ title: String, @ViewBuilder _ content: () ->
     .padding(14)
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(Color.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 12))
+}
+
+/// Wrapped explanatory text under a control or heading — the small secondary paragraph both
+/// the Settings and About windows are mostly made of. Shared for the same reason as
+/// `titledSection`: the two windows had grown separate copies, one of them named `body`, which
+/// shadows the `View` requirement it sat next to.
+func sectionNote(_ text: String, color: Color = .secondary) -> some View {
+    Text(text)
+        .font(.system(size: 11.5))
+        .foregroundStyle(color)
+        .fixedSize(horizontal: false, vertical: true)
 }
 
 /// Small secondary-styled section heading used inside cards.
