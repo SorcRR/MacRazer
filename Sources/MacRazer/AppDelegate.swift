@@ -21,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     private lazy var permissionsWindow = PermissionsWindowController(model: permissions, controller: controller)
     private let updateChecker = UpdateChecker()
     private let launchAtLogin = LaunchAtLogin()
+    private lazy var aboutWindow = AboutWindowController()
     private lazy var settingsWindow = SettingsWindowController(
         controller: controller, launchAtLogin: launchAtLogin, updateChecker: updateChecker,
         onAutoInstallChanged: { [weak self] in self?.autoInstallSettingChanged() })
@@ -247,6 +248,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
 
         let menu = NSMenu()
 
+        // First, where macOS puts About in an app menu — above the device header, which is a
+        // title for the items below it rather than an item itself.
+        let about = NSMenuItem(title: "About MacRazer", action: #selector(openAbout), keyEquivalent: "")
+        about.target = self
+        menu.addItem(about)
+        menu.addItem(.separator())
+
         let status = NSMenuItem(title: appMenuStatusTitle(), action: nil, keyEquivalent: "")
         status.isEnabled = false
         menu.addItem(status)
@@ -311,6 +319,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     }
     @objc private func openRemap() { remapWindow.show() }
     @objc private func openSettings() { settingsWindow.show() }
+    @objc private func openAbout() { aboutWindow.show() }
+
+    /// Whether the user is currently looking at one of the app's windows.
+    ///
+    /// Touching the lazy controllers here builds the controllers but not their windows — each
+    /// initializer only stores a few references, and the `NSWindow` is still created on the
+    /// first `show()`. So the laziness that matters is intact.
+    private var isShowingAWindow: Bool {
+        let windows: [AppWindowPresenter] = [remapWindow, permissionsWindow, aboutWindow, settingsWindow]
+        return windows.contains { $0.isVisible }
+    }
 
     /// Turning the setting on with an update already found is the one moment a user is
     /// watching for it to act, and neither of the other triggers fires then: `latestVersion`
@@ -349,10 +368,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
             enabled: updateChecker.autoInstallEnabled,
             canInstallInPlace: updateChecker.canInstallInPlace,
             busy: updateChecker.isBusy,
-            // Neither surface may be yanked away mid-use: the popover for the reason above,
-            // and the settings window because closing the popover to open it must not be read
-            // as permission to restart the app.
-            popoverVisible: popover.isShown || settingsWindow.isVisible)
+            // No surface may be yanked away mid-use: the popover for the reason above, and
+            // any window the app has open, because an install ends in a relaunch. Asked of
+            // every window rather than a named one — enumerating them here is what left the
+            // About window exposed the moment it was added.
+            popoverVisible: popover.isShown || isShowingAWindow)
         // The policy returns the version it approved rather than a Bool: it records the
         // attempt as part of deciding, so a caller that had to re-unwrap afterwards could
         // silently drop a version already marked as spent.

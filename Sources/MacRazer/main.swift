@@ -59,7 +59,13 @@ func openDevice() -> HIDDevice? {
 /// Shared by the render-* commands: draw a SwiftUI view at 2x on the app's dark backdrop
 /// and write it to a PNG.
 @MainActor func writeViewPNG<V: View>(_ view: V, to path: String) {
-    let renderer = ImageRenderer(content: view.padding(1).background(Color(white: 0.13)))
+    // Force dark, because every surface these previews stand in for does: the popover sets
+    // `.darkAqua`, and so do the Settings, Permissions and About windows. Without it
+    // `.secondary`/`.tertiary` resolve for light mode and render as near-black text on the
+    // dark backdrop below — which made every preview look like it had a contrast bug it
+    // doesn't have.
+    let renderer = ImageRenderer(
+        content: view.environment(\.colorScheme, .dark).padding(1).background(Color(white: 0.13)))
     renderer.scale = 2
     if let img = renderer.nsImage,
        let tiff = img.tiffRepresentation,
@@ -151,8 +157,13 @@ case "render-settings":
     // `update` shows the Updates section in its available state, which is the only way to see
     // the Install Now button without waiting for a real release.
     if args.contains("update") { su.loadPreviewState() }
-    writeViewPNG(SettingsView(controller: sc, launchAtLogin: sl, updateChecker: su),
+    writeViewPNG(SettingsView(controller: sc, launchAtLogin: sl, updateChecker: su, onDone: {}),
                  to: settingsPath)
+
+case "render-about":
+    _ = NSApplication.shared
+    let aboutPath = args.dropFirst().first ?? "about-preview.png"
+    writeViewPNG(AboutView(onDone: {}), to: aboutPath) // no window to close in a render
 
 case "render-remap":
     _ = NSApplication.shared

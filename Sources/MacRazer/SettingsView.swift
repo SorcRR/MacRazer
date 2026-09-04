@@ -14,7 +14,9 @@ struct SettingsView: View {
     @ObservedObject var controller: MouseController
     @ObservedObject var launchAtLogin: LaunchAtLogin
     @ObservedObject var updateChecker: UpdateChecker
-    var onDone: (() -> Void)?
+    /// Not optional, for the same reason as `AboutView.onDone`: a defaulted no-op ships a
+    /// Done button that does nothing and compiles fine.
+    var onDone: () -> Void
     /// Called when "install automatically" is switched, so the owner can act on an update that
     /// is *already* known — the one moment the user is watching for the setting to do
     /// something, and the moment none of the other triggers fire.
@@ -23,13 +25,13 @@ struct SettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             header
-            section("General") {
+            titledSection("General") {
                 launchAtLoginRow
                 // Hidden rather than disabled for a mouse with no battery: there is no
                 // percentage to show, so the switch would be a promise about nothing.
                 if controller.deviceHasBattery { batteryPercentRow }
             }
-            section("Updates") {
+            titledSection("Updates") {
                 autoInstallRow
                 versionRow
             }
@@ -74,10 +76,10 @@ struct SettingsView: View {
             // Shown rather than hidden when unavailable: running straight from the disk image
             // is a real thing people do, and "why is this switch dead" deserves an answer.
             if !launchAtLogin.isSupported {
-                note("Move MacRazer to your Applications folder to use this — a login item "
+                sectionNote("Move MacRazer to your Applications folder to use this — a login item "
                      + "pointing into a disk image stops working the moment it's ejected.")
             } else if let error = launchAtLogin.lastError {
-                note(error, color: .batteryLow)
+                sectionNote(error, color: .batteryLow)
             } else if launchAtLogin.needsApproval {
                 Button("Approve MacRazer in Login Items…") { launchAtLogin.openLoginItemsSettings() }
                     .buttonStyle(.plain).font(.system(size: 11))
@@ -107,10 +109,10 @@ struct SettingsView: View {
             enabled: updateChecker.canInstallInPlace
         ) {
             if !updateChecker.canInstallInPlace {
-                note("Unavailable here — MacRazer can't replace itself from this location. "
+                sectionNote("Unavailable here — MacRazer can't replace itself from this location. "
                      + "Move it to your Applications folder.")
             } else if !updateChecker.autoInstallEnabled {
-                note("Off: you'll get a dot on the menu bar icon and a card in the popover instead.")
+                sectionNote("Off: you'll get a dot on the menu bar icon and a card in the popover instead.")
             }
         }
     }
@@ -195,36 +197,16 @@ struct SettingsView: View {
             .tint(.razerGreen)
             .controlSize(.small)
             .disabled(!enabled)
-            note(detail)
+            sectionNote(detail)
             extra()
         }
         .opacity(enabled ? 1 : 0.55)
     }
 
-    private func note(_ text: String, color: Color = .secondary) -> some View {
-        Text(text)
-            .font(.system(size: 11))
-            .foregroundStyle(color)
-            .fixedSize(horizontal: false, vertical: true)
-    }
-
-    private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(title.uppercased())
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(.tertiary)
-                .kerning(0.6)
-            content()
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 12))
-    }
-
     private var footer: some View {
         HStack {
             Spacer()
-            Button("Done") { onDone?() }
+            Button("Done") { onDone() }
                 .keyboardShortcut(.defaultAction)
         }
     }

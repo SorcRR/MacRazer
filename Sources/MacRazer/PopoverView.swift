@@ -845,19 +845,11 @@ struct PopoverView: View {
 
     // MARK: Footer
 
-    /// Real bundle version (e.g. "0.1.1"); falls back for non-bundled dev runs (`swift run`).
-    private var appVersion: String {
-        (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "dev"
-    }
-
-    /// The project page. A menu bar app has nowhere to put an "About", and the version line is
-    /// already what people look at to answer "what am I running" — so it doubles as the way
-    /// there, rather than adding another row to a popover that's long enough.
-    private static let websiteURL = URL(string: "https://sorcrr.github.io/MacRazer/")!
+    private var appVersion: String { AppInfo.displayVersion }
 
     private var footer: some View {
         HStack(spacing: 4) {
-            Link(destination: Self.websiteURL) {
+            Link(destination: ProjectLinks.site) {
                 Text(verbatim: "v\(appVersion)")
                     .font(.system(size: 11))
                     // Nothing at rest marks it as a link — the footer should stay quiet — so
