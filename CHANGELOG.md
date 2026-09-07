@@ -7,6 +7,22 @@ expect rough edges until 1.0.
 ## [Unreleased]
 
 ### Added
+- **`Scripts/release.sh`** — cutting a release now bumps every place the version is recorded
+ and closes off the changelog in one step, instead of four hand edits that have to agree.
+ They have to agree because the in-app updater compares the GitHub tag against the running
+ bundle's own version: a release tagged `v0.3.0` whose bundle still said `0.2.1` would leave
+ every user with an update badge they could never clear — the app installs it, still reports
+ the old version, and finds the same release "newer" on the next check. (`UpdateInstaller`'s
+ newer-than check stops that looping, so it fails safe, but the badge would stay.) The script
+ refuses if the version isn't newer — using the same comparison the app makes — or if the
+ tree is dirty, master is out of sync, or `[Unreleased]` is empty, and it verifies the built
+ app reports the version being tagged before it says it's done. It stops short of committing,
+ tagging and publishing, printing those commands instead, and if it stops part-way it says how
+ to undo the edits it had already made. `Tests/Scripts/release-test.sh` covers the version
+ comparison and both changelog operations, and CI runs it — `bash -n` and shellcheck prove a
+ script parses, not that two of its patterns agree with each other.
+
+### Added
 - **An About window**, first in the menu bar's right-click menu, where macOS puts About. Version and build, the
  developer, and the three things this app actually owes the person reading it: that it is
  **not affiliated with Razer Inc.** and uses their marks only to describe compatibility; that
