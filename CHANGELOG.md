@@ -6,6 +6,8 @@ expect rough edges until 1.0.
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-09-07
+
 ### Added
 - **`Scripts/release.sh`** — cutting a release now bumps every place the version is recorded
  and closes off the changelog in one step, instead of four hand edits that have to agree.
