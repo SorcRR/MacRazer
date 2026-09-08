@@ -87,7 +87,12 @@ enum RazerDevices {
         .init(pid: 0x0062, name: "Razer Atheris", fullySupported: true, hasBattery: true, hasLighting: false, maxDPI: 7200, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .atheris, dischargeCurveModelKey: nil),
         // Basilisk V3 X HyperSpeed: AA-cell wireless (2.4 GHz dongle or Bluetooth — no
         // charging, so `is_charging` is always false). Scroll-wheel-only lighting. 0x1f
-        // everywhere per razermouse_driver.c; hardware-verified with this app.
+        // everywhere per razermouse_driver.c.
+        //
+        // Hardware-verified with this app: battery, DPI read/write, the stage table, polling
+        // rate, lighting effects, and brightness on SCROLL_LED. The 18000 ceiling is the
+        // vendor spec — the reporter exercised DPI at 6400, so the top of the range is the
+        // one field here not demonstrated on a device.
         .init(pid: 0x00B9, name: "Razer Basilisk V3 X HyperSpeed", fullySupported: true, hasBattery: true, hasLighting: true, maxDPI: 18000, transactionId: 0x1f, matrixTransactionId: 0x1f, brightnessLed: Razer.scrollLed, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
         // Basilisk X HyperSpeed: the older AA-cell sibling — no lighting at all, and
         // razermouse_driver.c gives it 0xFF for every command it supports. Not verified

@@ -6,6 +6,25 @@ expect rough edges until 1.0.
 
 ## [Unreleased]
 
+### Fixed
+- **The brightness LED id can no longer be forgotten.** `setBrightness`/`getBrightness` still
+ defaulted `led:` to the Cobra family's `LOGO_LED` — which is precisely the bug the per-model
+ registry field was added to fix, and it failed silently: the mouse answers FAILURE, nothing
+ surfaces, the slider just does nothing. Every call site already passed the id explicitly, so
+ the parameter is now required and the next one can't reproduce it without a compiler error.
+- The `brightness` probe no longer retries a refusal. A FAILURE for a given model and LED is
+ deterministic, so `sendWithRetry` was asking three times 150ms apart — on a model where three
+ of four groups refuse, nine round trips and most of a second of backoff in a diagnostic whose
+ whole job is to report which group answered.
+- The probe's error message said "probe failed" for what can only be a failed *write*: the
+ sweep handles its own refusals per LED, so the outer catch is reachable only by the optional
+ SET.
+- `ZERO_LED` is a named constant alongside the other three, rather than a bare `0x00` in the
+ middle of a list of names.
+- The Basilisk V3 X entry no longer claims its 18000 DPI ceiling was hardware-verified — that
+ figure is the vendor spec, and the reporter exercised DPI at 6400. Everything else in the
+ entry was measured on a device.
+
 ### Added
 - **Razer Basilisk V3 X HyperSpeed support** (PID `0x00B9`), verified on hardware over the
  2.4 GHz dongle: battery, DPI, the onboard DPI stage table, polling rate, lighting effects
