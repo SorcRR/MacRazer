@@ -7,6 +7,15 @@ expect rough edges until 1.0.
 ## [Unreleased]
 
 ### Fixed
+- The changelog no longer carries duplicate `### Added` / `### Fixed` headings under a single
+ release. Three stacked branches each grew their own section under `[Unreleased]`, and merging
+ them through GitHub appended rather than folded — so `[0.3.0]` shipped with two `### Added`
+ blocks, in the section the release notes link to. Both are folded, with every entry kept.
+- The site's four description fields (meta, Open Graph, Twitter, structured data) still
+ described a 0.2.x app. They now mention that it starts at login and installs its own updates
+ — the two things 0.3.0 added that a reader deciding whether to download would care about.
+
+### Fixed
 - **The brightness LED id can no longer be forgotten.** `setBrightness`/`getBrightness` still
  defaulted `led:` to the Cobra family's `LOGO_LED` — which is precisely the bug the per-model
  registry field was added to fix, and it failed silently: the mouse answers FAILURE, nothing
@@ -25,6 +34,17 @@ expect rough edges until 1.0.
  figure is the vendor spec, and the reporter exercised DPI at 6400. Everything else in the
  entry was measured on a device.
 
+- **The brightness slider now works on mice whose only lit zone is the scroll wheel.** The LED
+ group for brightness was hardcoded to `LOGO_LED`, which the Basilisk V3 X HyperSpeed answers
+ with FAILURE (`0x03`), so dragging the slider silently did nothing on it. Effects and
+ brightness live on different LED groups, and which group answers varies per model, so the id
+ is now a per-model registry field defaulting to the Cobra family's `LOGO_LED` — an unknown
+ mouse behaves exactly as before.
+- **The `brightness` CLI probe no longer stops at the first LED group that refuses.** It exists
+ to discover which group a new model answers on, but a `LOGO_LED` refusal threw before the
+ sweep started — precisely the case it was written for. It now reports LOGO, SCROLL, ZERO and
+ BACKLIGHT individually, so a new model's brightness LED can be found in one run.
+
 ### Added
 - **Razer Basilisk V3 X HyperSpeed support** (PID `0x00B9`), verified on hardware over the
  2.4 GHz dongle: battery, DPI, the onboard DPI stage table, polling rate, lighting effects
@@ -38,18 +58,6 @@ expect rough edges until 1.0.
  lighting at all, a 16000 DPI ceiling, and `0xFF` transaction ids rather than the Cobra
  family's `0x1f`. Nobody has run it against hardware yet, so it stays marked unverified: the
  app will attempt its controls without claiming they work.
-
-### Fixed
-- **The brightness slider now works on mice whose only lit zone is the scroll wheel.** The LED
- group for brightness was hardcoded to `LOGO_LED`, which the Basilisk V3 X HyperSpeed answers
- with FAILURE (`0x03`), so dragging the slider silently did nothing on it. Effects and
- brightness live on different LED groups, and which group answers varies per model, so the id
- is now a per-model registry field defaulting to the Cobra family's `LOGO_LED` — an unknown
- mouse behaves exactly as before.
-- **The `brightness` CLI probe no longer stops at the first LED group that refuses.** It exists
- to discover which group a new model answers on, but a `LOGO_LED` refusal threw before the
- sweep started — precisely the case it was written for. It now reports LOGO, SCROLL, ZERO and
- BACKLIGHT individually, so a new model's brightness LED can be found in one run.
 
 ## [0.3.0] — 2026-09-07
 
@@ -69,7 +77,6 @@ expect rough edges until 1.0.
  comparison and both changelog operations, and CI runs it — `bash -n` and shellcheck prove a
  script parses, not that two of its patterns agree with each other.
 
-### Added
 - **An About window**, first in the menu bar's right-click menu, where macOS puts About. Version and build, the
  developer, and the three things this app actually owes the person reading it: that it is
  **not affiliated with Razer Inc.** and uses their marks only to describe compatibility; that
