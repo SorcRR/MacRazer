@@ -396,7 +396,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         }
         let d = read(RazerCommands.getDPI()) { Int(RazerCommands.parseDPI($0).x) }
         let p = read(RazerCommands.getPollingRate()) { RazerCommands.parsePollingRate($0) }
-        let b = read(RazerCommands.getBrightness()) { RazerCommands.brightnessPercent(fromRaw: $0.arguments[2]) }
+        let b = read(RazerCommands.getBrightness(led: RazerDevices.brightnessLed(pid: dev.productID))) { RazerCommands.brightnessPercent(fromRaw: $0.arguments[2]) }
         let stages = read(RazerCommands.getDPIStages()) { RazerCommands.parseDPIStages($0) } ?? []
         publish {
             if let d { self.update(\.dpi, d) }
@@ -453,7 +453,12 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         let pct = max(0, min(percent, 100))
         io.async { [weak self] in
             guard let self else { return }
-            let ok = (try? self.ensureDevice().sendWithRetry(RazerCommands.setBrightness(RazerCommands.brightnessRaw(fromPercent: pct)))) != nil
+            let ok = (try? {
+                let dev = try self.ensureDevice()
+                return try dev.sendWithRetry(RazerCommands.setBrightness(
+                    RazerCommands.brightnessRaw(fromPercent: pct),
+                    led: RazerDevices.brightnessLed(pid: dev.productID)))
+            }()) != nil
             self.publish {
                 guard ok else { self.lastWriteFailure = Date(); return }
                 self.brightness = pct; self.clearActiveProfileIfNeeded()
@@ -587,7 +592,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             // (correctly) refuses them, and that must not block its profiles from applying.
             let hasLighting = RazerDevices.hasLighting(pid: dev.productID)
             let brightOK = !hasLighting
-                || (try? dev.sendWithRetry(RazerCommands.setBrightness(RazerCommands.brightnessRaw(fromPercent: brightnessPct)))) != nil
+                || (try? dev.sendWithRetry(RazerCommands.setBrightness(
+                        RazerCommands.brightnessRaw(fromPercent: brightnessPct),
+                        led: RazerDevices.brightnessLed(pid: dev.productID)))) != nil
             let lightOK = !hasLighting || (try? dev.sendWithRetry(lighting)) != nil
             let allOK = stagesOK && dpiOK && pollOK && brightOK && lightOK
             let anyOK = dpiOK || pollOK || (hasLighting && (brightOK || lightOK))
