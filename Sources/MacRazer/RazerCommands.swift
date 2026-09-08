@@ -28,6 +28,10 @@ enum Razer {
     static let backlightLed: UInt8 = 0x05
     static let logoLed: UInt8 = 0x04
     static let scrollLed: UInt8 = 0x01
+    /// "All zones as one" for the effect commands — and, on no model yet seen, for
+    /// brightness. Named so the `brightness` probe's sweep reads as a set of constants
+    /// rather than three names and a literal.
+    static let zeroLed: UInt8 = 0x00
 }
 
 /// RGB triple.
@@ -240,9 +244,14 @@ enum RazerCommands {
     /// NOTE: brightness lives on a different LED group than the effect commands, and which
     /// group varies per model — the Cobra HyperSpeed answers only on LOGO_LED (0x04), the
     /// Basilisk V3 X HyperSpeed only on SCROLL_LED (0x01), and every other group returns
-    /// status 0x03 (failure). Callers pass the model's id from `RazerDevices.brightnessLed`;
-    /// the LOGO_LED default here is the Cobra-family value. Both verified on hardware.
-    static func setBrightness(_ value: UInt8, led: UInt8 = Razer.logoLed) -> RazerReport {
+    /// status 0x03 (failure). Both verified on hardware.
+    ///
+    /// `led` is deliberately required rather than defaulted to the Cobra family's value: a
+    /// hardcoded LOGO_LED is exactly the bug this parameter was added to fix, and it failed
+    /// silently — the device refuses, nothing surfaces, the slider simply does nothing. A
+    /// default would let the next call site reproduce that without a compiler error. Pass
+    /// `RazerDevices.brightnessLed(pid:)`, which falls back to LOGO_LED for unknown models.
+    static func setBrightness(_ value: UInt8, led: UInt8) -> RazerReport {
         var r = RazerReport(commandClass: 0x0F, commandId: 0x04, dataSize: 0x03)
         r.arguments[0] = Razer.varstore
         r.arguments[1] = led
@@ -252,7 +261,7 @@ enum RazerCommands {
 
     /// razer_chroma_extended_matrix_get_brightness(VARSTORE, LOGO_LED)
     ///   get_razer_report(0x0F, 0x84, 0x03). Response args[2] = brightness (0–255).
-    static func getBrightness(led: UInt8 = Razer.logoLed) -> RazerReport {
+    static func getBrightness(led: UInt8) -> RazerReport {
         var r = RazerReport(commandClass: 0x0F, commandId: 0x84, dataSize: 0x03)
         r.arguments[0] = Razer.varstore
         r.arguments[1] = led

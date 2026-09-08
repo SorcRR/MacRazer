@@ -74,6 +74,34 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertNil(RazerDevices.dischargeCurveModelKey(pid: 0x0083))
     }
 
+    /// `testBrightnessLedPerModel` checks the lookup in isolation; this checks the
+    /// composition — registry lookup fed into the command builder — actually lands the
+    /// model's id in `arguments[1]`, the byte the mouse reads. Verified non-vacuous by
+    /// removing `brightnessLed` from the Basilisk entry: it fails with 4 != 1.
+    ///
+    /// What neither test can reach is `MouseController` passing the right pid in the first
+    /// place, which is where the original bug lived — that needs a device. Making `led:`
+    /// a required parameter is what actually guards that: a call site can no longer fall
+    /// back to LOGO_LED by saying nothing.
+    func testBrightnessCommandsCarryTheModelsLed() {
+        func setLed(_ pid: Int?) -> UInt8 {
+            RazerCommands.setBrightness(128, led: RazerDevices.brightnessLed(pid: pid)).arguments[1]
+        }
+        func getLed(_ pid: Int?) -> UInt8 {
+            RazerCommands.getBrightness(led: RazerDevices.brightnessLed(pid: pid)).arguments[1]
+        }
+        // Cobra HyperSpeed — the family the old hardcoded value happened to suit.
+        XCTAssertEqual(setLed(0x00DB), Razer.logoLed)
+        XCTAssertEqual(getLed(0x00DB), Razer.logoLed)
+        // Basilisk V3 X HyperSpeed: scroll wheel only. Sending LOGO here is the silent
+        // no-op — the mouse answers FAILURE and the slider does nothing.
+        XCTAssertEqual(setLed(0x00B9), Razer.scrollLed)
+        XCTAssertEqual(getLed(0x00B9), Razer.scrollLed)
+        // Unknown model, and no device at all, both fall back to the Cobra family's id.
+        XCTAssertEqual(setLed(0x9999), Razer.logoLed)
+        XCTAssertEqual(setLed(nil), Razer.logoLed)
+    }
+
     func testConnectionKind() {
         XCTAssertEqual(RazerDevices.connection(pid: 0x00DB), .wirelessDongle)
         XCTAssertEqual(RazerDevices.connection(pid: 0x00DA), .wired)

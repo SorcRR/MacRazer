@@ -368,9 +368,14 @@ case "brightness":
         // scroll wheel and answers 0x03 for LOGO), so this must not abort the sweep: the
         // whole point is to discover which LEDs answer on a model we don't know yet.
         for (name, led) in [("LOGO", Razer.logoLed), ("SCROLL", Razer.scrollLed),
-                            ("ZERO", UInt8(0x00)), ("BACKLIGHT", Razer.backlightLed)] {
+                            ("ZERO", Razer.zeroLed), ("BACKLIGHT", Razer.backlightLed)] {
             do {
-                let rr = try dev.sendWithRetry(RazerCommands.getBrightness(led: led))
+                // `send`, not `sendWithRetry`: a FAILURE (0x03) for a given model and LED is
+                // deterministic — the same answer three times, 150ms apart. Retrying it turns
+                // a four-group sweep on a model where three refuse into nine round trips and
+                // most of a second of pure backoff, in a diagnostic whose whole job is to
+                // report which group answered.
+                let rr = try dev.send(RazerCommands.getBrightness(led: led))
                 print("GET brightness (led \(name)=0x\(String(format: "%02x", led))): \(dump(rr))"
                       + " → \(RazerCommands.brightnessPercent(fromRaw: rr.arguments[2]))%")
             } catch {
@@ -379,6 +384,8 @@ case "brightness":
         }
         if let arg = args.dropFirst().first, let pct = Int(arg) {
             let led = RazerDevices.brightnessLed(pid: dev.productID)
+            // Deliberately outside the sweep's per-LED catch: a refusal here is a real
+            // failure to report, not a group that simply doesn't answer.
             let raw = RazerCommands.brightnessRaw(fromPercent: pct)
             print("SET brightness \(pct)% (raw \(raw)) on led 0x\(String(format: "%02x", led)) …")
             let sr = try dev.sendWithRetry(RazerCommands.setBrightness(raw, led: led))
@@ -387,7 +394,9 @@ case "brightness":
             print("  read-back: \(dump(back)) → \(RazerCommands.brightnessPercent(fromRaw: back.arguments[2]))%")
         }
     } catch {
-        print("Brightness probe failed: \(error)")
+        // The sweep above handles its own refusals per LED, so only the optional write can
+        // reach this — saying "probe failed" would point at the part that just succeeded.
+        print("Brightness write failed: \(error)")
         printPermissionHintIfDenied(error)
         exit(2)
     }
