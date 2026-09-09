@@ -7,6 +7,12 @@ expect rough edges until 1.0.
 ## [Unreleased]
 
 ### Fixed
+- **The changelog can no longer accumulate duplicate headings unnoticed.** Two branches each
+ adding a `### Fixed` under `[Unreleased]` merge cleanly — git appends, nothing conflicts, and
+ nobody spots it in a diff. It happened three times across one stack, and then again in the PR
+ that folded those three: the fold ran, and the entry describing it was prepended above the
+ section it had just merged. `Tests/Scripts/changelog-test.sh` now checks the structure on
+ every PR, so the fix is a check rather than a habit.
 - The changelog no longer carries duplicate `### Added` / `### Fixed` headings under a single
  release. Three stacked branches each grew their own section under `[Unreleased]`, and merging
  them through GitHub appended rather than folded — so `[0.3.0]` shipped with two `### Added`
@@ -15,7 +21,6 @@ expect rough edges until 1.0.
  described a 0.2.x app. They now mention that it starts at login and installs its own updates
  — the two things 0.3.0 added that a reader deciding whether to download would care about.
 
-### Fixed
 - **The brightness LED id can no longer be forgotten.** `setBrightness`/`getBrightness` still
  defaulted `led:` to the Cobra family's `LOGO_LED` — which is precisely the bug the per-model
  registry field was added to fix, and it failed silently: the mouse answers FAILURE, nothing

@@ -40,6 +40,10 @@ jobs:
       # test catches.
       - name: Test shell scripts
         run: ./Tests/Scripts/release-test.sh
+      # Duplicate headings arrive by clean merge, so nothing conflicts and no reviewer sees
+      # them — this is the only thing that will.
+      - name: Check changelog structure
+        run: ./Tests/Scripts/changelog-test.sh
       - name: Build
         run: swift build
       - name: Test
