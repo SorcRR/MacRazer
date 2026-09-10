@@ -85,7 +85,7 @@ enum RazerDevices {
         // Orochi2013
         .init(pid: 0x0039, name: "Razer Orochi 2013", fullySupported: false, hasBattery: false, hasLighting: false, maxDPI: 6400, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
         // Viper Ultimate (Wireless)
-        .init(pid: 0x007b, name: "Razer Viper Ultimate (Wireless)", fullySupported: false, hasBattery: true, hasLighting: true, maxDPI: 20000, transactionId: 0xff, matrixTransactionId: 0x3f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
+        .init(pid: 0x007b, name: "Razer Viper Ultimate (Wireless)", fullySupported: true, hasBattery: true, hasLighting: true, maxDPI: 20000, transactionId: 0xff, matrixTransactionId: 0x3f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
         // Viper Ultimate (Wired)
         .init(pid: 0x007a, name: "Razer Viper Ultimate (Wired)", fullySupported: false, hasBattery: true, hasLighting: true, maxDPI: 20000, transactionId: 0xff, matrixTransactionId: 0x3f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
     ]
