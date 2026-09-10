@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="google-site-verification" content="SmhAFHV4KG5IkP0GP-oTNQpCV6aW-Dp_afW9zDSs5NA" />
 <title>MacRazer: Razer mouse control for macOS (free, open source)</title>
-<meta name="description" content="MacRazer is a free, open-source menu bar app that controls Razer mice on macOS: battery %, DPI, RGB lighting, polling rate, and button remapping over USB HID. No Synapse required, no kernel extension. Starts at login and installs its own updates. Works with Razer Cobra HyperSpeed, Basilisk V3 X HyperSpeed, Atheris, and Cobra Pro.">
+<meta name="description" content="MacRazer is a free, open-source menu bar app that controls Razer mice on macOS: battery %, DPI, RGB lighting, polling rate, and button remapping over USB HID. No Synapse required, no kernel extension. Starts at login and installs its own updates. Works with Razer Cobra HyperSpeed, Basilisk V3 X HyperSpeed, Viper Ultimate, Atheris, and Cobra Pro.">
 <meta name="keywords" content="Razer mouse macOS, Razer Synapse alternative Mac, Razer Cobra HyperSpeed Mac, Razer Atheris Mac, Razer mouse driver macOS, Razer DPI macOS, Razer RGB macOS">
 <meta name="author" content="SorcRR">
 <link rel="canonical" href="https://sorcrr.github.io/MacRazer/">
@@ -192,36 +192,48 @@
     <h2>Supported mice</h2>
     <table>
       <thead>
-        <tr><th>Mouse</th><th>Status</th></tr>
+        <tr><th>Mouse</th><th>Verified on hardware</th></tr>
       </thead>
       <tbody>
         <tr>
           <td>Razer Cobra HyperSpeed <span class="muted">(wired + wireless)</span></td>
-          <td><span class="badge badge-good">Tested, works best</span></td>
+          <td><span class="badge badge-good">Everything, continuously</span> <span class="muted">the development mouse</span></td>
         </tr>
         <tr>
           <td>Razer Atheris</td>
-          <td><span class="badge badge-good">Tested, works best</span></td>
+          <td><span class="badge badge-good">Battery, DPI, polling</span> <span class="muted">maintainer</span></td>
         </tr>
         <tr>
           <td>Razer Basilisk V3 X HyperSpeed</td>
-          <td><span class="badge badge-good">Tested, works best</span></td>
+          <td><span class="badge badge-good">Battery, DPI, stages, polling, lighting, brightness</span> <span class="muted">@joelday</span></td>
+        </tr>
+        <tr>
+          <td>Razer Viper Ultimate <span class="muted">(wireless)</span></td>
+          <td><span class="badge badge-good">Battery, DPI, polling, brightness</span> <span class="muted">@raphaelchenouard</span></td>
+        </tr>
+        <tr>
+          <td>Razer Orochi 2013</td>
+          <td><span class="badge badge-mid">DPI only</span> <span class="muted">@raphaelchenouard</span></td>
         </tr>
         <tr>
           <td>Razer Basilisk V3</td>
-          <td><span class="badge badge-mid">User‑reported working</span></td>
-        </tr>
-        <tr>
-          <td>Razer Basilisk X HyperSpeed</td>
-          <td><span class="badge badge-mid">Same protocol, not yet verified</span></td>
+          <td><span class="badge badge-mid">Nothing; reported working by a user</span></td>
         </tr>
         <tr>
           <td>Razer Cobra, Cobra Pro <span class="muted">(wired + wireless)</span></td>
-          <td><span class="badge badge-mid">Same protocol, not yet verified</span></td>
+          <td><span class="badge badge-mid">Nothing; values from OpenRazer</span></td>
+        </tr>
+        <tr>
+          <td>Razer Basilisk X HyperSpeed</td>
+          <td><span class="badge badge-mid">Nothing; values from OpenRazer</span></td>
+        </tr>
+        <tr>
+          <td>Razer Viper Ultimate <span class="muted">(wired)</span></td>
+          <td><span class="badge badge-mid">Nothing; its wireless sibling is verified</span></td>
         </tr>
         <tr>
           <td>Any other Razer mouse</td>
-          <td><span class="badge badge-mid">Detected and named; untested</span></td>
+          <td><span class="badge badge-mid">Nothing; detected and named, controls attempted</span></td>
         </tr>
       </tbody>
     </table>
