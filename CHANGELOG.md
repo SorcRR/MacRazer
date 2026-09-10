@@ -6,6 +6,15 @@ expect rough edges until 1.0.
 
 ## [Unreleased]
 
+### Changed
+- **The supported-mice tables say what was actually verified, and by whom.** README, the site
+ and `DOCUMENTATION.md` listed nine devices while the registry carried twelve, and the three
+ tiers ("Tested, works best" / "user-reported" / "not verified") gave the same label to the
+ development mouse and to a model one contributor ran once. The tables now name the commands
+ each mouse has been probed with and credit whoever ran them, so "verified" means someone
+ posted the output rather than that a protocol table says it should work. Unverified rows say
+ so plainly, with a note that an unverified mouse is not a broken one.
+
 ### Fixed
 - **The changelog can no longer accumulate duplicate headings unnoticed.** Two branches each
  adding a `### Fixed` under `[Unreleased]` merge cleanly — git appends, nothing conflicts, and

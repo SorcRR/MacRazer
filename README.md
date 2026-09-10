@@ -49,15 +49,25 @@ the mouse connects, disconnects, or sleeps.
 
 ## Supported mice
 
-| Mouse | Status |
-|---|---|
-| Razer Cobra HyperSpeed (wired + wireless) | Tested, works best |
-| Razer Atheris | Tested, works best |
-| Razer Basilisk V3 X HyperSpeed | Tested, works best |
-| Razer Basilisk V3 | In the registry; user-reported working |
-| Razer Basilisk X HyperSpeed | In the registry; not yet hardware-verified |
-| Razer Cobra, Cobra Pro (wired + wireless) | Same protocol, not yet hardware-verified here |
-| Any other Razer mouse | Detected and named; should work, but untested |
+"Verified" below means someone ran the CLI probes against the mouse and posted the output,
+not that the protocol tables say it should work. Where nobody has, the row says so.
+
+| Mouse | Verified on hardware | By |
+|---|---|---|
+| Razer Cobra HyperSpeed (wired + wireless) | Everything, continuously — the development mouse | maintainer |
+| Razer Atheris | Battery, DPI, polling | maintainer |
+| Razer Basilisk V3 X HyperSpeed | Battery, DPI, DPI stages, polling, lighting, brightness | [@joelday](https://github.com/joelday) |
+| Razer Viper Ultimate (Wireless) | Battery, DPI, polling, brightness | [@raphaelchenouard](https://github.com/raphaelchenouard) |
+| Razer Orochi 2013 | DPI only | [@raphaelchenouard](https://github.com/raphaelchenouard) |
+| Razer Basilisk V3 | Nothing; reported working by a user | — |
+| Razer Cobra, Cobra Pro (wired + wireless) | Nothing; same protocol family, values from OpenRazer | — |
+| Razer Basilisk X HyperSpeed | Nothing; values from OpenRazer | — |
+| Razer Viper Ultimate (Wired) | Nothing; its wireless sibling is verified | — |
+| Any other Razer mouse | Nothing; detected and named, controls attempted | — |
+
+An unverified mouse is not a broken one. Detection and naming work for any Razer mouse, and
+the controls are attempted with values taken from OpenRazer's tables — they usually work. The
+column is about who has actually seen it happen.
 
 Adding a model is a small change to a registry plus on-hardware verification. See
 [CONTRIBUTING.md](CONTRIBUTING.md).
