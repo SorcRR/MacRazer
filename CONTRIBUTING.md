@@ -40,29 +40,72 @@ operations; CI runs it. Attach **both** DMGs to the release: the updater fetches
 `--dry-run` shows what it would do.
 
 ## The most valuable contribution: device profiles
-Detection + name work for **any** Razer mouse already (via the USB product string). What's
-verified is the **control protocol**, currently for the Cobra family + Atheris. To add your
-mouse:
+Detection and naming already work for **any** Razer mouse, via the USB product string. What
+has to be verified per model is the **control protocol**. Four models have been checked on
+real hardware so far; README's table says which, and what was run on each.
 
-1. Plug it in and read its capabilities with the CLI:
- ```sh
- swift run MacRazer info # confirm it's detected, find the control interface
- swift run MacRazer battery
- swift run MacRazer dpi
- swift run MacRazer poll
- swift run MacRazer rgb static ff0000 # if it has lighting
- swift run MacRazer brightness
- ```
-2. Note which commands succeed (`status=0x02`) and the values.
-3. Add an entry to `RazerDevices.known` in
- [`Sources/MacRazer/RazerDevices.swift`](Sources/MacRazer/RazerDevices.swift) with the
- PID, name, `hasBattery`, `hasLighting`, and `maxDPI`. Set `fullySupported: true` **only
- after you've verified the controls on hardware**.
-4. If a control misbehaves, the model likely uses a different command dialect (transaction
- id / command variant / LED id), check OpenRazer's `razermouse_driver.c` for that PID and
- open an issue/PR. We may need to parameterize `RazerCommands` per device.
+### 1. Run the probes and paste the output
 
-Please include the model, PID, and which features you verified in your PR.
+Not a summary of the output. The raw text is what lets a reviewer see the status bytes and
+the read-backs, and it is what earns a row in the README table.
+
+```sh
+swift run MacRazer info              # confirms detection and the PID it enumerates as
+swift run MacRazer battery
+swift run MacRazer dpi               # then: dpi 3200   (check the read-back matches)
+swift run MacRazer poll              # then: poll 1000  (check the read-back matches)
+swift run MacRazer rgb static ff0000 # if it has lighting
+swift run MacRazer brightness        # sweeps LOGO / SCROLL / ZERO / BACKLIGHT
+```
+
+`status=0x02` is success. `0x03` is the mouse refusing, which is information, not failure —
+several models legitimately refuse most LED groups.
+
+**The `brightness` sweep is the one people skip, and it matters most.** Brightness lives on a
+different LED group per model, and a wrong id does not error: the slider simply does nothing.
+If a group other than `LOGO` is the one that answers, the entry needs `brightnessLed:` set to
+it. The Basilisk V3 X answers only on `SCROLL_LED`, and that bug shipped unnoticed until
+someone ran this sweep.
+
+### 2. Get the protocol values from OpenRazer, not from another entry
+
+Look your PID up in `reference/openrazer/driver/razermouse_driver.c` and
+`daemon/openrazer_daemon/hardware/mouse.py`. Copying another model's values is the single
+most common thing that needs fixing in review:
+
+- **`transactionId` / `matrixTransactionId`** differ per model. Find your PID in the driver's
+  switch statements. Class `0x0F` uses `matrixTransactionId`, everything else uses
+  `transactionId`.
+- **`transactionOverrides`** is only for commands whose id differs from your model's own
+  class default. If the override sets the value the default already produces, leave it out.
+  It defaults to empty, and empty is usually right.
+- **`hasBattery`** means *the mouse reports a battery level*, not that it has one. The Orochi
+  2013 runs on AA cells and reports nothing, so it is `false`. Check the model's method list
+  in `mouse.py` for `get_battery`.
+- **`maxDPI`** clamps the slider. If you have not actually set a DPI near the ceiling, say in
+  the entry's comment that the figure is the vendor spec.
+
+If hardware disagrees with the tables, **hardware wins** — say so in a comment so nobody
+"corrects" it back later. The Atheris entry is the example: it uses `0x1f` where OpenRazer
+specifies `0xFF`, with a comment saying why.
+
+### 3. Set `fullySupported` honestly
+
+It drives the popover's status line: `false` shows "Connected · limited support". Set it to
+`true` only for a model whose controls you have actually exercised. A `false` entry with real
+values is more useful than an optimistic `true` — the mouse is still detected, named, and its
+controls still attempted.
+
+Partial verification is welcome. "DPI works, could not test the rest" is a perfectly good PR.
+
+### 4. If a control misbehaves
+
+The model probably uses a different command dialect (transaction id, command variant, LED id).
+Check OpenRazer for that PID and open an issue or PR; we may need to parameterize
+`RazerCommands` further, as we did for `brightnessLed`.
+
+Include the model, PID, and the probe output in your PR. Add a test to
+`RazerDevicesTests.swift` for anything model-specific you introduce.
 
 ## Other contributions
 Bug fixes, UI polish, and docs are all welcome. Keep new code in the style of the surrounding

@@ -7,6 +7,15 @@ expect rough edges until 1.0.
 ## [Unreleased]
 
 ### Changed
+- **CONTRIBUTING says how to verify a device, not just how to add one.** Two contributors this
+ month worked out the right evidence to gather by being asked for it in review, one of them
+ over four rounds. The section now says to paste the raw probe output rather than summarise
+ it, points at OpenRazer for the protocol values instead of another entry (copying those was
+ the most-corrected mistake in both PRs), explains that `hasBattery` means the mouse *reports*
+ a level rather than has one, and flags the `brightness` sweep as the probe people skip and
+ the one that matters most — a wrong LED id does not error, the slider just stops working,
+ which is exactly how that bug reached a release.
+
 - **The supported-mice tables say what was actually verified, and by whom.** README, the site
  and `DOCUMENTATION.md` listed nine devices while the registry carried twelve, and the three
  tiers ("Tested, works best" / "user-reported" / "not verified") gave the same label to the
