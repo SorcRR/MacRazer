@@ -69,6 +69,14 @@ expect rough edges until 1.0.
  BACKLIGHT individually, so a new model's brightness LED can be found in one run.
 
 ### Added
+- **The update card says what's in the update.** It offered "Update & Restart" and nothing
+ about why you would want to — you were being asked to replace your app on no information,
+ which is the thing the macOS convention of showing release notes in the update dialog exists
+ to prevent. The card now carries one row, `What's new in 0.3.1 ›`, opening a page with the
+ release notes parsed out of the GitHub release body the updater already fetches. One row,
+ because the popover with an update showing is 748pt tall and a menu bar popover has roughly
+ 600-700pt to work with — inline notes would have pushed it past 900. The page repeats
+ Update & Restart at the bottom, so the decision can be made where the information is.
 - **Razer Basilisk V3 X HyperSpeed support** (PID `0x00B9`), verified on hardware over the
  2.4 GHz dongle: battery, DPI, the onboard DPI stage table, polling rate, lighting effects
  and brightness all read and write. Detection and naming already worked for any Razer mouse;

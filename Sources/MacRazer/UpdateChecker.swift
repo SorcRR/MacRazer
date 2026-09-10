@@ -36,6 +36,11 @@ final class UpdateChecker: ObservableObject {
     /// check has nothing to say while it runs.
     @Published private(set) var isChecking = false
 
+    /// Notes for `latestVersion`, parsed for the popover. Nil when the release had no body or
+    /// nothing has been found — the "What's new" row hides itself rather than opening onto an
+    /// empty page.
+    @Published private(set) var latestNotes: ReleaseNotes?
+
     /// The error from the last failed install, kept raw (not just its message) so
     /// `AutoInstallPolicy` can tell a dropped connection from a payload that will never work.
     private(set) var lastInstallError: Error?
@@ -68,9 +73,13 @@ final class UpdateChecker: ObservableObject {
     private static let lastCheckKey = "lastUpdateCheckDate"
     private static let lastFoundKey = "lastFoundUpdateVersion"
     private static let autoInstallKey = "autoInstallUpdates"
+    private static let lastFoundNotesKey = "lastFoundUpdateNotes"
 
     private struct GitHubRelease: Decodable {
         let tag_name: String
+        /// The release notes. Optional because a release can be published without a body, and
+        /// a missing one must not fail the version check that is the point of this request.
+        let body: String?
     }
 
     var currentVersion: String { AppInfo.comparableVersion }
@@ -124,12 +133,15 @@ final class UpdateChecker: ObservableObject {
             let checkedAt = Date()
             UserDefaults.standard.set(checkedAt, forKey: Self.lastCheckKey)
             UserDefaults.standard.set(remote, forKey: Self.lastFoundKey)
+            UserDefaults.standard.set(release.body ?? "", forKey: Self.lastFoundNotesKey)
             lastCheckedAt = checkedAt
             let dismissed = UserDefaults.standard.string(forKey: Self.dismissedKey)
             if Self.isNewer(remote, than: currentVersion), remote != dismissed {
                 latestVersion = remote
+                latestNotes = Self.notes(from: release.body)
             } else {
                 latestVersion = nil
+                latestNotes = nil
             }
         } catch {
             // Silent: a failed background check shouldn't surface as an error — only an
@@ -147,12 +159,22 @@ final class UpdateChecker: ObservableObject {
         let dismissed = UserDefaults.standard.string(forKey: Self.dismissedKey)
         if Self.isNewer(found, than: currentVersion), found != dismissed {
             latestVersion = found
+            latestNotes = Self.notes(from: UserDefaults.standard.string(forKey: Self.lastFoundNotesKey))
         }
     }
 
     func dismiss(_ version: String) {
         UserDefaults.standard.set(version, forKey: Self.dismissedKey)
         latestVersion = nil
+        latestNotes = nil
+    }
+
+    /// Parsed once here rather than in the view: `body` is a couple of kilobytes of prose and
+    /// a SwiftUI body can run many times a second.
+    private static func notes(from body: String?) -> ReleaseNotes? {
+        guard let body, !body.isEmpty else { return nil }
+        let parsed = ReleaseNotes.parse(body)
+        return parsed.isEmpty ? nil : parsed
     }
 
     // MARK: - Installing
@@ -288,9 +310,10 @@ final class UpdateChecker: ObservableObject {
 
     /// Pins the update card open for the `render-ui` preview, which otherwise only shows it on
     /// the rare day a real release is newer than the running build.
-    func loadPreviewState(version: String = "9.9.9", phase: Phase = .idle) {
+    func loadPreviewState(version: String = "9.9.9", phase: Phase = .idle, notes: String? = nil) {
         latestVersion = version
         self.phase = phase
+        latestNotes = Self.notes(from: notes)
     }
 }
 

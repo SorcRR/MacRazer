@@ -32,7 +32,7 @@ struct PopoverView: View {
     /// The preview passes an explicit `{}`.
     var onOpenSettings: () -> Void
 
-    enum Page { case main, color, buttons, usage, profiles }
+    enum Page { case main, color, buttons, usage, profiles, whatsNew }
     @State private var page: Page = .main
     @State private var isAddingProfile = false
     @State private var newProfileName = ""
@@ -78,6 +78,7 @@ struct PopoverView: View {
             case .buttons: buttonsPage.transition(.move(edge: .trailing))
             case .usage: usagePage.transition(.move(edge: .trailing))
             case .profiles: profilesPage.transition(.move(edge: .trailing))
+            case .whatsNew: whatsNewPage.transition(.move(edge: .trailing))
             }
         }
         .frame(width: popoverWidth)
@@ -448,6 +449,21 @@ struct PopoverView: View {
             if let error = updateChecker.downloadError {
                 Text(error).font(.system(size: 10.5)).foregroundStyle(Color.batteryLow)
             }
+            // A row, not the notes. The main page is already at the height a menu bar
+            // popover can use; the notes get their own page rather than competing with the
+            // seven cards above them.
+            if updateChecker.phase == .idle, updateChecker.latestNotes != nil {
+                Button { page = .whatsNew } label: {
+                    HStack(spacing: 6) {
+                        Text("What's new in \(version)").font(.system(size: 11, weight: .medium))
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold))
+                    }
+                    .foregroundStyle(Color.razerGreen)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
             switch updateChecker.phase {
             case .idle: updateActionButton
             case .downloading(let fraction): updateProgress(fraction)
@@ -489,6 +505,23 @@ struct PopoverView: View {
         .buttonStyle(.borderedProminent)
         .tint(.razerGreen)
         .controlSize(.small)
+    }
+
+    /// The release notes, given the whole popover. Reached from the update card's one row.
+    ///
+    /// The empty fallback is unreachable today — the row that navigates here is gated on the
+    /// same `latestNotes` — but it still renders the page rather than nothing, so a future
+    /// call site can at worst produce a thin page with a working back button, never a blank
+    /// dead end.
+    private var whatsNewPage: some View {
+        WhatsNewPage(version: updateChecker.latestVersion ?? appVersion,
+                     notes: updateChecker.latestNotes ?? ReleaseNotes(summary: "", sections: []),
+                     canInstallInPlace: updateChecker.canInstallInPlace,
+                     onBack: { page = .main },
+                     onUpdate: {
+                         page = .main
+                         Task { await updateChecker.downloadAndInstall() }
+                     })
     }
 
     private func updateProgress(_ fraction: Double) -> some View {

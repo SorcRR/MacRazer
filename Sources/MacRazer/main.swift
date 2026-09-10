@@ -15,6 +15,28 @@ import SwiftUI
 
 let args = Array(CommandLine.arguments.dropFirst())
 
+/// Real v0.3.0 notes, so `render-ui update` shows the page at the length releases actually
+/// reach rather than a tidy sample.
+let previewReleaseBody = """
+MacRazer now starts at login and installs its own updates, with Settings and About windows to go with them.
+
+### Added
+- **Start MacRazer at login**, on by default. A menu bar battery meter that stops existing after every reboot isn't much of a battery meter.
+- **"Update & Restart"** in the update card. When a new version is out, MacRazer downloads it, checks it, replaces itself and relaunches. No more dragging a DMG.
+- **"Install updates automatically"**, off by default. It never starts while the popover or a window is open, since installing ends in a relaunch.
+- **A Settings window**, reached from the right-click menu or the gear in the footer.
+- **An About window**, with the licence and proper credit to OpenRazer.
+- The **charging bolt fills the mouse icon and is yellow**, instead of a grey squiggle you had to look for.
+
+### Fixed
+- Builds no longer appear to hang at the codesigning step. macOS was showing a keychain prompt that a scripted build has nobody to click.
+
+### Install
+This build is unsigned, so first launch shows the standard Gatekeeper warning.
+
+**Full changelog:** https://github.com/SorcRR/MacRazer/blob/master/CHANGELOG.md
+"""
+
 // No arguments → launch the menu bar app. Subcommands → run the CLI diagnostics below.
 if args.isEmpty {
     let app = NSApplication.shared
@@ -78,6 +100,33 @@ func openDevice() -> HIDDevice? {
     }
 }
 
+/// Renders through a real `NSHostingView` instead of `ImageRenderer`.
+///
+/// `ImageRenderer` draws a `ScrollView` as an empty box — its content is laid out lazily and
+/// never makes it into the snapshot — so a page whose body is a scroll view has to be hosted
+/// in a view hierarchy and captured from there. Fixed size, because a hosting view has no
+/// window to size it.
+@MainActor func writeHostedPNG<V: View>(_ view: V, size: CGSize, to path: String) {
+    // The popover's own backdrop. `cacheDisplay` captures no window background, and the dark
+    // scheme's primary text is white — without this the whole page renders white on white.
+    let hosted = view.environment(\.colorScheme, .dark).background(Color(white: 0.13))
+    let host = NSHostingView(rootView: AnyView(hosted))
+    host.appearance = NSAppearance(named: .darkAqua)
+    host.frame = CGRect(origin: .zero, size: size)
+    host.layoutSubtreeIfNeeded()
+    guard let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) else {
+        print("Render failed")
+        return
+    }
+    host.cacheDisplay(in: host.bounds, to: rep)
+    guard let png = rep.representation(using: .png, properties: [:]) else {
+        print("Render failed")
+        return
+    }
+    try? png.write(to: URL(fileURLWithPath: path))
+    print("Wrote \(path)")
+}
+
 switch command {
 case "info":
     // List every HID interface the dongle exposes, so we can see which one is the control
@@ -126,16 +175,32 @@ case "login-item":
 case "render-ui":
     // Render the popover to a PNG for static visual inspection (no device needed).
     _ = NSApplication.shared
-    let path = args.dropFirst().first ?? "ui-preview.png"
+    // Flags are bare words, so they must be excluded from the positional path — otherwise
+    // `render-ui update` writes a file literally named "update".
+    let uiFlags: Set<String> = ["offline", "bluetooth", "update", "downloading",
+                                "color", "usage", "profiles", "whatsnew"]
+    let path = args.dropFirst().first { !uiFlags.contains($0) } ?? "ui-preview.png"
     let controller = MouseController()
     controller.loadPreviewState()
     if args.contains("offline") { controller.setPreviewOffline() }
     if args.contains("bluetooth") { controller.setPreviewBluetooth() }
     let updateChecker = UpdateChecker()
-    if args.contains("update") { updateChecker.loadPreviewState() }
+    if args.contains("update") { updateChecker.loadPreviewState(notes: previewReleaseBody) }
     if args.contains("downloading") { updateChecker.loadPreviewState(phase: .downloading(0.42)) }
     let launchAtLogin = LaunchAtLogin()
     launchAtLogin.loadPreviewState()
+    // The notes page is its own render: it is a scroll view, so it needs the hosted path,
+    // and it is sized to the height the main page renders at — the whole point of checking
+    // it is whether the notes fit there.
+    if args.contains("whatsnew") {
+        updateChecker.loadPreviewState(notes: previewReleaseBody)
+        writeHostedPNG(WhatsNewPage(version: updateChecker.latestVersion ?? "0.0.0",
+                                    notes: updateChecker.latestNotes ?? ReleaseNotes.parse(previewReleaseBody),
+                                    canInstallInPlace: updateChecker.canInstallInPlace,
+                                    onBack: {}, onUpdate: {}),
+                       size: CGSize(width: 320, height: 748), to: path)
+        break
+    }
     let rootView: AnyView = args.contains("color")
         ? AnyView(ColorPickerPage(color: .constant(.blue), onBack: {}, onApply: { _ in }))
         : args.contains("usage")
