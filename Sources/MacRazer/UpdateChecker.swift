@@ -198,11 +198,26 @@ final class UpdateChecker: ObservableObject {
         let lastRun = defaults.string(forKey: Self.lastRunVersionKey)
         if UpdateAnnouncement.shouldAnnounce(lastRun: lastRun,
                                              current: current,
-                                             dismissed: defaults.string(forKey: Self.dismissedAnnouncementKey)) {
+                                             dismissed: defaults.string(forKey: Self.dismissedAnnouncementKey),
+                                             hasRunBefore: Self.hasRunBefore(defaults)) {
             justUpdatedTo = current
         }
         defaults.set(current, forKey: Self.lastRunVersionKey)
         installedNotes = Self.installedNotes(current: current)
+    }
+
+    /// Evidence that some version of MacRazer has run on this machine before.
+    ///
+    /// Asked only when no version was recorded, which happens exactly once per install: the
+    /// upgrade from a build older than this bookkeeping. Both keys predate it — the update
+    /// check has written its date since 0.2.0, and the login-item default has recorded itself
+    /// since 0.3.0 — so between them they cover anyone who has either been online once or run
+    /// from an installed bundle once. Someone who has done neither is announced nothing, which
+    /// is the same thing a genuinely new install gets, and the About window still has the
+    /// notes.
+    private static func hasRunBefore(_ defaults: UserDefaults) -> Bool {
+        defaults.object(forKey: lastCheckKey) != nil
+            || defaults.object(forKey: LaunchAtLogin.appliedDefaultKey) != nil
     }
 
     func dismissAnnouncement() {

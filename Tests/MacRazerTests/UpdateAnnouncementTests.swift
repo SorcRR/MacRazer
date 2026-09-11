@@ -6,30 +6,57 @@ import XCTest
 
 final class UpdateAnnouncementTests: XCTestCase {
     func testAVersionChangeIsAnnounced() {
-        XCTAssertTrue(UpdateAnnouncement.shouldAnnounce(lastRun: "0.3.0", current: "0.3.1", dismissed: nil))
+        XCTAssertTrue(UpdateAnnouncement.shouldAnnounce(
+            lastRun: "0.3.0", current: "0.3.1", dismissed: nil, hasRunBefore: true))
     }
 
     func testTheSameVersionIsNot() {
-        XCTAssertFalse(UpdateAnnouncement.shouldAnnounce(lastRun: "0.3.1", current: "0.3.1", dismissed: nil))
+        XCTAssertFalse(UpdateAnnouncement.shouldAnnounce(
+            lastRun: "0.3.1", current: "0.3.1", dismissed: nil, hasRunBefore: true))
     }
 
     func testAFirstInstallIsNotAnUpdate() {
-        // Nothing recorded means nobody has run an older version here, and "Updated to 0.3.1"
-        // on the very first launch is a lie about a release the user has never seen.
-        XCTAssertFalse(UpdateAnnouncement.shouldAnnounce(lastRun: nil, current: "0.3.1", dismissed: nil))
-        XCTAssertFalse(UpdateAnnouncement.shouldAnnounce(lastRun: "", current: "0.3.1", dismissed: nil))
+        // Nothing recorded and no trace of an older version: "Updated to 0.3.1" on the very
+        // first launch is a claim about a release the user has never seen.
+        XCTAssertFalse(UpdateAnnouncement.shouldAnnounce(
+            lastRun: nil, current: "0.3.1", dismissed: nil, hasRunBefore: false))
+        XCTAssertFalse(UpdateAnnouncement.shouldAnnounce(
+            lastRun: "", current: "0.3.1", dismissed: nil, hasRunBefore: false))
+    }
+
+    func testTheUpgradeThatIntroducesTheFeatureStillAnnounces() {
+        // The case that made this parameter necessary. Someone on 0.3.0 has no recorded
+        // version, because 0.3.0 never wrote one — indistinguishable from a new install unless
+        // you look for the traces an older run left. Without this, the release that ships the
+        // announcement is the one release that never shows it.
+        XCTAssertTrue(UpdateAnnouncement.shouldAnnounce(
+            lastRun: nil, current: "0.3.1", dismissed: nil, hasRunBefore: true))
+    }
+
+    func testItStillOnlyHappensOnce() {
+        // Having run before stops mattering the moment a version is recorded, so the launch
+        // after the announcement is silent rather than repeating it forever.
+        XCTAssertFalse(UpdateAnnouncement.shouldAnnounce(
+            lastRun: "0.3.1", current: "0.3.1", dismissed: nil, hasRunBefore: true))
     }
 
     func testDismissingIsPerVersion() {
-        XCTAssertFalse(UpdateAnnouncement.shouldAnnounce(lastRun: "0.3.0", current: "0.3.1", dismissed: "0.3.1"))
+        XCTAssertFalse(UpdateAnnouncement.shouldAnnounce(
+            lastRun: "0.3.0", current: "0.3.1", dismissed: "0.3.1", hasRunBefore: true))
         // The next release still gets to speak up.
-        XCTAssertTrue(UpdateAnnouncement.shouldAnnounce(lastRun: "0.3.1", current: "0.3.2", dismissed: "0.3.1"))
+        XCTAssertTrue(UpdateAnnouncement.shouldAnnounce(
+            lastRun: "0.3.1", current: "0.3.2", dismissed: "0.3.1", hasRunBefore: true))
+        // And dismissing wins over the upgrade case too, or a dismissal on the first launch
+        // after upgrading would not stick.
+        XCTAssertFalse(UpdateAnnouncement.shouldAnnounce(
+            lastRun: nil, current: "0.3.1", dismissed: "0.3.1", hasRunBefore: true))
     }
 
     func testADowngradeIsStillAChange() {
         // Rolling back to a DMG after a bad release is a version change like any other, and
         // the notes for what you are now running are the useful thing to offer.
-        XCTAssertTrue(UpdateAnnouncement.shouldAnnounce(lastRun: "0.3.1", current: "0.3.0", dismissed: nil))
+        XCTAssertTrue(UpdateAnnouncement.shouldAnnounce(
+            lastRun: "0.3.1", current: "0.3.0", dismissed: nil, hasRunBefore: true))
     }
 }
 

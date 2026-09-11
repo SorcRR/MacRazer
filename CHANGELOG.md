@@ -102,7 +102,11 @@ expect rough edges until 1.0.
  version for afterwards. Neither fetches anything: the check that found the release already
  cached its body, and after the install that release is the one running. The notes are shown
  only when the cache is demonstrably about the version running, and a first install is not
- an update — "Updated to 0.3.1" on a first launch would simply be false.
+ an update — "Updated to 0.3.1" on a first launch would simply be false. The upgrade *to*
+ this release is the awkward case: the version before it never recorded one, so it looks
+ exactly like a first install. Evidence that MacRazer has run here before — the update
+ check's date, or the login-item default — tells them apart, so the release that introduces
+ the card is not the one release that never shows it.
 
 - **The update card says what's in the update.** It offered "Update & Restart" and nothing
  about why you would want to — you were being asked to replace your app on no information,

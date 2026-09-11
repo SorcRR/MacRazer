@@ -18,12 +18,22 @@ enum UpdateAnnouncement {
     ///   - lastRun: the version recorded at the previous launch, or nil on a first run.
     ///   - current: the version running now.
     ///   - dismissed: the version whose announcement was already waved away.
-    static func shouldAnnounce(lastRun: String?, current: String, dismissed: String?) -> Bool {
-        // A first install is not an update. There is no "what's new" for someone who has never
-        // seen the old one, and "Updated to 0.3.1" on first launch is simply false.
-        guard let lastRun, !lastRun.isEmpty else { return false }
-        guard lastRun != current else { return false }
+    ///   - hasRunBefore: whether an older version of the app left any trace on this machine.
+    ///     Consulted only when no version was recorded, which is true in two very different
+    ///     situations: a genuinely new install, and an upgrade *from* a version that predates
+    ///     this bookkeeping. Without it the release that introduces the feature is the one
+    ///     release it stays silent for.
+    static func shouldAnnounce(lastRun: String?,
+                               current: String,
+                               dismissed: String?,
+                               hasRunBefore: Bool) -> Bool {
         // Dismissing is per-version, so the next release announces itself again.
-        return dismissed != current
+        guard dismissed != current else { return false }
+        if let lastRun, !lastRun.isEmpty { return lastRun != current }
+        // A first install is not an update: there is no "what's new" for someone who has never
+        // seen the old one, and "Updated to 0.3.1" on a first launch is simply false. But an
+        // upgrade from a build that never recorded a version looks identical from here, and
+        // only evidence that the app has run here before tells them apart.
+        return hasRunBefore
     }
 }
