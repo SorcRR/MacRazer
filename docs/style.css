@@ -276,6 +276,11 @@ h1 em {
 }
 .feature:hover { background: var(--bg-raised); }
 
+/* The grid's 1px gaps sit on a border-coloured background, so an unfilled cell reads as a
+   grey block rather than as space. A ninth card would leave three of them; this spans the
+   row instead, at every breakpoint, because `1 / -1` counts the columns that exist. */
+.feature-wide { grid-column: 1 / -1; }
+
 .feature-tag {
   display: inline-block;
   font-size: 11px;

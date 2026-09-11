@@ -6,6 +6,8 @@ expect rough edges until 1.0.
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-09-11
+
 ### Changed
 - **CONTRIBUTING says how to verify a device, not just how to add one.** Two contributors this
  month worked out the right evidence to gather by being asked for it in review, one of them
@@ -77,6 +79,11 @@ expect rough edges until 1.0.
  BACKLIGHT individually, so a new model's brightness LED can be found in one run.
 
 ### Added
+- **Razer Orochi 2013 and Razer Viper Ultimate support**, contributed by @raphaelchenouard
+ (#6). The Viper Ultimate answers on transaction id `0xff` and reports battery, lighting and
+ DPI up to 20000 over its dongle. The Orochi 2013 has no battery and no lighting, so it gets
+ DPI and polling rate only. Neither is hardware-verified here, so both are listed as
+ user-reported.
 - **A "For developers" section in the About window**, saying MacRazer was built with
  Hiveship, with a button to go there. In About rather than the popover: the popover is what
  you open daily to read a battery percentage, and nothing permanent there stays subtle past
