@@ -77,21 +77,21 @@ struct AboutView: View {
 
     private var unofficialSection: some View {
         titledSection("Unofficial") {
-            sectionNote("An independent community project. It is not affiliated with, authorized by, "
+            sectionNote("An independent community project. Not affiliated with, authorized by, "
                         + "or endorsed by Razer Inc.")
             sectionNote("“Razer”, “Cobra”, “HyperSpeed”, “Synapse” and “Chroma” are trademarks of "
-                        + "Razer Inc., used here only to describe compatibility. The app's mouse mark "
-                        + "is its own; it does not display Razer's logo.")
+                        + "Razer Inc. They are used here only to say which mice this works with. "
+                        + "The mouse icon is the app's own drawing, not Razer's logo.")
         }
     }
 
     private var openRazerSection: some View {
         titledSection("Built on OpenRazer") {
-            sectionNote("The device protocol — command bytes, the report structure, CRC, the Cobra "
-                        + "command set — was ported from OpenRazer's Linux driver. The hard "
-                        + "reverse-engineering is theirs.")
-            sectionNote("Cobra HyperSpeed support follows OpenRazer PR #2583 by dyharlan, reviewed "
-                        + "by z3ntu, which established that the device reuses the Cobra Pro protocol.")
+            sectionNote("Everything this app says to your mouse was ported from OpenRazer's Linux "
+                        + "driver: the command bytes, the report structure, the CRC, the Cobra "
+                        + "command set. They did the hard reverse engineering.")
+            sectionNote("Cobra HyperSpeed support follows their PR #2583 by dyharlan, reviewed by "
+                        + "z3ntu, which worked out that the mouse reuses the Cobra Pro protocol.")
             HStack(spacing: 14) {
                 Link("OpenRazer", destination: ProjectLinks.openRazer)
                 Link("PR #2583", destination: ProjectLinks.cobraHyperSpeedPR)
@@ -103,10 +103,10 @@ struct AboutView: View {
 
     private var licenseSection: some View {
         titledSection("License") {
-            sectionNote("GPL-2.0-or-later — GPL because it derives from OpenRazer, which is GPL.")
-            sectionNote("Provided as is, without warranty of any kind. It talks to your mouse over "
-                        + "HID; it only sends the same feature reports OpenRazer and Synapse use, but "
-                        + "you run it at your own risk.")
+            sectionNote("GPL-2.0-or-later. It has to be GPL, because it builds on OpenRazer.")
+            sectionNote("Provided as is, with no warranty of any kind. It talks to your mouse over "
+                        + "HID and only sends the same feature reports OpenRazer and Synapse do, "
+                        + "but you run it at your own risk.")
             Link("View the source", destination: ProjectLinks.repo)
                 .font(.system(size: 11.5, weight: .medium))
                 .foregroundStyle(Color.razerGreen)
@@ -148,8 +148,9 @@ struct AboutView: View {
     /// percentage, and nothing permanent there stays subtle past the third time you see it.
     private var hiveshipSection: some View {
         titledSection("For developers") {
-            sectionNote("Hiveship — plan work, track bugs, and hand issues to coding agents "
-                        + "alongside the people doing them.")
+            sectionNote("MacRazer was built with Hiveship. It's an issue tracker for planning "
+                        + "work, tracking bugs, and handing issues to coding agents as well as "
+                        + "the people on your team.")
             Link(destination: ProjectLinks.hiveship) {
                 Label("Go to Hiveship", systemImage: "arrow.up.right")
             }

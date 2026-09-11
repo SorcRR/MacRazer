@@ -69,12 +69,14 @@ expect rough edges until 1.0.
  BACKLIGHT individually, so a new model's brightness LED can be found in one run.
 
 ### Added
-- **A "For developers" section in the About window**, with a Go to Hiveship button. It says
- what Hiveship is and stops there: it does not claim MacRazer's own planning or bug tracking
- happens in it, because that board is not public and a reader clicking on the strength of
- "tracked here" would land on a signup page rather than the thing they were promised. In
- About and not the popover — the popover is opened daily to read a battery percentage, and
- nothing permanent there stays subtle past the third time you see it.
+- **A "For developers" section in the About window**, saying MacRazer was built with
+ Hiveship, with a button to go there. In About rather than the popover: the popover is what
+ you open daily to read a battery percentage, and nothing permanent there stays subtle past
+ the third time you see it.
+
+- **The About window reads like a person wrote it.** The copy had picked up the house style of
+ an AI: em dashes everywhere, clauses stacked three deep, semicolons joining sentences that
+ wanted to be two. Same facts, same trademark and licence wording, shorter sentences.
 
 - **The About preview renders real buttons.** `render-about` went through `ImageRenderer`,
  which draws every native control as a placeholder — and that window is mostly buttons and
