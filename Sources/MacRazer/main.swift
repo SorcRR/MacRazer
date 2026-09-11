@@ -15,28 +15,6 @@ import SwiftUI
 
 let args = Array(CommandLine.arguments.dropFirst())
 
-/// Real v0.3.0 notes, so `render-ui update` shows the page at the length releases actually
-/// reach rather than a tidy sample.
-let previewReleaseBody = """
-MacRazer now starts at login and installs its own updates, with Settings and About windows to go with them.
-
-### Added
-- **Start MacRazer at login**, on by default. A menu bar battery meter that stops existing after every reboot isn't much of a battery meter.
-- **"Update & Restart"** in the update card. When a new version is out, MacRazer downloads it, checks it, replaces itself and relaunches. No more dragging a DMG.
-- **"Install updates automatically"**, off by default. It never starts while the popover or a window is open, since installing ends in a relaunch.
-- **A Settings window**, reached from the right-click menu or the gear in the footer.
-- **An About window**, with the licence and proper credit to OpenRazer.
-- The **charging bolt fills the mouse icon and is yellow**, instead of a grey squiggle you had to look for.
-
-### Fixed
-- Builds no longer appear to hang at the codesigning step. macOS was showing a keychain prompt that a scripted build has nobody to click.
-
-### Install
-This build is unsigned, so first launch shows the standard Gatekeeper warning.
-
-**Full changelog:** https://github.com/SorcRR/MacRazer/blob/master/CHANGELOG.md
-"""
-
 // No arguments → launch the menu bar app. Subcommands → run the CLI diagnostics below.
 if args.isEmpty {
     let app = NSApplication.shared
@@ -127,6 +105,16 @@ func openDevice() -> HIDDevice? {
     print("Wrote \(path)")
 }
 
+/// The output path for a `render-*` command: the first argument that names a PNG.
+///
+/// Flags are bare words and the path is positional, so "the first argument" wrote a file
+/// literally named `update` or `charging`. Keeping a list of known flags per command only
+/// moves the bug — a flag added later and forgotten in the list becomes the filename again.
+/// Asking what the argument *is* needs no list to keep in sync.
+func outputPath(_ args: ArraySlice<String>, default fallback: String) -> String {
+    args.first { $0.lowercased().hasSuffix(".png") } ?? fallback
+}
+
 switch command {
 case "info":
     // List every HID interface the dongle exposes, so we can see which one is the control
@@ -175,11 +163,29 @@ case "login-item":
 case "render-ui":
     // Render the popover to a PNG for static visual inspection (no device needed).
     _ = NSApplication.shared
-    // Flags are bare words, so they must be excluded from the positional path — otherwise
-    // `render-ui update` writes a file literally named "update".
-    let uiFlags: Set<String> = ["offline", "bluetooth", "update", "downloading",
-                                "color", "usage", "profiles", "whatsnew"]
-    let path = args.dropFirst().first { !uiFlags.contains($0) } ?? "ui-preview.png"
+    let path = outputPath(args.dropFirst(), default: "ui-preview.png")
+    // Real v0.3.0 notes, so `render-ui update` shows the page at the length releases actually
+    // reach rather than a tidy sample. Declared here rather than at file scope: it is preview
+    // copy, and a top-level `let` runs — and ships — in the menu bar app too.
+    let previewReleaseBody = """
+MacRazer now starts at login and installs its own updates, with Settings and About windows to go with them.
+
+### Added
+- **Start MacRazer at login**, on by default. A menu bar battery meter that stops existing after every reboot isn't much of a battery meter.
+- **"Update & Restart"** in the update card. When a new version is out, MacRazer downloads it, checks it, replaces itself and relaunches. No more dragging a DMG.
+- **"Install updates automatically"**, off by default. It never starts while the popover or a window is open, since installing ends in a relaunch.
+- **A Settings window**, reached from the right-click menu or the gear in the footer.
+- **An About window**, with the licence and proper credit to OpenRazer.
+- The **charging bolt fills the mouse icon and is yellow**, instead of a grey squiggle you had to look for.
+
+### Fixed
+- Builds no longer appear to hang at the codesigning step. macOS was showing a keychain prompt that a scripted build has nobody to click.
+
+### Install
+This build is unsigned, so first launch shows the standard Gatekeeper warning.
+
+**Full changelog:** https://github.com/SorcRR/MacRazer/blob/master/CHANGELOG.md
+"""
     let controller = MouseController()
     controller.loadPreviewState()
     if args.contains("offline") { controller.setPreviewOffline() }
@@ -213,7 +219,7 @@ case "render-ui":
 
 case "render-settings":
     _ = NSApplication.shared
-    let settingsPath = args.dropFirst().first { $0 != "update" } ?? "settings-preview.png"
+    let settingsPath = outputPath(args.dropFirst(), default: "settings-preview.png")
     let sc = MouseController()
     sc.loadPreviewState()
     let sl = LaunchAtLogin()
@@ -227,19 +233,19 @@ case "render-settings":
 
 case "render-about":
     _ = NSApplication.shared
-    let aboutPath = args.dropFirst().first ?? "about-preview.png"
+    let aboutPath = outputPath(args.dropFirst(), default: "about-preview.png")
     writeViewPNG(AboutView(onDone: {}), to: aboutPath) // no window to close in a render
 
 case "render-remap":
     _ = NSApplication.shared
-    let path = args.dropFirst().first ?? "remap-preview.png"
+    let path = outputPath(args.dropFirst(), default: "remap-preview.png")
     let r = ButtonRemapper()
     r.loadPreviewState()
     writeViewPNG(RemapView(remapper: r), to: path)
 
 case "render-permissions":
     _ = NSApplication.shared
-    let path = args.dropFirst().first ?? "permissions-preview.png"
+    let path = outputPath(args.dropFirst(), default: "permissions-preview.png")
     let controller = MouseController()
     controller.loadPreviewState()
     let model = PermissionsModel()
@@ -248,11 +254,8 @@ case "render-permissions":
 
 case "icon":
     // Render the menu bar mark to a PNG for visual inspection.
-    // Flags and the optional size are bare words, so they must be excluded from the
-    // positional path — otherwise `icon charging` writes a file literally named "charging".
-    let iconFlags: Set<String> = ["charging", "nologo", "light"]
     let iconArgs = args.dropFirst()
-    let path = iconArgs.first { !iconFlags.contains($0) && Int($0) == nil } ?? "icon-preview.png"
+    let path = outputPath(iconArgs, default: "icon-preview.png")
     // Optional size, so the mark can be checked at real menu bar scale (~21pt @2x) rather
     // than judged from a downsampled 256px render. Bounded: an unbounded value makes the
     // bitmap allocation fail and the write silently do nothing.

@@ -48,10 +48,18 @@ step() { echo "▸ $*"; }
 # tree is dirty", which is true but describes the script's own mess. Say what to run instead.
 TEMP_FILES=""
 EDITS_APPLIED=0
+NOTES=""
+NOTES_CREATED=0
 on_exit() {
     local status=$?
     # shellcheck disable=SC2086
     [ -n "${TEMP_FILES}" ] && rm -f ${TEMP_FILES}
+    # A draft from a failed run is worth nothing and would block the retry, since the run that
+    # succeeds refuses to overwrite one. Only a draft that outlived a successful run can have
+    # been edited, and that is the one worth protecting.
+    if [ "${status}" -ne 0 ] && [ "${NOTES_CREATED}" -eq 1 ]; then
+        rm -f "${NOTES}"
+    fi
     if [ "${status}" -ne 0 ] && [ "${EDITS_APPLIED}" -eq 1 ]; then
         echo >&2
         echo "✗ Stopped part-way with the release edits already applied. To undo them:" >&2
@@ -178,7 +186,13 @@ step "Drafting the release notes…"
 # without one makes that page quietly not appear.
 mkdir -p dist
 NOTES="dist/RELEASE_NOTES-${VERSION}.md"
+# Never over a draft that already exists: this script is meant to be re-runnable, and a
+# re-run that silently truncated notes the maintainer had already written would destroy the
+# one artifact here that isn't regenerable. Same reasoning as refusing a dirty tree.
+[ -e "${NOTES}" ] \
+    && fail "${NOTES} already exists and may have been edited — move or delete it, then re-run"
 ./Scripts/release-notes.sh "${VERSION}" > "${NOTES}"
+NOTES_CREATED=1
 
 step "Building the DMGs…"
 ./Scripts/make-dmg.sh

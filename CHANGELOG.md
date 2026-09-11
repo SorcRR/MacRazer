@@ -69,6 +69,11 @@ expect rough edges until 1.0.
  BACKLIGHT individually, so a new model's brightness LED can be found in one run.
 
 ### Added
+- **The "What's new" summary survives a line wrap.** Every source line above the first
+ heading became its own paragraph, so a summary hard-wrapped across two lines — the house
+ style in every markdown file here, and what the drafted template itself does — showed a
+ blank line through the middle of a sentence.
+
 - **Releases come with a drafted body, and it credits contributors.** The release body is not
  cosmetic any more — the app fetches it and builds the "What's new" page from it — so a
  release published without one makes that page quietly not appear, and a release that forgets

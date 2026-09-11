@@ -57,6 +57,9 @@ struct ReleaseNotes: Equatable {
         }
 
         var previousLineWasBlank = true
+        // The summary ends at the first bullet or heading and does not resume: prose further
+        // down belongs where it was written, not hoisted above the sections it followed.
+        var inSummary = true
         for rawLine in body.components(separatedBy: .newlines) {
             let line = rawLine.trimmingCharacters(in: .whitespaces)
             // The changelog link is a footer for the release page; in the app it's a dead end.
@@ -64,14 +67,24 @@ struct ReleaseNotes: Equatable {
             defer { previousLineWasBlank = line.isEmpty }
 
             if let heading = headingTitle(line) {
+                inSummary = false
                 closeSection()
                 currentTitle = heading
             } else if let bullet = bulletText(line) {
+                inSummary = false
                 currentBullets.append(bullet)
-            } else if currentTitle == nil, !line.isEmpty {
+            } else if inSummary, !line.isEmpty {
                 // Blockquote callouts read as emphasis on the page and as clutter here; keep
                 // the words, drop the marker.
-                summaryLines.append(strip(line.hasPrefix("> ") ? String(line.dropFirst(2)) : line))
+                let text = strip(line.hasPrefix("> ") ? String(line.dropFirst(2)) : line)
+                // Markdown wraps: a paragraph split over several source lines is one
+                // paragraph, and joining them with a break instead put a blank line through
+                // the middle of the summary sentence. Only a blank line starts a new one.
+                if previousLineWasBlank || summaryLines.isEmpty {
+                    summaryLines.append(text)
+                } else {
+                    summaryLines[summaryLines.count - 1] += " " + text
+                }
             } else if !line.isEmpty, !previousLineWasBlank, !currentBullets.isEmpty {
                 // A wrapped bullet. Markdown joins a line that follows one directly, and a
                 // long bullet split over two lines is the one way a hand-written body loses
@@ -159,10 +172,22 @@ struct ReleaseNotes: Equatable {
     static func strip(_ s: String) -> String {
         var out = s.replacingOccurrences(of: "**", with: "")
             .replacingOccurrences(of: "`", with: "")
-        // [text](url) → text
-        while let open = out.range(of: "["), let close = out.range(of: "](", range: open.upperBound..<out.endIndex),
-              let end = out.range(of: ")", range: close.upperBound..<out.endIndex) {
-            out.replaceSubrange(open.lowerBound..<end.upperBound, with: out[open.upperBound..<close.lowerBound])
+        // [text](url) → text. The opening bracket has to be the one that actually starts the
+        // link: pairing the *first* `[` with the first later `](` let a stray bracket swallow
+        // everything between it and the next real link.
+        var searchFrom = out.startIndex
+        while let open = out.range(of: "[", range: searchFrom..<out.endIndex) {
+            guard let close = out.range(of: "](", range: open.upperBound..<out.endIndex),
+                  let end = out.range(of: ")", range: close.upperBound..<out.endIndex) else { break }
+            // Another `[` between this one and the `]` means this one isn't the link's opener.
+            if out.range(of: "[", range: open.upperBound..<close.lowerBound) != nil {
+                searchFrom = open.upperBound
+                continue
+            }
+            let text = String(out[open.upperBound..<close.lowerBound])
+            out.replaceSubrange(open.lowerBound..<end.upperBound, with: text)
+            // Resume after the text just substituted, so a `[` inside it is not re-examined.
+            searchFrom = out.index(open.lowerBound, offsetBy: text.count)
         }
         return out.trimmingCharacters(in: .whitespaces)
     }

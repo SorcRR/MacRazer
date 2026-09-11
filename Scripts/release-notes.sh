@@ -71,10 +71,18 @@ fi
 # rather than hardcoded, so a fork or a rename doesn't silently credit the wrong person.
 if [ -z "${REPO}" ]; then
     ORIGIN="$(git remote get-url origin 2>/dev/null || true)"
-    REPO="$(echo "${ORIGIN}" | sed -E 's#^(git@[^:]+:|https?://[^/]+/)##; s#\.git$##')"
+    # Every spelling a clone can have, stripped one layer at a time: scheme, user@, host and
+    # its separator, then the .git suffix. Matching whole URL shapes instead missed `ssh://`,
+    # which left the owner as "ssh:" — so the maintainer was credited in their own notes and
+    # the changelog link pointed at github.com/ssh://git@github.com/…, both without a word.
+    REPO="$(echo "${ORIGIN}" \
+        | sed -E 's#^[A-Za-z][A-Za-z0-9+.-]*://##; s#^[^/]*@##; s#^[^:/]+[:/]+##; s#/+$##; s#\.git$##')"
 fi
+# Checked however it was arrived at, --repo included: everything downstream (who is excluded
+# from the credits, where the changelog link points) is only as good as this.
+echo "${REPO}" | grep -Eq '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$' \
+    || fail "couldn't read owner/repo from '${ORIGIN:-${REPO}}' — pass --repo owner/repo"
 OWNER="${REPO%%/*}"
-[ -n "${OWNER}" ] || fail "couldn't work out the repo owner — pass --repo owner/repo"
 
 # --- The changelog section for this version -------------------------------------------------
 SECTION="$(awk -v want="## [${VERSION}]" '
@@ -94,19 +102,31 @@ echo "${SECTION}" | grep -q '^- ' \
 RANGE="HEAD"
 [ -n "${SINCE}" ] && RANGE="${SINCE}..HEAD"
 
+MERGES="$(git log "${RANGE}" --merges --reverse --format='%H' 2>/dev/null || true)"
+
 THANKS=""
 CREDITED=""
-for sha in $(git log "${RANGE}" --merges --reverse --format='%H' 2>/dev/null || true); do
+MALFORMED=""
+for sha in ${MERGES}; do
     subject="$(git log -1 --format='%s' "${sha}")"
     case "${subject}" in
         "Merge pull request #"*)
             pr="$(echo "${subject}" | sed -E 's/^Merge pull request #([0-9]+) from .*$/\1/')"
             # `|` as the delimiter, not `#`: the pattern itself contains the `#` of `#[0-9]+`.
             handle="$(echo "${subject}" | sed -E 's|^Merge pull request #[0-9]+ from ([^/]+)/.*$|\1|')"
-            title="$(git log -1 --format='%b' "${sha}" | head -1)"
+            # A sed that doesn't match prints its input unchanged, so a merge subject with the
+            # right prefix but the wrong shape — "Merge pull request #7 from somebody", no
+            # branch — put the whole subject line in the credits as if it were a handle.
+            # Say so rather than publishing it.
+            if ! echo "${pr}" | grep -Eq '^[0-9]+$' || ! echo "${handle}" | grep -Eq '^[A-Za-z0-9-]+$'; then
+                MALFORMED="${MALFORMED}${subject}
+"
+                continue
+            fi
             # Case-insensitive: GitHub handles are, and "SorcRR" vs "sorcrr" would credit the
             # maintainer in their own release notes.
             [ "$(echo "${handle}" | tr 'A-Z' 'a-z')" = "$(echo "${OWNER}" | tr 'A-Z' 'a-z')" ] && continue
+            title="$(git log -1 --format='%b' "${sha}" | head -1)"
             # A merge made by hand can carry no body, and "@caseyc —  (#5)" reads as a typo.
             if [ -n "${title}" ]; then
                 THANKS="${THANKS}- **@${handle}** — ${title} (#${pr})
@@ -123,12 +143,28 @@ done
 # A squash-merged PR leaves no merge commit to read, so its author would go uncredited with
 # nothing said about it. Say it — on stderr, so it reaches the person running this and not the
 # file they are about to publish.
-UNCREDITED="$(git log "${RANGE}" --no-merges --format='%an' 2>/dev/null | sort -u | while read -r name; do
-    [ -n "${name}" ] || continue
-    lower="$(echo "${name}" | tr 'A-Z' 'a-z' | tr -d ' ')"
-    known=" $(echo "${CREDITED} ${OWNER}" | tr 'A-Z' 'a-z' | tr -s ' ' '\n' | tr -d ' \t' | tr '\n' ' ')"
-    echo "${known}" | grep -qF " ${lower} " || echo "${name}"
-done)"
+#
+# Who is already accounted for is answered from the graph, not from spelling. Comparing a git
+# display name against a GitHub handle warned about "Casey Contributor" seconds after
+# crediting them as @caseyc, and warned the maintainer about their own commits whenever their
+# user.name wasn't their handle — which is most setups. A warning that fires every release is
+# one nobody reads, and the squash-merge it exists for goes past unseen.
+MERGED_IN=""
+for sha in ${MERGES}; do
+    # A merge's second parent side: the commits the PR brought with it.
+    MERGED_IN="${MERGED_IN}$(git log "${sha}^1..${sha}" --format='%ae' 2>/dev/null || true)
+"
+done
+# Whoever is cutting the release. Their own direct commits need no credit, and topology can't
+# tell those from a squash-merge — this can.
+ME_EMAIL="$(git config user.email 2>/dev/null || true)"
+
+UNCREDITED="$(git log "${RANGE}" --no-merges --format='%ae|%an' 2>/dev/null | sort -u | while IFS='|' read -r email name; do
+    [ -n "${email}" ] || continue
+    [ "${email}" = "${ME_EMAIL}" ] && continue
+    echo "${MERGED_IN}" | grep -qxF "${email}" && continue
+    echo "${name} <${email}>"
+done | sort -u)"
 
 # --- The draft -------------------------------------------------------------------------------
 
@@ -166,11 +202,26 @@ if [ -n "${THANKS}" ]; then
 else
     note "No outside contributors in this range."
 fi
+if [ -n "${MALFORMED}" ]; then
+    note ""
+    note "⚠ These merge commits look like PR merges but their subject doesn't parse, so"
+    note "  nobody was credited for them:"
+    # `|| continue`, not `&& note`: a loop whose body ends on a failing test returns that
+    # failure, and `set -e` then kills the script on the trailing blank line — which is
+    # exactly what this did, taking the uncredited warning below it down with it.
+    echo "${MALFORMED}" | while read -r m; do
+        [ -n "${m}" ] || continue
+        note "    ${m}"
+    done
+fi
 if [ -n "${UNCREDITED}" ]; then
     note ""
     note "⚠ These authors wrote commits in the range but have no merge commit to credit them by"
     note "  (a squash-merged PR leaves none). Add them to Thanks by hand:"
-    echo "${UNCREDITED}" | while read -r n; do note "    ${n}"; done
+    echo "${UNCREDITED}" | while read -r n; do
+        [ -n "${n}" ] || continue
+        note "    ${n}"
+    done
 fi
 note ""
 note "Edit before publishing. The TODO line at the top is not a release note."

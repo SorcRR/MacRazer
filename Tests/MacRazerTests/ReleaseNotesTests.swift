@@ -109,6 +109,58 @@ final class ReleaseNotesTests: XCTestCase {
         XCTAssertEqual(ReleaseNotes.strip("see [the docs](https://example.com) here"), "see the docs here")
     }
 
+    func testAStrayBracketDoesNotSwallowTheTextAfterIt() {
+        // Pairing the first `[` with the first later `](` destroyed everything between them.
+        // Release bodies now carry changelog prose verbatim, and that prose has brackets in it.
+        XCTAssertEqual(ReleaseNotes.strip("a [ b [c](https://e.com)"), "a [ b c")
+        XCTAssertEqual(ReleaseNotes.strip("an unclosed [ bracket"), "an unclosed [ bracket")
+        XCTAssertEqual(ReleaseNotes.strip("two [one](https://a.com) and [two](https://b.com)"),
+                       "two one and two")
+    }
+
+    // MARK: Prose the body wraps, and prose that isn't the summary
+
+    func testAWrappedSummaryIsOneParagraph() {
+        // Every markdown file in this repo is hard-wrapped and the drafted template wraps too,
+        // so a summary split across source lines is the normal case, not an edge one. Joining
+        // them with a paragraph break put a blank line through the middle of a sentence.
+        let notes = ReleaseNotes.parse("""
+        MacRazer now starts at login and installs its own updates, with Settings
+        and About windows to go with them.
+
+        ### Added
+        - **A thing.** Yes.
+        """)
+        XCTAssertEqual(notes.summary,
+                       "MacRazer now starts at login and installs its own updates, with Settings and About windows to go with them.")
+    }
+
+    func testABlankLineStillStartsANewParagraph() {
+        let notes = ReleaseNotes.parse("""
+        First paragraph, wrapped
+        across two lines.
+
+        > A callout after a blank line.
+
+        ### Added
+        - **A thing.** Yes.
+        """)
+        XCTAssertEqual(notes.summary, "First paragraph, wrapped across two lines.\n\nA callout after a blank line.")
+    }
+
+    func testProseAfterTheBulletsStaysOutOfTheSummary() {
+        // Reachable since a body with no headings at all became supported: the summary branch
+        // used to accept any non-bullet line while no heading had been seen, which hoisted a
+        // closing sentence to the top of the page, above the bullets it was written under.
+        let notes = ReleaseNotes.parse("""
+        - first thing
+        - second thing
+        See the README for details.
+        """)
+        XCTAssertEqual(notes.summary, "")
+        XCTAssertEqual(notes.sections.first?.items.count, 2)
+    }
+
     // MARK: Shapes a future release body could arrive in
 
     func testGeneratedNotesUseHashHashAndAsterisks() {

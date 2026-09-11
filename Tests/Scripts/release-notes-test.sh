@@ -75,6 +75,18 @@ git checkout -q master
 git merge -q --no-ff ownwork \
     -m "Merge pull request #6 from theowner/ownwork" -m "Tidy something up"
 
+# A merge with the right prefix and the wrong shape. Its handle can't be read, and printing
+# the whole subject as one would put "@Merge pull request #7 from somebody" in the credits.
+git checkout -q -b handmade
+echo three > three.txt && git add -A && git commit -qm "Add three"
+git checkout -q master
+git merge -q --no-ff handmade -m "Merge pull request #7 from somebody" -m "No branch in the subject"
+
+# A squash-merged PR: someone else's work landing directly on master with no merge commit.
+# This is the one case the uncredited warning exists for.
+echo four > four.txt && git add -A
+git -c user.email="s@example.com" -c user.name="Sam Squash" commit -qm "Add four (#9)"
+
 cd - >/dev/null
 
 run() { (cd "${REPO}" && "${DRAFT}" "$@" 2>/dev/null); }
@@ -107,12 +119,64 @@ check "leaves out the owner's PR title too" "0" "$(echo "${OUT}" | grep -c 'Tidy
 ONLY_OWNER="$(cd "${REPO}" && "${DRAFT}" 0.3.0 --since HEAD 2>/dev/null)"
 check "no Thanks section when nobody outside contributed" "0" "$(echo "${ONLY_OWNER}" | grep -c '### Thanks')"
 
+# The warning is the only thing standing between a squash-merged PR and an uncredited
+# contributor, so it has to be believable. Matching git display names against GitHub handles
+# warned about people it had just credited, and about the maintainer whenever their user.name
+# wasn't their handle — which is most setups.
+WARNED="$(runerr 0.3.0 --since v0.2.1)"
+check "warns about a squash-merged contributor" "1" "$(echo "${WARNED}" | grep -c 'Sam Squash')"
+check "does not warn about someone it just credited" "0" "$(echo "${WARNED}" | grep -c 'Casey Contributor')"
+check "does not warn the maintainer about their own commits" "0" "$(echo "${WARNED}" | grep -c 'theowner')"
+check "reports the merge it could not parse" "1" "$(echo "${WARNED}" | grep -c "doesn't parse")"
+# This fixture has both a warning to give and a merge it can't parse, and warnings are not
+# failures — release.sh runs this and aborts the release on a non-zero exit. It did abort:
+# a warning loop whose body ended on a failing test returned that failure and `set -e` took
+# the script down with it, after the draft had already been written.
+check "warnings are not failures" "0" \
+    "$( (cd "${REPO}" && "${DRAFT}" 0.3.0 --since v0.2.1 >/dev/null 2>&1); echo $? )"
+check "does not credit an unparsable subject as a handle" "0" \
+    "$(echo "${OUT}" | grep -c '@Merge pull request')"
+
+echo "Reading the repository from any remote spelling"
+
+# `ssh://` left the owner as "ssh:", which credited the maintainer in their own notes and
+# pointed the changelog link at github.com/ssh://git@github.com/… — both without a word.
+for url in "git@github.com:theowner/Thing.git" \
+           "https://github.com/theowner/Thing.git" \
+           "ssh://git@github.com/theowner/Thing.git" \
+           "https://github.com/theowner/Thing"; do
+    ( cd "${REPO}" && git remote set-url origin "${url}" )
+    check "reads owner/repo from ${url}" "1" \
+        "$(run 0.3.0 --since v0.2.1 | grep -c 'github.com/theowner/Thing/blob/master/CHANGELOG.md')"
+done
+( cd "${REPO}" && git remote set-url origin "git@github.com:theowner/Thing.git" )
+
+check "refuses a remote it cannot read as owner/repo" "1" \
+    "$( (cd "${REPO}" && "${DRAFT}" 0.3.0 --repo "not-a-repo" >/dev/null 2>&1); echo $? )"
+
 echo "The parts that must always be there"
 
 check "leaves a placeholder for the summary" "1" "$(echo "${OUT}" | grep -c '^TODO:')"
 check "includes the install note" "1" "$(echo "${OUT}" | grep -c '^### Install')"
 check "links the full changelog at the repo it was run in" "1" \
     "$(echo "${OUT}" | grep -c 'github.com/theowner/Thing/blob/master/CHANGELOG.md')"
+
+echo "The shape ReleaseNotes.swift is written against"
+
+# The Swift side has a matching test, `testTheShapeReleaseNotesShDraftsParsesAsIntended`, but
+# it can only assert against a copy of this template — there is no compiler between a shell
+# script and a Swift struct. These assertions are the half that fails when the template moves,
+# so a rename here can't silently change what the app renders.
+check "the credits heading is exactly '### Thanks'" "1" "$(echo "${OUT}" | grep -c '^### Thanks$')"
+check "the install heading is exactly '### Install'" "1" "$(echo "${OUT}" | grep -c '^### Install$')"
+check "the footer keeps the '**Full changelog:' prefix" "1" \
+    "$(echo "${OUT}" | grep -c '^\*\*Full changelog:')"
+check "credits are bullets with a bold handle" "1" \
+    "$(echo "${OUT}" | grep -c '^- \*\*@caseyc\*\*')"
+# The parser reads everything above the first heading as the summary, so the placeholder must
+# be above it and the first heading must be a heading.
+check "the summary sits above the first heading" "1" \
+    "$(echo "${OUT}" | awk '/^#/{exit} /^TODO:/{n++} END{print n+0}')"
 
 echo "Refusing to publish a draft that is still a draft"
 
