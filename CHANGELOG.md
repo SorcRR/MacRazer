@@ -6,6 +6,30 @@ expect rough edges until 1.0.
 
 ## [Unreleased]
 
+### Changed
+- **`UpdateChecker` takes the defaults store it reads.** Every decision in it is a pure
+ function with tests, and both bugs this feature shipped were in the wiring between those
+ functions and the keys: an announcement held only in memory, then notes read from a cache
+ written by a version that had no such key. Neither could be stated as a test while the store
+ was `UserDefaults.standard`. Six tests now cover that wiring, including both bugs, and each
+ was checked by reverting the fix to confirm the test fails without it.
+
+### Fixed
+- **"What's new" was empty for everyone upgrading to 0.4.0.** The notes are read from a cache
+ the previous version fills, and 0.3.0 had no such cache: it predates the feature. So the
+ release that introduced "What's new" showed its "Updated to 0.4.0" card with nothing to
+ open, and the daily check throttle meant it stayed that way for up to a day, because the
+ old version had checked minutes earlier. A version change with no notes for it now beats the
+ throttle, which is the one case where the cache is known to be stale rather than merely old.
+ It fills itself on that check, so this does not turn a version change into an unthrottled
+ app, and the attempt is recorded so a release published with no body is not refetched at
+ every launch.
+
+- **Links in release notes are links again.** The parser reduced `[text](url)` to its text
+ before storing it, so a body that linked anywhere reached the popover as bare words with no
+ way to follow them. Items keep their markdown now and the page renders it, which also means
+ bold inside a sentence shows as bold rather than being flattened.
+
 ## [0.4.0] — 2026-09-11
 
 ### Changed

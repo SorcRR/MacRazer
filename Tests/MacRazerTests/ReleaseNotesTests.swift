@@ -109,6 +109,16 @@ final class ReleaseNotesTests: XCTestCase {
         XCTAssertEqual(ReleaseNotes.strip("see [the docs](https://example.com) here"), "see the docs here")
     }
 
+    func testAnItemKeepsItsMarkdownSoLinksSurvive() {
+        // Stored stripped, a link reached the view as bare words with no URL: "see the docs"
+        // leading nowhere. The view needs the original to make it a link.
+        let i = ReleaseNotes.item(from: "**A page.** See [the docs](https://example.com) for more.")
+        XCTAssertEqual(i.headline, "A page.")
+        XCTAssertEqual(i.detail, "See the docs for more.", "plain text still reads as plain text")
+        XCTAssertTrue(i.detailSource.contains("(https://example.com)"),
+                      "and the URL is still there for the view to render")
+    }
+
     func testAStrayBracketDoesNotSwallowTheTextAfterIt() {
         // Pairing the first `[` with the first later `](` destroyed everything between them.
         // Release bodies now carry changelog prose verbatim, and that prose has brackets in it.

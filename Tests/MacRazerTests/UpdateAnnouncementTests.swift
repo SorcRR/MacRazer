@@ -121,3 +121,44 @@ final class InstalledNotesTests: XCTestCase {
         XCTAssertNil(UpdateChecker.notes(for: "0.3.1", cachedVersion: "0.3.1", cachedBody: ""))
     }
 }
+
+/// The daily throttle, and the one case that has to escape it.
+@MainActor
+final class CheckDueTests: XCTestCase {
+    private let day: TimeInterval = 24 * 60 * 60
+    private let now = Date(timeIntervalSince1970: 1_000_000)
+
+    func testNeverCheckedIsDue() {
+        XCTAssertTrue(UpdateChecker.isCheckDue(lastChecked: nil, now: now, interval: day,
+                                               notesMissingForNewVersion: false))
+    }
+
+    func testWithinTheWindowIsNot() {
+        XCTAssertFalse(UpdateChecker.isCheckDue(lastChecked: now.addingTimeInterval(-3600),
+                                                now: now, interval: day,
+                                                notesMissingForNewVersion: false))
+    }
+
+    func testPastTheWindowIs() {
+        XCTAssertTrue(UpdateChecker.isCheckDue(lastChecked: now.addingTimeInterval(-day - 1),
+                                               now: now, interval: day,
+                                               notesMissingForNewVersion: false))
+    }
+
+    func testAFreshVersionWithNoNotesBeatsTheThrottle() {
+        // What 0.4.0 shipped with. The old version checked minutes before the update, so the
+        // throttle was wide open, and 0.3.0 never cached a body at all — the release that
+        // introduced "What's new" showed its card with nothing behind it, for a day.
+        XCTAssertTrue(UpdateChecker.isCheckDue(lastChecked: now.addingTimeInterval(-60),
+                                               now: now, interval: day,
+                                               notesMissingForNewVersion: true))
+    }
+
+    func testItDoesNotBecomeACheckOnEveryLaunch() {
+        // Once the forced check stores the body there are notes, and the throttle applies
+        // again. Nothing here should make a version change mean an unthrottled app.
+        XCTAssertFalse(UpdateChecker.isCheckDue(lastChecked: now.addingTimeInterval(-60),
+                                                now: now, interval: day,
+                                                notesMissingForNewVersion: false))
+    }
+}
