@@ -479,6 +479,10 @@ tbody tr:hover { background: var(--bg-raised); }
 .footer {
   border-top: 1px solid var(--border-soft);
   background: var(--bg-raised);
+  /* Padding, not a margin on the last child: the footer has no bottom border or padding of
+     its own, so a child's bottom margin collapses straight out of it and the background ends
+     flush against that child. */
+  padding-bottom: 48px;
 }
 
 .footer-grid {
@@ -609,7 +613,7 @@ tbody tr:hover { background: var(--bg-raised); }
      it rather than sitting 32px wider on both sides. */
   max-width: 976px;
   width: calc(100% - 64px);
-  margin: 0 auto 48px;
+  margin: 0 auto;
   padding: 14px 18px;
   display: flex;
   align-items: center;
@@ -643,9 +647,10 @@ tbody tr:hover { background: var(--bg-raised); }
 .footer-hiveship-go::after { content: " →"; }
 
 @media (max-width: 640px) {
+  .footer { padding-bottom: 32px; }
   .footer-hiveship {
     width: calc(100% - 36px);
-    margin: 0 auto 32px;
+    margin: 0 auto;
     align-items: flex-start;
     flex-wrap: wrap;
   }

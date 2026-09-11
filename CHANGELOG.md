@@ -28,6 +28,11 @@ expect rough edges until 1.0.
 - **The site footer links wrap instead of running off the side of a phone.** `.footer-links`
  was a flex row with no `flex-wrap`, so on a 375px screen the last two links were simply cut
  off at the edge. Long-standing, and easy to miss on a desktop browser.
+
+- **The footer no longer ends flush against its last element.** The space under it was a
+ bottom margin on the last child, and the footer has no bottom padding or border of its own,
+ so that margin collapsed straight out and the background stopped dead at the element. It is
+ padding on the footer now, where it cannot collapse.
 - **The changelog can no longer accumulate duplicate headings unnoticed.** Two branches each
  adding a `### Fixed` under `[Unreleased]` merge cleanly — git appends, nothing conflicts, and
  nobody spots it in a diff. It happened three times across one stack, and then again in the PR
