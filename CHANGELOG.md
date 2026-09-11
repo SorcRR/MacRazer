@@ -85,6 +85,14 @@ expect rough edges until 1.0.
  draft still carrying its `TODO:` placeholder, since that would become the release's first
  paragraph. The entries come out verbatim: the script drafts the mechanical parts and leaves
  the writing alone.
+- **A release notes page on the site**, linked from the nav and the footer of every page.
+ Every version and what was in it, built from the same GitHub release bodies the app shows,
+ with the install instructions dropped by the same rule the app uses — someone reading this
+ has plainly managed it. It fetches at page load rather than being generated, so a release
+ appears on the site without the site being touched; if the API is unreachable it says so and
+ points at GitHub instead of sitting on "Loading…". The markdown is turned into DOM nodes
+ rather than HTML strings, so nothing in a release body can become markup on the page.
+
 - **The release notes outlive the update.** They were reachable from one place, the update
  card, which disappears the moment you are on the new version — so the notes went with it,
  and with "Install updates automatically" on you never saw the card in the first place. That
