@@ -41,6 +41,18 @@ final class UpdateChecker: ObservableObject {
     /// empty page.
     @Published private(set) var latestNotes: ReleaseNotes?
 
+    /// Notes for the version that is *running*, so they survive the thing they describe.
+    ///
+    /// The check that found the release cached its body; after the install and relaunch, that
+    /// release is what is running, so the same cache answers "what changed?" afterwards. Kept
+    /// separate from `latestNotes` because the two can both exist — you can be reading about
+    /// the release you just installed when the next one appears.
+    @Published private(set) var installedNotes: ReleaseNotes?
+
+    /// Set on the first launch after the version changes, until dismissed. The one way someone
+    /// with automatic installs on finds out a release happened at all.
+    @Published private(set) var justUpdatedTo: String?
+
     /// The error from the last failed install, kept raw (not just its message) so
     /// `AutoInstallPolicy` can tell a dropped connection from a payload that will never work.
     private(set) var lastInstallError: Error?
@@ -74,6 +86,8 @@ final class UpdateChecker: ObservableObject {
     private static let lastFoundKey = "lastFoundUpdateVersion"
     private static let autoInstallKey = "autoInstallUpdates"
     private static let lastFoundNotesKey = "lastFoundUpdateNotes"
+    private static let lastRunVersionKey = "lastRunVersion"
+    private static let dismissedAnnouncementKey = "dismissedUpdateAnnouncement"
 
     private struct GitHubRelease: Decodable {
         let tag_name: String
@@ -143,6 +157,9 @@ final class UpdateChecker: ObservableObject {
                 latestVersion = nil
                 latestNotes = nil
             }
+            // The same response answers "what am I running?" — someone who installed by hand
+            // gets their notes from the first check after, without waiting for a next release.
+            installedNotes = Self.installedNotes(current: currentVersion)
         } catch {
             // Silent: a failed background check shouldn't surface as an error — only an
             // explicit download attempt should show one. But do surface what the last
@@ -167,6 +184,58 @@ final class UpdateChecker: ObservableObject {
         UserDefaults.standard.set(version, forKey: Self.dismissedKey)
         latestVersion = nil
         latestNotes = nil
+    }
+
+    /// Works out whether this launch is the first on a new version, and loads the notes for
+    /// whatever is running. Call once, at startup.
+    ///
+    /// Recording the version is unconditional and happens here rather than at quit: an app
+    /// that is killed, crashes, or is replaced under itself never gets a clean shutdown, and
+    /// the one thing worse than a missed announcement is the same one every launch.
+    func loadInstalledVersionState() {
+        let defaults = UserDefaults.standard
+        let current = currentVersion
+        let lastRun = defaults.string(forKey: Self.lastRunVersionKey)
+        if UpdateAnnouncement.shouldAnnounce(lastRun: lastRun,
+                                             current: current,
+                                             dismissed: defaults.string(forKey: Self.dismissedAnnouncementKey)) {
+            justUpdatedTo = current
+        }
+        defaults.set(current, forKey: Self.lastRunVersionKey)
+        installedNotes = Self.installedNotes(current: current)
+    }
+
+    func dismissAnnouncement() {
+        if let version = justUpdatedTo {
+            UserDefaults.standard.set(version, forKey: Self.dismissedAnnouncementKey)
+        }
+        justUpdatedTo = nil
+    }
+
+    /// The cached notes, but only when they are demonstrably about the version running.
+    ///
+    /// Every successful check stores the latest release's version and body together, whether
+    /// or not it was newer — so this answers for someone who installed the DMG by hand too,
+    /// from the first check after they did. A mismatch means the cache is about some other
+    /// release and showing it would be worse than showing nothing.
+    /// The same notes, for a caller with no `UpdateChecker` to hand — the About window, which
+    /// observes nothing and is built fresh each time it opens.
+    static func notesForRunningVersion() -> ReleaseNotes? {
+        installedNotes(current: AppInfo.comparableVersion)
+    }
+
+    private static func installedNotes(current: String) -> ReleaseNotes? {
+        let defaults = UserDefaults.standard
+        return notes(for: current,
+                     cachedVersion: defaults.string(forKey: lastFoundKey),
+                     cachedBody: defaults.string(forKey: lastFoundNotesKey))
+    }
+
+    /// The rule, kept apart from the defaults it reads so it can be stated in a test: notes
+    /// are shown only when the cache is demonstrably about this exact version.
+    static func notes(for current: String, cachedVersion: String?, cachedBody: String?) -> ReleaseNotes? {
+        guard cachedVersion == current else { return nil }
+        return notes(from: cachedBody)
     }
 
     /// Parsed once here rather than in the view: `body` is a couple of kilobytes of prose and
@@ -314,6 +383,13 @@ final class UpdateChecker: ObservableObject {
         latestVersion = version
         self.phase = phase
         latestNotes = Self.notes(from: notes)
+    }
+
+    /// Pins the "Updated to …" card open for `render-ui updated`, which otherwise only appears
+    /// on the one launch that follows an install.
+    func loadPreviewUpdated(version: String = AppInfo.comparableVersion, notes: String? = nil) {
+        justUpdatedTo = version
+        installedNotes = Self.notes(from: notes)
     }
 }
 

@@ -85,6 +85,17 @@ expect rough edges until 1.0.
  draft still carrying its `TODO:` placeholder, since that would become the release's first
  paragraph. The entries come out verbatim: the script drafts the mechanical parts and leaves
  the writing alone.
+- **The release notes outlive the update.** They were reachable from one place, the update
+ card, which disappears the moment you are on the new version — so the notes went with it,
+ and with "Install updates automatically" on you never saw the card in the first place. That
+ setting could take you from 0.3.0 to 0.3.2 without a word about any of it. The first launch
+ on a new version now shows a dismissible **"Updated to 0.3.1"** card in the popover with the
+ same "What's new" row, and the About window keeps a **"What's new in 0.3.1"** link under the
+ version for afterwards. Neither fetches anything: the check that found the release already
+ cached its body, and after the install that release is the one running. The notes are shown
+ only when the cache is demonstrably about the version running, and a first install is not
+ an update — "Updated to 0.3.1" on a first launch would simply be false.
+
 - **The update card says what's in the update.** It offered "Update & Restart" and nothing
  about why you would want to — you were being asked to replace your app on no information,
  which is the thing the macOS convention of showing release notes in the update dialog exists

@@ -16,7 +16,9 @@ struct WhatsNewPage: View {
     /// doesn't, and the button should never promise the restart it can't deliver.
     let canInstallInPlace: Bool
     let onBack: () -> Void
-    let onUpdate: () -> Void
+    /// Nil when there is nothing to install — the notes are about the version already running,
+    /// and a button offering to fetch it again would be nonsense.
+    let onUpdate: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -68,19 +70,21 @@ struct WhatsNewPage: View {
 
             // Repeated from the card so the decision can be made where the information is,
             // without navigating back to find the button again.
-            Button(action: onUpdate) {
-                HStack(spacing: 6) {
-                    Image(systemName: canInstallInPlace ? "arrow.triangle.2.circlepath" : "arrow.down.to.line")
-                    Text(canInstallInPlace ? "Update & Restart" : "Download")
+            if let onUpdate {
+                Button(action: onUpdate) {
+                    HStack(spacing: 6) {
+                        Image(systemName: canInstallInPlace ? "arrow.triangle.2.circlepath" : "arrow.down.to.line")
+                        Text(canInstallInPlace ? "Update & Restart" : "Download")
+                    }
+                    .font(.system(size: 11.5, weight: .medium))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 5)
                 }
-                .font(.system(size: 11.5, weight: .medium))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 5)
+                .buttonStyle(.borderedProminent)
+                .tint(.razerGreen)
+                .controlSize(.small)
+                .padding(12)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(.razerGreen)
-            .controlSize(.small)
-            .padding(12)
         }
     }
 

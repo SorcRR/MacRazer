@@ -150,6 +150,9 @@ struct PopoverView: View {
         VStack(alignment: .leading, spacing: 10) {
             headerCard
             if let version = updateChecker.latestVersion { updateCard(version) }
+            // Never both: an update waiting to be installed is the more useful thing to say
+            // than one that already was.
+            else if let installed = updateChecker.justUpdatedTo { updatedCard(installed) }
             // A Razer mouse on Bluetooth can't be controlled (no control protocol over BT) —
             // explain it instead of just showing "offline".
             if controller.bluetoothMouseName != nil && !controller.connected { bluetoothNotice }
@@ -514,14 +517,67 @@ struct PopoverView: View {
     /// call site can at worst produce a thin page with a working back button, never a blank
     /// dead end.
     private var whatsNewPage: some View {
-        WhatsNewPage(version: updateChecker.latestVersion ?? appVersion,
-                     notes: updateChecker.latestNotes ?? ReleaseNotes(summary: "", sections: []),
-                     canInstallInPlace: updateChecker.canInstallInPlace,
-                     onBack: { page = .main },
-                     onUpdate: {
-                         page = .main
-                         Task { await updateChecker.downloadAndInstall() }
-                     })
+        // Reached from either card, and they are about different releases: one waiting, one
+        // already running. An update on offer wins, matching which card is showing.
+        let pending = updateChecker.latestVersion
+        return WhatsNewPage(version: pending ?? appVersion,
+                            notes: (pending != nil ? updateChecker.latestNotes : updateChecker.installedNotes)
+                                ?? ReleaseNotes(summary: "", sections: []),
+                            canInstallInPlace: updateChecker.canInstallInPlace,
+                            // Nothing to install when the notes are about what's already
+                            // running, so the page shows no button at all rather than one that
+                            // would re-download the version you are reading about.
+                            onBack: { page = .main },
+                            onUpdate: pending == nil ? nil : {
+                                page = .main
+                                Task { await updateChecker.downloadAndInstall() }
+                            })
+    }
+
+    /// Shown once, on the first launch after the version changes.
+    ///
+    /// With automatic installs on there is no update card and never was one — this is the
+    /// only place the app says a release happened. It is a row and a dismiss, because it is
+    /// news rather than a decision.
+    /// Takes the version only to keep the card and the announcement in step; it shows
+    /// `appVersion`, since `justUpdatedTo` carries the *comparable* version — which is "0" for
+    /// an unversioned dev build, and "Updated to 0" is not a sentence.
+    private func updatedCard(_ version: String) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(Color.razerGreen)
+                    .font(.system(size: 14, weight: .semibold))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Updated to \(appVersion)").font(.system(size: 12, weight: .semibold))
+                    Text("You're on the latest version.")
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+                Button {
+                    updateChecker.dismissAnnouncement()
+                } label: {
+                    Image(systemName: "xmark").font(.system(size: 9, weight: .bold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.tertiary)
+            }
+            if updateChecker.installedNotes != nil {
+                Button { page = .whatsNew } label: {
+                    HStack(spacing: 6) {
+                        Text("What's new in \(appVersion)").font(.system(size: 11, weight: .medium))
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold))
+                    }
+                    .foregroundStyle(Color.razerGreen)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.razerGreen.opacity(0.12), in: RoundedRectangle(cornerRadius: 13))
     }
 
     private func updateProgress(_ fraction: Double) -> some View {

@@ -14,6 +14,13 @@ struct AboutView: View {
     /// and does nothing, with no compiler error.
     var onDone: () -> Void
 
+    /// Notes for the version this is the About box of, when the app has them. The popover's
+    /// "Updated to …" card is shown once and then dismissed; this is where they stay
+    /// findable afterwards, next to the version number they belong to.
+    var notes: ReleaseNotes?
+
+    @State private var showingNotes = false
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             header
@@ -24,6 +31,16 @@ struct AboutView: View {
         }
         .padding(22)
         .frame(width: 460)
+        .sheet(isPresented: $showingNotes) {
+            if let notes {
+                WhatsNewPage(version: AppInfo.displayVersion,
+                             notes: notes,
+                             canInstallInPlace: false,
+                             onBack: { showingNotes = false },
+                             onUpdate: nil) // already running it
+                    .frame(width: 380, height: 460)
+            }
+        }
     }
 
     // MARK: Header
@@ -48,6 +65,7 @@ struct AboutView: View {
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(Color.razerGreen)
                 }
+                whatsNewRow
             }
             Spacer(minLength: 0)
         }
@@ -90,6 +108,27 @@ struct AboutView: View {
             Link("View the source", destination: ProjectLinks.repo)
                 .font(.system(size: 11.5, weight: .medium))
                 .foregroundStyle(Color.razerGreen)
+        }
+    }
+
+    // MARK: What's new
+
+    /// Sits under the version because that is the question it answers. Shown only when the
+    /// app actually has the notes for the version running — a row that opened an empty page
+    /// would be worse than no row.
+    @ViewBuilder
+    private var whatsNewRow: some View {
+        if notes != nil {
+            Button { showingNotes = true } label: {
+                HStack(spacing: 4) {
+                    Text("What's new in \(AppInfo.displayVersion)")
+                    Image(systemName: "chevron.right").font(.system(size: 8, weight: .semibold))
+                }
+                .font(.system(size: 11.5, weight: .medium))
+                .foregroundStyle(Color.razerGreen)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
         }
     }
 

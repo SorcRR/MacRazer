@@ -164,34 +164,13 @@ case "render-ui":
     // Render the popover to a PNG for static visual inspection (no device needed).
     _ = NSApplication.shared
     let path = outputPath(args.dropFirst(), default: "ui-preview.png")
-    // Real v0.3.0 notes, so `render-ui update` shows the page at the length releases actually
-    // reach rather than a tidy sample. Declared here rather than at file scope: it is preview
-    // copy, and a top-level `let` runs — and ships — in the menu bar app too.
-    let previewReleaseBody = """
-MacRazer now starts at login and installs its own updates, with Settings and About windows to go with them.
-
-### Added
-- **Start MacRazer at login**, on by default. A menu bar battery meter that stops existing after every reboot isn't much of a battery meter.
-- **"Update & Restart"** in the update card. When a new version is out, MacRazer downloads it, checks it, replaces itself and relaunches. No more dragging a DMG.
-- **"Install updates automatically"**, off by default. It never starts while the popover or a window is open, since installing ends in a relaunch.
-- **A Settings window**, reached from the right-click menu or the gear in the footer.
-- **An About window**, with the licence and proper credit to OpenRazer.
-- The **charging bolt fills the mouse icon and is yellow**, instead of a grey squiggle you had to look for.
-
-### Fixed
-- Builds no longer appear to hang at the codesigning step. macOS was showing a keychain prompt that a scripted build has nobody to click.
-
-### Install
-This build is unsigned, so first launch shows the standard Gatekeeper warning.
-
-**Full changelog:** https://github.com/SorcRR/MacRazer/blob/master/CHANGELOG.md
-"""
     let controller = MouseController()
     controller.loadPreviewState()
     if args.contains("offline") { controller.setPreviewOffline() }
     if args.contains("bluetooth") { controller.setPreviewBluetooth() }
     let updateChecker = UpdateChecker()
-    if args.contains("update") { updateChecker.loadPreviewState(notes: previewReleaseBody) }
+    if args.contains("update") { updateChecker.loadPreviewState(notes: PreviewNotes.releaseBody) }
+    if args.contains("updated") { updateChecker.loadPreviewUpdated(notes: PreviewNotes.releaseBody) }
     if args.contains("downloading") { updateChecker.loadPreviewState(phase: .downloading(0.42)) }
     let launchAtLogin = LaunchAtLogin()
     launchAtLogin.loadPreviewState()
@@ -199,11 +178,19 @@ This build is unsigned, so first launch shows the standard Gatekeeper warning.
     // and it is sized to the height the main page renders at — the whole point of checking
     // it is whether the notes fit there.
     if args.contains("whatsnew") {
-        updateChecker.loadPreviewState(notes: previewReleaseBody)
-        writeHostedPNG(WhatsNewPage(version: updateChecker.latestVersion ?? "0.0.0",
-                                    notes: updateChecker.latestNotes ?? ReleaseNotes.parse(previewReleaseBody),
+        // `installed` is the same page reached from the "Updated to …" card: same notes, no
+        // button, because there is nothing left to install.
+        let installed = args.contains("installed")
+        if installed {
+            updateChecker.loadPreviewUpdated(notes: PreviewNotes.releaseBody)
+        } else {
+            updateChecker.loadPreviewState(notes: PreviewNotes.releaseBody)
+        }
+        writeHostedPNG(WhatsNewPage(version: updateChecker.latestVersion ?? AppInfo.displayVersion,
+                                    notes: (installed ? updateChecker.installedNotes : updateChecker.latestNotes)
+                                        ?? ReleaseNotes.parse(PreviewNotes.releaseBody),
                                     canInstallInPlace: updateChecker.canInstallInPlace,
-                                    onBack: {}, onUpdate: {}),
+                                    onBack: {}, onUpdate: installed ? nil : {}),
                        size: CGSize(width: 320, height: 748), to: path)
         break
     }
@@ -234,7 +221,11 @@ case "render-settings":
 case "render-about":
     _ = NSApplication.shared
     let aboutPath = outputPath(args.dropFirst(), default: "about-preview.png")
-    writeViewPNG(AboutView(onDone: {}), to: aboutPath) // no window to close in a render
+    // `notes` shows the "What's new in …" row, which is otherwise only there once the app has
+    // cached a release body.
+    writeViewPNG(AboutView(onDone: {}, // no window to close in a render
+                           notes: args.contains("notes") ? ReleaseNotes.parse(PreviewNotes.releaseBody) : nil),
+                 to: aboutPath)
 
 case "render-remap":
     _ = NSApplication.shared

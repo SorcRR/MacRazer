@@ -13,7 +13,8 @@ final class AboutWindowController: AppWindowPresenter {
 
     func show() {
         if window == nil {
-            let root = AboutView(onDone: { [weak self] in self?.window?.close() })
+            let root = AboutView(onDone: { [weak self] in self?.window?.close() },
+                                 notes: UpdateChecker.notesForRunningVersion())
             let hosting = NSHostingController(rootView: root)
             hosting.sizingOptions = [.preferredContentSize]
             let w = NSWindow(contentViewController: hosting)

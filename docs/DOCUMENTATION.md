@@ -291,7 +291,9 @@ swift run MacRazer poll [125|500|1000]
 swift run MacRazer rgb static ff0000 # or: spectrum | wave | off
 swift run MacRazer brightness [0-100] # sweeps LOGO/SCROLL/ZERO/BACKLIGHT LEDs
 swift run MacRazer icon out.png # render the menu bar icon
-swift run MacRazer render-ui [offline|color|update|whatsnew|…] out.png # popover (dev)
+swift run MacRazer render-ui [offline|color|update|updated|whatsnew|…] out.png # popover (dev)
+swift run MacRazer render-ui whatsnew installed out.png # the notes without an update to install
+swift run MacRazer render-about [notes] out.png
 swift run MacRazer render-remap out.png
 ```
 
