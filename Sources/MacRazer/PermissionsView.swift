@@ -153,7 +153,8 @@ struct PermissionsView: View {
             if controller.connected, let name = controller.deviceName {
                 Text(verbatim: "\(name) connected").font(.system(size: 11, weight: .medium))
             } else if model.inputMonitoring {
-                Text("No Razer mouse yet. Connect the 2.4 GHz dongle or a USB-C cable. Bluetooth won't work.")
+                Text("No Razer mouse detected yet. Connect the 2.4 GHz dongle or a USB-C cable. "
+                     + "Bluetooth won't work.")
                     .font(.system(size: 11)).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             } else {

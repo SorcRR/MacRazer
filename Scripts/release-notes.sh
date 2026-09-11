@@ -220,6 +220,17 @@ if [ -n "${MALFORMED}" ]; then
         note "    ${m}"
     done
 fi
+# The entries come out of the changelog verbatim, and the changelog is written for
+# contributors, where an em dash is nobody's problem. The published body is held to a
+# different standard by --check, so say so here, while the draft is being edited, rather than
+# letting the gate reject lines the script itself just copied. The section is the only part
+# that can carry one: everything else in the draft is written below.
+EM_DASH_LINES="$(echo "${SECTION}" | grep -c '—' || true)"
+if [ "${EM_DASH_LINES}" -gt 0 ] 2>/dev/null; then
+    note ""
+    note "⚠ ${EM_DASH_LINES} line(s) carry an em dash, copied from the changelog. --check will"
+    note "  reject them. A full stop or a colon almost always says the same thing."
+fi
 if [ -n "${UNCREDITED}" ]; then
     note ""
     note "⚠ These authors wrote commits in the range but have no merge commit to credit them by"

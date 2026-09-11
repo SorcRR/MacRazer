@@ -87,7 +87,9 @@ expect rough edges until 1.0.
  sentences that wanted to be two. Swept through every string a user sees, in the popover,
  Settings, permissions, profiles, remapping, the low-battery notification and the update
  errors, and through the prose on all four site pages. Same facts throughout, including the
- trademark and licence wording, just shorter sentences. `release-notes.sh --check` now
+ trademark and licence wording, which are left exactly as they were: "used here only to
+ describe compatibility" is the conventional descriptive-use formulation and the reason this
+ app may show Razer's marks at all. `release-notes.sh --check` now
  refuses a draft containing an em dash, so release bodies stay that way without anyone having
  to remember. Contributor-facing text is left alone: code comments, CLI diagnostics and the
  page titles search engines have already indexed.

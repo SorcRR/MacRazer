@@ -79,9 +79,12 @@ struct AboutView: View {
         titledSection("Unofficial") {
             sectionNote("An independent community project. Not affiliated with, authorized by, "
                         + "or endorsed by Razer Inc.")
+            // "Used here only to describe compatibility" is the conventional descriptive-use
+            // wording and the reason this app may put Razer's marks on screen at all, so it
+            // stays as written. Only the semicolon became a full stop.
             sectionNote("“Razer”, “Cobra”, “HyperSpeed”, “Synapse” and “Chroma” are trademarks of "
-                        + "Razer Inc. They are used here only to say which mice this works with. "
-                        + "The mouse icon is the app's own drawing, not Razer's logo.")
+                        + "Razer Inc., used here only to describe compatibility. The app's mouse "
+                        + "mark is its own. It does not display Razer's logo.")
         }
     }
 
@@ -103,7 +106,8 @@ struct AboutView: View {
 
     private var licenseSection: some View {
         titledSection("License") {
-            sectionNote("GPL-2.0-or-later. It has to be GPL, because it builds on OpenRazer.")
+            sectionNote("GPL-2.0-or-later. It has to be GPL, because it builds on OpenRazer, "
+                        + "which is GPL.")
             sectionNote("Provided as is, with no warranty of any kind. It talks to your mouse over "
                         + "HID and only sends the same feature reports OpenRazer and Synapse do, "
                         + "but you run it at your own risk.")
@@ -151,7 +155,7 @@ struct AboutView: View {
             sectionNote("MacRazer was built with Hiveship. It's an issue tracker for planning "
                         + "work, tracking bugs, and handing issues to coding agents as well as "
                         + "the people on your team.")
-            Link(destination: ProjectLinks.hiveship) {
+            Link(destination: ElsewhereLinks.hiveship) {
                 Label("Go to Hiveship", systemImage: "arrow.up.right")
             }
             .buttonStyle(.bordered)

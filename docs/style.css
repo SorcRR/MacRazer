@@ -624,6 +624,11 @@ tbody tr:hover { background: var(--bg-raised); }
   transition: border-color 0.15s ease, background 0.15s ease;
 }
 .footer-hiveship:hover { border-color: var(--accent-dim); background: var(--bg-raised-2); }
+.footer-hiveship:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--bg-raised-2);
+}
 
 .footer-hiveship img { flex: none; }
 
@@ -635,7 +640,7 @@ tbody tr:hover { background: var(--bg-raised); }
   color: var(--text-faint);
   line-height: 1.45;
 }
-.footer-hiveship-text strong { color: var(--text); font-weight: 500; font-size: 13.5px; }
+.footer-hiveship-title { color: var(--text); font-weight: 500; font-size: 13.5px; }
 
 .footer-hiveship-go {
   margin-left: auto;
@@ -649,8 +654,8 @@ tbody tr:hover { background: var(--bg-raised); }
 @media (max-width: 640px) {
   .footer { padding-bottom: 32px; }
   .footer-hiveship {
-    width: calc(100% - 36px);
-    margin: 0 auto;
+    /* Not a narrower inset: `.footer-grid` keeps its 32px of side padding at every width, so
+       anything but `100% - 64px` here leaves the card overhanging the links above it. */
     align-items: flex-start;
     flex-wrap: wrap;
   }

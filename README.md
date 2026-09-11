@@ -187,8 +187,8 @@ are in [docs/DOCUMENTATION.md](docs/DOCUMENTATION.md). The complete feature hist
 
 ## Built with
 
-MacRazer is planned and tracked in [Hiveship](https://hiveship.app/), an issue tracker for
-handing work to coding agents as well as the people on your team.
+MacRazer was built with [Hiveship](https://hiveship.app/), an issue tracker for planning work,
+tracking bugs, and handing issues to coding agents as well as the people on your team.
 
 ## Contributing
 

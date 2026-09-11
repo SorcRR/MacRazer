@@ -31,6 +31,13 @@ enum AppInfo {
 /// four files, so a rename would have left the updater polling one place while the About
 /// window linked to another — and nothing would have failed loudly, the update card would
 /// just have quietly stopped finding releases.
+/// Somewhere else entirely. `ProjectLinks` is every URL that identifies *this* project, and
+/// putting an unrelated one in there would make that sentence false for whoever adds the next.
+enum ElsewhereLinks {
+    /// The About window's "For developers" section.
+    static let hiveship = URL(string: "https://hiveship.app/")!
+}
+
 enum ProjectLinks {
     static let repo = URL(string: "https://github.com/SorcRR/MacRazer")!
     static let site = URL(string: "https://sorcrr.github.io/MacRazer/")!
@@ -46,11 +53,6 @@ enum ProjectLinks {
     static let latestDMG = repo.appendingPathComponent("releases/latest/download/MacRazer.dmg")
     static let latestReleaseAPI =
         URL(string: "https://api.github.com/repos/SorcRR/MacRazer/releases/latest")!
-
-    /// Linked from the About window. Not part of MacRazer — kept here because this is where
-    /// the project's URLs live, and one link scattered somewhere else is how a dead one
-    /// survives a rename.
-    static let hiveship = URL(string: "https://hiveship.app/")!
 
     // Upstream, credited in the About window and NOTICE.md.
     static let openRazer = URL(string: "https://github.com/openrazer/openrazer")!
