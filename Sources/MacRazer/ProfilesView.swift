@@ -27,10 +27,10 @@ struct ProfilesView: View {
                     }
                 }
                 if !controller.connected {
-                    Text("Mouse offline — profiles can be renamed or deleted, but not applied.")
+                    Text("Mouse offline. You can rename or delete profiles, but not apply them.")
                         .font(.system(size: 10.5)).foregroundStyle(.secondary)
                 } else if controller.profileApplyFailed {
-                    Text("Couldn't apply — the mouse isn't responding.")
+                    Text("Couldn't apply that. The mouse isn't responding.")
                         .font(.system(size: 10.5)).foregroundStyle(Color.batteryLow)
                 }
             }

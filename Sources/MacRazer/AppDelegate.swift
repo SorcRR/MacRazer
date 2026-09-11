@@ -309,7 +309,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         guard controller.connected, let pct = controller.batteryPercent else {
             return name
         }
-        return "\(name) — \(pct)%" + (controller.charging ? " (charging)" : "")
+        return "\(name) · \(pct)%" + (controller.charging ? " (charging)" : "")
     }
 
     @objc private func refreshNow() { controller.refreshAll() }

@@ -76,7 +76,7 @@ struct SettingsView: View {
             // Shown rather than hidden when unavailable: running straight from the disk image
             // is a real thing people do, and "why is this switch dead" deserves an answer.
             if !launchAtLogin.isSupported {
-                sectionNote("Move MacRazer to your Applications folder to use this — a login item "
+                sectionNote("Move MacRazer to your Applications folder to use this. A login item "
                      + "pointing into a disk image stops working the moment it's ejected.")
             } else if let error = launchAtLogin.lastError {
                 sectionNote(error, color: .batteryLow)
@@ -109,7 +109,7 @@ struct SettingsView: View {
             enabled: updateChecker.canInstallInPlace
         ) {
             if !updateChecker.canInstallInPlace {
-                sectionNote("Unavailable here — MacRazer can't replace itself from this location. "
+                sectionNote("Not available here, because MacRazer can't replace itself from this location. "
                      + "Move it to your Applications folder.")
             } else if !updateChecker.autoInstallEnabled {
                 sectionNote("Off: you'll get a dot on the menu bar icon and a card in the popover instead.")
@@ -166,7 +166,7 @@ struct SettingsView: View {
         case .downloading(let f): return "Downloading the update… \(Int(f * 100))%"
         case .installing: return "Installing the update…"
         case .restarting: return "Restarting into the new version…"
-        case .needsRestart: return "Update installed — quit and reopen MacRazer to use it."
+        case .needsRestart: return "Update installed. Quit and reopen MacRazer to use it."
         case .idle: break
         }
         if let latest = updateChecker.latestVersion {
@@ -178,7 +178,7 @@ struct SettingsView: View {
         guard let last = updateChecker.lastCheckedAt else {
             return "Not checked yet. MacRazer checks once a day."
         }
-        return "Up to date — last checked \(Self.relativeDate.localizedString(for: last, relativeTo: Date()))."
+        return "Up to date. Last checked \(Self.relativeDate.localizedString(for: last, relativeTo: Date()))."
     }
 
     // MARK: Building blocks

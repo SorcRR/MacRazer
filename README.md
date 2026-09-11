@@ -185,6 +185,11 @@ Full details, including the protocol, the per-device hardware quirks, and a file
 are in [docs/DOCUMENTATION.md](docs/DOCUMENTATION.md). The complete feature history is in
 [CHANGELOG.md](CHANGELOG.md).
 
+## Built with
+
+MacRazer is planned and tracked in [Hiveship](https://hiveship.app/), an issue tracker for
+handing work to coding agents as well as the people on your team.
+
 ## Contributing
 
 Pull requests are welcome, especially **device profiles** so this works on more Razer mice.

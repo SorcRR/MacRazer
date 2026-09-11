@@ -74,9 +74,18 @@ expect rough edges until 1.0.
  you open daily to read a battery percentage, and nothing permanent there stays subtle past
  the third time you see it.
 
-- **The About window reads like a person wrote it.** The copy had picked up the house style of
- an AI: em dashes everywhere, clauses stacked three deep, semicolons joining sentences that
- wanted to be two. Same facts, same trademark and licence wording, shorter sentences.
+- **The app and the site read like a person wrote them.** The copy had picked up the house
+ style of an AI: em dashes everywhere, clauses stacked three deep, semicolons joining
+ sentences that wanted to be two. Swept through every string a user sees, in the popover,
+ Settings, permissions, profiles, remapping, the low-battery notification and the update
+ errors, and through the prose on all four site pages. Same facts throughout, including the
+ trademark and licence wording, just shorter sentences. `release-notes.sh --check` now
+ refuses a draft containing an em dash, so release bodies stay that way without anyone having
+ to remember. Contributor-facing text is left alone: code comments, CLI diagnostics and the
+ page titles search engines have already indexed.
+
+- **A "Built with Hiveship" link in the README and in the site footer**, alongside the one in
+ the About window.
 
 - **The About preview renders real buttons.** `render-about` went through `ImageRenderer`,
  which draws every native control as a placeholder — and that window is mostly buttons and

@@ -16,7 +16,7 @@ struct PermissionsView: View {
             header
             permissionRow(
                 title: "Input Monitoring",
-                why: "Lets MacRazer talk to your mouse — battery, DPI, polling rate and lighting all need this.",
+                why: "Lets MacRazer talk to your mouse. Battery, DPI, polling rate and lighting all need it.",
                 granted: model.inputMonitoring,
                 required: true,
                 grant: { model.grantInputMonitoring() },
@@ -132,7 +132,7 @@ struct PermissionsView: View {
                     .buttonStyle(.borderedProminent).tint(.razerGreen)
                     .font(.system(size: 12, weight: .medium))
                 if model.relaunchFailed {
-                    Text("Couldn't relaunch — quit and reopen MacRazer manually.")
+                    Text("Couldn't relaunch. Quit and reopen MacRazer yourself.")
                         .font(.system(size: 10)).foregroundStyle(Color.batteryLow)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -153,7 +153,7 @@ struct PermissionsView: View {
             if controller.connected, let name = controller.deviceName {
                 Text(verbatim: "\(name) connected").font(.system(size: 11, weight: .medium))
             } else if model.inputMonitoring {
-                Text("No Razer mouse detected yet — connect the 2.4 GHz dongle or a USB-C cable (Bluetooth isn't supported).")
+                Text("No Razer mouse yet. Connect the 2.4 GHz dongle or a USB-C cable. Bluetooth won't work.")
                     .font(.system(size: 11)).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
@@ -169,7 +169,7 @@ struct PermissionsView: View {
     /// already running has no effect until relaunch (the process caches its TCC decision).
     private var relaunchTip: some View {
         Text("Already enabled it in System Settings but it still shows “Needed”? macOS only applies "
-             + "Input Monitoring to a freshly-launched app — use Quit & Relaunch below.")
+             + "Input Monitoring to an app that has just started. Use Quit & Relaunch below.")
             .font(.system(size: 10)).foregroundStyle(.tertiary)
             .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, 4)
@@ -186,7 +186,7 @@ struct PermissionsView: View {
                     .buttonStyle(.bordered).font(.system(size: 12))
                     .help("Relaunch so macOS applies an Input Monitoring grant made while the app was running.")
                 if model.relaunchFailed {
-                    Text("Relaunch failed — quit and reopen manually.")
+                    Text("Relaunch failed. Quit and reopen MacRazer yourself.")
                         .font(.system(size: 10)).foregroundStyle(Color.batteryLow)
                 }
             }

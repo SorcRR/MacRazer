@@ -54,13 +54,13 @@ struct UsageGraphView: View {
                     } else if controller.charging {
                         // The chart keeps showing the previous charge while docked — say
                         // why it isn't moving.
-                        Text("Charging — tracking paused")
+                        Text("Charging. Tracking paused")
                             .font(.system(size: 10)).foregroundStyle(.secondary)
                     }
                 }
                 .frame(height: headerRowHeight)
                 if displaySamples.count < 4 {
-                    placeholder(controller.charging ? "Charging — usage tracking paused" : "Gathering data…")
+                    placeholder(controller.charging ? "Charging. Usage tracking paused" : "Gathering data…")
                 } else {
                     Chart {
                         // The previous charge, one flat dimmed series behind the live one

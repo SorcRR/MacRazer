@@ -135,7 +135,7 @@ final class LowBatteryNotifier: @unchecked Sendable {
 
         let content = UNMutableNotificationContent()
         content.title = "Battery Low"
-        content.body = "\(deviceName ?? "Razer mouse") is at \(percent)% — charge it soon."
+        content.body = "\(deviceName ?? "Razer mouse") is at \(percent)%. Time to charge it."
         content.sound = .default
         let request = UNNotificationRequest(
             identifier: Self.identifier(deviceKey: deviceKey), content: content, trigger: nil)

@@ -90,7 +90,7 @@ struct RemapView: View {
     private var pausedNote: some View {
         HStack(spacing: 8) {
             Image(systemName: "pause.circle").foregroundStyle(Color.batteryMid)
-            Text("Mouse offline — remapping is paused until it reconnects.")
+            Text("Mouse offline. Remapping is paused until it reconnects.")
                 .font(.system(size: 11)).foregroundStyle(.secondary)
             Spacer()
         }

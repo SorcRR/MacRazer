@@ -44,7 +44,7 @@ enum UpdateInstallError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .notWritable:
-            return "MacRazer can't write to its own folder — install the update manually."
+            return "MacRazer can't write to its own folder. Install the update yourself."
         case .mountFailed:
             return "The downloaded update couldn't be opened. Try again."
         case .noAppInImage, .rejected(.wrongApp):
@@ -52,7 +52,7 @@ enum UpdateInstallError: LocalizedError, Equatable {
         case .rejected(.notNewer(let version)):
             return "The download was version \(version), which isn't newer than what you're running."
         case .signatureInvalid:
-            return "The downloaded update failed its signature check — it may be damaged."
+            return "The download failed its signature check. It may be damaged."
         case .copyFailed, .swapFailed:
             return "The update downloaded but couldn't be installed. Install it manually instead."
         }
