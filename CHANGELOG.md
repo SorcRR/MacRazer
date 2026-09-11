@@ -25,6 +25,9 @@ expect rough edges until 1.0.
  so plainly, with a note that an unverified mouse is not a broken one.
 
 ### Fixed
+- **The site footer links wrap instead of running off the side of a phone.** `.footer-links`
+ was a flex row with no `flex-wrap`, so on a 375px screen the last two links were simply cut
+ off at the edge. Long-standing, and easy to miss on a desktop browser.
 - **The changelog can no longer accumulate duplicate headings unnoticed.** Two branches each
  adding a `### Fixed` under `[Unreleased]` merge cleanly — git appends, nothing conflicts, and
  nobody spots it in a diff. It happened three times across one stack, and then again in the PR
@@ -84,8 +87,10 @@ expect rough edges until 1.0.
  to remember. Contributor-facing text is left alone: code comments, CLI diagnostics and the
  page titles search engines have already indexed.
 
-- **A "Built with Hiveship" link in the README and in the site footer**, alongside the one in
- the About window.
+- **A "Built with Hiveship" card in the site footer**, with the Hiveship mark, on all four
+ pages, plus a line in the README alongside the one in the About window. The mark is a 901
+ byte SVG copied into `docs/assets/` rather than hotlinked, so the site stays self-contained
+ and doesn't reach out to another origin on every page load.
 
 - **The About preview renders real buttons.** `render-about` went through `ImageRenderer`,
  which draws every native control as a placeholder — and that window is mostly buttons and
