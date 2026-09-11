@@ -6,6 +6,8 @@ expect rough edges until 1.0.
 
 ## [Unreleased]
 
+## [0.4.1] — 2026-09-11
+
 ### Changed
 - **`UpdateChecker` takes the defaults store it reads.** Every decision in it is a pure
  function with tests, and both bugs this feature shipped were in the wiring between those
