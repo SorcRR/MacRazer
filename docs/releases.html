@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Release notes | MacRazer</title>
+<meta name="description" content="Every MacRazer release and what changed in it — new mice, features and fixes for the free open-source Razer mouse app for macOS.">
+<meta name="author" content="SorcRR">
+<link rel="canonical" href="https://sorcrr.github.io/MacRazer/releases.html">
+
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://sorcrr.github.io/MacRazer/releases.html">
+<meta property="og:title" content="MacRazer release notes">
+<meta property="og:description" content="Every release and what changed in it — new mice, features and fixes.">
+<meta property="og:image" content="https://sorcrr.github.io/MacRazer/assets/icon-1024.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="MacRazer release notes">
+<meta name="twitter:description" content="Every release and what changed in it — new mice, features and fixes.">
+<meta name="twitter:image" content="https://sorcrr.github.io/MacRazer/assets/icon-1024.png">
+
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,600;1,9..144,500&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="grain"></div>
+
+<header class="hero">
+  <nav class="topbar">
+    <div class="brand">
+      <a href="./" style="display:contents;color:inherit;text-decoration:none">
+        <img src="assets/icon-1024.png" alt="" class="brand-icon">
+        <span>MacRazer</span>
+      </a>
+    </div>
+    <div class="topbar-links">
+      <a href="./#features">Features</a>
+      <a href="./#mice">Supported mice</a>
+      <a href="razer-mouse-battery-mac.html">Battery on Mac</a>
+      <a href="releases.html" aria-current="page">Releases</a>
+      <a href="https://github.com/SorcRR/MacRazer" class="topbar-gh">GitHub →</a>
+    </div>
+  </nav>
+
+  <div class="hero-content">
+    <p class="kicker">changelog · every version</p>
+    <h1>What changed,<br><em>and when</em>.</h1>
+    <p class="hero-sub">Every MacRazer release and what was in it. These are the same notes the
+    app shows you before it installs an update — install instructions left out, since you are
+    plainly already here.</p>
+    <div class="hero-actions">
+      <a href="https://github.com/SorcRR/MacRazer/releases/latest/download/MacRazer.dmg" class="btn btn-primary btn-large">
+        Download for macOS<span id="version-tag" class="version-tag"></span>
+      </a>
+      <a href="https://github.com/SorcRR/MacRazer/releases" class="btn btn-ghost">On GitHub</a>
+    </div>
+  </div>
+</header>
+
+<main>
+  <section class="releases">
+    <div id="releases-list">
+      <p class="releases-status" id="releases-status">Loading releases…</p>
+    </div>
+    <noscript>
+      <p class="releases-status">This page builds the list from the GitHub Releases API, which
+      needs JavaScript. <a href="https://github.com/SorcRR/MacRazer/releases">Read the releases
+      on GitHub</a> instead, or see
+      <a href="https://github.com/SorcRR/MacRazer/blob/master/CHANGELOG.md">CHANGELOG.md</a>.</p>
+    </noscript>
+  </section>
+</main>
+
+<footer class="footer">
+  <div class="footer-grid">
+    <div>
+      <div class="brand">
+        <img src="assets/icon-1024.png" alt="" class="brand-icon">
+        <span>MacRazer</span>
+      </div>
+      <p class="footer-disclaimer">Unofficial. Not affiliated with, authorized by, or endorsed by
+        Razer Inc. Protocol ported from <a href="https://github.com/openrazer/openrazer">OpenRazer</a>.</p>
+    </div>
+    <div class="footer-links">
+      <a href="./">Home</a>
+      <a href="razer-synapse-alternative-mac.html">Synapse alternative</a>
+      <a href="razer-mouse-battery-mac.html">Battery on Mac</a>
+      <a href="https://github.com/SorcRR/MacRazer">GitHub</a>
+      <a href="https://github.com/SorcRR/MacRazer/blob/master/LICENSE">GPL-2.0 License</a>
+      <a href="https://ko-fi.com/sorcrr">Tips</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+(function () {
+  "use strict";
+
+  // Release bodies are markdown written by hand, and they end up in this page as *text* —
+  // every string below goes through textContent or a created element, never innerHTML. A
+  // release note is not a place to start trusting markup.
+  var REPO = "SorcRR/MacRazer";
+
+  function el(tag, className, text) {
+    var node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text != null) node.textContent = text;
+    return node;
+  }
+
+  // Only http(s). A link is the one thing here that becomes an attribute rather than text,
+  // so it is the one thing that has to be checked.
+  function safeHref(url) {
+    return /^https?:\/\//i.test(url) ? url : null;
+  }
+
+  /* ---------- the small markdown subset release bodies actually use ---------- */
+
+  // **bold**, `code`, [text](url) — tokenised into nodes rather than substituted into a
+  // string, so nothing in the text can turn into markup.
+  function inline(text) {
+    var frag = document.createDocumentFragment();
+    var pattern = /\*\*([^*]+)\*\*|`([^`]+)`|\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g;
+    var last = 0;
+    var m;
+    while ((m = pattern.exec(text)) !== null) {
+      if (m.index > last) frag.appendChild(document.createTextNode(text.slice(last, m.index)));
+      if (m[1] != null) {
+        // Recursed, because the emphasis nests: these notes routinely write
+        // **`VersionCompare` no longer misorders releases**, and taking the bold run as plain
+        // text left the backticks on the page. It terminates — each level strips its own
+        // delimiters, so the inner string is always shorter.
+        var strong = el("strong");
+        strong.appendChild(inline(m[1]));
+        frag.appendChild(strong);
+      } else if (m[2] != null) {
+        frag.appendChild(el("code", null, m[2]));
+      } else {
+        var href = safeHref(m[4]);
+        if (href) {
+          var a = el("a");
+          a.appendChild(inline(m[3]));
+          a.href = href;
+          a.rel = "noopener";
+          frag.appendChild(a);
+        } else {
+          // An anchor with no href still takes the accent colour and reads as a link that does
+          // nothing. Show the words instead.
+          frag.appendChild(inline(m[3]));
+        }
+      }
+      last = pattern.lastIndex;
+    }
+    if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
+    return frag;
+  }
+
+  // Sections the reader of *this* page has no use for. Same rule the app applies to the same
+  // bodies: by the time these notes are in front of you, you have managed the install.
+  var DROPPED = { "install": 1, "installation": 1, "download": 1 };
+
+  function renderBody(markdown, into) {
+    var lines = String(markdown || "").split(/\r?\n/);
+    var list = null;          // open <ul>, if any
+    var paragraph = null;     // open <p>, for wrapped prose
+    var dropping = false;     // inside a section we are not showing
+
+    function closeList() { list = null; }
+    function closeParagraph() { paragraph = null; }
+
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i].trim();
+
+      // The changelog footer is a link back to where the reader already is.
+      if (/^\*\*full changelog:/i.test(line)) break;
+
+      if (line === "") { closeList(); closeParagraph(); continue; }
+
+      var heading = /^#{1,6}\s+(.*)$/.exec(line);
+      if (heading) {
+        closeList(); closeParagraph();
+        var title = heading[1].replace(/\*\*/g, "").trim();
+        dropping = Object.prototype.hasOwnProperty.call(DROPPED, title.toLowerCase());
+        if (!dropping) into.appendChild(el("h3", "release-section", title));
+        continue;
+      }
+      if (dropping) continue;
+
+      var bullet = /^[-*+]\s+(.*)$/.exec(line);
+      if (bullet) {
+        closeParagraph();
+        if (!list) { list = el("ul", "release-items"); into.appendChild(list); }
+        var li = el("li");
+        li.appendChild(inline(bullet[1]));
+        list.appendChild(li);
+        continue;
+      }
+
+      // Checked before the continuation below: a callout written directly under a bullet with
+      // no blank line between them would otherwise be swallowed into that bullet, marker and
+      // all, since only this branch strips the ">".
+      var quote = /^>\s?(.*)$/.exec(line);
+      if (quote) {
+        closeList();
+        closeParagraph();
+        var block = el("p", "release-callout");
+        block.appendChild(inline(quote[1]));
+        into.appendChild(block);
+        continue;
+      }
+
+      // A line directly under a bullet continues it; markdown wraps, and half a sentence is
+      // worse than none.
+      if (list && list.lastChild) {
+        list.lastChild.appendChild(document.createTextNode(" "));
+        list.lastChild.appendChild(inline(line));
+        continue;
+      }
+
+      if (!paragraph) {
+        paragraph = el("p", "release-text");
+        into.appendChild(paragraph);
+      } else {
+        paragraph.appendChild(document.createTextNode(" "));
+      }
+      paragraph.appendChild(inline(line));
+    }
+  }
+
+  function renderRelease(release) {
+    var article = el("article", "release");
+
+    var head = el("div", "release-head");
+    var tag = release.tag_name || "";
+    var h2 = el("h2", "release-version");
+    var link = el("a", null, tag);
+    var href = safeHref(release.html_url || "");
+    if (href) { link.href = href; link.rel = "noopener"; }
+    h2.appendChild(link);
+    head.appendChild(h2);
+
+    var meta = el("div", "release-meta");
+    if (release.published_at) {
+      var when = new Date(release.published_at);
+      var time = el("time", null, when.toLocaleDateString(undefined,
+        { year: "numeric", month: "long", day: "numeric" }));
+      time.dateTime = release.published_at;
+      meta.appendChild(time);
+    }
+    if (release.prerelease) meta.appendChild(el("span", "release-badge", "pre-release"));
+    head.appendChild(meta);
+    article.appendChild(head);
+
+    var body = el("div", "release-body");
+    renderBody(release.body, body);
+    if (!body.firstChild) {
+      body.appendChild(el("p", "release-text", "No notes were published for this release."));
+    }
+    article.appendChild(body);
+    return article;
+  }
+
+  var list = document.getElementById("releases-list");
+  var status = document.getElementById("releases-status");
+
+  // 100 is the API's maximum page size, and no pagination: at four releases a year that is
+  // a couple of decades. If it is ever reached, the oldest fall off the bottom silently, so
+  // paginate then rather than spending a second request on it now.
+  fetch("https://api.github.com/repos/" + REPO + "/releases?per_page=100")
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (releases) {
+      // Filtered before the count is judged: a response holding nothing but drafts is as empty
+      // as no response, and would otherwise clear the loading line and render nothing at all.
+      var published = (releases || []).filter(function (r) { return !r.draft; });
+      if (!published.length) throw new Error("no releases");
+
+      // Built whole before anything is removed. Taking the status line out first meant a throw
+      // half-way through rendering left a page with no releases *and* no message, because the
+      // catch below writes into a node that is no longer in the document.
+      var frag = document.createDocumentFragment();
+      published.forEach(function (r) { frag.appendChild(renderRelease(r)); });
+      if (status) status.remove();
+      list.appendChild(frag);
+
+      // The version tag comes out of the response already in hand. Asking /releases/latest for
+      // it as well spent two of the sixty unauthenticated requests an IP gets per hour, on the
+      // one page where running out removes all the content.
+      var latest = published.filter(function (r) { return !r.prerelease; })[0] || published[0];
+      var tagEl = document.getElementById("version-tag");
+      if (tagEl && latest && latest.tag_name) tagEl.textContent = " · " + latest.tag_name;
+    })
+    .catch(function () {
+      // Rate-limited, offline, or the API moved. Say so and point at the source rather than
+      // leaving a page that just says "Loading…" forever.
+      if (!status) return;
+      status.textContent = "";
+      status.appendChild(document.createTextNode("Couldn't load the releases just now. "));
+      var a = el("a", null, "Read them on GitHub");
+      a.href = "https://github.com/" + REPO + "/releases";
+      a.rel = "noopener";
+      status.appendChild(a);
+      status.appendChild(document.createTextNode("."));
+    });
+})();
+</script>
+</body>
+</html>

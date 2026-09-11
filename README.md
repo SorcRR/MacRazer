@@ -42,7 +42,8 @@ Razer mice that use the same HID protocol family, but those are untested, so tre
 - **Updates install themselves**: when a new release is out, "Update & Restart" downloads it,
   checks it, replaces the installed app and relaunches — no dragging a DMG. It falls back to
   the plain DMG download when MacRazer is somewhere it can't replace itself (still on the disk
-  image, or in a folder you can't write to).
+  image, or in a folder you can't write to). The card also links to **what's in the release**,
+  so the choice isn't blind.
 
 Settings persist across app restarts and reconnects, and the menu bar updates on its own when
 the mouse connects, disconnects, or sleeps.

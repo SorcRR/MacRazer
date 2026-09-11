@@ -69,6 +69,55 @@ expect rough edges until 1.0.
  BACKLIGHT individually, so a new model's brightness LED can be found in one run.
 
 ### Added
+- **The "What's new" summary survives a line wrap.** Every source line above the first
+ heading became its own paragraph, so a summary hard-wrapped across two lines — the house
+ style in every markdown file here, and what the drafted template itself does — showed a
+ blank line through the middle of a sentence.
+
+- **Releases come with a drafted body, and it credits contributors.** The release body is not
+ cosmetic any more — the app fetches it and builds the "What's new" page from it — so a
+ release published without one makes that page quietly not appear, and a release that forgets
+ a contributor forgets them in the place users actually read. `release.sh` now drafts
+ `dist/RELEASE_NOTES-<version>.md` from the changelog section it just promoted, with a Thanks
+ section built from the merge commits: handle, PR title and number, the maintainer's own
+ merges left out. Squash-merged PRs leave no merge commit to read, so those authors are
+ reported on stderr to be added by hand rather than silently dropped. `--check` refuses a
+ draft still carrying its `TODO:` placeholder, since that would become the release's first
+ paragraph. The entries come out verbatim: the script drafts the mechanical parts and leaves
+ the writing alone.
+- **A release notes page on the site**, linked from the nav and the footer of every page.
+ Every version and what was in it, built from the same GitHub release bodies the app shows,
+ with the install instructions dropped by the same rule the app uses — someone reading this
+ has plainly managed it. It fetches at page load rather than being generated, so a release
+ appears on the site without the site being touched; if the API is unreachable it says so and
+ points at GitHub instead of sitting on "Loading…". The markdown is turned into DOM nodes
+ rather than HTML strings, so nothing in a release body can become markup on the page.
+
+- **The release notes outlive the update.** They were reachable from one place, the update
+ card, which disappears the moment you are on the new version — so the notes went with it,
+ and with "Install updates automatically" on you never saw the card in the first place. That
+ setting could take you from 0.3.0 to 0.3.2 without a word about any of it. The first launch
+ on a new version now shows a dismissible **"Updated to 0.3.1"** card in the popover with the
+ same "What's new" row, and the About window keeps a **"What's new in 0.3.1"** link under the
+ version for afterwards. Neither fetches anything: the check that found the release already
+ cached its body, and after the install that release is the one running. The notes are shown
+ only when the cache is demonstrably about the version running, and a first install is not
+ an update — "Updated to 0.3.1" on a first launch would simply be false. The upgrade *to*
+ this release is the awkward case: the version before it never recorded one, so it looks
+ exactly like a first install. Evidence that MacRazer has run here before — the update
+ check's date, or the login-item default — tells them apart, so the release that introduces
+ the card is not the one release that never shows it. It is written down rather than only
+ held in memory: the card waits for the popover to be opened, which for a menu bar app can be
+ days, and a reboot in between must not swallow it.
+
+- **The update card says what's in the update.** It offered "Update & Restart" and nothing
+ about why you would want to — you were being asked to replace your app on no information,
+ which is the thing the macOS convention of showing release notes in the update dialog exists
+ to prevent. The card now carries one row, `What's new in 0.3.1 ›`, opening a page with the
+ release notes parsed out of the GitHub release body the updater already fetches. One row,
+ because the popover with an update showing is 748pt tall and a menu bar popover has roughly
+ 600-700pt to work with — inline notes would have pushed it past 900. The page repeats
+ Update & Restart at the bottom, so the decision can be made where the information is.
 - **Razer Basilisk V3 X HyperSpeed support** (PID `0x00B9`), verified on hardware over the
  2.4 GHz dongle: battery, DPI, the onboard DPI stage table, polling rate, lighting effects
  and brightness all read and write. Detection and naming already worked for any Razer mouse;

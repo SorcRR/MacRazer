@@ -78,6 +78,43 @@ func openDevice() -> HIDDevice? {
     }
 }
 
+/// Renders through a real `NSHostingView` instead of `ImageRenderer`.
+///
+/// `ImageRenderer` draws a `ScrollView` as an empty box — its content is laid out lazily and
+/// never makes it into the snapshot — so a page whose body is a scroll view has to be hosted
+/// in a view hierarchy and captured from there. Fixed size, because a hosting view has no
+/// window to size it.
+@MainActor func writeHostedPNG<V: View>(_ view: V, size: CGSize, to path: String) {
+    // The popover's own backdrop. `cacheDisplay` captures no window background, and the dark
+    // scheme's primary text is white — without this the whole page renders white on white.
+    let hosted = view.environment(\.colorScheme, .dark).background(Color(white: 0.13))
+    let host = NSHostingView(rootView: AnyView(hosted))
+    host.appearance = NSAppearance(named: .darkAqua)
+    host.frame = CGRect(origin: .zero, size: size)
+    host.layoutSubtreeIfNeeded()
+    guard let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) else {
+        print("Render failed")
+        return
+    }
+    host.cacheDisplay(in: host.bounds, to: rep)
+    guard let png = rep.representation(using: .png, properties: [:]) else {
+        print("Render failed")
+        return
+    }
+    try? png.write(to: URL(fileURLWithPath: path))
+    print("Wrote \(path)")
+}
+
+/// The output path for a `render-*` command: the first argument that names a PNG.
+///
+/// Flags are bare words and the path is positional, so "the first argument" wrote a file
+/// literally named `update` or `charging`. Keeping a list of known flags per command only
+/// moves the bug — a flag added later and forgotten in the list becomes the filename again.
+/// Asking what the argument *is* needs no list to keep in sync.
+func outputPath(_ args: ArraySlice<String>, default fallback: String) -> String {
+    args.first { $0.lowercased().hasSuffix(".png") } ?? fallback
+}
+
 switch command {
 case "info":
     // List every HID interface the dongle exposes, so we can see which one is the control
@@ -126,16 +163,37 @@ case "login-item":
 case "render-ui":
     // Render the popover to a PNG for static visual inspection (no device needed).
     _ = NSApplication.shared
-    let path = args.dropFirst().first ?? "ui-preview.png"
+    let path = outputPath(args.dropFirst(), default: "ui-preview.png")
     let controller = MouseController()
     controller.loadPreviewState()
     if args.contains("offline") { controller.setPreviewOffline() }
     if args.contains("bluetooth") { controller.setPreviewBluetooth() }
     let updateChecker = UpdateChecker()
-    if args.contains("update") { updateChecker.loadPreviewState() }
+    if args.contains("update") { updateChecker.loadPreviewState(notes: PreviewNotes.releaseBody) }
+    if args.contains("updated") { updateChecker.loadPreviewUpdated(notes: PreviewNotes.releaseBody) }
     if args.contains("downloading") { updateChecker.loadPreviewState(phase: .downloading(0.42)) }
     let launchAtLogin = LaunchAtLogin()
     launchAtLogin.loadPreviewState()
+    // The notes page is its own render: it is a scroll view, so it needs the hosted path,
+    // and it is sized to the height the main page renders at — the whole point of checking
+    // it is whether the notes fit there.
+    if args.contains("whatsnew") {
+        // `installed` is the same page reached from the "Updated to …" card: same notes, no
+        // button, because there is nothing left to install.
+        let installed = args.contains("installed")
+        if installed {
+            updateChecker.loadPreviewUpdated(notes: PreviewNotes.releaseBody)
+        } else {
+            updateChecker.loadPreviewState(notes: PreviewNotes.releaseBody)
+        }
+        writeHostedPNG(WhatsNewPage(version: updateChecker.latestVersion ?? AppInfo.displayVersion,
+                                    notes: (installed ? updateChecker.installedNotes : updateChecker.latestNotes)
+                                        ?? ReleaseNotes.parse(PreviewNotes.releaseBody),
+                                    canInstallInPlace: updateChecker.canInstallInPlace,
+                                    onBack: {}, onUpdate: installed ? nil : {}),
+                       size: CGSize(width: 320, height: 748), to: path)
+        break
+    }
     let rootView: AnyView = args.contains("color")
         ? AnyView(ColorPickerPage(color: .constant(.blue), onBack: {}, onApply: { _ in }))
         : args.contains("usage")
@@ -148,7 +206,7 @@ case "render-ui":
 
 case "render-settings":
     _ = NSApplication.shared
-    let settingsPath = args.dropFirst().first { $0 != "update" } ?? "settings-preview.png"
+    let settingsPath = outputPath(args.dropFirst(), default: "settings-preview.png")
     let sc = MouseController()
     sc.loadPreviewState()
     let sl = LaunchAtLogin()
@@ -162,19 +220,23 @@ case "render-settings":
 
 case "render-about":
     _ = NSApplication.shared
-    let aboutPath = args.dropFirst().first ?? "about-preview.png"
-    writeViewPNG(AboutView(onDone: {}), to: aboutPath) // no window to close in a render
+    let aboutPath = outputPath(args.dropFirst(), default: "about-preview.png")
+    // `notes` shows the "What's new in …" row, which is otherwise only there once the app has
+    // cached a release body.
+    writeViewPNG(AboutView(onDone: {}, // no window to close in a render
+                           notes: args.contains("notes") ? ReleaseNotes.parse(PreviewNotes.releaseBody) : nil),
+                 to: aboutPath)
 
 case "render-remap":
     _ = NSApplication.shared
-    let path = args.dropFirst().first ?? "remap-preview.png"
+    let path = outputPath(args.dropFirst(), default: "remap-preview.png")
     let r = ButtonRemapper()
     r.loadPreviewState()
     writeViewPNG(RemapView(remapper: r), to: path)
 
 case "render-permissions":
     _ = NSApplication.shared
-    let path = args.dropFirst().first ?? "permissions-preview.png"
+    let path = outputPath(args.dropFirst(), default: "permissions-preview.png")
     let controller = MouseController()
     controller.loadPreviewState()
     let model = PermissionsModel()
@@ -183,11 +245,8 @@ case "render-permissions":
 
 case "icon":
     // Render the menu bar mark to a PNG for visual inspection.
-    // Flags and the optional size are bare words, so they must be excluded from the
-    // positional path — otherwise `icon charging` writes a file literally named "charging".
-    let iconFlags: Set<String> = ["charging", "nologo", "light"]
     let iconArgs = args.dropFirst()
-    let path = iconArgs.first { !iconFlags.contains($0) && Int($0) == nil } ?? "icon-preview.png"
+    let path = outputPath(iconArgs, default: "icon-preview.png")
     // Optional size, so the mark can be checked at real menu bar scale (~21pt @2x) rather
     // than judged from a downsampled 256px render. Bounded: an unbounded value makes the
     // bitmap allocation fail and the write silently do nothing.

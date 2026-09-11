@@ -179,6 +179,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
                 self?.autoInstallIfEnabled(available: version)
             }
             .store(in: &cancellables)
+        // Before the check, and synchronously: this compares the running version against the
+        // last one recorded and then records the new one, so it has to happen exactly once per
+        // launch and before anything else can write that key.
+        updateChecker.loadInstalledVersionState()
         Task { await updateChecker.checkForUpdatesIfDue() }
         let timer = Timer(timeInterval: 24 * 60 * 60, repeats: true) { [weak self] _ in
             Task { await self?.updateChecker.checkForUpdatesIfDue() }

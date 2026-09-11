@@ -32,7 +32,7 @@ struct PopoverView: View {
     /// The preview passes an explicit `{}`.
     var onOpenSettings: () -> Void
 
-    enum Page { case main, color, buttons, usage, profiles }
+    enum Page { case main, color, buttons, usage, profiles, whatsNew }
     @State private var page: Page = .main
     @State private var isAddingProfile = false
     @State private var newProfileName = ""
@@ -78,6 +78,7 @@ struct PopoverView: View {
             case .buttons: buttonsPage.transition(.move(edge: .trailing))
             case .usage: usagePage.transition(.move(edge: .trailing))
             case .profiles: profilesPage.transition(.move(edge: .trailing))
+            case .whatsNew: whatsNewPage.transition(.move(edge: .trailing))
             }
         }
         .frame(width: popoverWidth)
@@ -149,6 +150,9 @@ struct PopoverView: View {
         VStack(alignment: .leading, spacing: 10) {
             headerCard
             if let version = updateChecker.latestVersion { updateCard(version) }
+            // Never both: an update waiting to be installed is the more useful thing to say
+            // than one that already was.
+            else if updateChecker.justUpdatedTo != nil { updatedCard }
             // A Razer mouse on Bluetooth can't be controlled (no control protocol over BT) —
             // explain it instead of just showing "offline".
             if controller.bluetoothMouseName != nil && !controller.connected { bluetoothNotice }
@@ -448,6 +452,21 @@ struct PopoverView: View {
             if let error = updateChecker.downloadError {
                 Text(error).font(.system(size: 10.5)).foregroundStyle(Color.batteryLow)
             }
+            // A row, not the notes. The main page is already at the height a menu bar
+            // popover can use; the notes get their own page rather than competing with the
+            // seven cards above them.
+            if updateChecker.phase == .idle, updateChecker.latestNotes != nil {
+                Button { page = .whatsNew } label: {
+                    HStack(spacing: 6) {
+                        Text("What's new in \(version)").font(.system(size: 11, weight: .medium))
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold))
+                    }
+                    .foregroundStyle(Color.razerGreen)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
             switch updateChecker.phase {
             case .idle: updateActionButton
             case .downloading(let fraction): updateProgress(fraction)
@@ -489,6 +508,77 @@ struct PopoverView: View {
         .buttonStyle(.borderedProminent)
         .tint(.razerGreen)
         .controlSize(.small)
+    }
+
+    /// The release notes, given the whole popover. Reached from the update card's one row.
+    ///
+    /// The empty fallback is unreachable today — the row that navigates here is gated on the
+    /// same `latestNotes` — but it still renders the page rather than nothing, so a future
+    /// call site can at worst produce a thin page with a working back button, never a blank
+    /// dead end.
+    private var whatsNewPage: some View {
+        // Reached from either card, and they are about different releases: one waiting, one
+        // already running. An update on offer wins, matching which card is showing.
+        let pending = updateChecker.latestVersion
+        return WhatsNewPage(version: pending ?? appVersion,
+                            notes: (pending != nil ? updateChecker.latestNotes : updateChecker.installedNotes)
+                                ?? ReleaseNotes(summary: "", sections: []),
+                            canInstallInPlace: updateChecker.canInstallInPlace,
+                            // Nothing to install when the notes are about what's already
+                            // running, so the page shows no button at all rather than one that
+                            // would re-download the version you are reading about.
+                            onBack: { page = .main },
+                            onUpdate: pending == nil ? nil : {
+                                page = .main
+                                Task { await updateChecker.downloadAndInstall() }
+                            })
+    }
+
+    /// Shown after the version changes, until dismissed.
+    ///
+    /// With automatic installs on there is no update card and never was one — this is the only
+    /// place the app says a release happened. It is a row and a dismiss, because it is news
+    /// rather than a decision.
+    ///
+    /// Takes no version: `justUpdatedTo` carries the *comparable* version, which is "0" for an
+    /// unversioned dev build, and "Updated to 0" is not a sentence. It always describes the
+    /// running build, so `appVersion` is both correct and the one worth showing.
+    private var updatedCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(Color.razerGreen)
+                    .font(.system(size: 14, weight: .semibold))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Updated to \(appVersion)").font(.system(size: 12, weight: .semibold))
+                    Text("You're on the latest version.")
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+                Button {
+                    updateChecker.dismissAnnouncement()
+                } label: {
+                    Image(systemName: "xmark").font(.system(size: 9, weight: .bold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.tertiary)
+            }
+            if updateChecker.installedNotes != nil {
+                Button { page = .whatsNew } label: {
+                    HStack(spacing: 6) {
+                        Text("What's new in \(appVersion)").font(.system(size: 11, weight: .medium))
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold))
+                    }
+                    .foregroundStyle(Color.razerGreen)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.razerGreen.opacity(0.12), in: RoundedRectangle(cornerRadius: 13))
     }
 
     private func updateProgress(_ fraction: Double) -> some View {

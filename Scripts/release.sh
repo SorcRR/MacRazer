@@ -48,10 +48,18 @@ step() { echo "▸ $*"; }
 # tree is dirty", which is true but describes the script's own mess. Say what to run instead.
 TEMP_FILES=""
 EDITS_APPLIED=0
+NOTES=""
+NOTES_CREATED=0
 on_exit() {
     local status=$?
     # shellcheck disable=SC2086
     [ -n "${TEMP_FILES}" ] && rm -f ${TEMP_FILES}
+    # A draft from a failed run is worth nothing and would block the retry, since the run that
+    # succeeds refuses to overwrite one. Only a draft that outlived a successful run can have
+    # been edited, and that is the one worth protecting.
+    if [ "${status}" -ne 0 ] && [ "${NOTES_CREATED}" -eq 1 ]; then
+        rm -f "${NOTES}"
+    fi
     if [ "${status}" -ne 0 ] && [ "${EDITS_APPLIED}" -eq 1 ]; then
         echo >&2
         echo "✗ Stopped part-way with the release edits already applied. To undo them:" >&2
@@ -171,6 +179,21 @@ sed -i '' "s/\"softwareVersion\": \"[^\"]*\"/\"softwareVersion\": \"${VERSION}\"
 grep -q "\"softwareVersion\": \"${VERSION}\"" "${SITE}" \
     || fail "couldn't update softwareVersion in ${SITE} — is it still there?"
 
+step "Drafting the release notes…"
+# Before the build, so a build failure doesn't lose them — and after the changelog is closed
+# off, since that's the section they're drafted from. The body is not cosmetic: the app
+# fetches it and builds the popover's "What's new" page out of it, so a release published
+# without one makes that page quietly not appear.
+mkdir -p dist
+NOTES="dist/RELEASE_NOTES-${VERSION}.md"
+# Never over a draft that already exists: this script is meant to be re-runnable, and a
+# re-run that silently truncated notes the maintainer had already written would destroy the
+# one artifact here that isn't regenerable. Same reasoning as refusing a dirty tree.
+[ -e "${NOTES}" ] \
+    && fail "${NOTES} already exists and may have been edited — move or delete it, then re-run"
+./Scripts/release-notes.sh "${VERSION}" > "${NOTES}"
+NOTES_CREATED=1
+
 step "Building the DMGs…"
 ./Scripts/make-dmg.sh
 
@@ -193,9 +216,14 @@ echo "    git diff"
 echo "    git commit -am 'Release v${VERSION}'"
 echo "    git push"
 echo "    git tag v${VERSION} && git push origin v${VERSION}"
+echo "    \$EDITOR ${NOTES}"
+echo "    ./Scripts/release-notes.sh --check ${NOTES}"
 echo "    gh release create v${VERSION} \\"
 echo "      dist/MacRazer.dmg dist/MacRazer-${VERSION}.dmg \\"
-echo "      --title 'v${VERSION}' --notes-from-tag"
+echo "      --title 'v${VERSION}' --notes-file ${NOTES}"
 echo
 echo "  Attach BOTH assets: the in-app updater fetches the fixed 'MacRazer.dmg' name, and the"
 echo "  versioned copy is what makes the Releases page self-describing."
+echo
+echo "  Edit ${NOTES} first — it is a draft of the mechanical parts (every entry, everyone"
+echo "  credited, the install note), not the finished copy. The app shows this text."

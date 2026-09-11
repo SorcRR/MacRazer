@@ -31,7 +31,10 @@ final class LaunchAtLogin: ObservableObject {
     /// (or won't exist) at the next boot. See `AppLocation`.
     @Published private(set) var isSupported: Bool
 
-    private static let appliedDefaultKey = "launchAtLoginDefaultApplied"
+    /// Not private: `UpdateChecker` reads it as evidence that some version of the app has run
+    /// on this machine before. Sharing the constant rather than the string, because a defaults
+    /// key spelled out in two files is a rename away from being quietly wrong in one of them.
+    static let appliedDefaultKey = "launchAtLoginDefaultApplied"
 
     init() {
         isSupported = AppLocation.installedBundleURL != nil

@@ -38,6 +38,9 @@ enum ProjectLinks {
     static let developer = URL(string: "https://github.com/SorcRR")!
 
     static let issues = repo.appendingPathComponent("issues")
+    /// Where "Full release notes" goes: the popover shows a parsed summary, this is the
+    /// unabridged original.
+    static let latestRelease = repo.appendingPathComponent("releases/latest")
     /// GitHub's fixed "latest" shortcut; `Scripts/make-dmg.sh` keeps the asset name constant
     /// precisely so this URL never has to change.
     static let latestDMG = repo.appendingPathComponent("releases/latest/download/MacRazer.dmg")

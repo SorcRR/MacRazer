@@ -291,12 +291,16 @@ swift run MacRazer poll [125|500|1000]
 swift run MacRazer rgb static ff0000 # or: spectrum | wave | off
 swift run MacRazer brightness [0-100] # sweeps LOGO/SCROLL/ZERO/BACKLIGHT LEDs
 swift run MacRazer icon out.png # render the menu bar icon
-swift run MacRazer render-ui [offline|color] out.png # render the popover (dev)
+swift run MacRazer render-ui [offline|color|update|updated|whatsnew|…] out.png # popover (dev)
+swift run MacRazer render-ui whatsnew installed out.png # the notes without an update to install
+swift run MacRazer render-about [notes] out.png
 swift run MacRazer render-remap out.png
 ```
 
-(The `render-*` commands use SwiftUI `ImageRenderer`; note it can't rasterize `ScrollView`
-or native controls, those show as placeholders.)
+(The `render-*` commands use SwiftUI `ImageRenderer`, which can't rasterize native controls —
+buttons and sliders show as placeholders. It can't rasterize a `ScrollView` either, so
+`render-ui whatsnew`, whose page *is* a scroll view, goes through an `NSHostingView` instead;
+that path draws the content but needs an explicit size, since there is no window to supply one.)
 
 ---
 
