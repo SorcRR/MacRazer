@@ -82,15 +82,26 @@ func openDevice() -> HIDDevice? {
 ///
 /// `ImageRenderer` draws a `ScrollView` as an empty box — its content is laid out lazily and
 /// never makes it into the snapshot — so a page whose body is a scroll view has to be hosted
-/// in a view hierarchy and captured from there. Fixed size, because a hosting view has no
-/// window to size it.
-@MainActor func writeHostedPNG<V: View>(_ view: V, size: CGSize, to path: String) {
-    // The popover's own backdrop. `cacheDisplay` captures no window background, and the dark
-    // scheme's primary text is white — without this the whole page renders white on white.
+/// in a view hierarchy and captured from there.
+///
+/// `size` is optional: a view that sizes itself, like a window's content, is measured with
+/// `fittingSize`. Only a scroll view has to be told how much room it has, because it will
+/// take whatever it is given.
+@MainActor func writeHostedPNG<V: View>(_ view: V, size: CGSize? = nil, to path: String) {
+    // The dark backdrop every surface here stands in for. `cacheDisplay` captures no window
+    // background, and the dark scheme's primary text is white — without this the whole thing
+    // renders white on white.
     let hosted = view.environment(\.colorScheme, .dark).background(Color(white: 0.13))
     let host = NSHostingView(rootView: AnyView(hosted))
     host.appearance = NSAppearance(named: .darkAqua)
-    host.frame = CGRect(origin: .zero, size: size)
+    let frameSize = size ?? host.fittingSize
+    // A view with no intrinsic size measures as zero, and the capture below then fails with
+    // nothing to say about why. Name the cause instead.
+    guard frameSize.width > 0, frameSize.height > 0 else {
+        print("Render failed: the view has no size of its own. Pass an explicit size.")
+        return
+    }
+    host.frame = CGRect(origin: .zero, size: frameSize)
     host.layoutSubtreeIfNeeded()
     guard let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) else {
         print("Render failed")
@@ -223,9 +234,13 @@ case "render-about":
     let aboutPath = outputPath(args.dropFirst(), default: "about-preview.png")
     // `notes` shows the "What's new in …" row, which is otherwise only there once the app has
     // cached a release body.
-    writeViewPNG(AboutView(onDone: {}, // no window to close in a render
-                           notes: args.contains("notes") ? ReleaseNotes.parse(PreviewNotes.releaseBody) : nil),
-                 to: aboutPath)
+    //
+    // Hosted rather than `ImageRenderer`: this window is mostly buttons and links, and
+    // `ImageRenderer` draws every native control as a yellow placeholder — which is to say it
+    // could not show the one thing an About preview is for.
+    writeHostedPNG(AboutView(onDone: {}, // no window to close in a render
+                             notes: args.contains("notes") ? ReleaseNotes.parse(PreviewNotes.releaseBody) : nil),
+                   to: aboutPath)
 
 case "render-remap":
     _ = NSApplication.shared

@@ -75,8 +75,8 @@ final class LaunchAtLogin: ObservableObject {
             }
         } catch {
             lastError = on
-                ? "Couldn't turn this on — add MacRazer in System Settings › General › Login Items."
-                : "Couldn't turn this off — remove MacRazer in System Settings › General › Login Items."
+                ? "Couldn't turn this on. Add MacRazer in System Settings › General › Login Items."
+                : "Couldn't turn this off. Remove MacRazer in System Settings › General › Login Items."
         }
         refresh()
     }

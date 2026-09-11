@@ -1,0 +1,18 @@
+<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+  <!-- Hiveship brand mark: a cuboctahedron viewed down its 3-fold axis. -->
+  <defs>
+    <linearGradient id="hsFront" x1="0" y1="0" x2="0.3" y2="1">
+      <stop offset="0" stop-color="#8CF3D2" />
+      <stop offset="1" stop-color="#46E6AA" />
+    </linearGradient>
+  </defs>
+  <g stroke="#0A140F" stroke-width="0.6" stroke-linejoin="round">
+    <polygon points="34,6.68 24,12.45 14,6.68" fill="#5BE8B4" />
+    <polygon points="44,24 34,29.77 34,41.32" fill="#0E6B47" />
+    <polygon points="4,24 14,29.77 14,41.32" fill="#0E6B47" />
+    <polygon points="24,12.45 34,6.68 44,24 34,29.77" fill="#27BC86" />
+    <polygon points="24,12.45 14,6.68 4,24 14,29.77" fill="#34D598" />
+    <polygon points="34,29.77 34,41.32 14,41.32 14,29.77" fill="#178A5F" />
+    <polygon points="24,12.45 34,29.77 14,29.77" fill="url(#hsFront)" />
+  </g>
+</svg>

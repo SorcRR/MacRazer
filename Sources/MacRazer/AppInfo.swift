@@ -31,6 +31,13 @@ enum AppInfo {
 /// four files, so a rename would have left the updater polling one place while the About
 /// window linked to another — and nothing would have failed loudly, the update card would
 /// just have quietly stopped finding releases.
+/// Somewhere else entirely. `ProjectLinks` is every URL that identifies *this* project, and
+/// putting an unrelated one in there would make that sentence false for whoever adds the next.
+enum ElsewhereLinks {
+    /// The About window's "For developers" section.
+    static let hiveship = URL(string: "https://hiveship.app/")!
+}
+
 enum ProjectLinks {
     static let repo = URL(string: "https://github.com/SorcRR/MacRazer")!
     static let site = URL(string: "https://sorcrr.github.io/MacRazer/")!

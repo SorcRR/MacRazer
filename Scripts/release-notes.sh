@@ -51,13 +51,19 @@ note() { echo "  $*" >&2; }
 if [ -n "${CHECK}" ]; then
     [ -f "${CHECK}" ] || fail "no such file: ${CHECK}"
     if grep -q '^TODO:' "${CHECK}"; then
-        fail "${CHECK} still has the TODO placeholder — that would be the release's first paragraph"
+        fail "${CHECK} still has the TODO placeholder. That would be the release's first paragraph."
     fi
     # `/^#/`, not an interval expression: not every awk supports `{1,6}`, and in markdown
     # nothing but a heading starts a line with a hash anyway.
     SUMMARY="$(awk '/^#/{exit} {print}' "${CHECK}" | tr -d '[:space:]')"
     [ -n "${SUMMARY}" ] \
-        || fail "${CHECK} has nothing above its first heading — the app would show no summary"
+        || fail "${CHECK} has nothing above its first heading, so the app would show no summary"
+    # Em dashes read as machine-written, and this text is published three times over: the
+    # releases page, the site, and the app's own What's New. A full stop or a colon almost
+    # always says the same thing.
+    if grep -n '—' "${CHECK}" >&2; then
+        fail "${CHECK} has em dashes on the lines above. Use a full stop, a colon or a comma."
+    fi
     echo "✓ ${CHECK} looks publishable" >&2
     exit 0
 fi
@@ -127,9 +133,9 @@ for sha in ${MERGES}; do
             # maintainer in their own release notes.
             [ "$(echo "${handle}" | tr 'A-Z' 'a-z')" = "$(echo "${OWNER}" | tr 'A-Z' 'a-z')" ] && continue
             title="$(git log -1 --format='%b' "${sha}" | head -1)"
-            # A merge made by hand can carry no body, and "@caseyc —  (#5)" reads as a typo.
+            # A merge made by hand can carry no body, and "@caseyc:  (#5)" reads as a typo.
             if [ -n "${title}" ]; then
-                THANKS="${THANKS}- **@${handle}** — ${title} (#${pr})
+                THANKS="${THANKS}- **@${handle}**: ${title} (#${pr})
 "
             else
                 THANKS="${THANKS}- **@${handle}** (#${pr})
@@ -169,7 +175,7 @@ done | sort -u)"
 # --- The draft -------------------------------------------------------------------------------
 
 cat <<EOF
-TODO: one line saying what this release is about — the app shows everything above the first
+TODO: one line saying what this release is about. The app shows everything above the first
 heading as the summary. The entries below are verbatim from the changelog, which is written
 for contributors: tighten them for users, expect to cut most of it, and delete these lines.
 EOF
@@ -213,6 +219,17 @@ if [ -n "${MALFORMED}" ]; then
         [ -n "${m}" ] || continue
         note "    ${m}"
     done
+fi
+# The entries come out of the changelog verbatim, and the changelog is written for
+# contributors, where an em dash is nobody's problem. The published body is held to a
+# different standard by --check, so say so here, while the draft is being edited, rather than
+# letting the gate reject lines the script itself just copied. The section is the only part
+# that can carry one: everything else in the draft is written below.
+EM_DASH_LINES="$(echo "${SECTION}" | grep -c '—' || true)"
+if [ "${EM_DASH_LINES}" -gt 0 ] 2>/dev/null; then
+    note ""
+    note "⚠ ${EM_DASH_LINES} line(s) carry an em dash, copied from the changelog. --check will"
+    note "  reject them. A full stop or a colon almost always says the same thing."
 fi
 if [ -n "${UNCREDITED}" ]; then
     note ""

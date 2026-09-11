@@ -109,8 +109,11 @@ echo "Crediting contributors"
 
 check "credits the contributor by handle" "1" "$(echo "${OUT}" | grep -c '@caseyc')"
 check "uses the PR title and number" "1" "$(echo "${OUT}" | grep -c 'Add support for the thing (#5)')"
-# A merge made by hand can have no body at all, and "@caseyc —  (#5)" reads as a mistake.
-check "no dangling dash when the merge has no PR title" "0" "$(echo "${OUT}" | grep -c -- '— *(#')"
+# A merge made by hand can have no body at all, and "@caseyc:  (#5)" reads as a mistake.
+check "no dangling colon when the merge has no PR title" "0" "$(echo "${OUT}" | grep -c -- ': *(#')"
+# The draft has to survive the check this same script applies to it. Credits used an em dash
+# until --check started rejecting them, which made the script reject its own output.
+check "the draft it writes has no em dashes" "0" "$(echo "${OUT}" | grep -c -- '—')"
 check "does not credit the repo owner in their own notes" "0" "$(echo "${OUT}" | grep -c '@theowner')"
 check "leaves out the owner's PR title too" "0" "$(echo "${OUT}" | grep -c 'Tidy something up')"
 

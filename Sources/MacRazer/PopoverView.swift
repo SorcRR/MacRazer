@@ -299,7 +299,7 @@ struct PopoverView: View {
                 .font(.system(size: 13, weight: .semibold))
             VStack(alignment: .leading, spacing: 2) {
                 Text("Connected via Bluetooth").font(.system(size: 12, weight: .semibold))
-                Text("\(controller.bluetoothMouseName ?? "Your Razer mouse") only reports battery, DPI and lighting over the 2.4 GHz dongle or USB-C — not Bluetooth. Switch its mode to use MacRazer.")
+                Text("\(controller.bluetoothMouseName ?? "Your Razer mouse") only reports battery, DPI and lighting over the 2.4 GHz dongle or USB-C, not over Bluetooth. Switch its mode to use MacRazer.")
                     .font(.system(size: 11)).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -345,7 +345,7 @@ struct PopoverView: View {
                 }
                 if isAddingProfile { addProfileField }
                 if controller.profileApplyFailed {
-                    Text("Couldn't apply — the mouse isn't responding.")
+                    Text("Couldn't apply that. The mouse isn't responding.")
                         .font(.system(size: 10.5)).foregroundStyle(Color.batteryLow)
                 }
             }
@@ -433,7 +433,7 @@ struct PopoverView: View {
                     .font(.system(size: 14, weight: .semibold))
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Update available").font(.system(size: 12, weight: .semibold))
-                    Text("Version \(version) is out — you're on \(appVersion).")
+                    Text("Version \(version) is out. You're on \(appVersion).")
                         .font(.system(size: 11)).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)
@@ -706,9 +706,9 @@ struct PopoverView: View {
         if controller.charging { return "Charging" }
         if let est = controller.timeEstimate { return est }
         if !controller.connected {
-            if controller.bluetoothMouseName != nil { return "On Bluetooth — use 2.4 GHz or USB-C" }
+            if controller.bluetoothMouseName != nil { return "On Bluetooth. Use 2.4 GHz or USB-C" }
             if needsPermission { return "Needs Input Monitoring permission" }
-            return "Disconnected — wake the mouse and refresh"
+            return "Disconnected. Wake the mouse and refresh"
         }
         if controller.batteryPercent != nil { return "Estimating time remaining…" }
         return "Reading battery…"

@@ -319,7 +319,7 @@ final class UpdateChecker: ObservableObject {
             NSWorkspace.shared.open(dmg)
         } catch {
             phase = .idle
-            downloadError = "Download failed — check your connection and try again."
+            downloadError = "Download failed. Check your connection and try again."
         }
     }
 

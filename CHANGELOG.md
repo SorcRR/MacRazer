@@ -25,6 +25,14 @@ expect rough edges until 1.0.
  so plainly, with a note that an unverified mouse is not a broken one.
 
 ### Fixed
+- **The site footer links wrap instead of running off the side of a phone.** `.footer-links`
+ was a flex row with no `flex-wrap`, so on a 375px screen the last two links were simply cut
+ off at the edge. Long-standing, and easy to miss on a desktop browser.
+
+- **The footer no longer ends flush against its last element.** The space under it was a
+ bottom margin on the last child, and the footer has no bottom padding or border of its own,
+ so that margin collapsed straight out and the background stopped dead at the element. It is
+ padding on the footer now, where it cannot collapse.
 - **The changelog can no longer accumulate duplicate headings unnoticed.** Two branches each
  adding a `### Fixed` under `[Unreleased]` merge cleanly — git appends, nothing conflicts, and
  nobody spots it in a diff. It happened three times across one stack, and then again in the PR
@@ -69,6 +77,32 @@ expect rough edges until 1.0.
  BACKLIGHT individually, so a new model's brightness LED can be found in one run.
 
 ### Added
+- **A "For developers" section in the About window**, saying MacRazer was built with
+ Hiveship, with a button to go there. In About rather than the popover: the popover is what
+ you open daily to read a battery percentage, and nothing permanent there stays subtle past
+ the third time you see it.
+
+- **The app and the site read like a person wrote them.** The copy had picked up the house
+ style of an AI: em dashes everywhere, clauses stacked three deep, semicolons joining
+ sentences that wanted to be two. Swept through every string a user sees, in the popover,
+ Settings, permissions, profiles, remapping, the low-battery notification and the update
+ errors, and through the prose on all four site pages. Same facts throughout, including the
+ trademark and licence wording, which are left exactly as they were: "used here only to
+ describe compatibility" is the conventional descriptive-use formulation and the reason this
+ app may show Razer's marks at all. `release-notes.sh --check` now
+ refuses a draft containing an em dash, so release bodies stay that way without anyone having
+ to remember. Contributor-facing text is left alone: code comments, CLI diagnostics and the
+ page titles search engines have already indexed.
+
+- **A "Built with Hiveship" card in the site footer**, with the Hiveship mark, on all four
+ pages, plus a line in the README alongside the one in the About window. The mark is a 901
+ byte SVG copied into `docs/assets/` rather than hotlinked, so the site stays self-contained
+ and doesn't reach out to another origin on every page load.
+
+- **The About preview renders real buttons.** `render-about` went through `ImageRenderer`,
+ which draws every native control as a placeholder — and that window is mostly buttons and
+ links, so the preview could not show the one thing it exists to check. It uses the hosted
+ path now, sized from the view's own `fittingSize`.
 - **The "What's new" summary survives a line wrap.** Every source line above the first
  heading became its own paragraph, so a summary hard-wrapped across two lines — the house
  style in every markdown file here, and what the drafted template itself does — showed a

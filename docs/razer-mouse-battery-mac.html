@@ -101,7 +101,7 @@
   <section class="strip">
     <p><strong>Why macOS doesn't already show it:</strong> the dongle presents the mouse as a
     plain HID device with no battery service. The charge level only comes back if you ask for it
-    in Razer's own vendor protocol — which is what this app does.</p>
+    in Razer's own vendor protocol, which is what this app does.</p>
   </section>
 
   <section id="install" class="install">
@@ -110,7 +110,7 @@
       <li>
         <span class="step-num">1</span>
         <div>
-          <p><strong>Connect over the dongle or USB-C — not Bluetooth.</strong> Razer only exposes
+          <p><strong>Connect over the dongle or USB-C, not Bluetooth.</strong> Razer only exposes
           battery over USB. On Bluetooth no app can read it, because the mouse never reports it.</p>
         </div>
       </li>
@@ -152,8 +152,8 @@
       <article class="feature">
         <span class="feature-tag">01 · estimate</span>
         <h3>A learned time-remaining</h3>
-        <p>A flat %/hour rate is wrong for a Li-ion cell — it sits on a long voltage plateau, then
-        drops fast. MacRazer learns how long your mouse actually dwells at each percent and
+        <p>A flat %/hour rate is wrong for a Li-ion cell. It sits on a long voltage plateau and
+        then drops fast. MacRazer learns how long your mouse really spends at each percent and
         estimates from that, falling back to a linear rate until it has data.</p>
       </article>
       <article class="feature">
@@ -166,8 +166,8 @@
       <article class="feature">
         <span class="feature-tag">03 · warning</span>
         <h3>A low-battery notification</h3>
-        <p>One notification when the charge drops below 15% — re-armed by charging, so it won't
-        nag every poll. You don't have to keep opening the popover to check.</p>
+        <p>One notification when the charge drops below 15%. Charging re-arms it, so it won't
+        nag you every poll, and you don't have to keep opening the popover to check.</p>
       </article>
       <article class="feature">
         <span class="feature-tag">04 · honest</span>
@@ -182,10 +182,10 @@
     <h2>Common questions</h2>
 
     <h3>Why can't I see my Razer mouse battery in macOS System Settings?</h3>
-    <p>Because macOS only surfaces battery for devices that report it through a standard service —
-    mainly Bluetooth peripherals. A Razer mouse on its 2.4&nbsp;GHz dongle enumerates as a generic
-    USB HID device, and its charge level is only available through Razer's vendor-specific
-    protocol.</p>
+    <p>Because macOS only surfaces battery for devices that report it through a standard
+    service, which mostly means Bluetooth peripherals. A Razer mouse on its 2.4&nbsp;GHz dongle
+    enumerates as a generic USB HID device, and its charge level is only available through
+    Razer's own vendor protocol.</p>
 
     <h3>Does this work over Bluetooth?</h3>
     <p>No. This is a hardware/protocol limit, not an app limitation: Razer doesn't expose the
@@ -194,15 +194,15 @@
 
     <h3>Which mice does it read battery from?</h3>
     <p>Verified on the Razer Cobra HyperSpeed and Atheris. Cobra Pro and other models use the same
-    protocol and generally answer, but aren't hardware-verified here — see
+    protocol and generally answer, but nobody has verified them on hardware here. See
     <a href="./#mice">supported mice</a>. Wired-only mice have no battery, and the app hides that
     section rather than reporting a fake value.</p>
 
     <h3>Is the percentage exact?</h3>
-    <p>It's the mouse's own fuel-gauge reading, scaled from the raw byte the firmware returns —
-    the same source Synapse uses. Expect the usual Li-ion quirks: the reading can recover a
-    percent or two after the mouse rests, which MacRazer accounts for rather than treating as a
-    recharge.</p>
+    <p>It's the mouse's own fuel-gauge reading, scaled from the raw byte the firmware returns.
+    That's the same source Synapse uses. Expect the usual Li-ion quirks: the reading can recover
+    a percent or two after the mouse rests, which MacRazer accounts for rather than treating as
+    a recharge.</p>
 
     <p class="mice-note">Questions or a mouse that doesn't report? Open an issue on
       <a href="https://github.com/SorcRR/MacRazer/issues">GitHub</a>.</p>
@@ -228,6 +228,14 @@
       <a href="https://ko-fi.com/sorcrr">Tips</a>
     </div>
   </div>
+  <a class="footer-hiveship" href="https://hiveship.app/">
+    <img src="assets/hiveship.svg" alt="" width="24" height="24">
+    <span class="footer-hiveship-text">
+      <span class="footer-hiveship-title">Built with Hiveship</span>
+      Issue tracking for teams handing work to coding agents.
+    </span>
+    <span class="footer-hiveship-go">Take a look</span>
+  </a>
 </footer>
 
 <script>
