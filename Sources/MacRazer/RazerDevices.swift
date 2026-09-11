@@ -56,6 +56,10 @@ struct RazerDeviceInfo {
     /// Basilisk V3 X HyperSpeed — whose only lit zone is the scroll wheel — answers on
     /// SCROLL_LED and returns FAILURE (0x03) for LOGO, ZERO and BACKLIGHT alike
     /// (hardware-verified via the `brightness` probe).
+    /// The default is LOGO_LED, verified by the `brightness` probe on the Cobra family and on
+    /// the Viper Ultimate (#6). It is an assumption on every other lit model here. A wrong id
+    /// does not error, the slider just stops working, so a model gaining lighting support
+    /// should be swept with `swift run MacRazer brightness` rather than inheriting this.
     var brightnessLed: UInt8 = Razer.logoLed
     let connection: RazerConnection
     let silhouette: RazerMouseSilhouette

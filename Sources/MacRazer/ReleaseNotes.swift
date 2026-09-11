@@ -11,11 +11,21 @@ import Foundation
 /// rather than being dropped.
 struct ReleaseNotes: Equatable {
     /// One bullet, split so the popover can set the first line apart from the rest.
+    ///
+    /// Both halves are kept as markdown and stripped on demand. They used to be stored
+    /// stripped, which threw the URL away: `[the docs](https://…)` reached the view as "the
+    /// docs" with no way to follow it, and a release body that linked anywhere produced dead
+    /// words on screen.
     struct Item: Equatable {
-        /// The gist. Empty when the bullet has no natural lead, in which case `detail` carries
-        /// the whole thing rather than the item being silently thinned to nothing.
-        let headline: String
-        let detail: String
+        /// The gist, as written. Empty when the bullet has no natural lead, in which case
+        /// `detail` carries the whole thing rather than the item being silently thinned to
+        /// nothing.
+        let headlineSource: String
+        let detailSource: String
+
+        /// Plain text, for measuring, comparing and anywhere markdown would show through.
+        var headline: String { ReleaseNotes.strip(headlineSource) }
+        var detail: String { ReleaseNotes.strip(detailSource) }
     }
 
     /// A heading, e.g. "Added" / "Fixed", with the bullets under it. The title is empty for
@@ -133,7 +143,7 @@ struct ReleaseNotes: Equatable {
             let headline = String(text[text.index(text.startIndex, offsetBy: 2)..<close.lowerBound])
             let rest = String(text[close.upperBound...])
             if headline.count <= maxHeadline {
-                return Item(headline: strip(headline), detail: strip(trimLead(rest)))
+                return Item(headlineSource: headline, detailSource: trimLead(rest))
             }
         }
 
@@ -141,10 +151,10 @@ struct ReleaseNotes: Equatable {
             let headline = String(text[..<end])
             if headline.count <= maxHeadline {
                 let rest = String(text[end...])
-                return Item(headline: strip(headline), detail: strip(trimLead(rest)))
+                return Item(headlineSource: headline, detailSource: trimLead(rest))
             }
         }
-        return Item(headline: "", detail: strip(text))
+        return Item(headlineSource: "", detailSource: text)
     }
 
     /// Index just past the first ". " — not `.` alone, which would cut "0.3.1" and "e.g." in

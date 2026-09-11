@@ -88,16 +88,28 @@ struct WhatsNewPage: View {
         }
     }
 
+    /// Markdown as an `AttributedString`, so a link in a release note is a link.
+    ///
+    /// Falls back to the plain text when the markdown will not parse. A release body is prose
+    /// somebody typed, and a page that renders nothing because one bullet had a stray bracket
+    /// would be a worse failure than one that renders it flat.
+    private static func rendered(_ markdown: String) -> AttributedString {
+        (try? AttributedString(
+            markdown: markdown,
+            options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
+            ?? AttributedString(ReleaseNotes.strip(markdown))
+    }
+
     @ViewBuilder
     private func itemRow(_ item: ReleaseNotes.Item) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             if !item.headline.isEmpty {
-                Text(item.headline)
+                Text(Self.rendered(item.headlineSource))
                     .font(.system(size: 11.5, weight: .semibold))
                     .fixedSize(horizontal: false, vertical: true)
             }
             if !item.detail.isEmpty {
-                Text(item.detail)
+                Text(Self.rendered(item.detailSource))
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

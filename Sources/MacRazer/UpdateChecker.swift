@@ -65,16 +65,32 @@ final class UpdateChecker: ObservableObject {
     /// because some *other* property happened to change around each check — first `isChecking`,
     /// then a write-only counter added to make that deliberate. Storing it removes the
     /// question: the value the view reads is the value that publishes.
-    @Published private(set) var lastCheckedAt: Date? =
-        UserDefaults.standard.object(forKey: UpdateChecker.lastCheckKey) as? Date
+    @Published private(set) var lastCheckedAt: Date?
 
     /// Install updates without asking. **Off by default**: installing and relaunching behind
     /// someone's back is a much bigger thing to do to them than putting a dot on the menu bar,
     /// and this app isn't Apple-notarised — opting in should be deliberate. The caller decides
     /// *when* an automatic install is acceptable (`AppDelegate` won't start one with the
     /// popover open); this flag only says whether it may.
-    @Published var autoInstallEnabled: Bool = UserDefaults.standard.bool(forKey: UpdateChecker.autoInstallKey) {
-        didSet { UserDefaults.standard.set(autoInstallEnabled, forKey: Self.autoInstallKey) }
+    @Published var autoInstallEnabled: Bool = false {
+        didSet { defaults.set(autoInstallEnabled, forKey: Self.autoInstallKey) }
+    }
+
+    /// Where the state above is kept between launches.
+    ///
+    /// Injectable, and not because anything else stores it elsewhere. Every *decision* in this
+    /// class is a pure function with tests, and both bugs this feature shipped were in the
+    /// wiring between those functions and these keys: an announcement held only in memory, and
+    /// then a cache written by a version that had no such key. Neither could be written as a
+    /// test while the store was `UserDefaults.standard`.
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        lastCheckedAt = defaults.object(forKey: Self.lastCheckKey) as? Date
+        // Assigned after `defaults` exists, and directly to the backing store, so the `didSet`
+        // above does not write the value straight back during initialisation.
+        _autoInstallEnabled = Published(initialValue: defaults.bool(forKey: Self.autoInstallKey))
     }
 
     private let releaseAPIURL = ProjectLinks.latestReleaseAPI
@@ -89,6 +105,7 @@ final class UpdateChecker: ObservableObject {
     private static let lastRunVersionKey = "lastRunVersion"
     private static let dismissedAnnouncementKey = "dismissedUpdateAnnouncement"
     private static let pendingAnnouncementKey = "pendingUpdateAnnouncement"
+    private static let notesCheckedForKey = "notesCheckedForVersion"
 
     private struct GitHubRelease: Decodable {
         let tag_name: String
@@ -111,7 +128,7 @@ final class UpdateChecker: ObservableObject {
         if Self.isCheckDue(lastChecked: lastCheckedAt,
                            now: Date(),
                            interval: checkInterval,
-                           notesMissingForNewVersion: justUpdatedTo != nil && installedNotes == nil) {
+                           notesMissingForNewVersion: notesWorthFetching) {
             await checkForUpdatesNow()
             return
         }
@@ -119,6 +136,22 @@ final class UpdateChecker: ObservableObject {
         // Otherwise a relaunch forgets a known update for up to a day.
         restoreLastFound()
     }
+
+    /// A fresh version with no notes, and no check made for it yet.
+    ///
+    /// The last clause is what stops this repeating. Without it, a release published with no
+    /// body leaves `installedNotes` nil however many checks run, so every launch would skip
+    /// the throttle and go to the network again for as long as the announcement stood.
+    private var notesWorthFetching: Bool {
+        justUpdatedTo != nil
+            && installedNotes == nil
+            && defaults.string(forKey: Self.notesCheckedForKey) != currentVersion
+    }
+
+    #if DEBUG
+    /// The condition above, for the test that states when it must stop firing.
+    var notesWorthFetchingForTesting: Bool { notesWorthFetching }
+    #endif
 
     /// Whether to go to the network now.
     ///
@@ -164,16 +197,16 @@ final class UpdateChecker: ObservableObject {
             // Clearing it up front spent the user's decision even when the request then
             // failed, and `restoreLastFound()` would resurrect the very version they had
             // dismissed, having learned nothing.
-            if userRequested { UserDefaults.standard.removeObject(forKey: Self.dismissedKey) }
+            if userRequested { defaults.removeObject(forKey: Self.dismissedKey) }
             // Only a *successful* check counts against the daily throttle: a failed one
             // (offline right after wake is common) should retry on the next opportunity,
             // not silence update notices for a day.
             let checkedAt = Date()
-            UserDefaults.standard.set(checkedAt, forKey: Self.lastCheckKey)
-            UserDefaults.standard.set(remote, forKey: Self.lastFoundKey)
-            UserDefaults.standard.set(release.body ?? "", forKey: Self.lastFoundNotesKey)
+            defaults.set(checkedAt, forKey: Self.lastCheckKey)
+            defaults.set(remote, forKey: Self.lastFoundKey)
+            defaults.set(release.body ?? "", forKey: Self.lastFoundNotesKey)
             lastCheckedAt = checkedAt
-            let dismissed = UserDefaults.standard.string(forKey: Self.dismissedKey)
+            let dismissed = defaults.string(forKey: Self.dismissedKey)
             if Self.isNewer(remote, than: currentVersion), remote != dismissed {
                 latestVersion = remote
                 latestNotes = Self.notes(from: release.body)
@@ -183,7 +216,10 @@ final class UpdateChecker: ObservableObject {
             }
             // The same response answers "what am I running?" — someone who installed by hand
             // gets their notes from the first check after, without waiting for a next release.
-            installedNotes = Self.installedNotes(current: currentVersion)
+            installedNotes = Self.installedNotes(current: currentVersion, defaults: defaults)
+            // Asked and answered, whatever the answer was. A release with no body has no notes
+            // to find, and retrying that on every launch would be a request that cannot help.
+            defaults.set(currentVersion, forKey: Self.notesCheckedForKey)
         } catch {
             // Silent: a failed background check shouldn't surface as an error — only an
             // explicit download attempt should show one. But do surface what the last
@@ -196,16 +232,16 @@ final class UpdateChecker: ObservableObject {
     /// not-dismissed are re-evaluated, so updating or dismissing in the meantime clears it).
     private func restoreLastFound() {
         guard latestVersion == nil,
-              let found = UserDefaults.standard.string(forKey: Self.lastFoundKey) else { return }
-        let dismissed = UserDefaults.standard.string(forKey: Self.dismissedKey)
+              let found = defaults.string(forKey: Self.lastFoundKey) else { return }
+        let dismissed = defaults.string(forKey: Self.dismissedKey)
         if Self.isNewer(found, than: currentVersion), found != dismissed {
             latestVersion = found
-            latestNotes = Self.notes(from: UserDefaults.standard.string(forKey: Self.lastFoundNotesKey))
+            latestNotes = Self.notes(from: defaults.string(forKey: Self.lastFoundNotesKey))
         }
     }
 
     func dismiss(_ version: String) {
-        UserDefaults.standard.set(version, forKey: Self.dismissedKey)
+        defaults.set(version, forKey: Self.dismissedKey)
         latestVersion = nil
         latestNotes = nil
     }
@@ -217,7 +253,6 @@ final class UpdateChecker: ObservableObject {
     /// that is killed, crashes, or is replaced under itself never gets a clean shutdown, and
     /// the one thing worse than a missed announcement is the same one every launch.
     func loadInstalledVersionState() {
-        let defaults = UserDefaults.standard
         let current = currentVersion
         let pending = UpdateAnnouncement.pending(
             lastRun: defaults.string(forKey: Self.lastRunVersionKey),
@@ -234,7 +269,7 @@ final class UpdateChecker: ObservableObject {
             defaults.removeObject(forKey: Self.pendingAnnouncementKey)
         }
         defaults.set(current, forKey: Self.lastRunVersionKey)
-        installedNotes = Self.installedNotes(current: current)
+        installedNotes = Self.installedNotes(current: current, defaults: defaults)
     }
 
     /// Evidence that some version of MacRazer has run on this machine before.
@@ -252,7 +287,6 @@ final class UpdateChecker: ObservableObject {
     }
 
     func dismissAnnouncement() {
-        let defaults = UserDefaults.standard
         if let version = justUpdatedTo {
             defaults.set(version, forKey: Self.dismissedAnnouncementKey)
         }
@@ -262,8 +296,8 @@ final class UpdateChecker: ObservableObject {
 
     /// The same notes, for a caller with no `UpdateChecker` to hand — the About window, which
     /// observes nothing.
-    static func notesForRunningVersion() -> ReleaseNotes? {
-        installedNotes(current: AppInfo.comparableVersion)
+    static func notesForRunningVersion(defaults: UserDefaults = .standard) -> ReleaseNotes? {
+        installedNotes(current: AppInfo.comparableVersion, defaults: defaults)
     }
 
     /// The cached notes, but only when they are demonstrably about the version running.
@@ -272,11 +306,10 @@ final class UpdateChecker: ObservableObject {
     /// or not it was newer — so this answers for someone who installed the DMG by hand too,
     /// from the first check after they did. A mismatch means the cache is about some other
     /// release and showing it would be worse than showing nothing.
-    private static func installedNotes(current: String) -> ReleaseNotes? {
-        let defaults = UserDefaults.standard
-        return notes(for: current,
+    private static func installedNotes(current: String, defaults: UserDefaults) -> ReleaseNotes? {
+        notes(for: current,
                      cachedVersion: defaults.string(forKey: lastFoundKey),
-                     cachedBody: defaults.string(forKey: lastFoundNotesKey))
+              cachedBody: defaults.string(forKey: lastFoundNotesKey))
     }
 
     /// The rule, kept apart from the defaults it reads so it can be stated in a test: notes
