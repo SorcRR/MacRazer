@@ -47,8 +47,8 @@ enum ProjectLinks {
     static let latestReleaseAPI =
         URL(string: "https://api.github.com/repos/SorcRR/MacRazer/releases/latest")!
 
-    /// The developer's other project, linked from About. Not part of MacRazer — kept here
-    /// because this is where the project's URLs live, and one scattered link is how a dead one
+    /// Linked from the About window. Not part of MacRazer — kept here because this is where
+    /// the project's URLs live, and one link scattered somewhere else is how a dead one
     /// survives a rename.
     static let hiveship = URL(string: "https://hiveship.app/")!
 

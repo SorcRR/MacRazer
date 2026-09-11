@@ -27,7 +27,7 @@ struct AboutView: View {
             unofficialSection
             openRazerSection
             licenseSection
-            alsoFromSection
+            hiveshipSection
             footer
         }
         .padding(22)
@@ -134,22 +134,27 @@ struct AboutView: View {
         }
     }
 
-    // MARK: Also from the developer
+    // MARK: For developers
 
     /// The one piece of this window that is not about MacRazer.
     ///
-    /// Labelled as the developer's own product rather than dressed up as a recommendation:
-    /// every other link here credits someone, and a commercial link that borrowed that tone
-    /// would be trading on it. Below the licence, in About rather than the popover — the
-    /// popover is opened daily to read a battery percentage, and nothing permanent there stays
-    /// subtle past the third time you see it.
-    private var alsoFromSection: some View {
-        titledSection("Also from SorcRR") {
-            sectionNote("Hiveship — an issue tracker for teams handing work to coding agents "
-                        + "alongside the people doing it. Nothing to do with mice.")
-            Link("hiveship.app", destination: ProjectLinks.hiveship)
-                .font(.system(size: 11.5, weight: .medium))
-                .foregroundStyle(Color.razerGreen)
+    /// It describes what Hiveship is and stops there. It does not say MacRazer's own work is
+    /// planned or tracked in it — that board is not public, so a reader who clicked on the
+    /// strength of "tracked here" would land on a signup page instead of the thing they were
+    /// promised. Saying what the product does and offering a button asks for the same click
+    /// without setting up that gap.
+    ///
+    /// In About rather than the popover: the popover is opened daily to read a battery
+    /// percentage, and nothing permanent there stays subtle past the third time you see it.
+    private var hiveshipSection: some View {
+        titledSection("For developers") {
+            sectionNote("Hiveship — plan work, track bugs, and hand issues to coding agents "
+                        + "alongside the people doing them.")
+            Link(destination: ProjectLinks.hiveship) {
+                Label("Go to Hiveship", systemImage: "arrow.up.right")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
         }
     }
 
