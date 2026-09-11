@@ -108,13 +108,36 @@ final class UpdateChecker: ObservableObject {
     /// Checks at most once per `checkInterval`, regardless of how often this is called — safe to
     /// call on every launch and from a repeating timer.
     func checkForUpdatesIfDue() async {
-        if let last = lastCheckedAt, Date().timeIntervalSince(last) < checkInterval {
-            // Within the throttle window, surface what the last successful check already
-            // found — otherwise a relaunch forgets a known update for up to a day.
-            restoreLastFound()
+        if Self.isCheckDue(lastChecked: lastCheckedAt,
+                           now: Date(),
+                           interval: checkInterval,
+                           notesMissingForNewVersion: justUpdatedTo != nil && installedNotes == nil) {
+            await checkForUpdatesNow()
             return
         }
-        await checkForUpdatesNow()
+        // Within the throttle window, surface what the last successful check already found.
+        // Otherwise a relaunch forgets a known update for up to a day.
+        restoreLastFound()
+    }
+
+    /// Whether to go to the network now.
+    ///
+    /// The throttle exists so the app asks once a day however often it launches. It has one
+    /// exception, and 0.4.0 is what found it: the version just changed and there are no notes
+    /// for what is now running, which means the cache was written by the version that is no
+    /// longer here. Every 0.3.0 install hit this, because 0.3.0 had no notes cache at all, so
+    /// the release that introduced "What's new" showed the card with nothing to open. Waiting
+    /// out a day for text that is already published is the wrong trade.
+    ///
+    /// Self-limiting: the check it forces fills the cache, so the next call takes the
+    /// ordinary path.
+    static func isCheckDue(lastChecked: Date?,
+                           now: Date,
+                           interval: TimeInterval,
+                           notesMissingForNewVersion: Bool) -> Bool {
+        if notesMissingForNewVersion { return true }
+        guard let lastChecked else { return true }
+        return now.timeIntervalSince(lastChecked) >= interval
     }
 
     /// Bypasses the throttle — used by `checkForUpdatesIfDue()` once due, and by the menu's

@@ -6,6 +6,16 @@ expect rough edges until 1.0.
 
 ## [Unreleased]
 
+### Fixed
+- **"What's new" was empty for everyone upgrading to 0.4.0.** The notes are read from a cache
+ the previous version fills, and 0.3.0 had no such cache: it predates the feature. So the
+ release that introduced "What's new" showed its "Updated to 0.4.0" card with nothing to
+ open, and the daily check throttle meant it stayed that way for up to a day, because the
+ old version had checked minutes earlier. A version change with no notes for it now beats the
+ throttle, which is the one case where the cache is known to be stale rather than merely old.
+ It fills itself on that check, so this does not turn a version change into an unthrottled
+ app.
+
 ## [0.4.0] — 2026-09-11
 
 ### Changed
