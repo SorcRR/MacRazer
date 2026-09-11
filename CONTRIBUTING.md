@@ -39,6 +39,32 @@ operations; CI runs it. Attach **both** DMGs to the release: the updater fetches
 `MacRazer.dmg` name, and the versioned copy makes the Releases page self-describing.
 `--dry-run` shows what it would do.
 
+### The release body
+
+`release.sh` also drafts one, to `dist/RELEASE_NOTES-<version>.md`. **It is a draft, not the
+finished copy** — it carries every changelog entry verbatim, and the changelog is written for
+contributors. Expect to cut most of it; the published 0.3.0 body was about a fifth the length
+of its changelog section.
+
+The body matters more than it looks: the app fetches it and builds the popover's "What's new"
+page from it, so a release published with no body makes that page quietly not appear. The
+draft fills in the parts that are mechanical and easy to forget:
+
+- every entry in the release, so none is left out by accident
+- **everyone whose PR is in it**, by GitHub handle and PR number, read from the merge commits
+- the Gatekeeper install note and the changelog link
+
+A squash-merged PR leaves no merge commit to read, so its author can't be credited
+automatically — the script says so on stderr and you add them by hand. Before publishing:
+
+```sh
+./Scripts/release-notes.sh --check dist/RELEASE_NOTES-<version>.md
+```
+
+which refuses a draft still carrying the `TODO:` placeholder or with no summary above its
+first heading — either one would end up as the release's first paragraph, which is exactly
+what the app shows.
+
 ## The most valuable contribution: device profiles
 Detection and naming already work for **any** Razer mouse, via the USB product string. What
 has to be verified per model is the **control protocol**. Four models have been checked on

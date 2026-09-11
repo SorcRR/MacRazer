@@ -143,10 +143,13 @@ struct ReleaseNotes: Equatable {
         return r.upperBound
     }
 
-    /// Drops the punctuation and whitespace left dangling when a lead is split off.
+    /// Drops the punctuation and whitespace left dangling when a lead is split off. Dashes
+    /// included: `**Name** — what it does` is the shape our own notes use most, and leaving
+    /// the dash puts "— what it does" on its own line looking like a mistake.
+    private static let leadJunk: Set<Character> = [",", ":", ".", " ", "—", "–", "-"]
     private static func trimLead(_ s: String) -> String {
         var out = s
-        while let f = out.first, f == "," || f == ":" || f == "." || f == " " { out.removeFirst() }
+        while let f = out.first, leadJunk.contains(f) { out.removeFirst() }
         return out
     }
 

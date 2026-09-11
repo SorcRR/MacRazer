@@ -98,6 +98,12 @@ final class ReleaseNotesTests: XCTestCase {
         }
     }
 
+    func testTheDashAfterABoldLeadGoesWithIt() {
+        let i = ReleaseNotes.item(from: "**Orochi 2013** — verified over Bluetooth.")
+        XCTAssertEqual(i.headline, "Orochi 2013")
+        XCTAssertEqual(i.detail, "verified over Bluetooth.")
+    }
+
     func testMarkdownMarkersAreStripped() {
         XCTAssertEqual(ReleaseNotes.strip("a **bold** and `code`"), "a bold and code")
         XCTAssertEqual(ReleaseNotes.strip("see [the docs](https://example.com) here"), "see the docs here")
@@ -151,6 +157,34 @@ final class ReleaseNotesTests: XCTestCase {
         """)
         XCTAssertEqual(notes.sections.first?.items.count, 1)
         XCTAssertEqual(notes.sections.first?.items.first?.detail, "It does something.")
+    }
+
+    /// The two halves have to agree: `Scripts/release-notes.sh` decides the shape of every
+    /// future release body, and this decides what that shape turns into on screen. They are a
+    /// shell script and a Swift struct with no compiler between them, so the agreement is only
+    /// as good as a test that states it.
+    func testTheShapeReleaseNotesShDraftsParsesAsIntended() {
+        let drafted = """
+        MacRazer now starts at login and installs its own updates.
+
+        ### Added
+        - **A new thing.** It does something.
+
+        ### Thanks
+        - **@caseyc** — Add support for the thing (#5)
+
+        ### Install
+        This build is unsigned (no paid Apple Developer ID), so first launch shows the standard
+        Gatekeeper warning.
+
+        **Full changelog:** https://github.com/SorcRR/MacRazer/blob/master/CHANGELOG.md
+        """
+        let notes = ReleaseNotes.parse(drafted)
+        XCTAssertEqual(notes.summary, "MacRazer now starts at login and installs its own updates.")
+        XCTAssertEqual(notes.sections.map(\.title), ["Added", "Thanks"])
+        // Contributors are credited in the app, not only on the releases page.
+        XCTAssertEqual(notes.sections.last?.items.first?.headline, "@caseyc")
+        XCTAssertEqual(notes.sections.last?.items.first?.detail, "Add support for the thing (#5)")
     }
 
     func testEmptyBodyIsEmptyNotACrash() {

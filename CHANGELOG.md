@@ -69,6 +69,17 @@ expect rough edges until 1.0.
  BACKLIGHT individually, so a new model's brightness LED can be found in one run.
 
 ### Added
+- **Releases come with a drafted body, and it credits contributors.** The release body is not
+ cosmetic any more — the app fetches it and builds the "What's new" page from it — so a
+ release published without one makes that page quietly not appear, and a release that forgets
+ a contributor forgets them in the place users actually read. `release.sh` now drafts
+ `dist/RELEASE_NOTES-<version>.md` from the changelog section it just promoted, with a Thanks
+ section built from the merge commits: handle, PR title and number, the maintainer's own
+ merges left out. Squash-merged PRs leave no merge commit to read, so those authors are
+ reported on stderr to be added by hand rather than silently dropped. `--check` refuses a
+ draft still carrying its `TODO:` placeholder, since that would become the release's first
+ paragraph. The entries come out verbatim: the script drafts the mechanical parts and leaves
+ the writing alone.
 - **The update card says what's in the update.** It offered "Update & Restart" and nothing
  about why you would want to — you were being asked to replace your app on no information,
  which is the thing the macOS convention of showing release notes in the update dialog exists
