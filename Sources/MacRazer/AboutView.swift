@@ -31,15 +31,16 @@ struct AboutView: View {
         }
         .padding(22)
         .frame(width: 460)
+        // Content that cannot be empty, rather than an `if let` inside the builder: the row
+        // that sets `showingNotes` is gated on the same notes, but the two gates sit far apart
+        // and a sheet with an empty body is a blank panel with no way out but Escape.
         .sheet(isPresented: $showingNotes) {
-            if let notes {
-                WhatsNewPage(version: AppInfo.displayVersion,
-                             notes: notes,
-                             canInstallInPlace: false,
-                             onBack: { showingNotes = false },
-                             onUpdate: nil) // already running it
-                    .frame(width: 380, height: 460)
-            }
+            WhatsNewPage(version: AppInfo.displayVersion,
+                         notes: notes ?? ReleaseNotes(summary: "", sections: []),
+                         canInstallInPlace: false,
+                         onBack: { showingNotes = false },
+                         onUpdate: nil) // already running it
+                .frame(width: 380, height: 460)
         }
     }
 

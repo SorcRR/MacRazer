@@ -106,7 +106,9 @@ expect rough edges until 1.0.
  this release is the awkward case: the version before it never recorded one, so it looks
  exactly like a first install. Evidence that MacRazer has run here before — the update
  check's date, or the login-item default — tells them apart, so the release that introduces
- the card is not the one release that never shows it.
+ the card is not the one release that never shows it. It is written down rather than only
+ held in memory: the card waits for the popover to be opened, which for a menu bar app can be
+ days, and a reboot in between must not swallow it.
 
 - **The update card says what's in the update.** It offered "Update & Restart" and nothing
  about why you would want to — you were being asked to replace your app on no information,

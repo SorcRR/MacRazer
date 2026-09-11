@@ -139,10 +139,17 @@
         frag.appendChild(el("code", null, m[2]));
       } else {
         var href = safeHref(m[4]);
-        var a = el("a");
-        a.appendChild(inline(m[3]));
-        if (href) { a.href = href; a.rel = "noopener"; }
-        frag.appendChild(a);
+        if (href) {
+          var a = el("a");
+          a.appendChild(inline(m[3]));
+          a.href = href;
+          a.rel = "noopener";
+          frag.appendChild(a);
+        } else {
+          // An anchor with no href still takes the accent colour and reads as a link that does
+          // nothing. Show the words instead.
+          frag.appendChild(inline(m[3]));
+        }
       }
       last = pattern.lastIndex;
     }
@@ -191,6 +198,19 @@
         continue;
       }
 
+      // Checked before the continuation below: a callout written directly under a bullet with
+      // no blank line between them would otherwise be swallowed into that bullet, marker and
+      // all, since only this branch strips the ">".
+      var quote = /^>\s?(.*)$/.exec(line);
+      if (quote) {
+        closeList();
+        closeParagraph();
+        var block = el("p", "release-callout");
+        block.appendChild(inline(quote[1]));
+        into.appendChild(block);
+        continue;
+      }
+
       // A line directly under a bullet continues it; markdown wraps, and half a sentence is
       // worse than none.
       if (list && list.lastChild) {
@@ -199,22 +219,13 @@
         continue;
       }
 
-      var quote = /^>\s?(.*)$/.exec(line);
-      var text = quote ? quote[1] : line;
-      if (quote) {
-        closeParagraph();
-        var block = el("p", "release-callout");
-        block.appendChild(inline(text));
-        into.appendChild(block);
-        continue;
-      }
       if (!paragraph) {
         paragraph = el("p", "release-text");
         into.appendChild(paragraph);
       } else {
         paragraph.appendChild(document.createTextNode(" "));
       }
-      paragraph.appendChild(inline(text));
+      paragraph.appendChild(inline(line));
     }
   }
 
@@ -254,14 +265,31 @@
   var list = document.getElementById("releases-list");
   var status = document.getElementById("releases-status");
 
+  // 100 is the API's maximum page size, and no pagination: at four releases a year that is
+  // a couple of decades. If it is ever reached, the oldest fall off the bottom silently, so
+  // paginate then rather than spending a second request on it now.
   fetch("https://api.github.com/repos/" + REPO + "/releases?per_page=100")
     .then(function (r) { return r.ok ? r.json() : null; })
     .then(function (releases) {
-      if (!releases || !releases.length) throw new Error("no releases");
+      // Filtered before the count is judged: a response holding nothing but drafts is as empty
+      // as no response, and would otherwise clear the loading line and render nothing at all.
+      var published = (releases || []).filter(function (r) { return !r.draft; });
+      if (!published.length) throw new Error("no releases");
+
+      // Built whole before anything is removed. Taking the status line out first meant a throw
+      // half-way through rendering left a page with no releases *and* no message, because the
+      // catch below writes into a node that is no longer in the document.
+      var frag = document.createDocumentFragment();
+      published.forEach(function (r) { frag.appendChild(renderRelease(r)); });
       if (status) status.remove();
-      releases
-        .filter(function (r) { return !r.draft; })
-        .forEach(function (r) { list.appendChild(renderRelease(r)); });
+      list.appendChild(frag);
+
+      // The version tag comes out of the response already in hand. Asking /releases/latest for
+      // it as well spent two of the sixty unauthenticated requests an IP gets per hour, on the
+      // one page where running out removes all the content.
+      var latest = published.filter(function (r) { return !r.prerelease; })[0] || published[0];
+      var tagEl = document.getElementById("version-tag");
+      if (tagEl && latest && latest.tag_name) tagEl.textContent = " · " + latest.tag_name;
     })
     .catch(function () {
       // Rate-limited, offline, or the API moved. Say so and point at the source rather than
@@ -275,17 +303,6 @@
       status.appendChild(a);
       status.appendChild(document.createTextNode("."));
     });
-
-  // Same best-effort version tag as every other page.
-  fetch("https://api.github.com/repos/" + REPO + "/releases/latest")
-    .then(function (r) { return r.ok ? r.json() : null; })
-    .then(function (data) {
-      var tag = data && data.tag_name;
-      if (!tag) return;
-      var inlineTag = document.getElementById("version-tag");
-      if (inlineTag) inlineTag.textContent = " · " + tag;
-    })
-    .catch(function () {});
 })();
 </script>
 </body>

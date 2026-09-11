@@ -88,6 +88,7 @@ final class UpdateChecker: ObservableObject {
     private static let lastFoundNotesKey = "lastFoundUpdateNotes"
     private static let lastRunVersionKey = "lastRunVersion"
     private static let dismissedAnnouncementKey = "dismissedUpdateAnnouncement"
+    private static let pendingAnnouncementKey = "pendingUpdateAnnouncement"
 
     private struct GitHubRelease: Decodable {
         let tag_name: String
@@ -195,12 +196,19 @@ final class UpdateChecker: ObservableObject {
     func loadInstalledVersionState() {
         let defaults = UserDefaults.standard
         let current = currentVersion
-        let lastRun = defaults.string(forKey: Self.lastRunVersionKey)
-        if UpdateAnnouncement.shouldAnnounce(lastRun: lastRun,
-                                             current: current,
-                                             dismissed: defaults.string(forKey: Self.dismissedAnnouncementKey),
-                                             hasRunBefore: Self.hasRunBefore(defaults)) {
-            justUpdatedTo = current
+        let pending = UpdateAnnouncement.pending(
+            lastRun: defaults.string(forKey: Self.lastRunVersionKey),
+            current: current,
+            dismissed: defaults.string(forKey: Self.dismissedAnnouncementKey),
+            storedPending: defaults.string(forKey: Self.pendingAnnouncementKey),
+            hasRunBefore: Self.hasRunBefore(defaults))
+        justUpdatedTo = pending
+        // Written down rather than only held: the card waits for the popover to be opened,
+        // which can be days, and a reboot in between must not swallow it.
+        if let pending {
+            defaults.set(pending, forKey: Self.pendingAnnouncementKey)
+        } else {
+            defaults.removeObject(forKey: Self.pendingAnnouncementKey)
         }
         defaults.set(current, forKey: Self.lastRunVersionKey)
         installedNotes = Self.installedNotes(current: current)
@@ -221,10 +229,18 @@ final class UpdateChecker: ObservableObject {
     }
 
     func dismissAnnouncement() {
+        let defaults = UserDefaults.standard
         if let version = justUpdatedTo {
-            UserDefaults.standard.set(version, forKey: Self.dismissedAnnouncementKey)
+            defaults.set(version, forKey: Self.dismissedAnnouncementKey)
         }
+        defaults.removeObject(forKey: Self.pendingAnnouncementKey)
         justUpdatedTo = nil
+    }
+
+    /// The same notes, for a caller with no `UpdateChecker` to hand — the About window, which
+    /// observes nothing.
+    static func notesForRunningVersion() -> ReleaseNotes? {
+        installedNotes(current: AppInfo.comparableVersion)
     }
 
     /// The cached notes, but only when they are demonstrably about the version running.
@@ -233,12 +249,6 @@ final class UpdateChecker: ObservableObject {
     /// or not it was newer — so this answers for someone who installed the DMG by hand too,
     /// from the first check after they did. A mismatch means the cache is about some other
     /// release and showing it would be worse than showing nothing.
-    /// The same notes, for a caller with no `UpdateChecker` to hand — the About window, which
-    /// observes nothing and is built fresh each time it opens.
-    static func notesForRunningVersion() -> ReleaseNotes? {
-        installedNotes(current: AppInfo.comparableVersion)
-    }
-
     private static func installedNotes(current: String) -> ReleaseNotes? {
         let defaults = UserDefaults.standard
         return notes(for: current,

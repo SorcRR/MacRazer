@@ -152,7 +152,7 @@ struct PopoverView: View {
             if let version = updateChecker.latestVersion { updateCard(version) }
             // Never both: an update waiting to be installed is the more useful thing to say
             // than one that already was.
-            else if let installed = updateChecker.justUpdatedTo { updatedCard(installed) }
+            else if updateChecker.justUpdatedTo != nil { updatedCard }
             // A Razer mouse on Bluetooth can't be controlled (no control protocol over BT) —
             // explain it instead of just showing "offline".
             if controller.bluetoothMouseName != nil && !controller.connected { bluetoothNotice }
@@ -534,15 +534,16 @@ struct PopoverView: View {
                             })
     }
 
-    /// Shown once, on the first launch after the version changes.
+    /// Shown after the version changes, until dismissed.
     ///
-    /// With automatic installs on there is no update card and never was one — this is the
-    /// only place the app says a release happened. It is a row and a dismiss, because it is
-    /// news rather than a decision.
-    /// Takes the version only to keep the card and the announcement in step; it shows
-    /// `appVersion`, since `justUpdatedTo` carries the *comparable* version — which is "0" for
-    /// an unversioned dev build, and "Updated to 0" is not a sentence.
-    private func updatedCard(_ version: String) -> some View {
+    /// With automatic installs on there is no update card and never was one — this is the only
+    /// place the app says a release happened. It is a row and a dismiss, because it is news
+    /// rather than a decision.
+    ///
+    /// Takes no version: `justUpdatedTo` carries the *comparable* version, which is "0" for an
+    /// unversioned dev build, and "Updated to 0" is not a sentence. It always describes the
+    /// running build, so `appVersion` is both correct and the one worth showing.
+    private var updatedCard: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 8) {
                 Image(systemName: "checkmark.circle.fill")

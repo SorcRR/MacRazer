@@ -36,4 +36,28 @@ enum UpdateAnnouncement {
         // only evidence that the app has run here before tells them apart.
         return hasRunBefore
     }
+
+    /// The version whose announcement is outstanding after this launch, or nil.
+    ///
+    /// An announcement has to outlive the launch that noticed it. The card is set on the
+    /// launch *after* an install, and a menu bar app that starts at login can go days without
+    /// its popover being opened — so deriving it once and keeping it in memory means a reboot,
+    /// a quit, or a crash in between loses it for good, on exactly the automatic-install path
+    /// it exists to serve.
+    ///
+    /// - Parameter storedPending: an announcement carried over from an earlier launch.
+    static func pending(lastRun: String?,
+                        current: String,
+                        dismissed: String?,
+                        storedPending: String?,
+                        hasRunBefore: Bool) -> String? {
+        if shouldAnnounce(lastRun: lastRun, current: current,
+                          dismissed: dismissed, hasRunBefore: hasRunBefore) {
+            return current
+        }
+        // Still owed, and still about what is running. A pending announcement for some other
+        // version is stale — you rolled back, or updated again before reading it — and the
+        // version you are on now is the only one worth talking about.
+        return storedPending == current ? current : nil
+    }
 }
