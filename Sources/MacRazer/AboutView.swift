@@ -27,6 +27,7 @@ struct AboutView: View {
             unofficialSection
             openRazerSection
             licenseSection
+            alsoFromSection
             footer
         }
         .padding(22)
@@ -130,6 +131,25 @@ struct AboutView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+        }
+    }
+
+    // MARK: Also from the developer
+
+    /// The one piece of this window that is not about MacRazer.
+    ///
+    /// Labelled as the developer's own product rather than dressed up as a recommendation:
+    /// every other link here credits someone, and a commercial link that borrowed that tone
+    /// would be trading on it. Below the licence, in About rather than the popover — the
+    /// popover is opened daily to read a battery percentage, and nothing permanent there stays
+    /// subtle past the third time you see it.
+    private var alsoFromSection: some View {
+        titledSection("Also from SorcRR") {
+            sectionNote("Hiveship — an issue tracker for teams handing work to coding agents "
+                        + "alongside the people doing it. Nothing to do with mice.")
+            Link("hiveship.app", destination: ProjectLinks.hiveship)
+                .font(.system(size: 11.5, weight: .medium))
+                .foregroundStyle(Color.razerGreen)
         }
     }
 

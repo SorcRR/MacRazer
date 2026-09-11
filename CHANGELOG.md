@@ -69,6 +69,11 @@ expect rough edges until 1.0.
  BACKLIGHT individually, so a new model's brightness LED can be found in one run.
 
 ### Added
+- **An "Also from SorcRR" line in the About window**, pointing at Hiveship. Labelled as the
+ developer's own product rather than dressed up as a recommendation: every other link in that
+ window credits someone, and a commercial one borrowing that tone would be trading on it. In
+ About and not the popover — the popover is opened daily to read a battery percentage, and
+ nothing permanent there stays subtle past the third time you see it.
 - **The "What's new" summary survives a line wrap.** Every source line above the first
  heading became its own paragraph, so a summary hard-wrapped across two lines — the house
  style in every markdown file here, and what the drafted template itself does — showed a
