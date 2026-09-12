@@ -39,15 +39,17 @@ final class UpdateChecker: ObservableObject {
     /// Notes for `latestVersion`, parsed for the popover. Nil when the release had no body or
     /// nothing has been found — the "What's new" row hides itself rather than opening onto an
     /// empty page.
-    @Published private(set) var latestNotes: ReleaseNotes?
+    @Published private(set) var latestNotes: [VersionedNotes] = []
 
-    /// Notes for the version that is *running*, so they survive the thing they describe.
+    /// Notes for everything gained by the update just installed: the releases after the
+    /// version that was running before, up to and including this one.
     ///
-    /// The check that found the release cached its body; after the install and relaunch, that
-    /// release is what is running, so the same cache answers "what changed?" afterwards. Kept
-    /// separate from `latestNotes` because the two can both exist — you can be reading about
-    /// the release you just installed when the next one appears.
-    @Published private(set) var installedNotes: ReleaseNotes?
+    /// A span rather than one release, because skipping versions is normal. Going from 0.3.0
+    /// to 0.4.1 used to show 0.4.1's notes alone, which opened by describing a bug in a
+    /// release the reader had never run and said nothing about the features they had just
+    /// gained. Kept separate from `latestNotes` because both can exist at once: you can be
+    /// reading about what you just installed when the next release appears.
+    @Published private(set) var installedNotes: [VersionedNotes] = []
 
     /// Set on the first launch after the version changes, until dismissed. The one way someone
     /// with automatic installs on finds out a release happened at all.
@@ -93,7 +95,7 @@ final class UpdateChecker: ObservableObject {
         _autoInstallEnabled = Published(initialValue: defaults.bool(forKey: Self.autoInstallKey))
     }
 
-    private let releaseAPIURL = ProjectLinks.latestReleaseAPI
+    private let releaseAPIURL = ProjectLinks.releasesAPI
     private let dmgURL = ProjectLinks.latestDMG
     private let checkInterval: TimeInterval = 24 * 60 * 60
 
@@ -106,12 +108,29 @@ final class UpdateChecker: ObservableObject {
     private static let dismissedAnnouncementKey = "dismissedUpdateAnnouncement"
     private static let pendingAnnouncementKey = "pendingUpdateAnnouncement"
     private static let notesCheckedForKey = "notesCheckedForVersion"
+    /// The version running before this one, kept while an announcement is pending so the span
+    /// it describes still has a start. `lastRunVersion` is overwritten at launch and cannot
+    /// answer this afterwards.
+    private static let updatedFromKey = "updatedFromVersion"
+    /// Every release the last check saw, as JSON. Was a single body, which could only ever
+    /// describe one release.
+    private static let cachedReleasesKey = "cachedReleases"
 
     private struct GitHubRelease: Decodable {
         let tag_name: String
         /// The release notes. Optional because a release can be published without a body, and
         /// a missing one must not fail the version check that is the point of this request.
         let body: String?
+        let prerelease: Bool?
+        let draft: Bool?
+
+        /// Tags are written `v0.4.1`; everything else here compares bare dotted integers.
+        var remote: RemoteRelease {
+            RemoteRelease(version: tag_name.hasPrefix("v") ? String(tag_name.dropFirst()) : tag_name,
+                          body: body ?? "",
+                          isPrerelease: prerelease ?? false,
+                          isDraft: draft ?? false)
+        }
     }
 
     var currentVersion: String { AppInfo.comparableVersion }
@@ -144,7 +163,7 @@ final class UpdateChecker: ObservableObject {
     /// the throttle and go to the network again for as long as the announcement stood.
     private var notesWorthFetching: Bool {
         justUpdatedTo != nil
-            && installedNotes == nil
+            && installedNotes.isEmpty
             && defaults.string(forKey: Self.notesCheckedForKey) != currentVersion
     }
 
@@ -191,8 +210,12 @@ final class UpdateChecker: ObservableObject {
         defer { isChecking = false }
         do {
             let (data, _) = try await URLSession.shared.data(from: releaseAPIURL)
-            let release = try JSONDecoder().decode(GitHubRelease.self, from: data)
-            let remote = release.tag_name.hasPrefix("v") ? String(release.tag_name.dropFirst()) : release.tag_name
+            let releases = try JSONDecoder().decode([GitHubRelease].self, from: data).map(\.remote)
+            // GitHub's `releases/latest` applied "no drafts, no prereleases" on its side. The
+            // list does not, so the rule lives in `ReleaseSpan` now, with tests.
+            let published = ReleaseSpan.publishable(releases)
+            guard let newest = published.first else { return }
+            let remote = newest.version
             // Only *now* drop a previous dismissal — after the check actually succeeded.
             // Clearing it up front spent the user's decision even when the request then
             // failed, and `restoreLastFound()` would resurrect the very version they had
@@ -204,15 +227,15 @@ final class UpdateChecker: ObservableObject {
             let checkedAt = Date()
             defaults.set(checkedAt, forKey: Self.lastCheckKey)
             defaults.set(remote, forKey: Self.lastFoundKey)
-            defaults.set(release.body ?? "", forKey: Self.lastFoundNotesKey)
+            Self.cache(published, in: defaults)
             lastCheckedAt = checkedAt
             let dismissed = defaults.string(forKey: Self.dismissedKey)
             if Self.isNewer(remote, than: currentVersion), remote != dismissed {
                 latestVersion = remote
-                latestNotes = Self.notes(from: release.body)
+                latestNotes = Self.parsed(ReleaseSpan.newer(than: currentVersion, in: published))
             } else {
                 latestVersion = nil
-                latestNotes = nil
+                latestNotes = []
             }
             // The same response answers "what am I running?" — someone who installed by hand
             // gets their notes from the first check after, without waiting for a next release.
@@ -236,14 +259,15 @@ final class UpdateChecker: ObservableObject {
         let dismissed = defaults.string(forKey: Self.dismissedKey)
         if Self.isNewer(found, than: currentVersion), found != dismissed {
             latestVersion = found
-            latestNotes = Self.notes(from: defaults.string(forKey: Self.lastFoundNotesKey))
+            latestNotes = Self.parsed(ReleaseSpan.newer(than: currentVersion,
+                                                        in: Self.cachedReleases(defaults)))
         }
     }
 
     func dismiss(_ version: String) {
         defaults.set(version, forKey: Self.dismissedKey)
         latestVersion = nil
-        latestNotes = nil
+        latestNotes = []
     }
 
     /// Works out whether this launch is the first on a new version, and loads the notes for
@@ -254,8 +278,9 @@ final class UpdateChecker: ObservableObject {
     /// the one thing worse than a missed announcement is the same one every launch.
     func loadInstalledVersionState() {
         let current = currentVersion
+        let lastRun = defaults.string(forKey: Self.lastRunVersionKey)
         let pending = UpdateAnnouncement.pending(
-            lastRun: defaults.string(forKey: Self.lastRunVersionKey),
+            lastRun: lastRun,
             current: current,
             dismissed: defaults.string(forKey: Self.dismissedAnnouncementKey),
             storedPending: defaults.string(forKey: Self.pendingAnnouncementKey),
@@ -265,8 +290,15 @@ final class UpdateChecker: ObservableObject {
         // which can be days, and a reboot in between must not swallow it.
         if let pending {
             defaults.set(pending, forKey: Self.pendingAnnouncementKey)
+            // Only when the announcement is created, never on a later launch: `lastRun` is
+            // about to be overwritten with `current`, and re-recording it then would collapse
+            // the span to nothing before it had been read.
+            if lastRun != nil, defaults.string(forKey: Self.updatedFromKey) == nil {
+                defaults.set(lastRun, forKey: Self.updatedFromKey)
+            }
         } else {
             defaults.removeObject(forKey: Self.pendingAnnouncementKey)
+            defaults.removeObject(forKey: Self.updatedFromKey)
         }
         defaults.set(current, forKey: Self.lastRunVersionKey)
         installedNotes = Self.installedNotes(current: current, defaults: defaults)
@@ -291,41 +323,61 @@ final class UpdateChecker: ObservableObject {
             defaults.set(version, forKey: Self.dismissedAnnouncementKey)
         }
         defaults.removeObject(forKey: Self.pendingAnnouncementKey)
+        defaults.removeObject(forKey: Self.updatedFromKey)
         justUpdatedTo = nil
     }
 
     /// The same notes, for a caller with no `UpdateChecker` to hand — the About window, which
     /// observes nothing.
-    static func notesForRunningVersion(defaults: UserDefaults = .standard) -> ReleaseNotes? {
+    static func notesForRunningVersion(defaults: UserDefaults = .standard) -> [VersionedNotes] {
         installedNotes(current: AppInfo.comparableVersion, defaults: defaults)
     }
 
-    /// The cached notes, but only when they are demonstrably about the version running.
+    /// Everything gained by the update just installed, from the cache the last check filled.
+    private static func installedNotes(current: String, defaults: UserDefaults) -> [VersionedNotes] {
+        parsed(ReleaseSpan.between(from: defaults.string(forKey: updatedFromKey),
+                                   upToAndIncluding: current,
+                                   in: cachedReleases(defaults)))
+    }
+
+    /// Bodies are a couple of kilobytes of prose each and a SwiftUI body can run many times a
+    /// second, so they are parsed here rather than in the view. A release whose notes come out
+    /// empty is dropped: a version heading with nothing under it says less than nothing.
+    private static func parsed(_ releases: [RemoteRelease]) -> [VersionedNotes] {
+        releases.compactMap { release in
+            let notes = ReleaseNotes.parse(release.body)
+            return notes.isEmpty ? nil : VersionedNotes(version: release.version, notes: notes)
+        }
+    }
+
+    /// How many releases' notes to keep on disk.
     ///
-    /// Every successful check stores the latest release's version and body together, whether
-    /// or not it was newer — so this answers for someone who installed the DMG by hand too,
-    /// from the first check after they did. A mismatch means the cache is about some other
-    /// release and showing it would be worse than showing nothing.
-    private static func installedNotes(current: String, defaults: UserDefaults) -> ReleaseNotes? {
-        notes(for: current,
-                     cachedVersion: defaults.string(forKey: lastFoundKey),
-              cachedBody: defaults.string(forKey: lastFoundNotesKey))
+    /// This lands in the preferences plist, which is read at every launch, so it cannot be
+    /// allowed to grow with the project's age. Six is comfortably more than any real span:
+    /// someone six releases behind is not going to read all of them, and the notes they most
+    /// need are the recent ones either way.
+    private static let maxCachedReleases = 6
+
+    private static func cache(_ releases: [RemoteRelease], in defaults: UserDefaults) {
+        guard let data = try? JSONEncoder().encode(Array(releases.prefix(maxCachedReleases))) else { return }
+        defaults.set(data, forKey: cachedReleasesKey)
     }
 
-    /// The rule, kept apart from the defaults it reads so it can be stated in a test: notes
-    /// are shown only when the cache is demonstrably about this exact version.
-    static func notes(for current: String, cachedVersion: String?, cachedBody: String?) -> ReleaseNotes? {
-        guard cachedVersion == current else { return nil }
-        return notes(from: cachedBody)
+    /// What the last check saw.
+    ///
+    /// Falls back to the single body older versions stored under `lastFoundUpdateNotes`, so
+    /// the first launch after upgrading still has something to show rather than waiting for a
+    /// check to refill the new cache.
+    private static func cachedReleases(_ defaults: UserDefaults) -> [RemoteRelease] {
+        if let data = defaults.data(forKey: cachedReleasesKey),
+           let releases = try? JSONDecoder().decode([RemoteRelease].self, from: data) {
+            return releases
+        }
+        guard let version = defaults.string(forKey: lastFoundKey),
+              let body = defaults.string(forKey: lastFoundNotesKey), !body.isEmpty else { return [] }
+        return [RemoteRelease(version: version, body: body)]
     }
 
-    /// Parsed once here rather than in the view: `body` is a couple of kilobytes of prose and
-    /// a SwiftUI body can run many times a second.
-    private static func notes(from body: String?) -> ReleaseNotes? {
-        guard let body, !body.isEmpty else { return nil }
-        let parsed = ReleaseNotes.parse(body)
-        return parsed.isEmpty ? nil : parsed
-    }
 
     // MARK: - Installing
 
@@ -463,14 +515,20 @@ final class UpdateChecker: ObservableObject {
     func loadPreviewState(version: String = "9.9.9", phase: Phase = .idle, notes: String? = nil) {
         latestVersion = version
         self.phase = phase
-        latestNotes = Self.notes(from: notes)
+        latestNotes = Self.parsed(notes.map { [RemoteRelease(version: version, body: $0)] } ?? [])
     }
 
     /// Pins the "Updated to …" card open for `render-ui updated`, which otherwise only appears
     /// on the one launch that follows an install.
+    /// Two releases, because the point of the preview is the span.
+    func loadPreviewSpan(_ releases: [RemoteRelease]) {
+        justUpdatedTo = releases.first?.version
+        installedNotes = Self.parsed(releases)
+    }
+
     func loadPreviewUpdated(version: String = AppInfo.comparableVersion, notes: String? = nil) {
         justUpdatedTo = version
-        installedNotes = Self.notes(from: notes)
+        installedNotes = Self.parsed(notes.map { [RemoteRelease(version: version, body: $0)] } ?? [])
     }
 }
 
