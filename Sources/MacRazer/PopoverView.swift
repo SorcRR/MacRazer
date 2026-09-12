@@ -455,7 +455,7 @@ struct PopoverView: View {
             // A row, not the notes. The main page is already at the height a menu bar
             // popover can use; the notes get their own page rather than competing with the
             // seven cards above them.
-            if updateChecker.phase == .idle, updateChecker.latestNotes != nil {
+            if updateChecker.phase == .idle, !updateChecker.latestNotes.isEmpty {
                 Button { page = .whatsNew } label: {
                     HStack(spacing: 6) {
                         Text("What's new in \(version)").font(.system(size: 11, weight: .medium))
@@ -521,8 +521,8 @@ struct PopoverView: View {
         // already running. An update on offer wins, matching which card is showing.
         let pending = updateChecker.latestVersion
         return WhatsNewPage(version: pending ?? appVersion,
-                            notes: (pending != nil ? updateChecker.latestNotes : updateChecker.installedNotes)
-                                ?? ReleaseNotes(summary: "", sections: []),
+                            releases: pending != nil ? updateChecker.latestNotes
+                                                     : updateChecker.installedNotes,
                             canInstallInPlace: updateChecker.canInstallInPlace,
                             // Nothing to install when the notes are about what's already
                             // running, so the page shows no button at all rather than one that
@@ -563,7 +563,7 @@ struct PopoverView: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(.tertiary)
             }
-            if updateChecker.installedNotes != nil {
+            if !updateChecker.installedNotes.isEmpty {
                 Button { page = .whatsNew } label: {
                     HStack(spacing: 6) {
                         Text("What's new in \(appVersion)").font(.system(size: 11, weight: .medium))

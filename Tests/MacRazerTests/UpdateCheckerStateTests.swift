@@ -70,6 +70,8 @@ final class UpdateCheckerStateTests: XCTestCase {
         }
     }
 
+    /// Also the migration path: these are the keys versions before this one wrote, and the
+    /// first launch after upgrading has to read them rather than show nothing.
     func testNotesAreShownOnlyForTheVersionRunning() {
         withDefaults { defaults in
             defaults.set(running, forKey: "lastFoundUpdateVersion")
@@ -77,12 +79,12 @@ final class UpdateCheckerStateTests: XCTestCase {
 
             let checker = UpdateChecker(defaults: defaults)
             checker.loadInstalledVersionState()
-            XCTAssertNotNil(checker.installedNotes)
+            XCTAssertFalse(checker.installedNotes.isEmpty)
 
             defaults.set("99.0.0", forKey: "lastFoundUpdateVersion")
             let other = UpdateChecker(defaults: defaults)
             other.loadInstalledVersionState()
-            XCTAssertNil(other.installedNotes, "a cache about another release must not answer")
+            XCTAssertTrue(other.installedNotes.isEmpty, "a cache about another release must not answer")
         }
     }
 
@@ -99,12 +101,12 @@ final class UpdateCheckerStateTests: XCTestCase {
             checker.loadInstalledVersionState()
 
             XCTAssertNotNil(checker.justUpdatedTo)
-            XCTAssertNil(checker.installedNotes)
+            XCTAssertTrue(checker.installedNotes.isEmpty)
             XCTAssertTrue(UpdateChecker.isCheckDue(lastChecked: checker.lastCheckedAt,
                                                    now: Date(),
                                                    interval: 24 * 60 * 60,
                                                    notesMissingForNewVersion: checker.justUpdatedTo != nil
-                                                       && checker.installedNotes == nil),
+                                                       && checker.installedNotes.isEmpty),
                           "a fresh version with no notes must not wait out the throttle")
         }
     }
@@ -122,10 +124,46 @@ final class UpdateCheckerStateTests: XCTestCase {
             let checker = UpdateChecker(defaults: defaults)
             checker.loadInstalledVersionState()
             XCTAssertNotNil(checker.justUpdatedTo)
-            XCTAssertNil(checker.installedNotes)
+            XCTAssertTrue(checker.installedNotes.isEmpty)
             XCTAssertFalse(checker.notesWorthFetchingForTesting,
                            "already asked for this version, so the throttle applies again")
         }
+    }
+
+    func testTheSpanComesFromTheCacheAndTheVersionYouCameFrom() {
+        // The whole point, end to end through the defaults: 0.3.0 to 0.4.1 shows both releases
+        // gained, not just the newest one.
+        withDefaults { defaults in
+            let running = AppInfo.comparableVersion
+            defaults.set("0.0.1", forKey: "lastRunVersion")
+            defaults.set(true, forKey: "launchAtLoginDefaultApplied")
+            seed(defaults, [RemoteRelease(version: running, body: "Newest.\n\n### Fixed\n- **A fix.** Yes."),
+                            RemoteRelease(version: "0.0.5", body: "Middle.\n\n### Added\n- **A feature.** Yes."),
+                            RemoteRelease(version: "0.0.1", body: "Old.\n\n### Added\n- **Old news.** Yes.")])
+
+            let checker = UpdateChecker(defaults: defaults)
+            checker.loadInstalledVersionState()
+            XCTAssertEqual(checker.installedNotes.map(\.version), [running, "0.0.5"],
+                           "everything after the version they were on, up to the one running")
+        }
+    }
+
+    func testAReleaseWithNoNotesIsNotGivenAnEmptyHeading() {
+        withDefaults { defaults in
+            let running = AppInfo.comparableVersion
+            defaults.set("0.0.1", forKey: "lastRunVersion")
+            defaults.set(true, forKey: "launchAtLoginDefaultApplied")
+            seed(defaults, [RemoteRelease(version: running, body: "")])
+
+            let checker = UpdateChecker(defaults: defaults)
+            checker.loadInstalledVersionState()
+            XCTAssertTrue(checker.installedNotes.isEmpty,
+                          "a version heading with nothing under it says less than nothing")
+        }
+    }
+
+    private func seed(_ defaults: UserDefaults, _ releases: [RemoteRelease]) {
+        defaults.set(try! JSONEncoder().encode(releases), forKey: "cachedReleases")
     }
 
     func testAutoInstallDefaultsOffAndPersists() {

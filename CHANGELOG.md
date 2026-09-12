@@ -6,6 +6,26 @@ expect rough edges until 1.0.
 
 ## [Unreleased]
 
+### Changed
+- **"What's new" covers every release you skipped, not just the newest one.** The app asked
+ GitHub for `releases/latest` and showed that one body whatever version you were on, so
+ someone going from 0.3.0 straight to 0.4.1 was shown 0.4.1's notes alone. Those open by
+ describing a bug in 0.4.0 that they never ran, and say nothing about the four mice and the
+ features they had just gained. A release is not the unit anyone cares about; the span
+ between two versions is. The update card now shows everything newer than what you are
+ running, and after installing, everything from the version you were on up to the one you are
+ on now, each under its own version heading.
+
+ The rules are in `ReleaseSpan` with twelve tests: what you would gain, what you just gained,
+ a downgrade, a first install with nothing recorded, and prereleases and drafts staying out of
+ both. `releases/latest` applied those last two on GitHub's side, so asking for the list means
+ applying them here.
+
+ The request grows from about two kilobytes to sixty-five, once a day, and the cache is capped
+ at six releases because it lives in the preferences file that is read at every launch. The
+ single-body cache older versions wrote is still read, so the first launch after upgrading has
+ something to show rather than waiting for a check.
+
 ## [0.4.1] — 2026-09-11
 
 ### Changed
