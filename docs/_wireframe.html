@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex">
+<title>Wireframe preview</title>
+<style>
+  body { margin: 0; height: 700vh; background: #0c0d0f; }
+  #wireframe {
+    position: fixed; top: 0; left: 50%; transform: translateX(-50%);
+    width: min(94vw, 980px); height: 100vh; color: #4fe07a;
+  }
+  .hint {
+    position: fixed; left: 22px; bottom: 20px; margin: 0;
+    font: 12px ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: 0.06em; text-transform: uppercase; color: #5e6166;
+  }
+  .hint b { color: #4fe07a; font-weight: 400; }
+</style>
+</head>
+<body>
+<canvas id="wireframe"></canvas>
+<p class="hint">scroll to rotate · <b>preview only</b>, not part of the site</p>
+<script src="assets/mouse-wireframe.js" defer></script>
+</body>
+</html>
