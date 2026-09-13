@@ -53,14 +53,28 @@ code { font-family: var(--mono); }
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
+/* ---------- scroll-driven wireframe ---------- */
+.wireframe {
+  position: fixed;
+  top: 0;
+  right: max(-70px, calc(50% - 690px));
+  width: clamp(340px, 40vw, 580px);
+  height: 100vh;
+  z-index: -1;
+  color: var(--accent);
+  opacity: 0.3;
+  pointer-events: none;
+  -webkit-mask-image: radial-gradient(ellipse 64% 44% at 62% 50%, #000 44%, transparent 100%);
+  mask-image: radial-gradient(ellipse 64% 44% at 62% 50%, #000 44%, transparent 100%);
+}
+
 /* ---------- hero ---------- */
 .hero {
   position: relative;
   padding: 0 0 80px;
   background:
     radial-gradient(ellipse 900px 500px at 18% -10%, rgba(79, 224, 122, 0.16), transparent 60%),
-    radial-gradient(ellipse 700px 500px at 100% 0%, rgba(224, 166, 79, 0.08), transparent 55%),
-    var(--bg);
+    radial-gradient(ellipse 700px 500px at 100% 0%, rgba(224, 166, 79, 0.08), transparent 55%);
   border-bottom: 1px solid var(--border-soft);
   overflow: hidden;
 }
@@ -521,6 +535,7 @@ tbody tr:hover { background: var(--bg-raised); }
 
 /* ---------- responsive ---------- */
 @media (max-width: 880px) {
+  .wireframe { display: none; }
   .feature-grid { grid-template-columns: repeat(2, 1fr); }
   .shots { grid-template-columns: 1fr; }
   .topbar-links { gap: 16px; font-size: 12px; }
