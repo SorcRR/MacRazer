@@ -6,6 +6,22 @@ expect rough edges until 1.0.
 
 ## [Unreleased]
 
+### Fixed
+- **Buttons in the popover no longer wait a beat before responding.** Two causes, reported as
+ one symptom. The popover was shown with `makeKey()` but without `NSApp.activate`, which every
+ other window in the app already does: this app has no Dock icon, so clicking the menu bar item
+ does not make it the active application, and a control in an inactive app's window does not
+ respond to the first click the way it looks like it should.
+
+ Separately, everything the app says to the mouse goes through one serial queue, in order.
+ That is right for a device that answers one command at a time, but opening the popover alone
+ issues six round-trips, each with a receiver wait, so dragging the DPI slider a moment later
+ sat behind work nobody asked for. Taps now announce themselves before they reach the queue,
+ and the settings read stands down between round-trips when one is waiting. Whatever it skips
+ is read again two seconds later, which costs less than a slider that does nothing. The
+ battery read is left alone deliberately: it is shorter, and abandoning it half way would feed
+ a partial reading to the low-battery and charging logic.
+
 ## [0.4.1] — 2026-09-11
 
 ### Changed

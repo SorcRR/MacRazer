@@ -240,6 +240,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         } else {
             // Show first (instant), then kick off the refresh so the open never waits on IO.
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+            // Activate, not just make key. This app has no Dock icon, so clicking the menu bar
+            // item does not make it the active application, and a control in an inactive app's
+            // window does not respond to the first click the way it looks like it should. Every
+            // other window here already does this; the popover was the one that did not.
+            NSApp.activate(ignoringOtherApps: true)
             popover.contentViewController?.view.window?.makeKey()
             controller.refreshAll()
         }
