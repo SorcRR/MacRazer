@@ -30,6 +30,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     private var updateTimer: Timer?
     private var updateBadgeView: NSView?
     private var appearanceObserver: NSKeyValueObservation?
+    /// The app the user was in when the popover opened, so closing it can hand focus back.
+    /// See `PopoverFocusReturn` for when it does.
+    private var appBeforePopover: NSRunningApplication?
+    /// Set whenever one of the app's windows is asked for; cleared when the popover opens.
+    /// Catches a window that was already open behind another app being brought back, which
+    /// `windowsBeforePopover` alone cannot see.
+    private var windowRequested = false
+    /// Every window, including system panels, already on screen when the popover opened, so
+    /// its close can tell whether it led somewhere new. The colour picker's panel is the case
+    /// that needs it: it is not one of the app's windows and does not go through `present`.
+    private var windowsBeforePopover: Set<ObjectIdentifier> = []
+    /// True while the right-click menu is being tracked.
+    private var appMenuOpen = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Razer HID devices enumerate as a keyboard/mouse, so macOS gates opening them behind
@@ -46,7 +59,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         // can drop the stale "active" highlight.
         remapper.onManualChange = { [weak controller] in controller?.clearActiveProfileIfManuallyChanged() }
         if !permissions.inputMonitoring {
-            DispatchQueue.main.async { [weak self] in self?.permissionsWindow.show() }
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.present(self.permissionsWindow)
+            }
         }
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -76,8 +92,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
                 // Closing here would normally trigger an auto-install, which would relaunch
                 // the app out from under the window the user just asked for. That is handled
                 // in `popoverDidClose` by looking at whether this window came up — see there.
-                self?.popover.performClose(nil)
-                self?.settingsWindow.show()
+                guard let self else { return }
+                self.popover.performClose(nil)
+                self.present(self.settingsWindow)
             }))
         hosting.sizingOptions = [.preferredContentSize] // popover auto-fits the SwiftUI content
         popover.contentViewController = hosting
@@ -238,12 +255,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         if popover.isShown {
             popover.performClose(nil)
         } else {
+            // Remember where focus came from, so closing can hand it back. Not overwritten when
+            // MacRazer is already frontmost: "Open Controls" from the right-click menu reopens
+            // the popover mid-session, and the app to go back to is still the earlier one.
+            if let front = NSWorkspace.shared.frontmostApplication,
+               front.processIdentifier != NSRunningApplication.current.processIdentifier {
+                appBeforePopover = front
+            }
+            windowRequested = false
+            windowsBeforePopover = Set(NSApp.windows.filter(\.isVisible).map(ObjectIdentifier.init))
             // Show first (instant), then kick off the refresh so the open never waits on IO.
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             // Activate, not just make key. This app has no Dock icon, so clicking the menu bar
             // item does not make it the active application, and a control in an inactive app's
             // window does not respond to the first click the way it looks like it should. Every
             // other window here already does this; the popover was the one that did not.
+            // The cost is that the app keeps focus once the popover closes, which
+            // `returnFocusAfterPopover` gives back.
             NSApp.activate(ignoringOtherApps: true)
             popover.contentViewController?.view.window?.makeKey()
             controller.refreshAll()
@@ -253,6 +281,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     // MARK: - App menu (right-click)
 
     private func showAppMenu() {
+        // Held for the whole of the tracking below, so a popover closing on the way here does
+        // not hand focus to another app, which would dismiss this menu. See
+        // `returnFocusAfterPopover`.
+        appMenuOpen = true
         if popover.isShown { popover.performClose(nil) }
 
         let menu = NSMenu()
@@ -307,6 +339,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
             let origin = NSPoint(x: 0, y: button.bounds.height + 5)
             menu.popUp(positioning: nil, at: origin, in: button)
         }
+        appMenuOpen = false
+        // Tracking is over, so the choice is made: reopening the popover, opening a window, or
+        // nothing. Deferred a turn for the same reason as `popoverDidClose`: the answer is read
+        // after the chosen item has acted, rather than raced against it.
+        DispatchQueue.main.async { [weak self] in self?.returnFocusAfterPopover() }
     }
 
     private func appMenuStatusTitle() -> String {
@@ -326,9 +363,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
             if !popover.isShown { togglePopover() }
         }
     }
-    @objc private func openRemap() { remapWindow.show() }
-    @objc private func openSettings() { settingsWindow.show() }
-    @objc private func openAbout() { aboutWindow.show() }
+    @objc private func openRemap() { present(remapWindow) }
+    @objc private func openSettings() { present(settingsWindow) }
+    @objc private func openAbout() { present(aboutWindow) }
+
+    /// Every way the app opens one of its windows goes through here. Marks the request, so a
+    /// popover closing on the way to the window keeps focus instead of handing it back.
+    private func present(_ window: AppWindowPresenter) {
+        windowRequested = true
+        window.show()
+    }
 
     /// Whether the user is currently looking at one of the app's windows.
     ///
@@ -344,7 +388,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     /// watching for it to act, and neither of the other triggers fires then: `latestVersion`
     /// hasn't changed (so the deduplicated sink stays quiet) and the popover was never open.
     private func autoInstallSettingChanged() { autoInstallIfEnabled() }
-    @objc private func openPermissions() { permissionsWindow.show() }
+    @objc private func openPermissions() { present(permissionsWindow) }
     @objc private func quit() { NSApplication.shared.terminate(nil) }
 
     // MARK: - NSPopoverDelegate
@@ -361,7 +405,44 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         // callback at a particular moment it never promised to. By the next runloop turn the
         // settings window has either come up or it hasn't, and `autoInstallIfEnabled` reads
         // that directly.
-        DispatchQueue.main.async { [weak self] in self?.autoInstallIfEnabled() }
+        DispatchQueue.main.async { [weak self] in
+            self?.autoInstallIfEnabled()
+            // Same reasoning decides focus: by now the window the close was for has come up,
+            // or it has not.
+            self?.returnFocusAfterPopover()
+        }
+    }
+
+    // MARK: - Popover focus
+
+    /// Hands keyboard focus back to the app the user was in, when the popover session is over
+    /// and nothing says to stay. Called a turn after each way that session can end: the popover
+    /// closing, and the right-click menu finishing. See `PopoverFocusReturn` for the rules.
+    private func returnFocusAfterPopover() {
+        let previous = appBeforePopover.flatMap { $0.isTerminated ? nil : $0 }
+        let popoverWindow = popover.contentViewController?.view.window
+        let somethingNewOnScreen = NSApp.windows.contains {
+            $0.isVisible && $0 !== popoverWindow && !windowsBeforePopover.contains(ObjectIdentifier($0))
+        }
+        let verdict = PopoverFocusReturn.verdict(.init(
+            appMenuOpen: appMenuOpen,
+            popoverShown: popover.isShown,
+            windowOpened: windowRequested || somethingNewOnScreen,
+            appIsActive: NSApp.isActive,
+            hasPreviousApp: previous != nil))
+        switch verdict {
+        case .wait:
+            return
+        case .stay:
+            appBeforePopover = nil
+        case .returnFocus:
+            appBeforePopover = nil
+            guard let previous else { return }
+            // Cooperative activation, the way macOS 14 expects it: the active app yields, and
+            // the target takes activation from it.
+            NSApp.yieldActivation(to: previous)
+            _ = previous.activate(from: .current, options: [])
+        }
     }
 
     // MARK: - Automatic updates
@@ -409,6 +490,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         // come back.
         controller.refreshNotificationAuthorization()
         launchAtLogin.refresh()
+    }
+
+    /// Another app took focus. A hand-back still pending from the popover must not take it
+    /// back: whatever the user just moved to wins.
+    func applicationDidResignActive(_ notification: Notification) {
+        appBeforePopover = nil
     }
 
     func applicationWillTerminate(_ notification: Notification) {
