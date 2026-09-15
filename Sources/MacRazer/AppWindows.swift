@@ -17,4 +17,6 @@ protocol AppWindowPresenter: AnyObject {
     /// Whether this controller's window is currently on screen. False before `show()` has ever
     /// been called, since the window is built lazily.
     var isVisible: Bool { get }
+    /// Puts the window on screen and in front, building it on first use.
+    func show()
 }

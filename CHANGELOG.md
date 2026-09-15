@@ -11,7 +11,9 @@ expect rough edges until 1.0.
  one symptom. The popover was shown with `makeKey()` but without `NSApp.activate`, which every
  other window in the app already does: this app has no Dock icon, so clicking the menu bar item
  does not make it the active application, and a control in an inactive app's window does not
- respond to the first click the way it looks like it should.
+ respond to the first click the way it looks like it should. Activating takes keyboard focus
+ from the app you were in, so closing the popover now hands it back, unless the close was on
+ the way to one of MacRazer's windows or you closed it by clicking into another app.
 
  Separately, everything the app says to the mouse goes through one serial queue, in order.
  That is right for a device that answers one command at a time, but opening the popover alone
