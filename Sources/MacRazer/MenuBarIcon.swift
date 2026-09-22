@@ -19,8 +19,11 @@ enum MenuBarIcon {
     ///
     /// This is what lets one charging image serve every menu bar. `drawMouse` returns a
     /// drawing-handler image, and AppKit runs the handler again whenever it is drawn under a
-    /// different appearance, so the mark recolours itself when the menu bar flips, and each
-    /// display's copy of the status item gets colours for its own menu bar.
+    /// different appearance, so the mark recolours itself when the menu bar flips. (Checked
+    /// by forcing a status item's appearance back and forth, and by `MenuBarIconTests`.)
+    /// It should also give each display's copy of the status item colours for that display's
+    /// menu bar, if AppKit draws those copies under their own appearance, but that part has
+    /// not been seen on two displays with different menu bars.
     ///
     /// Earlier builds picked the colours once, from the status item's `effectiveAppearance`,
     /// and watched that property to redraw. That watch is what broke (issue #25): setting a
