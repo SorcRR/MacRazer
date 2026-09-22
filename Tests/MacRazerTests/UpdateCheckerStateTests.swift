@@ -162,6 +162,28 @@ final class UpdateCheckerStateTests: XCTestCase {
         }
     }
 
+    func testTheNotesSurviveALaterLaunchWhenTheOldVersionWasNeverRecorded() {
+        // Upgrading from 0.3.0 or earlier, which predate `lastRunVersion`: there is nothing to
+        // start a span from, so the notes fall back to the release running. The next launch,
+        // before the announcement has been read, must not then record the running version as
+        // where they came from, which would empty the span and take the notes with it.
+        withDefaults { defaults in
+            let running = AppInfo.comparableVersion
+            defaults.set(true, forKey: "launchAtLoginDefaultApplied") // has run before
+            seed(defaults, [RemoteRelease(version: running, body: "Newest.\n\n### Fixed\n- **A fix.** Yes."),
+                            RemoteRelease(version: "0.0.5", body: "Middle.\n\n### Added\n- **A feature.** Yes.")])
+
+            let first = UpdateChecker(defaults: defaults)
+            first.loadInstalledVersionState()
+            XCTAssertEqual(first.installedNotes.map(\.version), [running])
+
+            let second = UpdateChecker(defaults: defaults) // after a reboot, card not yet read
+            second.loadInstalledVersionState()
+            XCTAssertEqual(second.installedNotes.map(\.version), [running],
+                           "a later launch must not collapse the span to nothing")
+        }
+    }
+
     private func seed(_ defaults: UserDefaults, _ releases: [RemoteRelease]) {
         defaults.set(try! JSONEncoder().encode(releases), forKey: "cachedReleases")
     }

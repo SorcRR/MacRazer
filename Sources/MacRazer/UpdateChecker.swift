@@ -128,7 +128,8 @@ final class UpdateChecker: ObservableObject {
             RemoteRelease(version: tag_name.hasPrefix("v") ? String(tag_name.dropFirst()) : tag_name,
                           body: body ?? "",
                           isPrerelease: prerelease ?? false,
-                          isDraft: draft ?? false)
+                          isDraft: draft ?? false,
+                          tag: tag_name)
         }
     }
 
@@ -289,10 +290,12 @@ final class UpdateChecker: ObservableObject {
         // which can be days, and a reboot in between must not swallow it.
         if let pending {
             defaults.set(pending, forKey: Self.pendingAnnouncementKey)
-            // Only when the announcement is created, never on a later launch: `lastRun` is
-            // about to be overwritten with `current`, and re-recording it then would collapse
-            // the span to nothing before it had been read.
-            if lastRun != nil, defaults.string(forKey: Self.updatedFromKey) == nil {
+            // Only on the launch the version changed, never a later one. By then `lastRun` has
+            // been overwritten with `current`, and recording it would collapse the span to
+            // nothing before it had been read. That includes an upgrade from a build too old to
+            // have recorded `lastRun` at all (0.3.0 and earlier): the span has no start then,
+            // and the notes fall back to the release running rather than to nothing.
+            if let lastRun, lastRun != current, defaults.string(forKey: Self.updatedFromKey) == nil {
                 defaults.set(lastRun, forKey: Self.updatedFromKey)
             }
         } else {
@@ -452,7 +455,10 @@ final class UpdateChecker: ObservableObject {
             }
         }
         do {
-            return try await downloader.run(from: ProjectLinks.dmg(forVersion: version))
+            // The release's own tag when the last check recorded one, so a release tagged
+            // without the usual `v` still downloads.
+            let tag = Self.cachedReleases(defaults).first { $0.version == version }?.tag
+            return try await downloader.run(from: ProjectLinks.dmg(forVersion: version, tag: tag))
         } catch {
             // Nobody else knows about this directory yet, so a failed download has to take it
             // with it — otherwise every offline retry leaves one behind.

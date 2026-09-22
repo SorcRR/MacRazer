@@ -9,6 +9,9 @@ struct RemoteRelease: Equatable, Codable {
     let body: String
     var isPrerelease: Bool = false
     var isDraft: Bool = false
+    /// The git tag as GitHub has it, which is what its download URLs use. Optional so caches
+    /// written before it existed still decode.
+    var tag: String? = nil
 }
 
 /// Which releases to show someone, given where they are and where they are going.

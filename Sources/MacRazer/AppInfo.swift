@@ -54,12 +54,13 @@ enum ProjectLinks {
     /// older line published after a newer release). Pinning the download to the announced
     /// version means the card can never offer one version and install another.
     ///
-    /// `Scripts/release.sh` tags every release `v<version>`, and `Scripts/make-dmg.sh` keeps
-    /// the asset named `MacRazer.dmg` on every release, which is what makes this derivable
-    /// from the version alone. That matters because the card can be restored from preferences
-    /// at launch, before any network check has fetched the release list again.
-    static func dmg(forVersion version: String) -> URL {
-        repo.appendingPathComponent("releases/download/v\(version)/MacRazer.dmg")
+    /// `tag` is the release's tag as GitHub reported it, when the last check recorded one. When
+    /// it did not, the card having been restored from preferences at launch or read from a
+    /// cache older than the field, the tag is rebuilt as `v<version>`, which is how
+    /// `Scripts/release.sh` tags every release. `Scripts/make-dmg.sh` keeps the asset named
+    /// `MacRazer.dmg` on every release.
+    static func dmg(forVersion version: String, tag: String? = nil) -> URL {
+        repo.appendingPathComponent("releases/download/\(tag ?? "v\(version)")/MacRazer.dmg")
     }
     /// The list, not `releases/latest`. The app shows the span between the version you are on
     /// and the one you are getting, and one release cannot describe a span.
