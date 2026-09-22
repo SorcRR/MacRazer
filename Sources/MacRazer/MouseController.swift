@@ -80,6 +80,52 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     }
 
     private let io = DispatchQueue(label: "com.macrazer.hid")
+
+    /// How many user-initiated commands are waiting on `io`.
+    ///
+    /// Everything the app says to the mouse goes through one serial queue, in order. That is
+    /// right for a device that answers one command at a time, but it means a tap can sit
+    /// behind work nobody asked for: opening the popover alone issues six round-trips, each
+    /// with a receiver wait, so dragging the DPI slider a moment later waited out the better
+    /// part of a second before anything happened.
+    ///
+    /// A background read can be abandoned safely, because the next poll does it again. A
+    /// write cannot. So reads check this between round-trips and stop; writes never do.
+    private let userWorkLock = NSLock()
+    private var userWorkCount = 0
+
+    /// True while a tap is waiting for the device.
+    private var userWorkPending: Bool {
+        userWorkLock.lock()
+        defer { userWorkLock.unlock() }
+        return userWorkCount > 0
+    }
+
+    /// Enqueue something the user asked for, announcing it before it reaches the queue so a
+    /// read already running can stand down.
+    private func userCommand(_ body: @escaping @Sendable () -> Void) {
+        beginUserWork()
+        io.async { [weak self] in
+            defer { self?.endUserWork() }
+            body()
+        }
+    }
+
+    #if DEBUG
+    /// The bookkeeping above, for the test that says it never leaks. A count stuck above zero
+    /// would stop every background read for the life of the process, and the popover would
+    /// quietly stop reflecting the mouse.
+    var userWorkPendingForTesting: Bool { userWorkPending }
+    func runUserCommandForTesting(_ body: @escaping @Sendable () -> Void) { userCommand(body) }
+    #endif
+
+    private func beginUserWork() {
+        userWorkLock.lock(); userWorkCount += 1; userWorkLock.unlock()
+    }
+
+    private func endUserWork() {
+        userWorkLock.lock(); userWorkCount -= 1; userWorkLock.unlock()
+    }
     private var device: HIDDevice?
     private var pollTimer: Timer?
     private var history = BatteryHistory(deviceKey: "default")
@@ -385,7 +431,10 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         guard let dev = try? ensureDevice() else { return }
         var linkDead = false
         func read<T>(_ report: RazerReport, _ parse: (RazerReport) -> T) -> T? {
-            guard !linkDead else { return nil }
+            // Stand down the moment a tap is waiting. Whatever is skipped here is read again
+            // by the next poll, and a stale DPI reading for two seconds costs less than a
+            // slider that does nothing for a second.
+            guard !linkDead, !self.userWorkPending else { return nil }
             do { return parse(try dev.sendWithRetry(report)) }
             catch HIDDevice.HIDError.commandFailed, HIDDevice.HIDError.notSupported {
                 return nil // this feature only — the device answered, keep reading others
@@ -428,7 +477,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
 
     func setDPI(_ value: Int) {
         let v = UInt16(max(100, min(value, 45000)))
-        io.async { [weak self] in
+        userCommand { [weak self] in
             guard let self else { return }
             let ok = (try? self.ensureDevice().sendWithRetry(RazerCommands.setDPI(x: v, y: v))) != nil
             self.publish {
@@ -439,7 +488,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     }
 
     func setPollRate(_ hz: Int) {
-        io.async { [weak self] in
+        userCommand { [weak self] in
             guard let self else { return }
             let ok = (try? self.ensureDevice().sendWithRetry(RazerCommands.setPollingRate(hz))) != nil
             self.publish {
@@ -451,7 +500,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
 
     func setBrightness(_ percent: Int) {
         let pct = max(0, min(percent, 100))
-        io.async { [weak self] in
+        userCommand { [weak self] in
             guard let self else { return }
             let ok = (try? {
                 let dev = try self.ensureDevice()
@@ -497,8 +546,10 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         }
     }
 
+    /// Every lighting change the user makes goes through here, so it is the one place the
+    /// effect and colour controls need to preempt a background read.
     private func sendLighting(_ report: RazerReport, onSuccess: @escaping @Sendable () -> Void) {
-        io.async { [weak self] in
+        userCommand { [weak self] in
             guard let self else { return }
             let ok = (try? self.ensureDevice().sendWithRetry(report)) != nil
             self.publish {
@@ -579,7 +630,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         let stagesReport = stages.isEmpty ? nil
             : RazerCommands.setDPIStages(stages, activeStage: stages.firstIndex(of: profile.dpi) ?? 0)
 
-        io.async { [weak self] in
+        userCommand { [weak self] in
             guard let self else { return }
             guard let dev = try? self.ensureDevice() else {
                 self.publish { self.lastWriteFailure = Date(); self.profileApplyFailed = true }
