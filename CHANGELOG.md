@@ -30,18 +30,19 @@ expect rough edges until 1.0.
 
 ### Fixed
 - **MacRazer no longer burns 50-100% of a CPU core while it sits in the menu bar** (#25).
- Since 0.3.0 the app watches the menu bar's light or dark appearance so it can recolour the
+ Since 0.3.0 the app watched the menu bar's light or dark appearance so it could recolour the
  charging icon. Every time that fired, it set the status item's image again. Setting the image
  makes macOS redraw the menu bar icon, and that redraw reports an appearance change even when
  nothing changed. So the two kept triggering each other, forever, whether the mouse was
- charging or not. The icon is now only set when the mark on screen would actually change:
- plugging in, unplugging, or the menu bar switching between light and dark. On the machine it
- was reproduced on, the fixed build idles at 0% where 0.4.1 sat around 50% and peaked over 70%.
+ charging or not. On the machine it was reproduced on, 0.4.1 sat around 50% and peaked over 70%.
 
- The decision lives in `MenuBarIcon.Variant`, with tests for which appearances count as a
- different mark. The loop itself needs a real menu bar to happen, so it was checked by hand:
- a bare status item wired the old way made about 6,000 redraws a second, and 2 in total with
- the check in place.
+ The charging icon now picks its colours each time it's drawn, from the menu bar it's being
+ drawn on, so nothing has to watch the appearance at all. Both icons are drawn once and
+ reused. The fixed build idles at 0%.
+
+ `MenuBarIconTests` render the real icon under light, dark, vibrant and high-contrast menu
+ bars and check its pixels, including one image switching between them. Resolving the colours
+ once, the old way, fails both colour tests.
 
 - **Buttons in the popover no longer wait a beat before responding.** Two causes, reported as
  one symptom. The popover was shown with `makeKey()` but without `NSApp.activate`, which every

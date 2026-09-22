@@ -5,18 +5,10 @@ import AppKit
 import XCTest
 @testable import MacRazer
 
-/// `MenuBarIcon.Variant` is what `AppDelegate` compares before setting the status item's
-/// image. The comparison is what breaks the redraw loop from issue #25, so these pin down
-/// which appearance changes count as a different mark and which do not.
+/// The charging mark picks its colours when it is drawn, not when it is made. That is what
+/// lets `AppDelegate` build it once and never watch the menu bar's appearance, and watching
+/// the appearance is what caused issue #25. These render the real image and read its pixels.
 final class MenuBarIconTests: XCTestCase {
-    private func appearance(_ name: NSAppearance.Name) -> NSAppearance {
-        guard let a = NSAppearance(named: name) else {
-            XCTFail("no system appearance named \(name.rawValue)")
-            return NSAppearance(named: .aqua)!
-        }
-        return a
-    }
-
     private let light: [NSAppearance.Name] = [
         .aqua, .vibrantLight, .accessibilityHighContrastAqua, .accessibilityHighContrastVibrantLight,
     ]
@@ -24,40 +16,74 @@ final class MenuBarIconTests: XCTestCase {
         .darkAqua, .vibrantDark, .accessibilityHighContrastDarkAqua, .accessibilityHighContrastVibrantDark,
     ]
 
-    func testTheIdleMarkIsTheSameForEveryAppearance() {
-        // The loop in #25 ran while the mouse was off the charger too. The idle mark is a
-        // template, so no appearance report, real or spurious, may count as a reason to set it
-        // again.
-        for name in light + dark {
-            XCTAssertEqual(MenuBarIcon.Variant(charging: false, appearance: appearance(name)), .idle,
-                           name.rawValue)
+    private enum Ink: Hashable { case white, black, yellowOnDark, yellowOnLight }
+
+    /// Which of the four charging colours appear, fully opaque, when `image` is drawn under
+    /// `name`. Drawn at 4x so the 1pt strokes have solid pixels rather than only antialiasing.
+    private func inks(_ image: NSImage, drawnAs name: NSAppearance.Name) throws -> Set<Ink> {
+        let appearance = try XCTUnwrap(NSAppearance(named: name), name.rawValue)
+        let px = Int(image.size.width * 4)
+        let rep = try XCTUnwrap(NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: px, pixelsHigh: px, bitsPerSample: 8,
+            samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB,
+            bytesPerRow: 0, bitsPerPixel: 0))
+        appearance.performAsCurrentDrawingAppearance {
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+            image.draw(in: NSRect(x: 0, y: 0, width: px, height: px))
+            NSGraphicsContext.restoreGraphicsState()
         }
+        let targets: [(Ink, NSColor)] = [
+            (.white, .white), (.black, .black),
+            (.yellowOnDark, MenuBarIcon.chargingYellowOnDark),
+            (.yellowOnLight, MenuBarIcon.chargingYellowOnLight),
+        ]
+        var found = Set<Ink>()
+        for x in 0..<px {
+            for y in 0..<px {
+                guard let c = rep.colorAt(x: x, y: y)?.usingColorSpace(.sRGB), c.alphaComponent > 0.95
+                else { continue }
+                for (ink, t) in targets {
+                    guard let t = t.usingColorSpace(.sRGB) else { continue }
+                    if abs(c.redComponent - t.redComponent) < 0.06,
+                       abs(c.greenComponent - t.greenComponent) < 0.06,
+                       abs(c.blueComponent - t.blueComponent) < 0.06 {
+                        found.insert(ink)
+                    }
+                }
+            }
+        }
+        return found
     }
 
-    func testTheChargingMarkFollowsLightAndDark() {
+    func testTheChargingMarkIsDrawnForTheMenuBarItLandsOn() throws {
         // The menu bar hands out the vibrant appearances, and Increase Contrast swaps in the
         // high-contrast ones. Each has to land on the right side, or the bolt is drawn for the
         // wrong background.
-        for name in light {
-            XCTAssertEqual(MenuBarIcon.Variant(charging: true, appearance: appearance(name)),
-                           .charging(dark: false), name.rawValue)
-        }
         for name in dark {
-            XCTAssertEqual(MenuBarIcon.Variant(charging: true, appearance: appearance(name)),
-                           .charging(dark: true), name.rawValue)
+            let image = MenuBarIcon.mouse(pointSize: 21, razerCutout: false, charging: true)
+            XCTAssertEqual(try inks(image, drawnAs: name), [.white, .yellowOnDark], name.rawValue)
+        }
+        for name in light {
+            let image = MenuBarIcon.mouse(pointSize: 21, razerCutout: false, charging: true)
+            XCTAssertEqual(try inks(image, drawnAs: name), [.black, .yellowOnLight], name.rawValue)
         }
     }
 
-    func testOnlyARealChangeIsADifferentMark() {
-        // What the guard in `AppDelegate.showMenuBarIcon` relies on: asking again with nothing
-        // changed gives an equal variant, so the image is left alone and the loop stops.
-        // Plugging in or unplugging, or the menu bar flipping, still gets a new image.
-        let dark = appearance(.darkAqua), light = appearance(.aqua)
-        XCTAssertEqual(MenuBarIcon.Variant(charging: true, appearance: dark),
-                       MenuBarIcon.Variant(charging: true, appearance: dark))
-        XCTAssertNotEqual(MenuBarIcon.Variant(charging: true, appearance: dark),
-                          MenuBarIcon.Variant(charging: true, appearance: light))
-        XCTAssertNotEqual(MenuBarIcon.Variant(charging: true, appearance: dark),
-                          MenuBarIcon.Variant(charging: false, appearance: dark))
+    func testOneImageRecoloursWhenTheMenuBarFlips() throws {
+        // What `AppDelegate` relies on to build the mark once: the same instance, drawn again
+        // under another appearance, redraws rather than replaying a cached first render. If
+        // this ever stops holding, the fix is not to watch `effectiveAppearance` again.
+        let image = MenuBarIcon.mouse(pointSize: 21, razerCutout: false, charging: true)
+        XCTAssertEqual(try inks(image, drawnAs: .darkAqua), [.white, .yellowOnDark])
+        XCTAssertEqual(try inks(image, drawnAs: .aqua), [.black, .yellowOnLight])
+        XCTAssertEqual(try inks(image, drawnAs: .vibrantDark), [.white, .yellowOnDark])
+    }
+
+    func testTheIdleMarkStaysATemplate() {
+        // macOS recolours a template for light, dark and highlighted menu bars by itself. The
+        // charging mark can't be one (a template drops the yellow), so it must not be.
+        XCTAssertTrue(MenuBarIcon.mouse(pointSize: 21, razerCutout: false).isTemplate)
+        XCTAssertFalse(MenuBarIcon.mouse(pointSize: 21, razerCutout: false, charging: true).isTemplate)
     }
 }
