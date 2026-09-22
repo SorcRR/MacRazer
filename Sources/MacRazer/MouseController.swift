@@ -143,10 +143,6 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// this class just does the I/O and acts on the verdicts.
     private var pollState = BatteryPollStateMachine()
 
-    // Adaptive poll cadence: react quickly while offline (to catch reconnects), relax when up.
-    private let pollWhenConnected: TimeInterval = 15
-    private let pollWhenOffline: TimeInterval = 4
-
     /// Re-read notification authorization (launch, and whenever the app is refocused) so a
     /// low-battery alert isn't consumed while notifications are switched off.
     func refreshNotificationAuthorization() { lowBatteryNotifier.refreshAuthorization() }
@@ -155,7 +151,23 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         wireHistory()
         lowBatteryNotifier.refreshAuthorization()
         refreshAll()
-        scheduleNextPoll(after: pollWhenOffline)
+        scheduleNextPoll(after: BatteryPollStateMachine.Cadence.settling)
+        // The history and curve files are written on a throttle, and a Mac that sleeps and
+        // then loses power never reaches `applicationWillTerminate`. Save on the way down.
+        sleepObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.willSleepNotification, object: nil, queue: .main
+        ) { [weak self] _ in self?.saveHistorySoon() }
+    }
+
+    private var sleepObserver: NSObjectProtocol?
+
+    /// Writes the throttled history and curve out without waiting. The Mac is going to sleep
+    /// either way; if the queue is mid-read this lands a moment later, or on wake.
+    private func saveHistorySoon() {
+        io.async { [weak self] in
+            self?.history.saveNow()
+            self?.curveModel?.saveNow()
+        }
     }
 
     /// Hooks `history` to log finished discharge cycles into `cycleHistory` and per-interval
@@ -197,10 +209,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         io.async { [weak self] in
             guard let self else { return }
             self.readBatterySync()
-            // Poll fast whenever the last read failed OR the battery isn't ready yet (just
-            // reconnected), so we confirm a disconnect, catch a reconnect, and resolve the
-            // real % quickly.
-            let next = (self.pollState.lastReadOK && self.pollState.batteryReady) ? self.pollWhenConnected : self.pollWhenOffline
+            // Fast while settling or just dropped, slow once connected, and backing off when
+            // the mouse stays unreachable. See `BatteryPollStateMachine.Cadence`.
+            let next = self.pollState.nextPollInterval
             self.publish { self.scheduleNextPoll(after: next) }
         }
     }
@@ -233,6 +244,10 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         settingsTimer?.invalidate()
         settingsTimer = nil
         guard visible else { return }
+        // While the mouse is unreachable the poll backs off, so a mouse woken just before
+        // opening the popover could otherwise still read offline. Looking is a good moment
+        // to check.
+        checkIfOffline()
         refreshSettings()
         let t = Timer(timeInterval: 2.0, repeats: true) { [weak self] _ in
             self?.refreshSettings()
@@ -245,10 +260,39 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// `immediateOffline` so the disconnect shows at once (bypassing the timeout debounce,
     /// since a USB termination is definitive). Also realigns the poll cadence.
     func forceCheck(immediateOffline: Bool) {
+        // A plug event is the only way a different unit can turn up on an interface we
+        // already know, so the cached serial is no longer evidence of which mouse it is.
+        io.async { [weak self] in self?.knownSerial = nil }
+        checkNow(immediateOffline: immediateOffline)
+    }
+
+    /// Main-thread only. A check is already on its way; don't queue another behind it.
+    private var offlineCheckQueued = false
+
+    /// Checks at once if the mouse is currently offline, for moments that suggest it may be
+    /// back: the popover opening, or a remapped button being pressed. Main thread. Repeated
+    /// calls while one check is pending are dropped, so clicking away at a button that isn't
+    /// answering can't pile reads up on the serial queue.
+    func checkIfOffline() {
+        guard !connected, !offlineCheckQueued else { return }
+        offlineCheckQueued = true
+        io.async { [weak self] in
+            guard let self else { return }
+            self.readBatterySync()
+            let next = self.pollState.nextPollInterval
+            self.publish {
+                self.offlineCheckQueued = false
+                self.scheduleNextPoll(after: next)
+            }
+        }
+    }
+
+    /// Reads the battery now and realigns the poll cadence to the result.
+    private func checkNow(immediateOffline: Bool) {
         io.async { [weak self] in
             guard let self else { return }
             self.readBatterySync(immediateOffline: immediateOffline)
-            let next = (self.pollState.lastReadOK && self.pollState.batteryReady) ? self.pollWhenConnected : self.pollWhenOffline
+            let next = self.pollState.nextPollInterval
             self.publish { self.scheduleNextPoll(after: next) }
         }
     }
@@ -319,8 +363,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 outcome = .battery(raw: raw, charging: charging)
             }
         } catch {
-            device?.close() // release the user client now rather than at CF-dealloc time
-            device = nil    // drop the handle so we reopen next tick
+            releaseDeviceIfNeeded(after: error)
             errText = String(describing: error)
             // No Razer mouse present at all (vs. present-but-asleep timeout).
             let gone: Bool = { if case HIDDevice.HIDError.notFound = error { return true }; return false }()
@@ -750,8 +793,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
 
     // MARK: - Helpers
 
-    /// Writes out the throttled savers' in-memory tail (up to ~30s of samples/curve updates
-    /// otherwise dropped on every clean quit). Called from `applicationWillTerminate`.
+    /// Writes out the throttled savers' in-memory tail (up to five minutes of samples and
+    /// learned rate, and ~30s of curve updates, otherwise dropped on every clean quit).
+    /// Called from `applicationWillTerminate`.
     /// Best-effort with a short timeout: the serial queue may be mid-poll inside the HID
     /// retry ladder (seconds of sleeps against a flaky dongle), and wedging quit behind
     /// that is worse than losing the tail — the timeout path just matches the old
@@ -777,6 +821,58 @@ final class MouseController: ObservableObject, @unchecked Sendable {
          history.cycleStartedPercent)
     }
 
+    /// io-queue only. The serial number read the last time a device was opened, and the
+    /// interface it was read from, so a reopen doesn't have to ask again. Only a successful
+    /// read is kept: a serial that failed to resolve is retried on the next open, which the
+    /// same-session key upgrade below depends on. Cleared by `forceCheck` on any plug or
+    /// unplug, and by `releaseDeviceIfNeeded` on any USB-level failure, since either can mean
+    /// a different unit now sits on the same interface.
+    private var knownSerial: (locationID: Int, pid: Int, serial: String)?
+
+    /// io-queue only. Decides what a failed battery read does to the open handle.
+    ///
+    /// A timeout is the dongle answering for a mouse that didn't: asleep, switched off, out of
+    /// range. The handle is fine, and keeping it spares a re-enumerate, reopen and serial read
+    /// on every poll until the mouse is back. It is kept only once the serial is known,
+    /// though: while it isn't, reopening is how it gets asked for again when the mouse wakes,
+    /// and without that the session's history would stay under the PID fallback key.
+    ///
+    /// Replies that make no sense drop the handle, so the next poll starts clean. Anything at
+    /// the USB level (the device gone, a failed transfer, a failed open) also forgets the
+    /// serial, because the thing on that interface may no longer be the same mouse.
+    private func releaseDeviceIfNeeded(after error: Error) {
+        let serialKnown = device.map { d in
+            knownSerial.map { $0.locationID == d.locationID && $0.pid == d.productID } ?? false
+        } ?? false
+        switch error {
+        case HIDDevice.HIDError.timeout where serialKnown:
+            return
+        case HIDDevice.HIDError.timeout, HIDDevice.HIDError.badResponse:
+            break
+        default:
+            knownSerial = nil
+        }
+        device?.close() // release the user client now rather than at CF-dealloc time
+        device = nil    // drop the handle so we reopen next tick
+    }
+
+    /// io-queue only. Moves from one device's battery history to another's, in the order
+    /// that loses nothing.
+    ///
+    /// The outgoing history holds up to `BatteryHistory.historySaveInterval` of samples, and
+    /// its learned rate, in memory. They are written first, because `migrate` moves files
+    /// and anything not yet on disk would be left behind. The placeholder history the app
+    /// starts with (`outgoingKey` nil) belongs to no device and is not written. Static and
+    /// closure-driven so the order can be tested without a mouse.
+    static func handOverHistory(_ outgoing: BatteryHistory, outgoingKey: String?,
+                                migrate: ((String) -> Void)?,
+                                makeIncoming: () -> BatteryHistory) -> BatteryHistory {
+        guard let outgoingKey else { return makeIncoming() }
+        outgoing.saveNow()
+        migrate?(outgoingKey)
+        return makeIncoming()
+    }
+
     /// Must be called on `io`.
     private func ensureDevice() throws -> HIDDevice {
         if let d = device { return d }
@@ -797,7 +893,13 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         // serial-keyed history for this session, keep using it instead of falling back to the
         // PID key — that fallback would fragment one mouse's history across two files on every
         // transient serial-read failure rather than just on a genuine device change.
-        let serial = (try? d.sendWithRetry(RazerCommands.getSerial())).flatMap { RazerCommands.parseSerial($0) }
+        let serial: String?
+        if let known = knownSerial, known.locationID == d.locationID, known.pid == pid {
+            serial = known.serial
+        } else {
+            serial = (try? d.sendWithRetry(RazerCommands.getSerial())).flatMap { RazerCommands.parseSerial($0) }
+            if let serial { knownSerial = (d.locationID, pid, serial) }
+        }
         let key = serial ?? historyKey ?? String(format: "%04x", pid)
         // Switch to this mouse's own battery history (per-device file + learned rate).
         if key != historyKey {
@@ -809,14 +911,11 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             // with two same-model units, they could belong to the other mouse.
             let isSameUnitKeyUpgrade = historyKey != nil && serial != nil
                 && historyKey == String(format: "%04x", pid)
-            if let old = historyKey, isSameUnitKeyUpgrade {
-                // Flush the live history's throttled tail first — the migration moves the
-                // file, and anything not yet written would silently vanish with it.
-                history.saveNow()
-                Self.migratePerDeviceData(from: old, to: key)
-            }
+            history = Self.handOverHistory(
+                history, outgoingKey: historyKey,
+                migrate: isSameUnitKeyUpgrade ? { old in Self.migratePerDeviceData(from: old, to: key) } : nil,
+                makeIncoming: { BatteryHistory(deviceKey: key) })
             historyKey = key
-            history = BatteryHistory(deviceKey: key)
             cycleHistory = ChargeCycleHistory(deviceKey: key)
             wireHistory()
             // A charging debounce pending for the previous mouse must not auto-confirm the new

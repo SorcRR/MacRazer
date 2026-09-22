@@ -21,6 +21,42 @@ struct BatteryPollStateMachine {
     /// A not-charging→charging transition has been seen but not yet confirmed on a second
     /// consecutive poll.
     private(set) var pendingChargeConfirm = false
+    /// Polls in a row that reached a device but got no battery reading from it: a mouse
+    /// asleep, switched off or out of range behind its dongle, or one refusing the battery
+    /// read. Drives the back-off in `nextPollInterval`. Unlike `consecutiveFailures`
+    /// this restarts when the device disappears, so a replug gets fast polls again rather
+    /// than inheriting the slow cadence of the long absence before it.
+    private(set) var pollsWithoutReading = 0
+    /// The last poll found no Razer device enumerated at all.
+    private(set) var deviceGone = false
+
+    /// How often to poll in each situation.
+    enum Cadence {
+        /// A mouse that answers. Battery moves slowly; this is the steady state.
+        static let connected: TimeInterval = 15
+        /// Just started, just reconnected, or just stopped answering: poll quickly to catch
+        /// the real percent, confirm a disconnect, or catch a mouse waking straight back up.
+        static let settling: TimeInterval = 4
+        /// Fast polls allowed before backing off, about a minute at `settling`.
+        static let fastPolls = 15
+        /// Still not answering after that. The mouse is asleep or off, which can last all
+        /// night, and polling it every 4 seconds meant about 21,600 wake-ups and USB round
+        /// trips a day for nothing. The same as `connected`, so a missing mouse is never
+        /// polled more often than a working one once the first minute is over. Kept that
+        /// short because a woken mouse reads offline, with its button remaps paused, until
+        /// the next poll. Opening the popover or pressing a remapped button checks at once.
+        static let asleep: TimeInterval = 15
+        /// Nothing enumerated at all. `HIDMonitor` calls in the moment a device appears, so
+        /// this is only a safety net for the case where its registration failed.
+        static let unplugged: TimeInterval = 120
+    }
+
+    /// How long to wait before the next poll, given what the last one found.
+    var nextPollInterval: TimeInterval {
+        if deviceGone { return Cadence.unplugged }
+        if lastReadOK && batteryReady { return Cadence.connected }
+        return pollsWithoutReading < Cadence.fastPolls ? Cadence.settling : Cadence.asleep
+    }
 
     /// What one poll's HID I/O produced.
     enum ReadOutcome {
@@ -61,16 +97,22 @@ struct BatteryPollStateMachine {
             lastReadOK = true
             consecutiveFailures = 0
             batteryReady = true
+            pollsWithoutReading = 0
+            deviceGone = false
             return .aliveNoBattery
 
         case .battery(let raw, let charging):
             lastReadOK = true
             consecutiveFailures = 0
+            deviceGone = false
 
             // A raw 0 means "connected but battery not ready yet" — common right after a
-            // reconnect/wake while the dongle re-probes. Don't display a bogus 0%.
+            // reconnect/wake while the dongle re-probes. Don't display a bogus 0%. It is
+            // also what a mouse refusing the read around sleep produces, so it counts
+            // toward the back-off like a failure does.
             guard raw != 0 else {
                 batteryReady = false
+                pollsWithoutReading += 1
                 return .notReady
             }
             let pct = RazerCommands.batteryPercent(fromRaw: raw)
@@ -82,12 +124,15 @@ struct BatteryPollStateMachine {
             // permanently disable it and a later one-off garbage read would be trusted as
             // the new baseline outright. Two rejects in a row means it isn't a blip:
             // accept the third value as the new baseline.
+            // Not counted toward the back-off: the link is up and `batteryReady` holds, so
+            // the cadence stays `connected`, and a value is accepted within two more polls.
             if let last = lastGoodPercent, abs(pct - last) > 20, batteryRejects < 2 {
                 batteryRejects += 1
                 return .notReady
             }
             batteryRejects = 0
             lastGoodPercent = pct
+            pollsWithoutReading = 0
 
             // Charging only counts once confirmed on a second consecutive poll — acting on
             // a false positive destructively resets the whole discharge history. Dropping
@@ -104,6 +149,8 @@ struct BatteryPollStateMachine {
             batteryReady = false           // force the reconnect freshness check next time
             pendingChargeConfirm = false   // a stale pending confirm must not survive a drop
             consecutiveFailures += 1
+            self.deviceGone = deviceGone
+            pollsWithoutReading = deviceGone ? 0 : pollsWithoutReading + 1
             let declareOffline = immediateOffline || consecutiveFailures >= 2
             return declareOffline ? .offline(deviceGone: deviceGone) : .pendingOffline
         }

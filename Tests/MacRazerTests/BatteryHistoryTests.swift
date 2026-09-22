@@ -198,6 +198,50 @@ final class BatteryHistoryTests: XCTestCase {
         XCTAssertEqual(migrated.samples.count, 2)
     }
 
+    /// A steeper stretch after `feedSteadyDischarge`, so the session fit moves.
+    private func feedFastDischarge(_ h: BatteryHistory, from start: Int, hours: Double, startingAt begin: Date) {
+        var t = begin
+        while t <= begin.addingTimeInterval(hours * 3600) {
+            h.record(percent: start - Int(3 * t.timeIntervalSince(begin) / 3600), charging: false, at: t)
+            t = t.addingTimeInterval(300)
+        }
+    }
+
+    func testLearnedRateIsSavedWithTheHistoryNotOnEveryPoll() {
+        // It is re-blended on every poll, and writing each blend rewrote the preferences file
+        // every 15 seconds. Now it goes to disk only when the history file does, or on
+        // `saveNow` (quit, sleep, a device swap).
+        let slow = BatteryHistory(deviceKey: "test", directory: dir, defaults: defaults,
+                                  saveInterval: 3600)
+        _ = feedSteadyDischarge(slow, from: 100, hours: 4)
+        XCTAssertNotNil(slow.estimateHoursRemaining(currentPercent: 96))
+        XCTAssertNil(defaults.object(forKey: "learnedDischargeRate-test"),
+                     "a blend between history writes stays in memory")
+        slow.saveNow()
+        XCTAssertNotNil(defaults.object(forKey: "learnedDischargeRate-test"), "saveNow writes it")
+
+        let eager = BatteryHistory(deviceKey: "eager", directory: dir, defaults: defaults,
+                                   saveInterval: 0)
+        let next = feedSteadyDischarge(eager, from: 100, hours: 4)
+        XCTAssertNil(defaults.object(forKey: "learnedDischargeRate-eager"), "nothing learned yet")
+        _ = eager.estimateHoursRemaining(currentPercent: 96)
+        eager.record(percent: 96, charging: false, at: next)
+        XCTAssertNotNil(defaults.object(forKey: "learnedDischargeRate-eager"),
+                        "the next history write takes the learned rate with it")
+    }
+
+    func testTheCachedFitFollowsTheSamples() {
+        // The fit is cached between polls. A cache that outlived a change would keep
+        // showing the old rate.
+        let h = makeHistory()
+        let next = feedSteadyDischarge(h, from: 100, hours: 4)
+        XCTAssertEqual(h.currentRatePerHour ?? 0, 1.0, accuracy: 0.1)
+        feedFastDischarge(h, from: 96, hours: 3, startingAt: next)
+        XCTAssertGreaterThan(h.currentRatePerHour ?? 0, 1.3, "new samples, new fit")
+        h.record(percent: 90, charging: true, at: next.addingTimeInterval(4 * 3600))
+        XCTAssertNil(h.currentRatePerHour, "a finished cycle leaves nothing to fit and nothing learned")
+    }
+
     func testFormatDuration() {
         XCTAssertEqual(BatteryHistory.formatDuration(hours: 0.5), "30m")
         XCTAssertEqual(BatteryHistory.formatDuration(hours: 1.5), "1h 30m")

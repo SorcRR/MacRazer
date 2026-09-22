@@ -62,10 +62,13 @@ final class VersionedFileStore<T: Codable> {
         return nil
     }
 
-    /// Throttled write — a no-op within `saveInterval` of the last write.
-    func save(_ value: T) {
-        guard Date().timeIntervalSince(lastSaveAt) >= saveInterval else { return }
+    /// Throttled write — a no-op within `saveInterval` of the last write. Returns whether it
+    /// wrote, so a caller can persist something small alongside on the same schedule.
+    @discardableResult
+    func save(_ value: T) -> Bool {
+        guard Date().timeIntervalSince(lastSaveAt) >= saveInterval else { return false }
         saveNow(value)
+        return true
     }
 
     /// Unconditional write, bypassing the throttle — for boundaries worth persisting
