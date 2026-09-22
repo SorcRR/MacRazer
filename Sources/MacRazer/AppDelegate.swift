@@ -66,7 +66,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         }
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        statusItem.button?.image = menuBarIcon(charging: false)
+        showMenuBarIcon(charging: false)
         statusItem.button?.imagePosition = .imageLeading
         statusItem.button?.imageHugsTitle = true
         statusItem.button?.title = " …"
@@ -118,13 +118,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
 
         // Swap the mark for its bolt variant while the mouse is on the charger — the same
         // at-a-glance cue macOS gives for its own battery, without needing the popover.
-        // Only the two states exist, so the images are cached rather than redrawn per event.
         controller.$charging
             .removeDuplicates()
             .receive(on: RunLoop.main)
-            .sink { [weak self] charging in
-                self?.statusItem.button?.image = self?.menuBarIcon(charging: charging)
-            }
+            .sink { [weak self] charging in self?.showMenuBarIcon(charging: charging) }
             .store(in: &cancellables)
 
         // When disconnected, keep the icon's normal adaptive (template) colour but dim it via
@@ -514,17 +511,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     /// switch, so the redraw costs nothing worth caching around.
     private static let idleIcon = MenuBarIcon.mouse(pointSize: 21, razerCutout: false)
 
-    private func menuBarIcon(charging: Bool) -> NSImage {
-        guard charging else { return Self.idleIcon }
-        return MenuBarIcon.mouse(pointSize: 21, razerCutout: false, charging: true,
-                                 appearance: statusItem.button?.effectiveAppearance)
+    /// The mark on screen, or nil before the first one is set.
+    private var shownIcon: MenuBarIcon.Variant?
+
+    /// The only place the status item's image is set. It does nothing when the mark on screen
+    /// is already the right one, and that guard is what keeps the appearance observer from
+    /// looping; see `MenuBarIcon.Variant`.
+    private func showMenuBarIcon(charging: Bool) {
+        guard let button = statusItem?.button else { return }
+        let variant = MenuBarIcon.Variant(charging: charging, appearance: button.effectiveAppearance)
+        guard variant != shownIcon else { return }
+        shownIcon = variant
+        switch variant {
+        case .idle:
+            button.image = Self.idleIcon
+        case .charging:
+            button.image = MenuBarIcon.mouse(pointSize: 21, razerCutout: false, charging: true,
+                                             appearance: button.effectiveAppearance)
+        }
     }
 
     /// Repaint the charging mark when the menu bar flips between light and dark. Nothing else
     /// does it for us: the idle mark is a template image and adapts on its own, but the
     /// coloured charging one is a fixed bitmap for whichever appearance drew it.
     private func refreshMenuBarIcon() {
-        statusItem?.button?.image = menuBarIcon(charging: controller.charging)
+        showMenuBarIcon(charging: controller.charging)
     }
 
     // MARK: - Notifications

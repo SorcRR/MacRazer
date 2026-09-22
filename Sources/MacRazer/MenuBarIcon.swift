@@ -14,6 +14,28 @@ enum MenuBarIcon {
     static let chargingYellowOnDark = NSColor(red: 1.00, green: 0.84, blue: 0.13, alpha: 1)  // #FFD621
     static let chargingYellowOnLight = NSColor(red: 0.85, green: 0.58, blue: 0.00, alpha: 1) // #D99400
 
+    /// Which menu bar mark a status item should show. Everything that decides the image is in
+    /// here, so two equal variants draw the same picture and the second one can be skipped.
+    ///
+    /// The skip is not an optimisation. Setting a status item's image makes AppKit redraw
+    /// its menu bar snapshots, and that redraw reports `effectiveAppearance` as changed even
+    /// when it hasn't. `AppDelegate` watches that property to recolour the charging mark, so
+    /// an unconditional set feeds itself: a redraw loop that never settles and holds 50-100%
+    /// of a core for as long as the app runs (issue #25). Setting the very same image object
+    /// again loops just as hard, which is why this compares what is shown rather than the
+    /// image.
+    enum Variant: Equatable {
+        /// The template mark. One image serves every appearance, since macOS recolours it.
+        case idle
+        /// The bolt mark, drawn for a light or a dark menu bar.
+        case charging(dark: Bool)
+
+        init(charging: Bool, appearance: NSAppearance) {
+            guard charging else { self = .idle; return }
+            self = .charging(dark: appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua)
+        }
+    }
+
     /// A mouse silhouette with a small Razer triskelion cut into the body (even-odd).
     ///
     /// The idle mark is a **template** image: macOS recolors it for a light or dark menu bar,
