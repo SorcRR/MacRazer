@@ -29,7 +29,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     private var autoInstallPolicy = AutoInstallPolicy()
     private var updateTimer: Timer?
     private var updateBadgeView: NSView?
-    private var appearanceObserver: NSKeyValueObservation?
     /// The app the user was in when the popover opened, so closing it can hand focus back.
     /// See `PopoverFocusReturn` for when it does.
     private var appBeforePopover: NSRunningApplication?
@@ -206,11 +205,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         }
         RunLoop.main.add(timer, forMode: .common)
         updateTimer = timer
-
-        // The charging mark is drawn for one appearance; watch for the menu bar flipping.
-        appearanceObserver = statusItem.button?.observe(\.effectiveAppearance) { [weak self] _, _ in
-            Task { @MainActor in self?.refreshMenuBarIcon() }
-        }
     }
 
     /// Small red dot over the status-item icon when an update is available. A subview rather
@@ -501,30 +495,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     func applicationWillTerminate(_ notification: Notification) {
         monitor?.invalidate()
         updateTimer?.invalidate()
-        appearanceObserver?.invalidate()
         controller.flushHistoryToDisk()
     }
 
     // MARK: - Menu bar mark
 
-    /// The status-item mark. The idle one is a template image macOS recolors itself, so it is
-    /// drawn once and reused. The charging one carries a yellow bolt, which a template image
-    /// would discard — so it is drawn for a specific appearance and has to be redrawn when
-    /// that changes (see `appearanceObserver`). Both only happen on plug/unplug or a theme
-    /// switch, so the redraw costs nothing worth caching around.
+    /// The status-item marks, drawn once each. Neither has to be redrawn for the menu bar's
+    /// appearance: the idle one is a template image macOS recolours itself, and the charging
+    /// one resolves its colours whenever it is drawn (see `MenuBarIcon.chargingBody`).
+    ///
+    /// So nothing here watches `effectiveAppearance`, on purpose. Setting the image makes
+    /// AppKit report that property as changed whether or not it did, and a watcher that sets
+    /// the image in response never stops (issue #25).
     private static let idleIcon = MenuBarIcon.mouse(pointSize: 21, razerCutout: false)
+    private static let chargingIcon = MenuBarIcon.mouse(pointSize: 21, razerCutout: false, charging: true)
 
     private func menuBarIcon(charging: Bool) -> NSImage {
-        guard charging else { return Self.idleIcon }
-        return MenuBarIcon.mouse(pointSize: 21, razerCutout: false, charging: true,
-                                 appearance: statusItem.button?.effectiveAppearance)
-    }
-
-    /// Repaint the charging mark when the menu bar flips between light and dark. Nothing else
-    /// does it for us: the idle mark is a template image and adapts on its own, but the
-    /// coloured charging one is a fixed bitmap for whichever appearance drew it.
-    private func refreshMenuBarIcon() {
-        statusItem?.button?.image = menuBarIcon(charging: controller.charging)
+        charging ? Self.chargingIcon : Self.idleIcon
     }
 
     // MARK: - Notifications

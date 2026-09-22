@@ -14,6 +14,31 @@ enum MenuBarIcon {
     static let chargingYellowOnDark = NSColor(red: 1.00, green: 0.84, blue: 0.13, alpha: 1)  // #FFD621
     static let chargingYellowOnLight = NSColor(red: 0.85, green: 0.58, blue: 0.00, alpha: 1) // #D99400
 
+    /// The charging mark's body and bolt colours. Dynamic, so they resolve against whatever
+    /// appearance the image is being drawn for, at the moment it is drawn.
+    ///
+    /// This is what lets one charging image serve every menu bar. `drawMouse` returns a
+    /// drawing-handler image, and AppKit runs the handler again whenever it is drawn under a
+    /// different appearance, so the mark recolours itself when the menu bar flips. (Checked
+    /// by forcing a status item's appearance back and forth, and by `MenuBarIconTests`.)
+    /// It should also give each display's copy of the status item colours for that display's
+    /// menu bar, if AppKit draws those copies under their own appearance, but that part has
+    /// not been seen on two displays with different menu bars.
+    ///
+    /// Earlier builds picked the colours once, from the status item's `effectiveAppearance`,
+    /// and watched that property to redraw. That watch is what broke (issue #25): setting a
+    /// status item's image makes AppKit re-snapshot the item and report `effectiveAppearance`
+    /// as changed even when it hasn't, so the redraw re-triggered itself forever and held
+    /// 50-100% of a core. Nothing needs to observe the appearance now, and nothing should.
+    private static let chargingBody = NSColor(name: nil) { isDark($0) ? .white : .black }
+    private static let chargingBolt = NSColor(name: nil) {
+        isDark($0) ? chargingYellowOnDark : chargingYellowOnLight
+    }
+
+    private static func isDark(_ appearance: NSAppearance) -> Bool {
+        appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+    }
+
     /// A mouse silhouette with a small Razer triskelion cut into the body (even-odd).
     ///
     /// The idle mark is a **template** image: macOS recolors it for a light or dark menu bar,
@@ -21,23 +46,16 @@ enum MenuBarIcon {
     ///
     /// The charging mark cannot be, because a template image throws colour away — the same
     /// reason `AppDelegate` draws the update dot as a subview instead of baking it in. So the
-    /// bolt's yellow costs us the automatic recolouring, and the body colour has to be chosen
-    /// here from `appearance`. `AppDelegate` passes the status item's own effective appearance
-    /// and rebuilds this icon when it changes, since nothing else will.
-    static func mouse(pointSize: CGFloat = 16, razerCutout: Bool = true, charging: Bool = false,
-                      appearance: NSAppearance? = nil) -> NSImage {
+    /// bolt's yellow costs us the automatic recolouring, and the colours are dynamic instead;
+    /// see `chargingBody`.
+    static func mouse(pointSize: CGFloat = 16, razerCutout: Bool = true, charging: Bool = false) -> NSImage {
         guard charging else {
             let img = drawMouse(size: pointSize, razerCutout: razerCutout, silhouette: .cobra)
             img.isTemplate = true
             return img
         }
-        // `currentDrawing()` is the sensible fallback: off the main actor there is no
-        // NSApp to ask, and a caller drawing into a context has already set it.
-        let isDark = (appearance ?? .currentDrawing())
-            .bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
         let img = drawMouse(size: pointSize, razerCutout: razerCutout, silhouette: .cobra,
-                            color: isDark ? .white : .black, charging: true,
-                            boltColor: isDark ? chargingYellowOnDark : chargingYellowOnLight)
+                            color: chargingBody, charging: true, boltColor: chargingBolt)
         img.isTemplate = false
         return img
     }
@@ -209,14 +227,14 @@ enum MenuBarIcon {
                              lightMenuBar: Bool = false) -> Bool {
         // Charging previews reproduce a real menu-bar pairing — body and bolt colour both
         // depend on it, and the light one is the harder of the two to get right (yellow on
-        // white). Non-charging keeps the brand green: it's a shape check, not a colour one.
+        // white). They use the shipping dynamic colours, drawn under that menu bar's
+        // appearance below, so the preview can't disagree with the menu bar. Non-charging
+        // keeps the brand green: it's a shape check, not a colour one.
         let image = drawMouse(size: size, razerCutout: razerCutout, silhouette: silhouette,
-                              color: charging ? (lightMenuBar ? .black : .white)
+                              color: charging ? chargingBody
                                   : NSColor(red: 0x44/255, green: 0xD6/255, blue: 0x2C/255, alpha: 1),
                               charging: charging,
-                              boltColor: charging
-                                  ? (lightMenuBar ? chargingYellowOnLight : chargingYellowOnDark)
-                                  : nil)
+                              boltColor: charging ? chargingBolt : nil)
         let px = Int(size)
         guard let rep = NSBitmapImageRep(
             bitmapDataPlanes: nil, pixelsWide: px, pixelsHigh: px,
@@ -224,14 +242,16 @@ enum MenuBarIcon {
             colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
         ) else { return false }
 
-        NSGraphicsContext.saveGraphicsState()
-        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
-        // Backdrop matches the menu bar being previewed — a light-mode mark on a dark square
-        // would tell you nothing about the contrast that actually matters.
-        (lightMenuBar ? NSColor(white: 0.93, alpha: 1) : NSColor(white: 0.12, alpha: 1)).setFill()
-        NSRect(x: 0, y: 0, width: CGFloat(px), height: CGFloat(px)).fill()
-        image.draw(in: NSRect(x: 0, y: 0, width: CGFloat(px), height: CGFloat(px)))
-        NSGraphicsContext.restoreGraphicsState()
+        NSAppearance(named: lightMenuBar ? .aqua : .darkAqua)?.performAsCurrentDrawingAppearance {
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+            // Backdrop matches the menu bar being previewed — a light-mode mark on a dark
+            // square would tell you nothing about the contrast that actually matters.
+            (lightMenuBar ? NSColor(white: 0.93, alpha: 1) : NSColor(white: 0.12, alpha: 1)).setFill()
+            NSRect(x: 0, y: 0, width: CGFloat(px), height: CGFloat(px)).fill()
+            image.draw(in: NSRect(x: 0, y: 0, width: CGFloat(px), height: CGFloat(px)))
+            NSGraphicsContext.restoreGraphicsState()
+        }
 
         guard let data = rep.representation(using: .png, properties: [:]) else { return false }
         do {
