@@ -207,25 +207,27 @@ final class BatteryHistoryTests: XCTestCase {
         }
     }
 
-    func testLearnedRateIsWrittenAtMostOncePerIntervalButNeverLost() {
+    func testLearnedRateIsSavedWithTheHistoryNotOnEveryPoll() {
         // It is re-blended on every poll, and writing each blend rewrote the preferences file
-        // every 15 seconds. Now it is held in memory between writes, and `saveNow` (quit, a
-        // device swap) writes whatever it holds.
-        let h = makeHistory()
-        let next = feedSteadyDischarge(h, from: 100, hours: 4)
-        _ = h.estimateHoursRemaining(currentPercent: 96)
-        let firstWrite = defaults.object(forKey: "learnedDischargeRate-test") as? Double
-        XCTAssertNotNil(firstWrite, "the first learned value is written straight away")
+        // every 15 seconds. Now it goes to disk only when the history file does, or on
+        // `saveNow` (quit, sleep, a device swap).
+        let slow = BatteryHistory(deviceKey: "test", directory: dir, defaults: defaults,
+                                  saveInterval: 3600)
+        _ = feedSteadyDischarge(slow, from: 100, hours: 4)
+        XCTAssertNotNil(slow.estimateHoursRemaining(currentPercent: 96))
+        XCTAssertNil(defaults.object(forKey: "learnedDischargeRate-test"),
+                     "a blend between history writes stays in memory")
+        slow.saveNow()
+        XCTAssertNotNil(defaults.object(forKey: "learnedDischargeRate-test"), "saveNow writes it")
 
-        feedFastDischarge(h, from: 96, hours: 3, startingAt: next)
-        _ = h.estimateHoursRemaining(currentPercent: 87)
-        XCTAssertEqual(defaults.object(forKey: "learnedDischargeRate-test") as? Double, firstWrite,
-                       "a re-blend within the interval stays in memory")
-
-        h.saveNow()
-        let saved = defaults.object(forKey: "learnedDischargeRate-test") as? Double
-        XCTAssertNotNil(saved)
-        XCTAssertNotEqual(saved, firstWrite, "saveNow writes the newer blend")
+        let eager = BatteryHistory(deviceKey: "eager", directory: dir, defaults: defaults,
+                                   saveInterval: 0)
+        let next = feedSteadyDischarge(eager, from: 100, hours: 4)
+        XCTAssertNil(defaults.object(forKey: "learnedDischargeRate-eager"), "nothing learned yet")
+        _ = eager.estimateHoursRemaining(currentPercent: 96)
+        eager.record(percent: 96, charging: false, at: next)
+        XCTAssertNotNil(defaults.object(forKey: "learnedDischargeRate-eager"),
+                        "the next history write takes the learned rate with it")
     }
 
     func testTheCachedFitFollowsTheSamples() {

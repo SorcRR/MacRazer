@@ -179,6 +179,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
             .receive(on: RunLoop.main)
             .sink { [weak self] connected in self?.remapper.remappingPaused = !connected }
             .store(in: &cancellables)
+        // A mapped button pressed while paused usually means the mouse just woke. Check now
+        // rather than at the next poll, so its mappings come back straight away.
+        remapper.onPressWhilePaused = { [weak controller] in controller?.checkIfOffline() }
 
         // Update check: once now (throttled internally to once/24h), then a daily timer so a
         // long-running session still notices new releases without a relaunch.

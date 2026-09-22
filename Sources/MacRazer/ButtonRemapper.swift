@@ -57,6 +57,12 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
     /// remap UI can say why nothing is firing (button detection still works while paused).
     @Published var remappingPaused = false
 
+    /// Called when a mapped button is pressed while remapping is paused. The mouse is paused
+    /// because the app last saw it offline, and a press of one of its mapped buttons is a good
+    /// sign it has just woken up. Without this, the mapping only came back at the next battery
+    /// poll, and that poll backs off while the mouse is away. Main thread, like the tap.
+    var onPressWhilePaused: (() -> Void)?
+
     /// Switch to the connected mouse's mappings (called when the device changes). `key` is the
     /// per-unit device key (serial/PID).
     func setActiveDevice(_ key: String?) {
@@ -197,8 +203,9 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         return s
     }()
 
-    /// Runs on the main run loop (the tap source is scheduled there).
-    private func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
+    /// Runs on the main run loop (the tap source is scheduled there). Internal rather than
+    /// private so tests can hand it synthetic events.
+    func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
             if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
             return Unmanaged.passUnretained(event)
@@ -215,9 +222,15 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
             return Unmanaged.passUnretained(event)
         }
 
-        if !remappingPaused, let action = mappings[button], action != .passthrough {
-            if type == .otherMouseDown { apply(action) }
-            return nil // suppress the original button (both down and up)
+        if let action = mappings[button], action != .passthrough {
+            guard remappingPaused else {
+                if type == .otherMouseDown { apply(action) }
+                return nil // suppress the original button (both down and up)
+            }
+            // This press still goes through unchanged: the tap can't tell which device sent
+            // it, so it may not be our mouse at all. The check brings the mapping back for the
+            // next press, a moment later, if it is.
+            if type == .otherMouseDown { onPressWhilePaused?() }
         }
 
         // Unmapped → remember it for the UI, and let it through unchanged.

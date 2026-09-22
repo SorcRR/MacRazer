@@ -84,13 +84,11 @@ final class BatteryHistory {
     /// history file (see `VersionedFileStore`).
     private let defaults: UserDefaults
 
-    /// The learned rate, kept in memory and written to `defaults` at most once per
-    /// `learnedRateSaveInterval`. It is re-blended on every poll that has a session fit, and
-    /// writing each one meant a preferences-file rewrite every 15 seconds. `saveNow` and a
-    /// finished cycle write it out regardless.
+    /// The learned rate, kept in memory and written to `defaults` whenever the history file
+    /// is. It is re-blended on every poll that has a session fit, and writing each one meant
+    /// a preferences-file rewrite every 15 seconds. Riding on the history write rather than a
+    /// timer of its own means the two are always saved, and lost, together.
     private var learnedRate: Double?
-    private var learnedRateSavedAt = Date.distantPast
-    private let learnedRateSaveInterval: TimeInterval = 5 * 60
     private var learnedRateKey: String { "learnedDischargeRate-\(deviceKey)" }
 
     /// How often the history file is rewritten outside of `saveNow`. The whole file goes each
@@ -100,11 +98,13 @@ final class BatteryHistory {
     /// already treat those as time not watched, not as discharge.
     static let historySaveInterval: TimeInterval = 5 * 60
 
-    init(deviceKey: String, directory: URL? = nil, defaults: UserDefaults = .standard) {
+    /// `saveInterval` is for tests, which can't wait out the real one.
+    init(deviceKey: String, directory: URL? = nil, defaults: UserDefaults = .standard,
+         saveInterval: TimeInterval = historySaveInterval) {
         self.deviceKey = deviceKey
         self.defaults = defaults
         store = VersionedFileStore(filename: "battery-history-\(deviceKey).json", version: 1,
-                                   saveInterval: Self.historySaveInterval, directory: directory)
+                                   saveInterval: saveInterval, directory: directory)
         previousStore = VersionedFileStore(filename: "battery-history-prev-\(deviceKey).json",
                                            version: 1, directory: directory)
         samples = store.load(migratingLegacy: true) ?? []
@@ -147,7 +147,8 @@ final class BatteryHistory {
         }
         samples.append(BatterySample(t: now, pct: percent))
         if samples.count > maxSamples { samples.removeFirst(samples.count - maxSamples) }
-        store.save(samples) // throttled — see VersionedFileStore
+        // Throttled — see VersionedFileStore. The learned rate goes with it.
+        if store.save(samples) { persistLearnedRate() }
     }
 
     /// Ends the current discharge cycle: hands the samples to `onCycleFinished` and clears
@@ -188,16 +189,11 @@ final class BatteryHistory {
     /// from scratch each time.
     private var learnedRatePerHour: Double? {
         get { learnedRate }
-        set {
-            learnedRate = newValue
-            guard Date().timeIntervalSince(learnedRateSavedAt) >= learnedRateSaveInterval else { return }
-            persistLearnedRate()
-        }
+        set { learnedRate = newValue }
     }
 
     private func persistLearnedRate() {
         guard let learnedRate else { return }
-        learnedRateSavedAt = Date()
         defaults.set(learnedRate, forKey: learnedRateKey)
     }
 

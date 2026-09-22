@@ -21,9 +21,9 @@ struct BatteryPollStateMachine {
     /// A not-charging→charging transition has been seen but not yet confirmed on a second
     /// consecutive poll.
     private(set) var pendingChargeConfirm = false
-    /// Polls in a row that produced no usable reading while a device was still there: a
-    /// mouse asleep, switched off or out of range behind its dongle, or one refusing the
-    /// battery read. Drives the back-off in `nextPollInterval`. Unlike `consecutiveFailures`
+    /// Polls in a row that reached a device but got no battery reading from it: a mouse
+    /// asleep, switched off or out of range behind its dongle, or one refusing the battery
+    /// read. Drives the back-off in `nextPollInterval`. Unlike `consecutiveFailures`
     /// this restarts when the device disappears, so a replug gets fast polls again rather
     /// than inheriting the slow cadence of the long absence before it.
     private(set) var pollsWithoutReading = 0
@@ -41,8 +41,11 @@ struct BatteryPollStateMachine {
         static let fastPolls = 15
         /// Still not answering after that. The mouse is asleep or off, which can last all
         /// night, and polling it every 4 seconds meant about 21,600 wake-ups and USB round
-        /// trips a day for nothing. Opening the popover checks at once anyway.
-        static let asleep: TimeInterval = 30
+        /// trips a day for nothing. The same as `connected`, so a missing mouse is never
+        /// polled more often than a working one once the first minute is over. Kept that
+        /// short because a woken mouse reads offline, with its button remaps paused, until
+        /// the next poll. Opening the popover or pressing a remapped button checks at once.
+        static let asleep: TimeInterval = 15
         /// Nothing enumerated at all. `HIDMonitor` calls in the moment a device appears, so
         /// this is only a safety net for the case where its registration failed.
         static let unplugged: TimeInterval = 120
@@ -121,9 +124,10 @@ struct BatteryPollStateMachine {
             // permanently disable it and a later one-off garbage read would be trusted as
             // the new baseline outright. Two rejects in a row means it isn't a blip:
             // accept the third value as the new baseline.
+            // Not counted toward the back-off: the link is up and `batteryReady` holds, so
+            // the cadence stays `connected`, and a value is accepted within two more polls.
             if let last = lastGoodPercent, abs(pct - last) > 20, batteryRejects < 2 {
                 batteryRejects += 1
-                pollsWithoutReading += 1
                 return .notReady
             }
             batteryRejects = 0
