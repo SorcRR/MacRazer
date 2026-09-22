@@ -48,11 +48,32 @@ enum ProjectLinks {
     /// Where "Full release notes" goes: the popover shows a parsed summary, this is the
     /// unabridged original.
     static let latestRelease = repo.appendingPathComponent("releases/latest")
-    /// GitHub's fixed "latest" shortcut; `Scripts/make-dmg.sh` keeps the asset name constant
-    /// precisely so this URL never has to change.
-    static let latestDMG = repo.appendingPathComponent("releases/latest/download/MacRazer.dmg")
-    static let latestReleaseAPI =
-        URL(string: "https://api.github.com/repos/SorcRR/MacRazer/releases/latest")!
+    /// One release's DMG, by version. The updater fetches the exact release it announced, not
+    /// GitHub's "latest" pointer: the app picks the newest release itself, by version number,
+    /// while GitHub picks "latest" by date or by hand, and the two can disagree (a hotfix for an
+    /// older line published after a newer release). Pinning the download to the announced
+    /// version means the card can never offer one version and install another.
+    ///
+    /// `tag` is the release's tag as GitHub reported it, when the last check recorded one. When
+    /// it did not, the card having been restored from preferences at launch or read from a
+    /// cache older than the field, the tag is rebuilt as `v<version>`, which is how
+    /// `Scripts/release.sh` tags every release. `Scripts/make-dmg.sh` keeps the asset named
+    /// `MacRazer.dmg` on every release.
+    static func dmg(forVersion version: String, tag: String? = nil) -> URL {
+        repo.appendingPathComponent("releases/download/\(tag ?? "v\(version)")/MacRazer.dmg")
+    }
+    /// The list, not `releases/latest`. The app shows the span between the version you are on
+    /// and the one you are getting, and one release cannot describe a span.
+    ///
+    /// 20 because GitHub's JSON is about 6 KB per release once the author and asset objects
+    /// are counted, so this is a ~120 KB ceiling on a once-a-day request. It covers roughly
+    /// five years at this project's rate. Anyone further behind sees the most recent releases
+    /// only, which is already more than anybody reads.
+    ///
+    /// `releases/latest` filtered drafts and prereleases on GitHub's side. The list does not,
+    /// so that rule now lives in `ReleaseSpan` where it can be tested.
+    static let releasesAPI =
+        URL(string: "https://api.github.com/repos/SorcRR/MacRazer/releases?per_page=20")!
 
     // Upstream, credited in the About window and NOTICE.md.
     static let openRazer = URL(string: "https://github.com/openrazer/openrazer")!

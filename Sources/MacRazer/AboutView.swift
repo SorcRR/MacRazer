@@ -17,7 +17,7 @@ struct AboutView: View {
     /// Notes for the version this is the About box of, when the app has them. The popover's
     /// "Updated to …" card is shown once and then dismissed; this is where they stay
     /// findable afterwards, next to the version number they belong to.
-    var notes: ReleaseNotes?
+    var notes: [VersionedNotes] = []
 
     @State private var showingNotes = false
 
@@ -37,7 +37,7 @@ struct AboutView: View {
         // and a sheet with an empty body is a blank panel with no way out but Escape.
         .sheet(isPresented: $showingNotes) {
             WhatsNewPage(version: AppInfo.displayVersion,
-                         notes: notes ?? ReleaseNotes(summary: "", sections: []),
+                         releases: notes,
                          canInstallInPlace: false,
                          onBack: { showingNotes = false },
                          onUpdate: nil) // already running it
@@ -124,7 +124,7 @@ struct AboutView: View {
     /// would be worse than no row.
     @ViewBuilder
     private var whatsNewRow: some View {
-        if notes != nil {
+        if !notes.isEmpty {
             Button { showingNotes = true } label: {
                 HStack(spacing: 4) {
                     Text("What's new in \(AppInfo.displayVersion)")

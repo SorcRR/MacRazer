@@ -10,8 +10,11 @@ import SwiftUI
 /// the cards below them off screen. Reached from one chevron row in the card, the same way
 /// Buttons, Usage and Profiles are reached.
 struct WhatsNewPage: View {
+    /// The heading. The newest version in `releases` when there is one, which is what the
+    /// reader is being offered or has just installed.
     let version: String
-    let notes: ReleaseNotes
+    /// Newest first. More than one whenever the reader skipped a release, which is normal.
+    let releases: [VersionedNotes]
     /// Drives the button's wording: an in-place install ends in a relaunch, a plain download
     /// doesn't, and the button should never promise the restart it can't deliver.
     let canInstallInPlace: Bool
@@ -37,27 +40,16 @@ struct WhatsNewPage: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
-                    if !notes.summary.isEmpty {
-                        Text(notes.summary)
-                            .font(.system(size: 11.5))
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    // Indexed rather than keyed by title: nothing stops a release body from
-                    // using the same heading twice, and the untitled section has no key at all.
-                    ForEach(Array(notes.sections.enumerated()), id: \.offset) { _, section in
-                        VStack(alignment: .leading, spacing: 8) {
-                            if !section.title.isEmpty {
-                                Text(section.title.uppercased())
-                                    .font(.system(size: 9.5, weight: .semibold))
-                                    .foregroundStyle(.tertiary)
-                                    .kerning(0.6)
-                            }
-                            // Indexed: two releases can carry the same headline, and an
-                            // identical bullet twice in one section is legal markdown.
-                            ForEach(Array(section.items.enumerated()), id: \.offset) { _, item in
-                                itemRow(item)
-                            }
+                    ForEach(releases) { release in
+                        // Only when there is more than one. A single release's version is
+                        // already in the title above, and repeating it reads as a mistake.
+                        if releases.count > 1 {
+                            Text(release.version)
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(Color.razerGreen)
+                                .padding(.top, release.id == releases.first?.id ? 0 : 6)
                         }
+                        notesBlock(release.notes)
                     }
                     Link("Full release notes", destination: ProjectLinks.latestRelease)
                         .font(.system(size: 11, weight: .medium))
@@ -86,6 +78,35 @@ struct WhatsNewPage: View {
                 .padding(12)
             }
         }
+    }
+
+    @ViewBuilder
+    private func notesBlock(_ notes: ReleaseNotes) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            if !notes.summary.isEmpty {
+                Text(notes.summary)
+                    .font(.system(size: 11.5))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            // Indexed rather than keyed by title: nothing stops a release body from using the
+            // same heading twice, and the untitled section has no key at all.
+            ForEach(Array(notes.sections.enumerated()), id: \.offset) { _, section in
+                VStack(alignment: .leading, spacing: 8) {
+                    if !section.title.isEmpty {
+                        Text(section.title.uppercased())
+                            .font(.system(size: 9.5, weight: .semibold))
+                            .foregroundStyle(.tertiary)
+                            .kerning(0.6)
+                    }
+                    // Indexed: two releases can carry the same headline, and an identical
+                    // bullet twice in one section is legal markdown.
+                    ForEach(Array(section.items.enumerated()), id: \.offset) { _, item in
+                        itemRow(item)
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// Markdown as an `AttributedString`, so a link in a release note is a link.

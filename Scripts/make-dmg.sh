@@ -4,10 +4,11 @@
 #   ./Scripts/make-dmg.sh            # builds the app, then writes ./dist/MacRazer.dmg
 #                                     # plus a versioned copy, e.g. ./dist/MacRazer-0.1.5.dmg
 #
-# Both files have identical contents. "MacRazer.dmg" is the canonical name every fixed
-# "latest" link (the website, the in-app update checker, README/CONTRIBUTING) downloads by
-# name via GitHub's /releases/latest/download/<name> shortcut — that trick only works if the
-# filename is the same on every release, so it must keep this exact name. The versioned copy
+# Both files have identical contents. "MacRazer.dmg" is the canonical name everything downloads
+# by: the website and README/CONTRIBUTING through GitHub's /releases/latest/download/<name>
+# shortcut, and the in-app updater from /releases/download/v<version>/<name>, the exact release
+# it announced. Both only work if the filename is the same on every release, so it must keep
+# this exact name. The versioned copy
 # is just so the filename is self-describing for anyone browsing the Releases page directly;
 # attach both as separate assets on the GitHub release.
 #

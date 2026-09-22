@@ -193,13 +193,16 @@ case "render-ui":
         // button, because there is nothing left to install.
         let installed = args.contains("installed")
         if installed {
-            updateChecker.loadPreviewUpdated(notes: PreviewNotes.releaseBody)
+            updateChecker.loadPreviewSpan([
+                RemoteRelease(version: "0.4.1", body: PreviewNotes.previousReleaseBody),
+                RemoteRelease(version: "0.4.0", body: PreviewNotes.releaseBody),
+            ])
         } else {
             updateChecker.loadPreviewState(notes: PreviewNotes.releaseBody)
         }
         writeHostedPNG(WhatsNewPage(version: updateChecker.latestVersion ?? AppInfo.displayVersion,
-                                    notes: (installed ? updateChecker.installedNotes : updateChecker.latestNotes)
-                                        ?? ReleaseNotes.parse(PreviewNotes.releaseBody),
+                                    releases: installed ? updateChecker.installedNotes
+                                                        : updateChecker.latestNotes,
                                     canInstallInPlace: updateChecker.canInstallInPlace,
                                     onBack: {}, onUpdate: installed ? nil : {}),
                        size: CGSize(width: 320, height: 748), to: path)
@@ -239,7 +242,10 @@ case "render-about":
     // `ImageRenderer` draws every native control as a yellow placeholder — which is to say it
     // could not show the one thing an About preview is for.
     writeHostedPNG(AboutView(onDone: {}, // no window to close in a render
-                             notes: args.contains("notes") ? ReleaseNotes.parse(PreviewNotes.releaseBody) : nil),
+                               notes: args.contains("notes")
+                                 ? [VersionedNotes(version: AppInfo.displayVersion,
+                                                   notes: ReleaseNotes.parse(PreviewNotes.releaseBody))]
+                                 : []),
                    to: aboutPath)
 
 case "render-remap":

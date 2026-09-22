@@ -97,31 +97,6 @@ final class UpdateAnnouncementTests: XCTestCase {
     }
 }
 
-/// The other half of "can I still read the notes after installing?": which cached body is
-/// allowed to answer for the version now running.
-@MainActor
-final class InstalledNotesTests: XCTestCase {
-    private let body = "A summary.\n\n### Added\n- **A thing.** It happened."
-
-    func testNotesForTheVersionRunningAreShown() {
-        let notes = UpdateChecker.notes(for: "0.3.1", cachedVersion: "0.3.1", cachedBody: body)
-        XCTAssertEqual(notes?.sections.first?.items.first?.headline, "A thing.")
-    }
-
-    func testNotesCachedForAnotherVersionAreNot() {
-        // The cache tracks the newest release the last check saw, which is not always what is
-        // installed — someone who skipped 0.3.2 would otherwise read its notes in an About box
-        // that says 0.3.1.
-        XCTAssertNil(UpdateChecker.notes(for: "0.3.1", cachedVersion: "0.3.2", cachedBody: body))
-        XCTAssertNil(UpdateChecker.notes(for: "0.3.1", cachedVersion: nil, cachedBody: body))
-    }
-
-    func testAReleaseWithNoBodyShowsNothingRatherThanAnEmptyPage() {
-        XCTAssertNil(UpdateChecker.notes(for: "0.3.1", cachedVersion: "0.3.1", cachedBody: nil))
-        XCTAssertNil(UpdateChecker.notes(for: "0.3.1", cachedVersion: "0.3.1", cachedBody: ""))
-    }
-}
-
 /// The daily throttle, and the one case that has to escape it.
 @MainActor
 final class CheckDueTests: XCTestCase {

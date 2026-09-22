@@ -8,6 +8,16 @@
 /// top-level `let` in `main.swift`: statics are lazy, so the menu bar app never touches it,
 /// and `render-about` can reach it too.
 enum PreviewNotes {
+    /// A second, shorter release, so `render-ui whatsnew` shows the span someone skipping a
+    /// version actually sees rather than a single block.
+    static let previousReleaseBody = """
+Everything MacRazer gained since 0.3.0, plus the fix for 0.4.0's empty notes page.
+
+### Fixed
+- **The brightness slider works on mice lit only at the scroll wheel.** The LED group was hardcoded, so dragging the slider silently did nothing on them.
+- **Links in release notes are links.** The parser reduced them to their text before the popover saw them.
+"""
+
     static let releaseBody = """
 MacRazer now starts at login and installs its own updates, with Settings and About windows to go with them.
 
