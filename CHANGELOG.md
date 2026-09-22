@@ -7,6 +7,28 @@ expect rough edges until 1.0.
 ## [Unreleased]
 
 ### Changed
+- **Less background work while the mouse is asleep, off or unplugged.** The app checked
+ on an unreachable mouse every 4 seconds for as long as it stayed unreachable, which is
+ overnight for a mouse left to sleep. That's about 21,600 wake-ups and USB round trips a day.
+ Each one also asked the mouse for its serial number again and scanned every mouse on the
+ system for a Bluetooth Razer. It now checks every 4 seconds for the first minute, then every
+ 30. With nothing plugged in it checks every two minutes, since plugging something in is
+ reported the moment it happens. Opening the popover checks straight away, so a mouse you
+ just woke doesn't sit there reading offline. The serial number is remembered until
+ something is plugged in or out.
+
+ Battery history is written less often, too. The learned discharge rate was saved to the
+ preferences file on every 15-second poll, and the history file, which grows to several
+ hundred kilobytes over a long charge, was rewritten in full every 30 seconds. Both now wait
+ five minutes between writes and are still written on quit and when the mouse changes. A
+ crash loses at most those five minutes, which the estimates already treat as time the mouse
+ wasn't watched. The discharge fit is also computed once per poll instead of twice.
+
+ The new cadence rules are in `BatteryPollStateMachine` with six tests, including a mouse
+ that keeps refusing the battery read and a replug after a long absence. The history changes
+ have two tests. Those two, and the refusing and replug tests, were checked by breaking the
+ code they cover and watching them fail.
+
 - **"What's new" covers every release you skipped, not just the newest one.** The app asked
  GitHub for `releases/latest` and showed that one body whatever version you were on, so
  someone going from 0.3.0 straight to 0.4.1 was shown 0.4.1's notes alone. Those open by

@@ -14,7 +14,14 @@ struct BatterySample: Codable, Equatable {
 
 final class BatteryHistory {
     private let store: VersionedFileStore<[BatterySample]>
-    private(set) var samples: [BatterySample] = []
+    private(set) var samples: [BatterySample] = [] {
+        didSet { sessionRateCache = nil }
+    }
+    /// `sessionRatePerHour` is a full pass over up to `maxSamples` samples, and every poll asks
+    /// for it twice: once for the estimate, once for the rate the usage page shows. It only
+    /// changes when `samples` does. The outer optional is "not computed yet"; the inner one is
+    /// the fit's own "no confident trend".
+    private var sessionRateCache: Double??
     /// Raw samples of the last *real* finished cycle (per `ChargeCycleHistory.isRealCycle`;
     /// noise blips don't replace it), kept so the usage chart can show ~two charges of
     /// context instead of blanking out at every recharge. Persisted in its own file so the
@@ -77,15 +84,32 @@ final class BatteryHistory {
     /// history file (see `VersionedFileStore`).
     private let defaults: UserDefaults
 
+    /// The learned rate, kept in memory and written to `defaults` at most once per
+    /// `learnedRateSaveInterval`. It is re-blended on every poll that has a session fit, and
+    /// writing each one meant a preferences-file rewrite every 15 seconds. `saveNow` and a
+    /// finished cycle write it out regardless.
+    private var learnedRate: Double?
+    private var learnedRateSavedAt = Date.distantPast
+    private let learnedRateSaveInterval: TimeInterval = 5 * 60
+    private var learnedRateKey: String { "learnedDischargeRate-\(deviceKey)" }
+
+    /// How often the history file is rewritten outside of `saveNow`. The whole file goes each
+    /// time, and a multi-day cycle grows it to several hundred KB, so every 30 seconds added
+    /// up to gigabytes a day for one new sample per poll. A crash loses at most this much of
+    /// the tail, which reads back as an observation gap: the curve model and the rate fit
+    /// already treat those as time not watched, not as discharge.
+    static let historySaveInterval: TimeInterval = 5 * 60
+
     init(deviceKey: String, directory: URL? = nil, defaults: UserDefaults = .standard) {
         self.deviceKey = deviceKey
         self.defaults = defaults
         store = VersionedFileStore(filename: "battery-history-\(deviceKey).json", version: 1,
-                                   directory: directory)
+                                   saveInterval: Self.historySaveInterval, directory: directory)
         previousStore = VersionedFileStore(filename: "battery-history-prev-\(deviceKey).json",
                                            version: 1, directory: directory)
         samples = store.load(migratingLegacy: true) ?? []
         previousCycleSamples = previousStore.load() ?? []
+        learnedRate = defaults.object(forKey: learnedRateKey) as? Double
     }
 
     /// `now` is injectable for tests (gap splicing and cycle logic are time-driven).
@@ -143,6 +167,7 @@ final class BatteryHistory {
         // A cycle boundary is worth persisting immediately: the file is small right after
         // clearing, and losing the boundary would glue two cycles together.
         store.saveNow(samples)
+        persistLearnedRate()
     }
 
     /// Time the current discharge cycle started (the oldest sample since the last reset), or
@@ -162,8 +187,18 @@ final class BatteryHistory {
     /// estimate is available immediately on launch / after a recharge instead of re-deriving
     /// from scratch each time.
     private var learnedRatePerHour: Double? {
-        get { defaults.object(forKey: "learnedDischargeRate-\(deviceKey)") as? Double }
-        set { defaults.set(newValue, forKey: "learnedDischargeRate-\(deviceKey)") }
+        get { learnedRate }
+        set {
+            learnedRate = newValue
+            guard Date().timeIntervalSince(learnedRateSavedAt) >= learnedRateSaveInterval else { return }
+            persistLearnedRate()
+        }
+    }
+
+    private func persistLearnedRate() {
+        guard let learnedRate else { return }
+        learnedRateSavedAt = Date()
+        defaults.set(learnedRate, forKey: learnedRateKey)
     }
 
     /// Hours remaining. Prefers a fresh per-session slope (and folds it into the learned rate);
@@ -204,6 +239,13 @@ final class BatteryHistory {
     /// means "time remaining at active use", consistent with the dwell-based curve model,
     /// which excludes those same gaps.
     private func sessionRatePerHour() -> Double? {
+        if let cached = sessionRateCache { return cached }
+        let rate = fitSessionRatePerHour()
+        sessionRateCache = .some(rate)
+        return rate
+    }
+
+    private func fitSessionRatePerHour() -> Double? {
         guard samples.count >= 4 else { return nil }
 
         var xs = [Double](repeating: 0, count: samples.count) // active seconds since first sample
@@ -255,10 +297,12 @@ final class BatteryHistory {
         return "\(m)m"
     }
 
-    /// Unconditional write, bypassing the save throttle — for app termination, where the
-    /// in-memory tail (up to ~30s of samples) would otherwise be lost.
+    /// Unconditional write, bypassing both save throttles — for app termination and device
+    /// swaps, where the in-memory tail (up to `historySaveInterval` of samples, and the
+    /// learned rate) would otherwise be lost.
     func saveNow() {
         store.saveNow(samples)
+        persistLearnedRate()
     }
 
     /// Downsampled copy for display. Swift Charts degrades badly past a few thousand marks,

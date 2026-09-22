@@ -51,10 +51,13 @@ final class HIDDevice {
     private let device: IOHIDDevice
     let productID: Int
     let productName: String
+    /// Where the device sits on the USB bus. Stable for as long as it stays plugged in.
+    let locationID: Int
 
     private init(device: IOHIDDevice) {
         self.device = device
         self.productID = HIDDevice.intProp(device, kIOHIDProductIDKey) ?? 0
+        self.locationID = HIDDevice.intProp(device, kIOHIDLocationIDKey) ?? 0
         // The device's own USB product string — works for any Razer mouse without a registry.
         let raw = HIDDevice.strProp(device, kIOHIDProductKey)?.trimmingCharacters(in: .whitespaces)
         self.productName = (raw?.isEmpty == false ? raw! : RazerDevices.info(pid: HIDDevice.intProp(device, kIOHIDProductIDKey) ?? 0)?.name) ?? "Razer Mouse"
