@@ -48,9 +48,19 @@ enum ProjectLinks {
     /// Where "Full release notes" goes: the popover shows a parsed summary, this is the
     /// unabridged original.
     static let latestRelease = repo.appendingPathComponent("releases/latest")
-    /// GitHub's fixed "latest" shortcut; `Scripts/make-dmg.sh` keeps the asset name constant
-    /// precisely so this URL never has to change.
-    static let latestDMG = repo.appendingPathComponent("releases/latest/download/MacRazer.dmg")
+    /// One release's DMG, by version. The updater fetches the exact release it announced, not
+    /// GitHub's "latest" pointer: the app picks the newest release itself, by version number,
+    /// while GitHub picks "latest" by date or by hand, and the two can disagree (a hotfix for an
+    /// older line published after a newer release). Pinning the download to the announced
+    /// version means the card can never offer one version and install another.
+    ///
+    /// `Scripts/release.sh` tags every release `v<version>`, and `Scripts/make-dmg.sh` keeps
+    /// the asset named `MacRazer.dmg` on every release, which is what makes this derivable
+    /// from the version alone. That matters because the card can be restored from preferences
+    /// at launch, before any network check has fetched the release list again.
+    static func dmg(forVersion version: String) -> URL {
+        repo.appendingPathComponent("releases/download/v\(version)/MacRazer.dmg")
+    }
     /// The list, not `releases/latest`. The app shows the span between the version you are on
     /// and the one you are getting, and one release cannot describe a span.
     ///

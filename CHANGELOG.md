@@ -14,7 +14,9 @@ expect rough edges until 1.0.
  features they had just gained. A release is not the unit anyone cares about; the span
  between two versions is. The update card now shows everything newer than what you are
  running, and after installing, everything from the version you were on up to the one you are
- on now, each under its own version heading.
+ on now, each under its own version heading. The download is now fetched from that exact
+ release rather than whatever GitHub marks as latest, so the version the card announces is
+ the version that installs.
 
  The rules are in `ReleaseSpan` with twelve tests: what you would gain, what you just gained,
  a downgrade, a first install with nothing recorded, and prereleases and drafts staying out of

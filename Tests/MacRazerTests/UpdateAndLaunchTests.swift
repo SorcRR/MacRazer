@@ -85,3 +85,15 @@ final class UpdatePayloadCheckTests: XCTestCase {
         XCTAssertEqual(reject(id, "0.2.9", current: "0.2.10"), .notNewer("0.2.9"))
     }
 }
+
+/// The updater downloads the exact release it announced. GitHub's "latest" pointer is chosen by
+/// date or by hand, the announced version by number, and the two can disagree.
+final class ReleaseDownloadLinkTests: XCTestCase {
+    func testDownloadIsPinnedToTheAnnouncedVersion() {
+        XCTAssertEqual(ProjectLinks.dmg(forVersion: "0.4.1").absoluteString,
+                       "https://github.com/SorcRR/MacRazer/releases/download/v0.4.1/MacRazer.dmg")
+        // Not a constant in disguise: the version really is what picks the release.
+        XCTAssertEqual(ProjectLinks.dmg(forVersion: "1.0.0").absoluteString,
+                       "https://github.com/SorcRR/MacRazer/releases/download/v1.0.0/MacRazer.dmg")
+    }
+}

@@ -96,7 +96,6 @@ final class UpdateChecker: ObservableObject {
     }
 
     private let releaseAPIURL = ProjectLinks.releasesAPI
-    private let dmgURL = ProjectLinks.latestDMG
     private let checkInterval: TimeInterval = 24 * 60 * 60
 
     private static let dismissedKey = "dismissedUpdateVersion"
@@ -386,6 +385,8 @@ final class UpdateChecker: ObservableObject {
     /// button always does *something* useful.
     func downloadAndInstall() async {
         guard !isBusy else { return }
+        // The download is pinned to the version on the card; nothing announced, nothing to get.
+        guard let version = latestVersion else { return }
         guard let target = UpdateInstaller.installTarget, UpdateInstaller.canInstallInPlace else {
             await downloadAndOpenDMG()
             return
@@ -396,7 +397,7 @@ final class UpdateChecker: ObservableObject {
         let bundleID = Bundle.main.bundleIdentifier
         let current = currentVersion
         do {
-            let dmg = try await downloadDMG()
+            let dmg = try await downloadDMG(version: version)
             defer { try? FileManager.default.removeItem(at: dmg.deletingLastPathComponent()) }
             phase = .installing
             // Off the main actor: mounting, verifying and copying a bundle would freeze the
@@ -419,10 +420,11 @@ final class UpdateChecker: ObservableObject {
     /// the user drags MacRazer across themselves.
     func downloadAndOpenDMG() async {
         guard !isBusy else { return }
+        guard let version = latestVersion else { return }
         downloadError = nil
         phase = .downloading(0)
         do {
-            let dmg = try await downloadDMG()
+            let dmg = try await downloadDMG(version: version)
             phase = .idle
             NSWorkspace.shared.open(dmg)
         } catch {
@@ -431,9 +433,10 @@ final class UpdateChecker: ObservableObject {
         }
     }
 
-    /// Downloads into a fresh temp directory, so the caller can delete the whole thing without
-    /// worrying about what else might be sharing a filename in `/tmp`.
-    private func downloadDMG() async throws -> URL {
+    /// Downloads the DMG of exactly `version`, never GitHub's "latest" (see
+    /// `ProjectLinks.dmg(forVersion:)`), into a fresh temp directory, so the caller can delete
+    /// the whole thing without worrying about what else might be sharing a filename in `/tmp`.
+    private func downloadDMG(version: String) async throws -> URL {
         Self.sweepStaleDownloads()
         let dir = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("MacRazerUpdate-\(UUID().uuidString)", isDirectory: true)
@@ -449,7 +452,7 @@ final class UpdateChecker: ObservableObject {
             }
         }
         do {
-            return try await downloader.run(from: dmgURL)
+            return try await downloader.run(from: ProjectLinks.dmg(forVersion: version))
         } catch {
             // Nobody else knows about this directory yet, so a failed download has to take it
             // with it — otherwise every offline retry leaves one behind.
