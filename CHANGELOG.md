@@ -6,6 +6,12 @@ expect rough edges until 1.0.
 
 ## [Unreleased]
 
+### Changed
+- **Updates are found within hours, not a day.** The app used to ask GitHub once a day. Now
+ it asks every time it starts, and again whenever its last answer is more than three hours
+ old. A Mac that slept longer than that asks as soon as it wakes. If the network isn't back
+ yet, it asks again the moment a connection appears, instead of waiting for the next round.
+
 ## [0.5.0] — 2026-09-23
 
 ### Changed

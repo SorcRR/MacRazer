@@ -97,35 +97,35 @@ final class UpdateAnnouncementTests: XCTestCase {
     }
 }
 
-/// The daily throttle, and the one case that has to escape it.
+/// The throttle, and the one case that has to escape it.
 @MainActor
 final class CheckDueTests: XCTestCase {
-    private let day: TimeInterval = 24 * 60 * 60
+    private let interval = UpdateChecker.checkInterval
     private let now = Date(timeIntervalSince1970: 1_000_000)
 
     func testNeverCheckedIsDue() {
-        XCTAssertTrue(UpdateChecker.isCheckDue(lastChecked: nil, now: now, interval: day,
+        XCTAssertTrue(UpdateChecker.isCheckDue(lastChecked: nil, now: now, interval: interval,
                                                notesMissingForNewVersion: false))
     }
 
     func testWithinTheWindowIsNot() {
-        XCTAssertFalse(UpdateChecker.isCheckDue(lastChecked: now.addingTimeInterval(-3600),
-                                                now: now, interval: day,
+        XCTAssertFalse(UpdateChecker.isCheckDue(lastChecked: now.addingTimeInterval(-interval + 60),
+                                                now: now, interval: interval,
                                                 notesMissingForNewVersion: false))
     }
 
     func testPastTheWindowIs() {
-        XCTAssertTrue(UpdateChecker.isCheckDue(lastChecked: now.addingTimeInterval(-day - 1),
-                                               now: now, interval: day,
+        XCTAssertTrue(UpdateChecker.isCheckDue(lastChecked: now.addingTimeInterval(-interval - 1),
+                                               now: now, interval: interval,
                                                notesMissingForNewVersion: false))
     }
 
     func testAFreshVersionWithNoNotesBeatsTheThrottle() {
         // What 0.4.0 shipped with. The old version checked minutes before the update, so the
         // throttle was wide open, and 0.3.0 never cached a body at all — the release that
-        // introduced "What's new" showed its card with nothing behind it, for a day.
+        // introduced "What's new" showed its card with nothing behind it until the next check.
         XCTAssertTrue(UpdateChecker.isCheckDue(lastChecked: now.addingTimeInterval(-60),
-                                               now: now, interval: day,
+                                               now: now, interval: interval,
                                                notesMissingForNewVersion: true))
     }
 
@@ -133,7 +133,7 @@ final class CheckDueTests: XCTestCase {
         // Once the forced check stores the body there are notes, and the throttle applies
         // again. Nothing here should make a version change mean an unthrottled app.
         XCTAssertFalse(UpdateChecker.isCheckDue(lastChecked: now.addingTimeInterval(-60),
-                                                now: now, interval: day,
+                                                now: now, interval: interval,
                                                 notesMissingForNewVersion: false))
     }
 }

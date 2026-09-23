@@ -104,7 +104,7 @@ final class UpdateCheckerStateTests: XCTestCase {
             XCTAssertTrue(checker.installedNotes.isEmpty)
             XCTAssertTrue(UpdateChecker.isCheckDue(lastChecked: checker.lastCheckedAt,
                                                    now: Date(),
-                                                   interval: 24 * 60 * 60,
+                                                   interval: UpdateChecker.checkInterval,
                                                    notesMissingForNewVersion: checker.justUpdatedTo != nil
                                                        && checker.installedNotes.isEmpty),
                           "a fresh version with no notes must not wait out the throttle")
