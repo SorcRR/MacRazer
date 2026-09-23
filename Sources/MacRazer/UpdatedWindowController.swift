@@ -12,10 +12,13 @@ import SwiftUI
 @MainActor
 final class UpdatedWindowController: NSObject, AppWindowPresenter, NSWindowDelegate {
     private let updateChecker: UpdateChecker
+    /// Called a turn after the window closes, once it no longer counts as open.
+    private let onClosed: () -> Void
     private var window: NSWindow?
 
-    init(updateChecker: UpdateChecker) {
+    init(updateChecker: UpdateChecker, onClosed: @escaping () -> Void) {
         self.updateChecker = updateChecker
+        self.onClosed = onClosed
     }
 
     var isVisible: Bool { window?.isVisible ?? false }
@@ -51,5 +54,8 @@ final class UpdatedWindowController: NSObject, AppWindowPresenter, NSWindowDeleg
 
     func windowWillClose(_ notification: Notification) {
         updateChecker.dismissAnnouncement()
+        // Deferred: the window is still visible during `windowWillClose`, and anything that
+        // asks "is a window open?" from here would get the wrong answer.
+        DispatchQueue.main.async { [weak self] in self?.onClosed() }
     }
 }

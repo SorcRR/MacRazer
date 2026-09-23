@@ -23,7 +23,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     private let updateChecker = UpdateChecker()
     private let launchAtLogin = LaunchAtLogin()
     private lazy var aboutWindow = AboutWindowController()
-    private lazy var updatedWindow = UpdatedWindowController(updateChecker: updateChecker)
+    /// Closing it re-asks the auto-install gate. This window opens unfocused after an
+    /// automatic install and can sit unnoticed for days, and while it is open it holds back
+    /// any release found in the meantime. Without the re-ask, that release stayed held until
+    /// the popover next opened and closed.
+    private lazy var updatedWindow = UpdatedWindowController(
+        updateChecker: updateChecker,
+        onClosed: { [weak self] in self?.autoInstallIfEnabled() })
     private lazy var settingsWindow = SettingsWindowController(
         controller: controller, launchAtLogin: launchAtLogin, updateChecker: updateChecker,
         onAutoInstallChanged: { [weak self] in self?.autoInstallSettingChanged() })
@@ -220,8 +226,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         startUpdateTriggers()
     }
 
-    /// Everything that asks "is a check due?" after launch. Each only asks; the throttle in
-    /// `UpdateChecker` decides, so they can overlap freely.
+    /// Everything that asks "is a check due?" after launch. Each only asks: the throttle in
+    /// `UpdateChecker` decides, and a check already running is shared rather than repeated.
     private func startUpdateTriggers() {
         // A tick much shorter than the interval, not a timer set to it. A timer of exactly
         // three hours fires a moment before the throttle opens, because the check it follows

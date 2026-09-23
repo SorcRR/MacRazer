@@ -203,6 +203,28 @@ final class UpdateChecker: ObservableObject {
     /// would be a no-op for exactly the people who dismissed the card and later changed their
     /// mind — the only ones who'd think to use it.
     func checkForUpdatesNow(userRequested: Bool = false) async {
+        // One request at a time. The throttle is only written when a check succeeds, so every
+        // trigger that fires while one is in flight (launch, wake, the network returning, the
+        // popover opening) still finds a check due. Unchecked, each started its own request,
+        // and the first to finish cleared `isChecking` under the others: the updated window
+        // dropped its "Fetching release notes" line for a fallback link while notes were
+        // still on their way. A background caller shares the running check's answer. A user
+        // request waits for it and then asks again, because only it clears a dismissal.
+        if let running = runningCheck, !userRequested {
+            await running.value
+            return
+        }
+        while let running = runningCheck { await running.value }
+        let check = Task { await performCheck(userRequested: userRequested) }
+        runningCheck = check
+        await check.value
+        if runningCheck == check { runningCheck = nil }
+    }
+
+    /// The check in flight, if any. See `checkForUpdatesNow`.
+    private var runningCheck: Task<Void, Never>?
+
+    private func performCheck(userRequested: Bool) async {
         // Never while installing. A check that resolves to "nothing newer" clears
         // `latestVersion`, and the popover's whole update card is mounted on that — so a
         // background check landing mid-install would erase the progress bar out from under a
