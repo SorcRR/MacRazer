@@ -10,7 +10,15 @@ expect rough edges until 1.0.
 - **Updates are found within hours, not a day.** The app used to ask GitHub once a day. Now
  it asks every time it starts, and again whenever its last answer is more than three hours
  old. A Mac that slept longer than that asks as soon as it wakes. If the network isn't back
- yet, it asks again the moment a connection appears, instead of waiting for the next round.
+ yet, it asks again the moment a connection appears, instead of waiting for the next
+ round. Opening the popover also asks, if a check is due.
+
+### Added
+- **A window confirms an update worked.** After "Update & Restart", the first launch on the
+ new version opens a window saying it updated successfully, with the release notes for
+ everything you gained. Closing it clears the "Updated to …" card in the popover too, so the
+ news isn't repeated. After an automatic install it comes to the front without taking your
+ keyboard focus.
 
 ## [0.5.0] — 2026-09-23
 

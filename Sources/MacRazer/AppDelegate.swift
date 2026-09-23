@@ -23,6 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     private let updateChecker = UpdateChecker()
     private let launchAtLogin = LaunchAtLogin()
     private lazy var aboutWindow = AboutWindowController()
+    private lazy var updatedWindow = UpdatedWindowController(updateChecker: updateChecker)
     private lazy var settingsWindow = SettingsWindowController(
         controller: controller, launchAtLogin: launchAtLogin, updateChecker: updateChecker,
         onAutoInstallChanged: { [weak self] in self?.autoInstallSettingChanged() })
@@ -207,6 +208,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         // last one recorded and then records the new one, so it has to happen exactly once per
         // launch and before anything else can write that key.
         updateChecker.loadInstalledVersionState()
+        // First launch on a new version: say the update worked, with what it brought. Only
+        // takes focus when the user asked for the install; an automatic one finishes while
+        // they are doing something else.
+        if updateChecker.justUpdatedTo != nil {
+            updatedWindow.show(activating: !updateChecker.autoInstallEnabled)
+        }
         // Unthrottled: a launch is rare, and it is when someone who just installed or reopened
         // the app most expects it to know about the latest release.
         Task { await updateChecker.checkForUpdatesNow() }
@@ -317,6 +324,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
             NSApp.activate(ignoringOtherApps: true)
             popover.contentViewController?.view.window?.makeKey()
             controller.refreshAll()
+            // Someone looking at the popover is the person an update card is for. Throttled,
+            // so opening it often costs nothing.
+            Task { await updateChecker.checkForUpdatesIfDue() }
         }
     }
 
@@ -422,7 +432,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     /// initializer only stores a few references, and the `NSWindow` is still created on the
     /// first `show()`. So the laziness that matters is intact.
     private var isShowingAWindow: Bool {
-        let windows: [AppWindowPresenter] = [remapWindow, permissionsWindow, aboutWindow, settingsWindow]
+        let windows: [AppWindowPresenter] = [remapWindow, permissionsWindow, aboutWindow, settingsWindow, updatedWindow]
         return windows.contains { $0.isVisible }
     }
 

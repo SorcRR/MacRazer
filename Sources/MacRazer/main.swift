@@ -232,6 +232,22 @@ case "render-settings":
     writeViewPNG(SettingsView(controller: sc, launchAtLogin: sl, updateChecker: su, onDone: {}),
                  to: settingsPath)
 
+case "render-updated":
+    // The window shown on the first launch after an update. `nonotes` shows the fallback
+    // link a release with no cached body gets.
+    _ = NSApplication.shared
+    let updatedPath = outputPath(args.dropFirst(), default: "updated-preview.png")
+    let uc = UpdateChecker()
+    if args.contains("nonotes") {
+        uc.loadPreviewUpdated()
+    } else {
+        uc.loadPreviewSpan([
+            RemoteRelease(version: "0.4.1", body: PreviewNotes.previousReleaseBody),
+            RemoteRelease(version: "0.4.0", body: PreviewNotes.releaseBody),
+        ])
+    }
+    writeHostedPNG(UpdatedView(updateChecker: uc, onDone: {}), to: updatedPath)
+
 case "render-about":
     _ = NSApplication.shared
     let aboutPath = outputPath(args.dropFirst(), default: "about-preview.png")
