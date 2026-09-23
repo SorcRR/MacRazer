@@ -70,16 +70,22 @@ final class HIDDevice {
         IOHIDDeviceGetProperty(dev, key as CFString) as? String
     }
 
+    /// Every HID interface matching `criteria` (an IOHID matching dictionary). The one place
+    /// that builds a manager and enumerates, so a fix to the pattern lands once.
+    static func devices(matching criteria: [String: Any]) -> [IOHIDDevice] {
+        let manager = IOHIDManagerCreate(kCFAllocatorDefault, IOOptionBits(kIOHIDOptionsTypeNone))
+        IOHIDManagerSetDeviceMatching(manager, criteria as CFDictionary)
+        guard let set = IOHIDManagerCopyDevices(manager) as? Set<IOHIDDevice> else { return [] }
+        return Array(set)
+    }
+
     /// Enumerate every HID interface the matching device(s) expose. Do NOT open the
     /// manager — that grabs all interfaces (incl. the keyboard/mouse ones, which need
     /// Input Monitoring) and is what produced kIOReturnNotOpen. We only need the device
     /// list; opening happens per-device.
     /// All HID interfaces for the vendor (any product). We pick the right one by control score.
     static func matchingDevices(vendorId: Int) -> [IOHIDDevice] {
-        let manager = IOHIDManagerCreate(kCFAllocatorDefault, IOOptionBits(kIOHIDOptionsTypeNone))
-        IOHIDManagerSetDeviceMatching(manager, [kIOHIDVendorIDKey as String: vendorId] as CFDictionary)
-        guard let set = IOHIDManagerCopyDevices(manager) as? Set<IOHIDDevice> else { return [] }
-        return Array(set)
+        devices(matching: [kIOHIDVendorIDKey as String: vendorId])
     }
 
     /// Razer mouse model keywords — used to recognise a Bluetooth-connected Razer mouse, which
@@ -95,14 +101,11 @@ final class HIDDevice {
     /// a non-Razer vendor id and no control interface. We detect it by transport + model name
     /// so the UI can explain why control is unavailable and prompt switching to 2.4GHz / USB-C.
     static func bluetoothRazerMouseName() -> String? {
-        let manager = IOHIDManagerCreate(kCFAllocatorDefault, IOOptionBits(kIOHIDOptionsTypeNone))
         // Generic Desktop (0x01) / Mouse (0x02), any vendor — the BLE mouse isn't VID 0x1532.
-        IOHIDManagerSetDeviceMatching(manager, [
+        for dev in devices(matching: [
             kIOHIDDeviceUsagePageKey as String: 0x01,
             kIOHIDDeviceUsageKey as String: 0x02,
-        ] as CFDictionary)
-        guard let set = IOHIDManagerCopyDevices(manager) as? Set<IOHIDDevice> else { return nil }
-        for dev in set {
+        ]) {
             let transport = strProp(dev, kIOHIDTransportKey) ?? ""
             guard transport.localizedCaseInsensitiveContains("Bluetooth"),
                   let name = strProp(dev, kIOHIDProductKey) else { continue }

@@ -138,6 +138,29 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// Suppresses connect/disconnect sounds until the first poll establishes a baseline.
     private var hasBaseline = false
     private let lowBatteryNotifier = LowBatteryNotifier()
+    /// Listens for the mouse itself moving while it reads offline, so a wake is noticed at
+    /// once instead of at the next (backed-off) poll. Main thread; see `HIDInputWatcher`.
+    private lazy var inputWatcher = HIDInputWatcher(vendorId: Razer.vendorId) { [weak self] in
+        // Any Razer mouse moved. That is a reason to look, not proof this one is back: the
+        // read decides. If it still fails, the offline publish starts the watcher again.
+        self?.mouseInputSeen()
+    }
+    /// When movement last sent us to the device. A mouse can be moving and still unreadable —
+    /// waking up, or answering from a dongle that refuses commands for a moment — and each
+    /// failed check restarts the watcher, so without a floor here a hand on the mouse would
+    /// turn into a read per movement. Past the floor the ordinary poll takes over, and the
+    /// next offline poll starts the watcher again.
+    private var lastInputTriggeredCheck = Date.distantPast
+
+    /// Main thread, from `inputWatcher`.
+    private func mouseInputSeen() {
+        guard Date().timeIntervalSince(lastInputTriggeredCheck) >= 2 else { return }
+        lastInputTriggeredCheck = Date()
+        // Logged like the read failures above it: when someone reports a mouse that stayed
+        // offline after waking, this line says whether the app was told about the movement.
+        FileHandle.standardError.write(Data("[MacRazer] mouse moved while offline — checking now\n".utf8))
+        checkIfOffline()
+    }
     /// io-queue only: the pure decision core of the poll loop — offline debounce, garbage
     /// rejection, charge confirmation. All the subtle logic lives (and is tested) there;
     /// this class just does the I/O and acts on the verdicts.
@@ -157,9 +180,15 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         sleepObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.willSleepNotification, object: nil, queue: .main
         ) { [weak self] _ in self?.saveHistorySoon() }
+        // Sleep is where a mouse most often disappears: switched off, or its dongle moved to
+        // another machine. The poll may be minutes away by then, so ask as soon as we're up.
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
+        ) { [weak self] _ in self?.checkNow(immediateOffline: false) }
     }
 
     private var sleepObserver: NSObjectProtocol?
+    private var wakeObserver: NSObjectProtocol?
 
     /// Writes the throttled history and curve out without waiting. The Mac is going to sleep
     /// either way; if the queue is mid-read this lands a moment later, or on wake.
@@ -205,13 +234,29 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         pollTimer = t
     }
 
+    /// Whether the pointer has been used recently, by any device (see `Cadence.inUse`).
+    /// `CGEventSource` answers from the window server's own bookkeeping: no event tap, no
+    /// callbacks, no permission. Movement settles it nearly every time; clicks and scrolls
+    /// are only asked about once movement has gone quiet, for a hand that clicks without
+    /// moving.
+    private static func pointerIsInUse() -> Bool {
+        let window = BatteryPollStateMachine.Cadence.pointerActiveWindow
+        for type in [CGEventType.mouseMoved, .leftMouseDown, .scrollWheel] {
+            if CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: type) < window {
+                return true
+            }
+        }
+        return false
+    }
+
     private func pollTick() {
         io.async { [weak self] in
             guard let self else { return }
             self.readBatterySync()
-            // Fast while settling or just dropped, slow once connected, and backing off when
-            // the mouse stays unreachable. See `BatteryPollStateMachine.Cadence`.
-            let next = self.pollState.nextPollInterval
+            // Fast while settling or just dropped, slow once connected (faster while the
+            // pointer is in use), and backing off when the mouse stays unreachable. See
+            // `BatteryPollStateMachine.Cadence`.
+            let next = self.pollState.nextPollInterval(pointerActive: Self.pointerIsInUse())
             self.publish { self.scheduleNextPoll(after: next) }
         }
     }
@@ -279,7 +324,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         io.async { [weak self] in
             guard let self else { return }
             self.readBatterySync()
-            let next = self.pollState.nextPollInterval
+            let next = self.pollState.nextPollInterval(pointerActive: Self.pointerIsInUse())
             self.publish {
                 self.offlineCheckQueued = false
                 self.scheduleNextPoll(after: next)
@@ -292,7 +337,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         io.async { [weak self] in
             guard let self else { return }
             self.readBatterySync(immediateOffline: immediateOffline)
-            let next = self.pollState.nextPollInterval
+            let next = self.pollState.nextPollInterval(pointerActive: Self.pointerIsInUse())
             self.publish { self.scheduleNextPoll(after: next) }
         }
     }
@@ -424,6 +469,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             publish {
                 let wasConnected = self.connected
                 self.update(\.connected, false)
+                // Nothing on the USB side will say when a mouse behind its dongle wakes up,
+                // but the mouse itself will, the moment it moves.
+                self.inputWatcher.start()
                 // An unreachable mouse isn't charging as far as we know — leaving this set
                 // strands the menu bar bolt on (dimmed) indefinitely after a disconnect.
                 self.update(\.charging, false)
@@ -449,6 +497,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             let wasConnected = self.connected
             self.update(\.connected, true)
             self.update(\.lastError, nil)
+            self.inputWatcher.stop() // in use again: its reports would be a wake-up per movement
             alsoSet()
             self.updateStatusText()
             if self.hasBaseline && !wasConnected { Self.playSound(connected: true) }
