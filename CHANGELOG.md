@@ -6,6 +6,8 @@ expect rough edges until 1.0.
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-09-23
+
 ### Changed
 - **A mouse that comes back is noticed as soon as you move it, and one that goes away in
  about five seconds instead of twenty.** Unplugging a dongle or cable was always instant,
