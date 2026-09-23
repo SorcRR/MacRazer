@@ -119,15 +119,15 @@ final class BatteryPollStateMachineTests: XCTestCase {
 
     func testCadenceFollowsTheConnection() {
         var m = BatteryPollStateMachine()
-        XCTAssertEqual(m.nextPollInterval, Cadence.settling, "nothing known yet: look again soon")
+        XCTAssertEqual(m.nextPollInterval(), Cadence.settling, "nothing known yet: look again soon")
         _ = m.handle(.battery(raw: 0, charging: false))
-        XCTAssertEqual(m.nextPollInterval, Cadence.settling, "answering but not ready: stay fast")
+        XCTAssertEqual(m.nextPollInterval(), Cadence.settling, "answering but not ready: stay fast")
         _ = m.handle(.battery(raw: raw85, charging: false))
-        XCTAssertEqual(m.nextPollInterval, Cadence.connected)
+        XCTAssertEqual(m.nextPollInterval(), Cadence.connected)
         _ = m.handle(.failure(deviceGone: false))
-        XCTAssertEqual(m.nextPollInterval, Cadence.confirming, "one failure: confirm it at once")
+        XCTAssertEqual(m.nextPollInterval(), Cadence.confirming, "one failure: confirm it at once")
         _ = m.handle(.failure(deviceGone: false))
-        XCTAssertEqual(m.nextPollInterval, Cadence.settling, "confirmed offline: catch a return quickly")
+        XCTAssertEqual(m.nextPollInterval(), Cadence.settling, "confirmed offline: catch a return quickly")
     }
 
     func testAnUnreachableMouseBacksOffAfterAMinute() {
@@ -135,17 +135,17 @@ final class BatteryPollStateMachineTests: XCTestCase {
         // every 4 seconds until it woke.
         var m = BatteryPollStateMachine()
         _ = m.handle(.failure(deviceGone: false))
-        XCTAssertEqual(m.nextPollInterval, Cadence.confirming, "the first failure is unconfirmed")
+        XCTAssertEqual(m.nextPollInterval(), Cadence.confirming, "the first failure is unconfirmed")
         for poll in 2..<Cadence.fastPolls {
             _ = m.handle(.failure(deviceGone: false))
-            XCTAssertEqual(m.nextPollInterval, Cadence.settling, "poll \(poll) should still be fast")
+            XCTAssertEqual(m.nextPollInterval(), Cadence.settling, "poll \(poll) should still be fast")
         }
         _ = m.handle(.failure(deviceGone: false))
-        XCTAssertEqual(m.nextPollInterval, Cadence.asleep)
+        XCTAssertEqual(m.nextPollInterval(), Cadence.asleep)
         _ = m.handle(.failure(deviceGone: false))
-        XCTAssertEqual(m.nextPollInterval, Cadence.asleep, "stays backed off")
+        XCTAssertEqual(m.nextPollInterval(), Cadence.asleep, "stays backed off")
         _ = m.handle(.battery(raw: raw85, charging: false))
-        XCTAssertEqual(m.nextPollInterval, Cadence.connected, "an answer ends the back-off")
+        XCTAssertEqual(m.nextPollInterval(), Cadence.connected, "an answer ends the back-off")
     }
 
     func testAMouseThatKeepsRefusingTheReadBacksOffToo() {
@@ -154,14 +154,14 @@ final class BatteryPollStateMachineTests: XCTestCase {
         // every 4 seconds forever, just as before.
         var m = BatteryPollStateMachine()
         for _ in 0..<Cadence.fastPolls { _ = m.handle(.battery(raw: 0, charging: false)) }
-        XCTAssertEqual(m.nextPollInterval, Cadence.asleep)
+        XCTAssertEqual(m.nextPollInterval(), Cadence.asleep)
     }
 
     func testNothingPluggedInPollsRarely() {
         // HIDMonitor reports the dongle or cable coming back, so polling here is a safety net.
         var m = BatteryPollStateMachine()
         _ = m.handle(.failure(deviceGone: true), immediateOffline: true)
-        XCTAssertEqual(m.nextPollInterval, Cadence.unplugged)
+        XCTAssertEqual(m.nextPollInterval(), Cadence.unplugged)
     }
 
     func testAReplugAfterALongAbsenceGetsFastPollsAgain() {
@@ -169,10 +169,32 @@ final class BatteryPollStateMachineTests: XCTestCase {
         // the far side is new to us, and waiting 30 seconds to read it would look broken.
         var m = BatteryPollStateMachine()
         for _ in 0..<(Cadence.fastPolls + 5) { _ = m.handle(.failure(deviceGone: false)) }
-        XCTAssertEqual(m.nextPollInterval, Cadence.asleep)
+        XCTAssertEqual(m.nextPollInterval(), Cadence.asleep)
         _ = m.handle(.failure(deviceGone: true), immediateOffline: true)
         _ = m.handle(.failure(deviceGone: false))
-        XCTAssertEqual(m.nextPollInterval, Cadence.settling)
+        XCTAssertEqual(m.nextPollInterval(), Cadence.settling)
+    }
+
+    func testAMouseInUseIsReadMoreOften() {
+        // Nothing on the USB side reports a mouse being switched off, so the gap between
+        // reads is how long the app keeps showing a mouse that has gone. Switching one off is
+        // done with a hand on it, so that is when the gap is worth paying for.
+        var m = BatteryPollStateMachine()
+        _ = m.handle(.battery(raw: raw85, charging: false))
+        XCTAssertEqual(m.nextPollInterval(pointerActive: true), Cadence.inUse)
+        XCTAssertEqual(m.nextPollInterval(pointerActive: false), Cadence.connected)
+    }
+
+    func testPointerActivityDoesNotDisturbTheOtherCadences() {
+        // Being at the machine says nothing about a mouse that is away, or one whose failure
+        // is still unconfirmed: those ladders are already as fast as they need to be.
+        var m = BatteryPollStateMachine()
+        _ = m.handle(.failure(deviceGone: false))
+        XCTAssertEqual(m.nextPollInterval(pointerActive: true), Cadence.confirming)
+        for _ in 0..<Cadence.fastPolls { _ = m.handle(.failure(deviceGone: false)) }
+        XCTAssertEqual(m.nextPollInterval(pointerActive: true), Cadence.asleep)
+        _ = m.handle(.failure(deviceGone: true), immediateOffline: true)
+        XCTAssertEqual(m.nextPollInterval(pointerActive: true), Cadence.unplugged)
     }
 
     func testAnUnconfirmedFailureIsCheckedStraightAway() {
@@ -182,9 +204,9 @@ final class BatteryPollStateMachineTests: XCTestCase {
         var m = BatteryPollStateMachine()
         _ = m.handle(.battery(raw: raw85, charging: false))
         XCTAssertEqual(m.handle(.failure(deviceGone: false)), .pendingOffline)
-        XCTAssertEqual(m.nextPollInterval, Cadence.confirming)
+        XCTAssertEqual(m.nextPollInterval(), Cadence.confirming)
         XCTAssertEqual(m.handle(.failure(deviceGone: false)), .offline(deviceGone: false))
-        XCTAssertEqual(m.nextPollInterval, Cadence.settling, "confirmed: back to the normal ladder")
+        XCTAssertEqual(m.nextPollInterval(), Cadence.settling, "confirmed: back to the normal ladder")
     }
 
     func testADeviceThatVanishedBetweenPollsIsConfirmedFast() {
@@ -193,9 +215,9 @@ final class BatteryPollStateMachineTests: XCTestCase {
         var m = BatteryPollStateMachine()
         _ = m.handle(.battery(raw: raw85, charging: false))
         XCTAssertEqual(m.handle(.failure(deviceGone: true)), .pendingOffline)
-        XCTAssertEqual(m.nextPollInterval, Cadence.confirming)
+        XCTAssertEqual(m.nextPollInterval(), Cadence.confirming)
         _ = m.handle(.failure(deviceGone: true))
-        XCTAssertEqual(m.nextPollInterval, Cadence.unplugged, "once it is confirmed, settle down")
+        XCTAssertEqual(m.nextPollInterval(), Cadence.unplugged, "once it is confirmed, settle down")
     }
 
     func testAnImmediateOfflineNeedsNoConfirming() {
@@ -205,14 +227,14 @@ final class BatteryPollStateMachineTests: XCTestCase {
         _ = m.handle(.battery(raw: raw85, charging: false))
         XCTAssertEqual(m.handle(.failure(deviceGone: true), immediateOffline: true),
                        .offline(deviceGone: true))
-        XCTAssertEqual(m.nextPollInterval, Cadence.unplugged)
+        XCTAssertEqual(m.nextPollInterval(), Cadence.unplugged)
     }
 
     func testARejectedBlipKeepsTheConnectedCadence() {
         var m = BatteryPollStateMachine()
         _ = m.handle(.battery(raw: 178, charging: false))  // 70%
         _ = m.handle(.battery(raw: 0xFF, charging: false)) // rejected garbage
-        XCTAssertEqual(m.nextPollInterval, Cadence.connected,
+        XCTAssertEqual(m.nextPollInterval(), Cadence.connected,
                        "one bad value from a live mouse is not a reason to poll harder")
     }
 }

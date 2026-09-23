@@ -234,13 +234,24 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         pollTimer = t
     }
 
+    /// How long the pointer has been untouched, by any device. `CGEventSource` answers from
+    /// the window server's own bookkeeping: one call, no event tap, no callbacks, no
+    /// permission. Clicks and scrolls count too, for a hand that clicks without moving.
+    private static func pointerIsInUse() -> Bool {
+        let idle = [CGEventType.mouseMoved, .leftMouseDown, .scrollWheel]
+            .map { CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: $0) }
+            .min() ?? .infinity
+        return idle < BatteryPollStateMachine.Cadence.pointerActiveWindow
+    }
+
     private func pollTick() {
         io.async { [weak self] in
             guard let self else { return }
             self.readBatterySync()
-            // Fast while settling or just dropped, slow once connected, and backing off when
-            // the mouse stays unreachable. See `BatteryPollStateMachine.Cadence`.
-            let next = self.pollState.nextPollInterval
+            // Fast while settling or just dropped, slow once connected (faster while the
+            // pointer is in use), and backing off when the mouse stays unreachable. See
+            // `BatteryPollStateMachine.Cadence`.
+            let next = self.pollState.nextPollInterval(pointerActive: Self.pointerIsInUse())
             self.publish { self.scheduleNextPoll(after: next) }
         }
     }
@@ -308,7 +319,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         io.async { [weak self] in
             guard let self else { return }
             self.readBatterySync()
-            let next = self.pollState.nextPollInterval
+            let next = self.pollState.nextPollInterval(pointerActive: Self.pointerIsInUse())
             self.publish {
                 self.offlineCheckQueued = false
                 self.scheduleNextPoll(after: next)
@@ -321,7 +332,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         io.async { [weak self] in
             guard let self else { return }
             self.readBatterySync(immediateOffline: immediateOffline)
-            let next = self.pollState.nextPollInterval
+            let next = self.pollState.nextPollInterval(pointerActive: Self.pointerIsInUse())
             self.publish { self.scheduleNextPoll(after: next) }
         }
     }
