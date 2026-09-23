@@ -39,25 +39,9 @@ struct WhatsNewPage: View {
             .padding(.bottom, 8)
 
             ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    ForEach(releases) { release in
-                        // Only when there is more than one. A single release's version is
-                        // already in the title above, and repeating it reads as a mistake.
-                        if releases.count > 1 {
-                            Text(release.version)
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(Color.razerGreen)
-                                .padding(.top, release.id == releases.first?.id ? 0 : 6)
-                        }
-                        notesBlock(release.notes)
-                    }
-                    Link("Full release notes", destination: ProjectLinks.latestRelease)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(Color.razerGreen)
-                }
-                .padding(.horizontal, 12)
-                .padding(.bottom, 12)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                ReleaseNotesList(releases: releases)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 12)
             }
 
             // Repeated from the card so the decision can be made where the information is,
@@ -78,6 +62,33 @@ struct WhatsNewPage: View {
                 .padding(12)
             }
         }
+    }
+}
+
+/// The notes themselves, without a page around them. Shared by the popover's What's new page
+/// and the window shown after an update, so a release reads the same wherever it turns up.
+struct ReleaseNotesList: View {
+    /// Newest first.
+    let releases: [VersionedNotes]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            ForEach(releases) { release in
+                // Only when there is more than one. A single release's version is already in
+                // the title of whatever holds this, and repeating it reads as a mistake.
+                if releases.count > 1 {
+                    Text(release.version)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color.razerGreen)
+                        .padding(.top, release.id == releases.first?.id ? 0 : 6)
+                }
+                notesBlock(release.notes)
+            }
+            Link("Full release notes", destination: ProjectLinks.latestRelease)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Color.razerGreen)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder

@@ -4,7 +4,7 @@
 import AppKit
 import Foundation
 
-/// Polls GitHub Releases once a day for a newer MacRazer version, and installs it.
+/// Polls GitHub Releases every few hours for a newer MacRazer version, and installs it.
 ///
 /// No Sparkle/appcast — the app is unsigned-by-Apple and distributed as a plain DMG. When
 /// MacRazer is installed somewhere it can write to, "update" means the whole manual routine
@@ -32,7 +32,7 @@ final class UpdateChecker: ObservableObject {
     @Published private(set) var latestVersion: String?
     @Published private(set) var phase: Phase = .idle
     @Published var downloadError: String?
-    /// A check is in flight. Only the manual "Check Now" needs this — the daily background
+    /// A check is in flight. Only the manual "Check Now" needs this — the periodic background
     /// check has nothing to say while it runs.
     @Published private(set) var isChecking = false
 
@@ -96,7 +96,10 @@ final class UpdateChecker: ObservableObject {
     }
 
     private let releaseAPIURL = ProjectLinks.releasesAPI
-    private let checkInterval: TimeInterval = 24 * 60 * 60
+    /// How stale the last answer may get before the next opportunity asks again. Three hours
+    /// rather than a day: a fix shipped in the morning should reach someone the same day, and
+    /// the request is one small call against an unauthenticated limit of sixty an hour.
+    static let checkInterval: TimeInterval = 3 * 60 * 60
 
     private static let dismissedKey = "dismissedUpdateVersion"
     private static let lastCheckKey = "lastUpdateCheckDate"
@@ -146,13 +149,13 @@ final class UpdateChecker: ObservableObject {
     func checkForUpdatesIfDue() async {
         if Self.isCheckDue(lastChecked: lastCheckedAt,
                            now: Date(),
-                           interval: checkInterval,
+                           interval: Self.checkInterval,
                            notesMissingForNewVersion: notesWorthFetching) {
             await checkForUpdatesNow()
             return
         }
         // Within the throttle window, surface what the last successful check already found.
-        // Otherwise a relaunch forgets a known update for up to a day.
+        // Otherwise a relaunch forgets a known update until the next check.
         restoreLastFound()
     }
 
@@ -174,12 +177,12 @@ final class UpdateChecker: ObservableObject {
 
     /// Whether to go to the network now.
     ///
-    /// The throttle exists so the app asks once a day however often it launches. It has one
+    /// The throttle exists so the app asks every few hours however often it is prompted to. It has one
     /// exception, and 0.4.0 is what found it: the version just changed and there are no notes
     /// for what is now running, which means the cache was written by the version that is no
     /// longer here. Every 0.3.0 install hit this, because 0.3.0 had no notes cache at all, so
     /// the release that introduced "What's new" showed the card with nothing to open. Waiting
-    /// out a day for text that is already published is the wrong trade.
+    /// out the throttle for text that is already published is the wrong trade.
     ///
     /// Self-limiting: the check it forces fills the cache, so the next call takes the
     /// ordinary path.
@@ -200,6 +203,28 @@ final class UpdateChecker: ObservableObject {
     /// would be a no-op for exactly the people who dismissed the card and later changed their
     /// mind — the only ones who'd think to use it.
     func checkForUpdatesNow(userRequested: Bool = false) async {
+        // One request at a time. The throttle is only written when a check succeeds, so every
+        // trigger that fires while one is in flight (launch, wake, the network returning, the
+        // popover opening) still finds a check due. Unchecked, each started its own request,
+        // and the first to finish cleared `isChecking` under the others: the updated window
+        // dropped its "Fetching release notes" line for a fallback link while notes were
+        // still on their way. A background caller shares the running check's answer. A user
+        // request waits for it and then asks again, because only it clears a dismissal.
+        if let running = runningCheck, !userRequested {
+            await running.value
+            return
+        }
+        while let running = runningCheck { await running.value }
+        let check = Task { await performCheck(userRequested: userRequested) }
+        runningCheck = check
+        await check.value
+        if runningCheck == check { runningCheck = nil }
+    }
+
+    /// The check in flight, if any. See `checkForUpdatesNow`.
+    private var runningCheck: Task<Void, Never>?
+
+    private func performCheck(userRequested: Bool) async {
         // Never while installing. A check that resolves to "nothing newer" clears
         // `latestVersion`, and the popover's whole update card is mounted on that — so a
         // background check landing mid-install would erase the progress bar out from under a
@@ -221,9 +246,9 @@ final class UpdateChecker: ObservableObject {
             // failed, and `restoreLastFound()` would resurrect the very version they had
             // dismissed, having learned nothing.
             if userRequested { defaults.removeObject(forKey: Self.dismissedKey) }
-            // Only a *successful* check counts against the daily throttle: a failed one
+            // Only a *successful* check counts against the throttle: a failed one
             // (offline right after wake is common) should retry on the next opportunity,
-            // not silence update notices for a day.
+            // not silence update notices until the window passes.
             let checkedAt = Date()
             defaults.set(checkedAt, forKey: Self.lastCheckKey)
             defaults.set(remote, forKey: Self.lastFoundKey)

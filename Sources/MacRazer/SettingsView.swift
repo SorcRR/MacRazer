@@ -176,7 +176,7 @@ struct SettingsView: View {
                 : "Version \(latest) is available."
         }
         guard let last = updateChecker.lastCheckedAt else {
-            return "Not checked yet. MacRazer checks once a day."
+            return "Not checked yet. MacRazer checks every few hours."
         }
         return "Up to date. Last checked \(Self.relativeDate.localizedString(for: last, relativeTo: Date()))."
     }

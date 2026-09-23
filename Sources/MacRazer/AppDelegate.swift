@@ -4,6 +4,7 @@
 import AppKit
 import SwiftUI
 import Combine
+import Network
 import UserNotifications
 
 /// Menu bar (accessory) app: an NSStatusItem showing battery %, click opens an NSPopover
@@ -22,12 +23,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     private let updateChecker = UpdateChecker()
     private let launchAtLogin = LaunchAtLogin()
     private lazy var aboutWindow = AboutWindowController()
+    /// Closing it re-asks the auto-install gate. This window opens unfocused after an
+    /// automatic install and can sit unnoticed for days, and while it is open it holds back
+    /// any release found in the meantime. Without the re-ask, that release stayed held until
+    /// the popover next opened and closed.
+    private lazy var updatedWindow = UpdatedWindowController(
+        updateChecker: updateChecker,
+        onClosed: { [weak self] in self?.autoInstallIfEnabled() })
     private lazy var settingsWindow = SettingsWindowController(
         controller: controller, launchAtLogin: launchAtLogin, updateChecker: updateChecker,
         onAutoInstallChanged: { [weak self] in self?.autoInstallSettingChanged() })
     /// Decides whether an automatic install may start; see `AutoInstallPolicy`.
     private var autoInstallPolicy = AutoInstallPolicy()
     private var updateTimer: Timer?
+    private var updateWakeObserver: NSObjectProtocol?
+    private var updatePathMonitor: NWPathMonitor?
+    /// The last connectivity the monitor reported; nil until its first report.
+    private var wasOnline: Bool?
     private var updateBadgeView: NSView?
     /// The app the user was in when the popover opened, so closing it can hand focus back.
     /// See `PopoverFocusReturn` for when it does.
@@ -182,8 +194,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         // rather than at the next poll, so its mappings come back straight away.
         remapper.onPressWhilePaused = { [weak controller] in controller?.checkIfOffline() }
 
-        // Update check: once now (throttled internally to once/24h), then a daily timer so a
-        // long-running session still notices new releases without a relaunch.
+        // Update check: straight away on launch, then whenever the last answer is more than
+        // `UpdateChecker.checkInterval` old. See `startUpdateTriggers()` for what asks.
         updateChecker.$latestVersion
             // A check republishes the same version every day; without this the auto-install
             // gate would be re-evaluated on each one.
@@ -202,12 +214,58 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         // last one recorded and then records the new one, so it has to happen exactly once per
         // launch and before anything else can write that key.
         updateChecker.loadInstalledVersionState()
-        Task { await updateChecker.checkForUpdatesIfDue() }
-        let timer = Timer(timeInterval: 24 * 60 * 60, repeats: true) { [weak self] _ in
+        // First launch on a new version: say the update worked, with what it brought. Only
+        // takes focus when the user asked for the install; an automatic one finishes while
+        // they are doing something else.
+        if updateChecker.justUpdatedTo != nil {
+            updatedWindow.show(activating: !updateChecker.autoInstallEnabled)
+        }
+        // Unthrottled: a launch is rare, and it is when someone who just installed or reopened
+        // the app most expects it to know about the latest release.
+        Task { await updateChecker.checkForUpdatesNow() }
+        startUpdateTriggers()
+    }
+
+    /// Everything that asks "is a check due?" after launch. Each only asks: the throttle in
+    /// `UpdateChecker` decides, and a check already running is shared rather than repeated.
+    private func startUpdateTriggers() {
+        // A tick much shorter than the interval, not a timer set to it. A timer of exactly
+        // three hours fires a moment before the throttle opens, because the check it follows
+        // finished a little after it started, and so waited a whole extra period each time.
+        // A timer also stops counting while the Mac sleeps.
+        let timer = Timer(timeInterval: 15 * 60, repeats: true) { [weak self] _ in
             Task { await self?.updateChecker.checkForUpdatesIfDue() }
         }
+        timer.tolerance = 60
         RunLoop.main.add(timer, forMode: .common)
         updateTimer = timer
+
+        // A Mac that slept past the interval asks the moment it wakes, rather than whenever
+        // the tick above next comes round.
+        updateWakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                Task { await self.updateChecker.checkForUpdatesIfDue() }
+            }
+        }
+
+        // The network is often not back yet at wake, and a failed check is not recorded, so
+        // it stays due. Ask again as soon as a connection appears. The first report is the
+        // state at start, not a change, and is only remembered.
+        let pathMonitor = NWPathMonitor()
+        pathMonitor.pathUpdateHandler = { [weak self] path in
+            let online = path.status == .satisfied
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                defer { self.wasOnline = online }
+                guard self.wasOnline == false, online else { return }
+                Task { await self.updateChecker.checkForUpdatesIfDue() }
+            }
+        }
+        pathMonitor.start(queue: .main)
+        updatePathMonitor = pathMonitor
     }
 
     /// Small red dot over the status-item icon when an update is available. A subview rather
@@ -272,6 +330,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
             NSApp.activate(ignoringOtherApps: true)
             popover.contentViewController?.view.window?.makeKey()
             controller.refreshAll()
+            // Someone looking at the popover is the person an update card is for. Throttled,
+            // so opening it often costs nothing.
+            Task { await updateChecker.checkForUpdatesIfDue() }
         }
     }
 
@@ -319,7 +380,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         settings.target = self
         menu.addItem(settings)
 
-        // The background check runs once a day; this is the way to ask for one now, and it
+        // The background check runs every few hours; this is the way to ask for one now, and it
         // also un-dismisses a version the user waved away earlier.
         let update = NSMenuItem(title: "Check for Updates…", action: #selector(checkForUpdates), keyEquivalent: "")
         update.target = self
@@ -377,7 +438,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     /// initializer only stores a few references, and the `NSWindow` is still created on the
     /// first `show()`. So the laziness that matters is intact.
     private var isShowingAWindow: Bool {
-        let windows: [AppWindowPresenter] = [remapWindow, permissionsWindow, aboutWindow, settingsWindow]
+        let windows: [AppWindowPresenter] = [remapWindow, permissionsWindow, aboutWindow, settingsWindow, updatedWindow]
         return windows.contains { $0.isVisible }
     }
 
@@ -498,6 +559,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     func applicationWillTerminate(_ notification: Notification) {
         monitor?.invalidate()
         updateTimer?.invalidate()
+        updatePathMonitor?.cancel()
         controller.flushHistoryToDisk()
     }
 
