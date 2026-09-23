@@ -125,14 +125,18 @@ final class BatteryPollStateMachineTests: XCTestCase {
         _ = m.handle(.battery(raw: raw85, charging: false))
         XCTAssertEqual(m.nextPollInterval, Cadence.connected)
         _ = m.handle(.failure(deviceGone: false))
-        XCTAssertEqual(m.nextPollInterval, Cadence.settling, "just dropped: confirm it quickly")
+        XCTAssertEqual(m.nextPollInterval, Cadence.confirming, "one failure: confirm it at once")
+        _ = m.handle(.failure(deviceGone: false))
+        XCTAssertEqual(m.nextPollInterval, Cadence.settling, "confirmed offline: catch a return quickly")
     }
 
     func testAnUnreachableMouseBacksOffAfterAMinute() {
         // The case this exists for: a mouse asleep behind its dongle overnight was polled
         // every 4 seconds until it woke.
         var m = BatteryPollStateMachine()
-        for poll in 1..<Cadence.fastPolls {
+        _ = m.handle(.failure(deviceGone: false))
+        XCTAssertEqual(m.nextPollInterval, Cadence.confirming, "the first failure is unconfirmed")
+        for poll in 2..<Cadence.fastPolls {
             _ = m.handle(.failure(deviceGone: false))
             XCTAssertEqual(m.nextPollInterval, Cadence.settling, "poll \(poll) should still be fast")
         }
@@ -169,6 +173,39 @@ final class BatteryPollStateMachineTests: XCTestCase {
         _ = m.handle(.failure(deviceGone: true), immediateOffline: true)
         _ = m.handle(.failure(deviceGone: false))
         XCTAssertEqual(m.nextPollInterval, Cadence.settling)
+    }
+
+    func testAnUnconfirmedFailureIsCheckedStraightAway() {
+        // The UI still shows the mouse as connected, with its remaps live, until a second
+        // failure agrees. Waiting the old 4s between the two was most of the time it took to
+        // notice a mouse that had gone.
+        var m = BatteryPollStateMachine()
+        _ = m.handle(.battery(raw: raw85, charging: false))
+        XCTAssertEqual(m.handle(.failure(deviceGone: false)), .pendingOffline)
+        XCTAssertEqual(m.nextPollInterval, Cadence.confirming)
+        XCTAssertEqual(m.handle(.failure(deviceGone: false)), .offline(deviceGone: false))
+        XCTAssertEqual(m.nextPollInterval, Cadence.settling, "confirmed: back to the normal ladder")
+    }
+
+    func testADeviceThatVanishedBetweenPollsIsConfirmedFast() {
+        // Without HIDMonitor (registration can fail), the first poll to find nothing is still
+        // only one failure. Confirming that in two minutes would leave the UI lying.
+        var m = BatteryPollStateMachine()
+        _ = m.handle(.battery(raw: raw85, charging: false))
+        XCTAssertEqual(m.handle(.failure(deviceGone: true)), .pendingOffline)
+        XCTAssertEqual(m.nextPollInterval, Cadence.confirming)
+        _ = m.handle(.failure(deviceGone: true))
+        XCTAssertEqual(m.nextPollInterval, Cadence.unplugged, "once it is confirmed, settle down")
+    }
+
+    func testAnImmediateOfflineNeedsNoConfirming() {
+        // An IOKit removal is definitive, so there is nothing to confirm and no reason to
+        // poll again in half a second.
+        var m = BatteryPollStateMachine()
+        _ = m.handle(.battery(raw: raw85, charging: false))
+        XCTAssertEqual(m.handle(.failure(deviceGone: true), immediateOffline: true),
+                       .offline(deviceGone: true))
+        XCTAssertEqual(m.nextPollInterval, Cadence.unplugged)
     }
 
     func testARejectedBlipKeepsTheConnectedCadence() {

@@ -29,6 +29,9 @@ struct BatteryPollStateMachine {
     private(set) var pollsWithoutReading = 0
     /// The last poll found no Razer device enumerated at all.
     private(set) var deviceGone = false
+    /// The UI has been told the mouse is offline. Until it has, a failure is still unconfirmed
+    /// and the app is showing a mouse that may already be gone.
+    private(set) var offlineDeclared = false
 
     /// How often to poll in each situation.
     enum Cadence {
@@ -39,6 +42,11 @@ struct BatteryPollStateMachine {
         static let settling: TimeInterval = 4
         /// Fast polls allowed before backing off, about a minute at `settling`.
         static let fastPolls = 15
+        /// A read failed and the debounce needs one more to agree. Until it does, the mouse
+        /// still reads as connected, with its remaps live, so this is the one wait worth
+        /// taking immediately. Two failures then settle it in about a second rather than the
+        /// four the old cadence spent waiting between them.
+        static let confirming: TimeInterval = 0.5
         /// Still not answering after that. The mouse is asleep or off, which can last all
         /// night, and polling it every 4 seconds meant about 21,600 wake-ups and USB round
         /// trips a day for nothing. The same as `connected`, so a missing mouse is never
@@ -53,6 +61,10 @@ struct BatteryPollStateMachine {
 
     /// How long to wait before the next poll, given what the last one found.
     var nextPollInterval: TimeInterval {
+        // Checked before everything else: this is a failure the UI hasn't acted on yet, so
+        // it outranks even "nothing is plugged in", which would otherwise wait two minutes
+        // to confirm a device that vanished between polls.
+        if consecutiveFailures > 0 && !offlineDeclared { return Cadence.confirming }
         if deviceGone { return Cadence.unplugged }
         if lastReadOK && batteryReady { return Cadence.connected }
         return pollsWithoutReading < Cadence.fastPolls ? Cadence.settling : Cadence.asleep
@@ -99,12 +111,14 @@ struct BatteryPollStateMachine {
             batteryReady = true
             pollsWithoutReading = 0
             deviceGone = false
+            offlineDeclared = false
             return .aliveNoBattery
 
         case .battery(let raw, let charging):
             lastReadOK = true
             consecutiveFailures = 0
             deviceGone = false
+            offlineDeclared = false
 
             // A raw 0 means "connected but battery not ready yet" — common right after a
             // reconnect/wake while the dongle re-probes. Don't display a bogus 0%. It is
@@ -152,6 +166,7 @@ struct BatteryPollStateMachine {
             self.deviceGone = deviceGone
             pollsWithoutReading = deviceGone ? 0 : pollsWithoutReading + 1
             let declareOffline = immediateOffline || consecutiveFailures >= 2
+            offlineDeclared = offlineDeclared || declareOffline
             return declareOffline ? .offline(deviceGone: deviceGone) : .pendingOffline
         }
     }

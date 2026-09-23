@@ -7,6 +7,27 @@ expect rough edges until 1.0.
 ## [Unreleased]
 
 ### Changed
+- **A mouse that comes back is noticed as soon as you move it, and one that goes away within
+ about a second.** Unplugging a dongle or cable was always instant, because macOS says so. A
+ wireless mouse switched off or asleep is different: the dongle stays plugged in and answers
+ on the mouse's behalf, and nothing tells the app when the mouse returns. It was found by the
+ next battery check, which deliberately slows down while the mouse is away, so it could be up
+ to half a minute.
+
+ The app now listens for the mouse's own movements while it reads offline. That is the one
+ thing macOS does report, and the first movement after waking sends the app straight to the
+ mouse. Listening stops as soon as the mouse is back, because a mouse in use sends over a
+ hundred reports a second and waking for each of them would cost more than the checks this
+ saves. It needs Input Monitoring, which the app already asks for; without it, checks still
+ find the mouse, just more slowly.
+
+ Going the other way, a failed read is now confirmed half a second later instead of four
+ seconds later. A single failure never means offline on its own, since the wireless link
+ drops the odd read, but the wait between the two was most of the delay. Until it's confirmed
+ the app still shows the mouse as connected, with its button remaps live, so it is worth
+ taking at once. The app also checks the mouse as soon as the Mac wakes, which is where a
+ mouse most often disappears.
+
 - **Less background work while the mouse is asleep, off or unplugged.** The app checked
  on an unreachable mouse every 4 seconds for as long as it stayed unreachable, which is
  overnight for a mouse left to sleep. That's about 21,600 wake-ups and USB round trips a day.
