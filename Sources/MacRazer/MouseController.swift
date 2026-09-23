@@ -234,14 +234,19 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         pollTimer = t
     }
 
-    /// How long the pointer has been untouched, by any device. `CGEventSource` answers from
-    /// the window server's own bookkeeping: one call, no event tap, no callbacks, no
-    /// permission. Clicks and scrolls count too, for a hand that clicks without moving.
+    /// Whether the pointer has been used recently, by any device (see `Cadence.inUse`).
+    /// `CGEventSource` answers from the window server's own bookkeeping: no event tap, no
+    /// callbacks, no permission. Movement settles it nearly every time; clicks and scrolls
+    /// are only asked about once movement has gone quiet, for a hand that clicks without
+    /// moving.
     private static func pointerIsInUse() -> Bool {
-        let idle = [CGEventType.mouseMoved, .leftMouseDown, .scrollWheel]
-            .map { CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: $0) }
-            .min() ?? .infinity
-        return idle < BatteryPollStateMachine.Cadence.pointerActiveWindow
+        let window = BatteryPollStateMachine.Cadence.pointerActiveWindow
+        for type in [CGEventType.mouseMoved, .leftMouseDown, .scrollWheel] {
+            if CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: type) < window {
+                return true
+            }
+        }
+        return false
     }
 
     private func pollTick() {

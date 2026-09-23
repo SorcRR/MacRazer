@@ -43,8 +43,14 @@ struct BatteryPollStateMachine {
         /// delay before the app notices: nothing on the USB side reports a mouse powering
         /// off, so the only way to find out is to ask. Reads cost a pair of USB control
         /// transfers, and only while someone is actually at the machine.
+        ///
+        /// "In use" means the pointer, not this mouse: the signal comes from the window
+        /// server, which doesn't say which device moved it. A trackpad counts, so a laptop
+        /// user reads their idle mouse at this rate too. Measured at about 0.2% of a core,
+        /// which is the price of not having to ask the mouse itself (see `HIDInputWatcher`
+        /// for why listening to it all day would cost more).
         static let inUse: TimeInterval = 4
-        /// How recently the pointer must have moved to count as in use.
+        /// How recently the pointer must have been used to count as in use.
         static let pointerActiveWindow: TimeInterval = 30
         /// Just started, just reconnected, or just stopped answering: poll quickly to catch
         /// the real percent, confirm a disconnect, or catch a mouse waking straight back up.
@@ -70,7 +76,7 @@ struct BatteryPollStateMachine {
 
     /// How long to wait before the next poll, given what the last one found and whether
     /// anyone is using the pointer (`Cadence.inUse`).
-    func nextPollInterval(pointerActive: Bool = false) -> TimeInterval {
+    func nextPollInterval(pointerActive: Bool) -> TimeInterval {
         // Checked before everything else: this is a failure the UI hasn't acted on yet, so
         // it outranks even "nothing is plugged in", which would otherwise wait two minutes
         // to confirm a device that vanished between polls.

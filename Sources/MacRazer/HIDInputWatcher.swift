@@ -53,19 +53,15 @@ final class HIDInputWatcher: @unchecked Sendable {
         guard !isRunning else { return }
         fired = false
         let context = Unmanaged.passRetained(self).toOpaque()
-        selfContext = context
 
-        let manager = IOHIDManagerCreate(kCFAllocatorDefault, IOOptionBits(kIOHIDOptionsTypeNone))
         // Mouse interfaces only (Generic Desktop / Mouse). A Razer keyboard on the same
-        // vendor id says nothing about this mouse, and the control interface the app sends
-        // commands on carries no input.
-        IOHIDManagerSetDeviceMatching(manager, [
+        // vendor id says nothing about this mouse.
+        let devices = HIDDevice.devices(matching: [
             kIOHIDVendorIDKey as String: vendorId,
             kIOHIDDeviceUsagePageKey as String: kHIDPage_GenericDesktop,
             kIOHIDDeviceUsageKey as String: kHIDUsage_GD_Mouse,
-        ] as CFDictionary)
-        guard let devices = IOHIDManagerCopyDevices(manager) as? Set<IOHIDDevice> else { return }
-
+        ])
+        var opened: [(device: IOHIDDevice, buffer: UnsafeMutablePointer<UInt8>, size: Int)] = []
         for device in devices {
             let size = IOHIDDeviceGetProperty(device, kIOHIDMaxInputReportSizeKey as CFString) as? Int ?? 0
             guard size > 0,
@@ -77,8 +73,17 @@ final class HIDInputWatcher: @unchecked Sendable {
                 Unmanaged<HIDInputWatcher>.fromOpaque(context).takeUnretainedValue().report()
             }, context)
             IOHIDDeviceScheduleWithRunLoop(device, CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue)
-            open.append((device, buffer, size))
+            opened.append((device, buffer, size))
         }
+        // Nothing opened means nothing is listening, so this is not running and the next
+        // start must be free to try again: no device matched (the dongle is out), or Input
+        // Monitoring has not been granted yet and may be in a moment.
+        guard !opened.isEmpty else {
+            Unmanaged<HIDInputWatcher>.fromOpaque(context).release()
+            return
+        }
+        open = opened
+        selfContext = context
     }
 
     /// Stops listening and closes everything. Safe to call when not running.
@@ -90,6 +95,8 @@ final class HIDInputWatcher: @unchecked Sendable {
             entry.buffer.deallocate()
         }
         open.removeAll()
+        // Any report already handed off belongs to the session being stopped.
+        fired = false
         if let context = selfContext {
             selfContext = nil
             Unmanaged<HIDInputWatcher>.fromOpaque(context).release()
@@ -108,7 +115,8 @@ final class HIDInputWatcher: @unchecked Sendable {
         guard isRunning, !fired else { return }
         fired = true
         DispatchQueue.main.async { [weak self] in
-            guard let self, self.fired else { return }
+            // `stop()` in between (the mouse answered a poll meanwhile) cancels this.
+            guard let self, self.isRunning, self.fired else { return }
             self.stop()
             self.onInput()
         }
