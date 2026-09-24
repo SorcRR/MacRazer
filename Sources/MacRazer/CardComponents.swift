@@ -64,6 +64,11 @@ enum Battery {
     /// poll state machine adopts a third consecutive outlier as the new baseline) would
     /// re-arm and let the next genuine low reading fire a duplicate alert.
     static let lowRearmPercent = 20
+    /// Lighting brightness above this shows the battery-saver hint in the lighting card.
+    /// LED brightness is PWM, so its draw scales roughly with the percent, and on a wireless
+    /// mouse the LEDs are the biggest load the user controls. Half is where the saving is
+    /// large and the lighting still reads clearly lit, so it's a suggestion people can take.
+    static let lightingHintBrightnessPercent = 50
 }
 
 /// Battery-state color for a given percent — the same low/mid/full thresholds as the battery

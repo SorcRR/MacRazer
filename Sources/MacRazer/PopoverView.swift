@@ -874,8 +874,26 @@ struct PopoverView: View {
                 }
                 .transition(.opacity)
             }
+
+            if showsLightingBatteryHint {
+                Label("Bright lighting drains the battery faster. Around \(Battery.lightingHintBrightnessPercent)% "
+                      + "or lower lasts noticeably longer.", systemImage: "leaf")
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .transition(.opacity)
+            }
         }
         }
+    }
+
+    /// Reads the local slider value, not `controller.brightness`, so the hint tracks the
+    /// thumb while it's dragged rather than appearing only after the write lands. Skipped
+    /// while charging (the drain doesn't matter then) and with lighting off (0% or `.off`
+    /// both mean the LEDs draw nothing, whatever the slider says).
+    private var showsLightingBatteryHint: Bool {
+        controller.deviceHasBattery && !controller.charging && controller.effect != .off
+            && Int(brightnessValue) > Battery.lightingHintBrightnessPercent
     }
 
     private func swatch(_ sw: Color) -> some View {
