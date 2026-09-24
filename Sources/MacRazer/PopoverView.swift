@@ -868,9 +868,11 @@ struct PopoverView: View {
         }
     }
 
-    /// Same conditions as the lighting hint: a battery mouse, not charging.
+    /// Same conditions as the lighting hint: a battery mouse, not charging. Reads the raw
+    /// `controller.pollRate`, not `displayedPollRate`: 0 means the rate hasn't been read yet,
+    /// and advising a switch to 500 Hz on a mouse that may already be there reads as broken.
     private var showsPollRateBatteryHint: Bool {
-        controller.deviceHasBattery && !controller.charging && displayedPollRate >= 1000
+        controller.deviceHasBattery && !controller.charging && controller.pollRate >= 1000
     }
 
     private var lightingCard: some View {
