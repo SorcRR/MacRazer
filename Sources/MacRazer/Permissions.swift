@@ -3,6 +3,7 @@
 
 import AppKit
 import IOKit.hid
+import Security
 
 /// The System Settings privacy panes this app sends users to — one place for the
 /// `x-apple.systempreferences` deep links instead of hand-rolled copies per caller.
@@ -20,16 +21,21 @@ enum SystemSettingsPanes {
     }
 }
 
-/// Single source of truth for the two macOS permissions MacRazer needs, and the actions to
-/// grant them. Drives the first-run setup window (`PermissionsView`).
+/// Single source of truth for macOS permissions. USB HID needs Input Monitoring; the supported
+/// Basilisk Bluetooth GATT path does not. Software actions on its DPI button additionally
+/// require keyboard capture. Drives the first-run setup window (`PermissionsView`).
 ///
 /// - **Input Monitoring** — required to open the Razer HID device for battery / DPI / polling
 ///   / lighting. macOS gates this because the device enumerates as a keyboard/mouse.
-/// - **Accessibility** — required *only* for the button-remapping `CGEvent` tap.
+/// - **Accessibility** — required for remapping and posting synthesized actions.
+/// - Keyboard-based DPI software actions also verify the actual event tap mask: a stale
+///   Input Monitoring grant can leave mouse events enabled while excluding keyboard input.
 @MainActor
 final class PermissionsModel: ObservableObject {
     /// Input Monitoring granted (the blocking permission — nothing reads from the mouse without it).
     @Published private(set) var inputMonitoring = false
+    /// The supported Basilisk can use CoreBluetooth without Input Monitoring.
+    @Published private(set) var bluetoothAvailable = false
     /// Accessibility granted (optional — only the remap feature needs it).
     @Published private(set) var accessibility = false
     /// Input Monitoring is granted at the API level, but the *running* process still can't open
@@ -48,7 +54,7 @@ final class PermissionsModel: ObservableObject {
     }
 
     /// Both required permissions satisfied (Accessibility is optional, so it doesn't gate this).
-    var allRequiredGranted: Bool { inputMonitoring }
+    var allRequiredGranted: Bool { inputMonitoring || bluetoothAvailable }
 
     // MARK: - Status
 
@@ -56,6 +62,7 @@ final class PermissionsModel: ObservableObject {
     /// and whenever the app returns to the foreground (e.g. back from System Settings).
     func recheck() {
         inputMonitoring = IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) == kIOHIDAccessTypeGranted
+        bluetoothAvailable = controller?.deviceIsBluetooth == true || HIDDevice.bluetoothBasiliskV3XName() != nil
         // refreshAccessibility also (re)installs the event tap once granted.
         remapper?.refreshAccessibility(prompt: false)
         accessibility = remapper?.accessibilityGranted ?? accessibility
@@ -120,4 +127,19 @@ final class PermissionsModel: ObservableObject {
         needsRelaunch = false
     }
 
+}
+
+/// A hash-bound ad-hoc identity cannot retain privacy grants across executable changes.
+enum AppCodeIdentity {
+    static let isAdHoc: Bool = {
+        var code: SecCode?
+        var information: CFDictionary?
+        var staticCode: SecStaticCode?
+        guard SecCodeCopySelf([], &code) == errSecSuccess, let code,
+              SecCodeCopyStaticCode(code, [], &staticCode) == errSecSuccess, let staticCode,
+              SecCodeCopySigningInformation(staticCode, SecCSFlags(rawValue: kSecCSSigningInformation), &information) == errSecSuccess,
+              let data = information as? [String: Any],
+              let flags = data[kSecCodeInfoFlags as String] as? NSNumber else { return false }
+        return flags.uint32Value & 0x2 != 0
+    }()
 }

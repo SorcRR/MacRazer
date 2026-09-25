@@ -17,7 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     private var cancellables = Set<AnyCancellable>()
     private var monitor: HIDMonitor?
     private let remapper = ButtonRemapper()
-    private lazy var remapWindow = RemapWindowController(remapper: remapper)
+    private lazy var remapWindow = RemapWindowController(remapper: remapper, controller: controller)
     private lazy var permissions = PermissionsModel(remapper: remapper, controller: controller)
     private lazy var permissionsWindow = PermissionsWindowController(model: permissions, controller: controller)
     private let updateChecker = UpdateChecker()
@@ -56,10 +56,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     private var appMenuOpen = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Razer HID devices enumerate as a keyboard/mouse, so macOS gates opening them behind
-        // Input Monitoring — without it the app can't read anything. Show the setup window
-        // whenever that required permission is missing (and stop the moment it's granted), so a
-        // user without it is always walked through it rather than left with a silently-dead app.
+        // USB Razer HID devices need Input Monitoring. The supported Basilisk BLE vendor service
+        // does not, so do not block its Bluetooth-only setup on that USB permission.
         // Button remapping additionally needs Accessibility (optional; surfaced in the same window).
         permissions.recheck()
         // Explicit, not a side effect of constructing the model — see the doc comment there.
@@ -69,7 +67,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         // longer matches whichever profile was last applied — let MouseController know so it
         // can drop the stale "active" highlight.
         remapper.onManualChange = { [weak controller] in controller?.clearActiveProfileIfManuallyChanged() }
-        if !permissions.inputMonitoring {
+        if !permissions.inputMonitoring && !permissions.bluetoothAvailable {
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 self.present(self.permissionsWindow)
@@ -174,6 +172,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         )
 
         remapper.start()
+        remapper.observeDpiCycle(controller: controller)
 
         // Load the connected mouse's own button mappings when the device changes (per-unit key).
         controller.$deviceKey

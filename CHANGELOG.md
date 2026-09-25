@@ -14,8 +14,12 @@ expect rough edges until 1.0.
  round. Opening the popover also asks, if a check is due.
 
 ### Added
+- **Experimental Bluetooth support for the Basilisk V3 X HyperSpeed.** MacRazer can read its
+  battery and DPI stages, control static lighting, and configure the DPI Cycle button over
+  Bluetooth. Media and custom shortcut actions use the app's software F20 bridge. Other
+  Bluetooth models and polling-rate/profile controls are not supported by this adapter.
 - **A window confirms an update worked.** After "Update & Restart", the first launch on the
- new version opens a window saying it updated successfully, with the release notes for
+  new version opens a window saying it updated successfully, with the release notes for
  everything you gained. Closing it clears the "Updated to …" card in the popover too, so the
  news isn't repeated. After an automatic install it comes to the front without taking your
  keyboard focus.
