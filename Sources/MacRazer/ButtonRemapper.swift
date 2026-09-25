@@ -4,10 +4,11 @@
 import AppKit
 import Combine
 import ApplicationServices
+import CoreGraphics
 
 /// What a remapped button does. `.passthrough` lets the original event through; `.keystroke`
 /// suppresses the button and posts a key combo instead.
-enum RemapAction: Codable, Equatable {
+enum RemapAction: Codable, Equatable, Sendable {
     case passthrough
     case keystroke(keyCode: UInt16, modifiers: UInt64, name: String)
     case mouseButton(button: Int, name: String)
@@ -41,14 +42,38 @@ struct RemapPreset: Identifiable {
 /// Synapse, which Razer's EULA forbids — see the research notes.
 final class ButtonRemapper: ObservableObject, @unchecked Sendable {
     @Published private(set) var accessibilityGranted = false
+    @Published private(set) var eventTapAvailable = false
+    @Published private(set) var keyboardCaptureAvailable = false
     @Published private(set) var lastDetectedButton: Int?
     @Published private(set) var seenButtons: Set<Int> = []
+    /// Buttons with conventional HID assignments on a supported model. These can be
+    /// configured before Accessibility is granted or before the first physical press;
+    /// actual event detection remains separately tracked in `seenButtons`.
+    @Published private(set) var suggestedButtons: Set<Int> = []
     @Published private(set) var mappings: [Int: RemapAction] = [:]
+
+    @Published private(set) var dpiCycleSoftwareAction: RemapAction?
+    @Published private(set) var dpiBridgeBindingConfirmed = false
+    private var bridgeKeyIsDown = false
+    private var dpiBridgeReadRequested = false
+    private var dpiBridgeRestoreAttempted = false
+    private var dpiObservers = Set<AnyCancellable>()
+    private let defaults: UserDefaults
+    private let actionEmitter: ((RemapAction) -> Void)?
+
+    init(defaults: UserDefaults = .standard, actionEmitter: ((RemapAction) -> Void)? = nil) {
+        self.defaults = defaults
+        self.actionEmitter = actionEmitter
+    }
 
     private var tap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     /// Per-device key so each mouse keeps its own remaps.
     private var activeKey = "none"
+    var isBasiliskV3XHyperSpeed: Bool { activeKey == "00ba" }
+    var remappingPermissionsGranted: Bool {
+        accessibilityGranted && eventTapAvailable
+    }
     private var defaultsKey: String { "buttonMappings-\(activeKey)" }
     /// Mirrors `MouseController.connected` (wired in AppDelegate; main-thread, same as the
     /// tap callback). While the mouse is offline — powered off, asleep, dongle unplugged —
@@ -70,7 +95,15 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         guard k != activeKey else { return }
         activeKey = k
         seenButtons = [] // detected buttons are per-device
+        // The Basilisk V3 X HyperSpeed's two side switches use the standard mouse
+        // Back/Forward usages (CGEvent button numbers 3 and 4). Keep them configurable
+        // before the first click; Accessibility is still required to intercept them.
+        suggestedButtons = k == "00ba" ? [3, 4] : []
         loadMappings()
+        loadDpiSoftwareAction()
+        dpiBridgeBindingConfirmed = false
+        dpiBridgeReadRequested = false
+        dpiBridgeRestoreAttempted = false
     }
 
     static let presets: [RemapPreset] = [
@@ -97,18 +130,22 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
 
     func start() {
         loadMappings()
+        loadDpiSoftwareAction()
         refreshAccessibility(prompt: false)
-        if accessibilityGranted { installTap() }
     }
 
     /// Re-check the Accessibility grant (call when the window appears / returns to front).
     func refreshAccessibility(prompt: Bool) {
-        // Use the literal key to avoid touching the non-Sendable global CFString symbol.
-        let granted = AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": prompt] as CFDictionary)
-        accessibilityGranted = granted
-        if granted && tap == nil {
-            installTap()
-        } else if !granted && tap != nil {
+        let trusted = AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": prompt] as CFDictionary)
+        accessibilityGranted = trusted
+        if trusted {
+            if tap == nil { installTap() }
+            if let tap {
+                if !CGEvent.tapIsEnabled(tap: tap) { CGEvent.tapEnable(tap: tap, enable: true) }
+                eventTapAvailable = CGEvent.tapIsEnabled(tap: tap)
+                refreshKeyboardCaptureStatus()
+            }
+        } else {
             removeTap()
         }
     }
@@ -120,6 +157,9 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         if let runLoopSource { CFRunLoopRemoveSource(CFRunLoopGetMain(), runLoopSource, .commonModes) }
         tap = nil
         runLoopSource = nil
+        eventTapAvailable = false
+        keyboardCaptureAvailable = false
+        bridgeKeyIsDown = false
     }
 
     func openAccessibilitySettings() { SystemSettingsPanes.openAccessibility() }
@@ -156,6 +196,7 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
     /// Friendly, compact label for a raw CGEvent button number.
     static func label(for button: Int) -> String {
         switch button {
+        case -1: return "DPI Cycle"
         case 2: return "Wheel Click"
         case 3: return "Back (4)"
         case 4: return "Forward (5)"
@@ -166,8 +207,22 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
     /// Mock state for the `render-remap` preview command.
     func loadPreviewState() {
         accessibilityGranted = true
+        eventTapAvailable = true
         seenButtons = [2, 3, 4, 5]
         mappings = [3: .keystroke(keyCode: 8, modifiers: CGEventFlags.maskCommand.rawValue, name: "Copy  ⌘C")]
+    }
+
+    /// Preview the actual first-run state for this model: its side buttons are available
+    /// to configure, while macOS has not yet granted the permission needed to intercept them.
+    func loadBasiliskPendingAccessibilityPreview() {
+        activeKey = "00ba"
+        accessibilityGranted = false
+        eventTapAvailable = false
+        remappingPaused = false
+        lastDetectedButton = nil
+        seenButtons = []
+        suggestedButtons = [3, 4]
+        mappings = [:]
     }
 
     // MARK: - Event tap
@@ -175,19 +230,46 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
     private func installTap() {
         // otherMouse = middle/wheel-click + extra buttons — the only events we remap.
         // Primary left/right clicks are deliberately never tapped.
-        let types: [CGEventType] = [.otherMouseDown, .otherMouseUp]
+        let types: [CGEventType] = [.otherMouseDown, .otherMouseUp, .keyDown, .keyUp]
         let mask = types.reduce(CGEventMask(0)) { $0 | (CGEventMask(1) << CGEventMask($1.rawValue)) }
         guard let tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap, place: .headInsertEventTap, options: .defaultTap,
             eventsOfInterest: CGEventMask(mask), callback: Self.tapCallback,
             userInfo: Unmanaged.passUnretained(self).toOpaque()
-        ) else { return }
+        ) else {
+            eventTapAvailable = false
+            return
+        }
 
         let src = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
         CFRunLoopAddSource(CFRunLoopGetMain(), src, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
         self.tap = tap
         self.runLoopSource = src
+        eventTapAvailable = true
+        refreshKeyboardCaptureStatus()
+    }
+
+    static func includesKeyboardEvents(_ mask: CGEventMask) -> Bool {
+        let required = (CGEventMask(1) << CGEventType.keyDown.rawValue)
+            | (CGEventMask(1) << CGEventType.keyUp.rawValue)
+        return mask & required == required
+    }
+
+    /// macOS can silently strip keyboard events from an otherwise working mouse tap.
+    /// Inspect the installed mask rather than treating a non-nil tap as full access.
+    private func refreshKeyboardCaptureStatus() {
+        var count: UInt32 = 0
+        guard CGGetEventTapList(0, nil, &count) == .success else {
+            keyboardCaptureAvailable = false; return
+        }
+        var entries = [CGEventTapInformation](repeating: CGEventTapInformation(), count: Int(count))
+        guard CGGetEventTapList(count, &entries, &count) == .success else {
+            keyboardCaptureAvailable = false; return
+        }
+        keyboardCaptureAvailable = entries.prefix(Int(count)).contains {
+            $0.tappingProcess == getpid() && $0.enabled && Self.includesKeyboardEvents($0.eventsOfInterest)
+        }
     }
 
     private static let tapCallback: CGEventTapCallBack = { _, type, event, userInfo in
@@ -213,6 +295,9 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         // Skip events we ourselves posted (e.g. a remap-to-middle-click re-enters the tap).
         if event.getIntegerValueField(.eventSourceUserData) == Self.magic {
             return Unmanaged.passUnretained(event)
+        }
+        if type == .keyDown || type == .keyUp {
+            return handleDpiBridge(type: type, event: event)
         }
         let button = Int(event.getIntegerValueField(.mouseEventButtonNumber))
 
@@ -242,6 +327,7 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
     }
 
     private func apply(_ action: RemapAction) {
+        if let actionEmitter { actionEmitter(action); return }
         switch action {
         case .passthrough: break
         case .keystroke(let kc, let mods, _): postKeystroke(keyCode: kc, flags: CGEventFlags(rawValue: mods))
@@ -297,6 +383,132 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         post(true); post(false)
     }
 
+    // MARK: - DPI Cycle software actions
+
+    /// F20 is the reserved bridge signal. Only intercept it after a matching BLE
+    /// assignment was read from the connected Basilisk and a local action was saved.
+    func observeDpiCycle(controller: MouseController) {
+        dpiObservers.removeAll()
+        controller.$deviceKey.combineLatest(controller.$deviceIsBluetooth, controller.$connected)
+            .receive(on: RunLoop.main)
+            .sink { [weak self, weak controller] key, bluetooth, connected in
+                guard let self else { return }
+                self.setActiveDevice(key)
+                self.remappingPaused = !connected
+                if !connected {
+                    self.dpiBridgeBindingConfirmed = false
+                    self.dpiBridgeReadRequested = false
+                    self.dpiBridgeRestoreAttempted = false
+                } else if bluetooth, key == "00ba", !self.dpiBridgeReadRequested {
+                    // Ask the device for its active binding exactly once per connection.
+                    // Some firmware sessions reset the live projection on sleep/reconnect.
+                    self.dpiBridgeReadRequested = true
+                    controller?.refreshDpiCycleButtonBinding()
+                }
+            }.store(in: &dpiObservers)
+        controller.$dpiCycleButtonBinding
+            .combineLatest(controller.$deviceIsBluetooth)
+            .combineLatest(controller.$isUpdatingDpiCycleButton)
+            .combineLatest(controller.$connected)
+            .combineLatest(controller.$dpiCycleButtonError)
+            .receive(on: RunLoop.main)
+            .debounce(for: .milliseconds(100), scheduler: RunLoop.main)
+            .sink { [weak self, weak controller] state in
+                let (((bindingState, updating), connected), error) = state
+                let (binding, bluetooth) = bindingState
+                guard let self else { return }
+                self.confirmDpiBridge(binding: bluetooth ? binding : nil)
+                guard let controller, connected, bluetooth, self.isBasiliskV3XHyperSpeed,
+                      !updating, error == nil,
+                      self.shouldRestoreDpiBridge(binding: binding, connected: connected,
+                                                  bluetooth: bluetooth,
+                                                  alreadyAttempted: self.dpiBridgeRestoreAttempted),
+                      let action = self.dpiCycleSoftwareAction else { return }
+                // The mouse stores a live projection which may revert to its default after
+                // sleep or app exit. Reapply only the user's saved software action, once per
+                // connection, after the readback confirms what the device currently has.
+                self.dpiBridgeRestoreAttempted = true
+                self.configureDpiCycle(.softwareBridge, softwareAction: action, controller: controller)
+            }.store(in: &dpiObservers)
+    }
+
+    func confirmDpiBridge(binding: BLEVendorProtocol.DPIButtonBinding?) {
+        dpiBridgeBindingConfirmed = isBasiliskV3XHyperSpeed && binding == .softwareBridge
+    }
+
+    func shouldRestoreDpiBridge(binding: BLEVendorProtocol.DPIButtonBinding?, connected: Bool,
+                                bluetooth: Bool, alreadyAttempted: Bool) -> Bool {
+        isBasiliskV3XHyperSpeed && connected && bluetooth && !alreadyAttempted
+            && binding != .softwareBridge && dpiCycleSoftwareAction != nil
+    }
+
+    func configureDpiCycle(_ binding: BLEVendorProtocol.DPIButtonBinding,
+                           softwareAction: RemapAction? = nil, controller: MouseController) {
+        guard softwareAction == nil || remappingPermissionsGranted else { return }
+        dpiBridgeBindingConfirmed = false
+        controller.setDpiCycleButtonBinding(binding) { [weak self] success in
+            guard success, let self else { return }
+            self.saveDpiSoftwareAction(softwareAction)
+            self.confirmDpiBridge(binding: binding)
+        }
+    }
+
+    func dpiCycleLabel(for binding: BLEVendorProtocol.DPIButtonBinding) -> String {
+        if binding == .softwareBridge {
+            return dpiCycleSoftwareAction.map { $0.label + " (MacRazer)" } ?? "MacRazer action (choose…)"
+        }
+        return binding.label
+    }
+
+    func saveDpiSoftwareAction(_ action: RemapAction?) {
+        guard isBasiliskV3XHyperSpeed else { return }
+        dpiCycleSoftwareAction = action
+        let key = "dpiCycleSoftwareAction-\(activeKey)"
+        if let action, let data = try? JSONEncoder().encode(action) {
+            defaults.set(data, forKey: key)
+        } else {
+            defaults.removeObject(forKey: key)
+        }
+        onManualChange?()
+    }
+
+    private func loadDpiSoftwareAction() {
+        dpiCycleSoftwareAction = nil
+        guard isBasiliskV3XHyperSpeed,
+              let data = defaults.data(forKey: "dpiCycleSoftwareAction-\(activeKey)") else { return }
+        dpiCycleSoftwareAction = try? JSONDecoder().decode(RemapAction.self, from: data)
+    }
+
+    var dpiBridgeStatus: String {
+        if !remappingPermissionsGranted { return "Input capture unavailable" }
+        if !keyboardCaptureAvailable { return "Keyboard capture blocked — refresh Input Monitoring, then relaunch" }
+        if remappingPaused { return "Waiting for mouse connection" }
+        if !dpiBridgeBindingConfirmed { return "Waiting for button assignment verification" }
+        return "Ready"
+    }
+
+    private func handleDpiBridge(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
+        guard event.getIntegerValueField(.keyboardEventKeycode) == 90 else {
+            return Unmanaged.passUnretained(event)
+        }
+        // Consume the release of a consumed press even if connection/assignment changed
+        // while held. Unrelated F20 releases must pass through.
+        if type == .keyUp, bridgeKeyIsDown {
+            bridgeKeyIsDown = false
+            return nil
+        }
+        let modifiers: CGEventFlags = [.maskCommand, .maskControl, .maskAlternate, .maskShift]
+        guard type == .keyDown, isBasiliskV3XHyperSpeed, dpiBridgeBindingConfirmed,
+              !remappingPaused, event.flags.intersection(modifiers).isEmpty,
+              let action = dpiCycleSoftwareAction else { return Unmanaged.passUnretained(event) }
+        if !bridgeKeyIsDown, event.getIntegerValueField(.keyboardEventAutorepeat) == 0 {
+            lastDetectedButton = -1
+            apply(action)
+        }
+        bridgeKeyIsDown = true
+        return nil
+    }
+
     // MARK: - Persistence
 
     private func saveMappings() {
@@ -305,7 +517,7 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         // silently dropped on reconnect.
         guard activeKey != "none" else { return }
         if let data = try? JSONEncoder().encode(mappings) {
-            UserDefaults.standard.set(data, forKey: defaultsKey)
+            defaults.set(data, forKey: defaultsKey)
         }
     }
 
@@ -320,10 +532,10 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         // but pre-fix builds persisted disconnected edits there — clear that junk out so it
         // can't remap other pointing devices on every launch/disconnect forever.
         guard activeKey != "none" else {
-            UserDefaults.standard.removeObject(forKey: defaultsKey)
+            defaults.removeObject(forKey: defaultsKey)
             return
         }
-        guard let data = UserDefaults.standard.data(forKey: defaultsKey),
+        guard let data = defaults.data(forKey: defaultsKey),
               let decoded = try? JSONDecoder().decode([Int: RemapAction].self, from: data) else { return }
         mappings = decoded
         seenButtons.formUnion(decoded.keys)

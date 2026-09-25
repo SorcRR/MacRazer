@@ -3,13 +3,27 @@
 A native menu bar app to control Razer mice on macOS. Razer does ship a Synapse for Mac now,
 but its [supported-device list](https://mysupport.razer.com/app/answers/detail/a_id/14809/~/razer-synapse-for-mac-supported-and-compatible-devices)
 is short and doesn't include the Cobra HyperSpeed or Atheris — this fills that gap. It talks
-to the mouse directly over USB HID (no kernel extension, no driver install), using a protocol
-ported from [OpenRazer](https://github.com/openrazer/openrazer).
+to the mouse directly over USB HID for wired and 2.4 GHz connections (no kernel extension,
+no driver install), using a protocol ported from
+[OpenRazer](https://github.com/openrazer/openrazer).
 
 Works best with the **Razer Cobra HyperSpeed** and the **Razer Atheris**, the two devices this
 has actually been tested on. It detects any Razer mouse by name and should work with other
 Razer mice that use the same HID protocol family, but those are untested, so treat support as
 "likely to work, not verified" until someone confirms it on real hardware.
+
+MacRazer also has experimental Bluetooth GATT support for the **Basilisk V3 X HyperSpeed**
+(Bluetooth PID `0x00BA`). This model-specific path reads battery, DPI stages and brightness,
+supports static lighting and the onboard DPI Cycle assignment, and leaves polling rate and
+profiles unavailable over Bluetooth. The existing USB HID path remains in place for wired and
+2.4 GHz connections. Other Bluetooth models are not yet supported.
+
+On a paired Basilisk, hardware checks confirmed battery and DPI reads, all five DPI stages,
+brightness, a same-value DPI write/readback, BLE reconnect, reads after the mouse's sleep
+timeout and Play/Pause from the physical DPI button after restart. The BLE protocol is
+documented by [OpenSnek](https://github.com/gh123man/OpenSnek/blob/main/docs/protocol/BLE_PROTOCOL.md);
+MacRazer uses its own implementation. The receiver is not needed to validate the Bluetooth
+feature.
 
 > Unofficial. Not affiliated with, authorized by, or endorsed by Razer Inc. See [NOTICE.md](NOTICE.md).
 > 
@@ -33,6 +47,9 @@ Razer mice that use the same HID protocol family, but those are untested, so tre
 - **Button remapping** for the side Back/Forward buttons (software, via a CGEvent tap):
   keyboard shortcuts (presets or a custom recorder), mouse clicks, and media keys. Saved per
   device.
+- **Basilisk V3 X HyperSpeed over Bluetooth** can configure the DPI Cycle button with the shared
+  mouse actions and keyboard shortcut recorder. The onboard Multi-function/Hypershift modifier
+  is handled inside the mouse and cannot be remapped by macOS.
 - **Any Razer mouse is detected and named.** Controls a model lacks are hidden automatically
   (no lighting on the Atheris, no battery UI on wired-only mice).
 - Settings are written to the mouse's **onboard memory** where supported, so they persist when
@@ -79,17 +96,28 @@ Remapping works by watching macOS mouse events, so it can only reach buttons the
 actually reports to the Mac. Some buttons are handled *inside* the mouse and never send
 anything — no app can detect those, MacRazer included.
 
-The clearest example is the **Basilisk's multi-function trigger** (the third side button),
-which ships assigned to **Razer Hypershift**. Hypershift is a modifier: held down, it
-switches every other button to a second onboard layer. The firmware resolves that layer
-itself, so pressing the trigger alone puts no report on the wire at all — verified by
-watching every HID interface the mouse exposes while it was pressed.
+The **Basilisk V3 X HyperSpeed's Multi-function trigger** ships as the Hypershift modifier.
+The firmware handles it internally, so pressing it alone sends no macOS mouse event. On
+Bluetooth, the device also rejects changing that Hypershift assignment; MacRazer marks it as
+unsupported instead of pretending it can remap it.
 
-To make it remappable, reassign it from Hypershift to a normal key or mouse button in
-Razer Synapse (Windows only — Razer dropped macOS support). The assignment is stored in the
-mouse's onboard memory, so it persists on the Mac afterwards and MacRazer will then see the
-button like any other. MacRazer deliberately does not reprogram onboard assignments itself;
-that would mean reverse-engineering Synapse, which Razer's EULA forbids.
+The **DPI Cycle** button is different: it normally changes the active DPI stage inside the
+mouse, so the macOS event remapper cannot see it. On the Basilisk V3 X HyperSpeed over
+Bluetooth, MacRazer reads and configures that onboard button through the mouse's GATT control
+protocol. The button editor offers the DPI Cycle default, mouse-button actions, the shared
+shortcut presets, and **Record Custom Shortcut…**. Every assignment is read back before
+MacRazer reports success.
+
+**Media** (Play/Pause, next/previous track, volume and mute) and **Double Click** use a
+software bridge (keyboard capture also requires effective Input Monitoring access): the onboard DPI slot sends keyboard F20, which MacRazer intercepts and
+converts to the selected action. These actions require the app to be running, Accessibility
+to be granted, the Basilisk connected, and its F20 assignment verified. F20 on other keyboards
+is also reserved while this bridge is active. Ordinary modified F20 shortcuts pass through.
+MacRazer rechecks the active DPI assignment on each Bluetooth connection and reapplies the
+saved F20 bridge if the mouse firmware has returned the live projection to its default after
+sleep or reconnect. Select **DPI Cycle (default)** in MacRazer to clear the saved software
+assignment and restore onboard DPI cycling. This does not claim a native BLE media-command
+implementation.
 
 ### Known limitation: two identical mice without a hardware serial
 
@@ -104,10 +132,12 @@ a serial).
 
 macOS 14 or later (Apple Silicon).
 
-**Connect over the 2.4 GHz dongle or a USB-C cable, not Bluetooth.** Razer only exposes its
-control protocol (battery, DPI, lighting) over USB; over Bluetooth the mouse is just a plain
-pointer, so MacRazer can't read or change anything. If your mouse has a mode switch, set it to
-2.4 GHz. (MacRazer will tell you when it sees your mouse on Bluetooth.)
+For other models, use the 2.4 GHz dongle or USB-C. Bluetooth control is currently experimental
+and limited to the Basilisk V3 X HyperSpeed; macOS may request Bluetooth access on first use.
+It does not enable polling-rate or profile controls over BLE.
+
+The paired-device check is opt-in and writes only the DPI value already active on the mouse:
+`MACRAZER_BLE_HARDWARE_TEST=1 swift test --filter BLEHardwareIntegrationTests`.
 
 ## Install
 
@@ -125,9 +155,9 @@ it anyway, do **one** of:
   next to the MacRazer warning.
 - Or, from Terminal: `xattr -cr /Applications/MacRazer.app`, then open it normally.
 
-After that it launches like any other app. It will then ask for **Input Monitoring**
-permission (and **Accessibility** if you use button remapping); see [Permissions](#permissions)
-below.
+After that it launches like any other app. USB and 2.4 GHz control needs **Input Monitoring**;
+the Basilisk Bluetooth GATT path does not. **Accessibility** is only needed for software button
+remapping; see [Permissions](#permissions) below.
 
 ## Build and run
 
@@ -145,10 +175,14 @@ open "MacRazer.app"
 
 ## Permissions
 
-- **Input Monitoring** is required to send and receive HID reports to the mouse. The app
-  requests it on launch; grant it in System Settings > Privacy & Security > Input Monitoring.
-- **Accessibility** is required only for button remapping (the event tap). The remap screen
-  has a button to open the right settings pane.
+- **Input Monitoring** is required for USB and 2.4 GHz HID reports. The Basilisk Bluetooth
+  GATT control path itself does not use it; the F20 software bridge does need effective keyboard
+  capture through Input Monitoring to turn the DPI button into media or shortcut actions. Grant
+  it in System Settings > Privacy & Security > Input Monitoring.
+- **Accessibility** is required only for software button remapping (the event tap), including
+  when the mouse is connected by Bluetooth. These remaps run while MacRazer is open; they are
+  separate from onboard button bindings. The remap screen has a button to open the right
+  settings pane.
 
 macOS binds a permission grant to the app's code signature. An ad-hoc build gets a new
 signature on every rebuild, which resets the grant, so either run `Scripts/setup-signing.sh`

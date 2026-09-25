@@ -108,6 +108,7 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(RazerDevices.connection(pid: 0x0099), .wired) // Basilisk V3: wired-only
         XCTAssertNil(RazerDevices.connection(pid: 0x9999), "unknown models show the neutral USB chip")
         XCTAssertNil(RazerDevices.connection(pid: nil))
+        XCTAssertEqual(RazerDevices.connection(pid: 0x00BA), .bluetooth)
     }
 
     func testCapabilityDefaultsForUnknownModels() {

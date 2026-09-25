@@ -24,5 +24,7 @@
 	<true/>
 	<key>NSHumanReadableCopyright</key>
 	<string>Community project. Not affiliated with Razer Inc.</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>MacRazer uses Bluetooth to read and configure supported Razer mice paired with this Mac.</string>
 </dict>
 </plist>
