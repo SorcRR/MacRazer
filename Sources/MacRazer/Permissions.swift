@@ -93,20 +93,15 @@ final class PermissionsModel: ObservableObject {
     /// the packaged `.app` (a no-op shape under `swift run`, which has no bundle to relaunch).
     func relaunch() {
         relaunchFailed = false
-        let url = Bundle.main.bundleURL
-        let config = NSWorkspace.OpenConfiguration()
-        config.createsNewApplicationInstance = true
-        NSWorkspace.shared.openApplication(at: url, configuration: config) { app, error in
+        AppRelaunch.openNewInstance(of: Bundle.main.bundleURL) { [weak self] launched in
             // Only quit once the replacement instance actually launched — terminating on a
             // failed open (no bundle under `swift run`, app translocation) would turn
             // "Quit & Relaunch" into plain "Quit". But don't fail silently either: say so,
             // so the user quits and reopens manually instead of concluding the button is broken.
-            Task { @MainActor in
-                if app != nil, error == nil {
-                    NSApp.terminate(nil)
-                } else {
-                    self.relaunchFailed = true
-                }
+            if launched {
+                NSApp.terminate(nil)
+            } else {
+                self?.relaunchFailed = true
             }
         }
     }
