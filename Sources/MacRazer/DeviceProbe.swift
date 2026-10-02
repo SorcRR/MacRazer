@@ -8,9 +8,9 @@ import Foundation
 /// checked without a mouse attached.
 ///
 /// Just the two calls the probes make, spelled exactly as `HIDDevice` spells them, so
-/// conforming adds nothing to `HIDDevice` itself.
+/// conforming adds nothing to `HIDDevice` itself. Nothing model-specific: deciding per model
+/// (which LED to write, say) is the caller's job.
 protocol DeviceProbeChannel {
-    var productID: Int { get }
     func send(_ report: RazerReport) throws -> RazerReport
     func sendWithRetry(_ report: RazerReport, attempts: Int) throws -> RazerReport
 }
@@ -28,9 +28,8 @@ extension HIDDevice: DeviceProbeChannel {}
 /// input differs between a terminal (a usage line) and the app (a control that never offers
 /// it).
 enum DeviceProbe {
-    /// The retry count probes use, the same as everyday traffic, so a probe that passes says
-    /// the app's own reads and writes will too.
-    static let attempts = 3
+    /// The retry count probes use: the same constant everyday traffic uses, not a copy of it.
+    static let attempts = HIDDevice.defaultAttempts
 
     /// A value read from the mouse, with the response it was decoded from.
     struct Reading<Value> {

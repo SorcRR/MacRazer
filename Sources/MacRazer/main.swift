@@ -474,8 +474,9 @@ case "brightness":
         }
         if let arg = args.dropFirst().first, let pct = Int(arg) {
             let led = RazerDevices.brightnessLed(pid: dev.productID)
-            // Deliberately outside the sweep's per-LED catch: a refusal here is a real
-            // failure to report, not a group that simply doesn't answer.
+            // The sweep records a refusal per group and carries on; this write throws on one
+            // instead, because here it is a real failure to report, not a group that simply
+            // doesn't answer.
             let raw = RazerCommands.brightnessRaw(fromPercent: pct)
             print("SET brightness \(pct)% (raw \(raw)) on led 0x\(String(format: "%02x", led)) …")
             let check = try DeviceProbe.writeBrightness(dev, raw: raw, led: led)

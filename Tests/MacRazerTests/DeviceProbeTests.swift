@@ -17,12 +17,12 @@ final class DeviceProbeTests: XCTestCase {
             case retried(UInt8, UInt8, attempts: Int)
         }
 
-        let productID = 0x00DB
         private(set) var calls: [Call] = []
         var refuse: (RazerReport) -> Bool = { _ in false }
         var clamp: (RazerReport) -> RazerReport = { $0 }
-        /// Last written arguments, keyed by command class and the read's command id.
-        private var stored: [UInt16: [UInt8]] = [:]
+        /// Last written arguments, keyed by command class, the read's command id and, for
+        /// lighting (class 0x0F), the LED group, so each group holds its own brightness.
+        private var stored: [UInt32: [UInt8]] = [:]
 
         func send(_ report: RazerReport) throws -> RazerReport {
             calls.append(.once(report.commandClass, report.commandId))
@@ -36,17 +36,20 @@ final class DeviceProbeTests: XCTestCase {
 
         /// The mouse already holds this setting, as if `write` had been sent earlier.
         func holds(_ write: RazerReport) {
-            stored[key(write.commandClass, write.commandId | 0x80)] = write.arguments
+            stored[key(write, id: write.commandId | 0x80)] = write.arguments
         }
 
         /// For values nothing writes, like the battery level: answer `read` with these bytes.
         func answers(_ read: RazerReport, _ edit: (inout [UInt8]) -> Void) {
             var arguments = read.arguments
             edit(&arguments)
-            stored[key(read.commandClass, read.commandId)] = arguments
+            stored[key(read, id: read.commandId)] = arguments
         }
 
-        private func key(_ cls: UInt8, _ id: UInt8) -> UInt16 { UInt16(cls) << 8 | UInt16(id) }
+        private func key(_ report: RazerReport, id: UInt8) -> UInt32 {
+            let led = report.commandClass == 0x0F ? UInt32(report.arguments[1]) : 0
+            return UInt32(report.commandClass) << 16 | UInt32(id) << 8 | led
+        }
 
         private func answer(_ report: RazerReport) throws -> RazerReport {
             if refuse(report) { throw HIDDevice.HIDError.commandFailed }
@@ -55,8 +58,8 @@ final class DeviceProbeTests: XCTestCase {
             if report.commandId & 0x80 == 0 {
                 // A write: remember it under the matching read's id (set 0x05 → get 0x85).
                 let landed = clamp(report)
-                stored[key(report.commandClass, report.commandId | 0x80)] = landed.arguments
-            } else if let previous = stored[key(report.commandClass, report.commandId)] {
+                stored[key(report, id: report.commandId | 0x80)] = landed.arguments
+            } else if let previous = stored[key(report, id: report.commandId)] {
                 reply.arguments = previous
             }
             return reply
@@ -144,10 +147,15 @@ final class DeviceProbeTests: XCTestCase {
         XCTAssertThrowsError(try DeviceProbe.writeBrightness(mouse, raw: 8, led: Razer.logoLed))
     }
 
-    func testBrightnessWriteReadsBackTheRawValue() throws {
+    func testBrightnessWriteReadsBackTheGroupItWroteTo() throws {
+        // SCROLL, not LOGO: the Basilisk V3 X answers only on its scroll wheel, and a read-back
+        // that drifted to LOGO would report every write there as failed. The fake keeps each
+        // group's brightness separately, so reading the wrong group gets the wrong value.
         let mouse = FakeMouse()
-        let check = try DeviceProbe.writeBrightness(mouse, raw: 8, led: Razer.logoLed)
+        mouse.holds(RazerCommands.setBrightness(200, led: Razer.logoLed))
+        let check = try DeviceProbe.writeBrightness(mouse, raw: 8, led: Razer.scrollLed)
         XCTAssertTrue(check.confirmed)
+        XCTAssertEqual(check.readBack.value, 8)
         XCTAssertEqual(mouse.calls, [.retried(0x0F, 0x04, attempts: 3), .retried(0x0F, 0x84, attempts: 3)])
     }
 
