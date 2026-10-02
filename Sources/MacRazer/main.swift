@@ -491,6 +491,35 @@ case "brightness":
         exit(2)
     }
 
+case "discover":
+    // Which transaction ids the mouse answers to: the first thing to find out about a model
+    // the registry doesn't know, since a wrong id makes every other probe fail.
+    guard let dev = openDevice() else { exit(1) }
+    defer { dev.close() }
+    let registry = RazerDevices.info(pid: dev.productID)
+    func hex(_ id: UInt8?) -> String { id.map { String(format: "0x%02x", $0) } ?? "none" }
+    print("Standard commands (firmware read). Registry says \(registry.map { hex($0.transactionId) } ?? "nothing"):")
+    let standard = DeviceProbe.discoverTransactionIds(dev, read: RazerCommands.getFirmwareVersion(),
+                                                      preferred: registry?.transactionId)
+    for attempt in standard {
+        switch attempt.result {
+        case .success(let r):
+            print("  \(hex(attempt.id)): status=0x\(String(r.status, radix: 16)) args[0..3]="
+                  + r.arguments[0..<4].map { String(format: "%02x", $0) }.joined(separator: " "))
+        case .failure(let e):
+            print("  \(hex(attempt.id)): \(e)")
+        }
+    }
+    let chosen = DeviceProbe.chosenId(standard)
+    print("Lighting (brightness sweep). Registry says \(registry.map { hex($0.matrixTransactionId) } ?? "nothing"):")
+    let matrix = DeviceProbe.discoverMatrixTransactionIds(dev, standard: chosen ?? 0x1F,
+                                                          preferred: registry?.matrixTransactionId)
+    for attempt in matrix {
+        print("  \(hex(attempt.id)): " + (attempt.answered
+            ? "answered on \(attempt.answeredGroups.joined(separator: ", "))" : "no group answered"))
+    }
+    print("Would use: \(hex(chosen)) for standard commands, \(hex(DeviceProbe.chosenId(matrix))) for lighting")
+
 case "rgb":
     guard let dev = openDevice() else { exit(1) }
     defer { dev.close() }
@@ -531,6 +560,6 @@ case "rgb":
 
 default:
     print("Unknown command: \(command)")
-    print("Available: info, battery, dpi [x] [y], poll [hz], stages [d1,d2,…] [active], rgb <static rrggbb|spectrum|wave|off>, brightness [pct], login-item [on|off]")
+    print("Available: info, discover, battery, dpi [x] [y], poll [hz], stages [d1,d2,…] [active], rgb <static rrggbb|spectrum|wave|off>, brightness [pct], login-item [on|off]")
     exit(64)
 }

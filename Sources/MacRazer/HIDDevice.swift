@@ -115,6 +115,36 @@ final class HIDDevice {
         return nil
     }
 
+    /// Every HID interface the vendor's devices expose, in a stable order, and which one
+    /// `open(vendorId:)` would pick for control. For the device test's report; the order is
+    /// sorted because macOS returns the set in no particular order.
+    static func interfaceSummaries(vendorId: Int) -> (interfaces: [DeviceProbe.Interface], control: Int?) {
+        let devices = matchingDevices(vendorId: vendorId)
+        let summaries = devices.map { dev in
+            DeviceProbe.Interface(
+                productID: intProp(dev, kIOHIDProductIDKey) ?? 0,
+                product: strProp(dev, kIOHIDProductKey) ?? "",
+                usagePage: intProp(dev, kIOHIDPrimaryUsagePageKey) ?? 0,
+                usage: intProp(dev, kIOHIDPrimaryUsageKey) ?? 0,
+                maxFeatureReportSize: intProp(dev, kIOHIDMaxFeatureReportSizeKey) ?? 0,
+                maxInputReportSize: intProp(dev, kIOHIDMaxInputReportSizeKey) ?? 0,
+                transport: strProp(dev, kIOHIDTransportKey) ?? "")
+        }
+        let infos = devices.map { dev in
+            HIDInterfaceInfo(pid: intProp(dev, kIOHIDProductIDKey) ?? 0,
+                             locationID: intProp(dev, kIOHIDLocationIDKey) ?? 0,
+                             usagePage: intProp(dev, kIOHIDPrimaryUsagePageKey) ?? 0,
+                             usage: intProp(dev, kIOHIDPrimaryUsageKey) ?? 0,
+                             maxFeatureReportSize: intProp(dev, kIOHIDMaxFeatureReportSizeKey) ?? 0)
+        }
+        let chosen = HIDDeviceSelection.controlInterfaceIndex(interfaces: infos).map { summaries[$0] }
+        let sorted = summaries.sorted {
+            ($0.productID, $0.usagePage, $0.usage, $0.maxFeatureReportSize, $0.maxInputReportSize)
+                < ($1.productID, $1.usagePage, $1.usage, $1.maxFeatureReportSize, $1.maxInputReportSize)
+        }
+        return (sorted, chosen.flatMap { sorted.firstIndex(of: $0) })
+    }
+
     /// One-line description of an interface, for the `info` diagnostic.
     static func describe(_ dev: IOHIDDevice) -> String {
         let pid = intProp(dev, kIOHIDProductIDKey) ?? 0
@@ -167,13 +197,18 @@ final class HIDDevice {
     /// request, sleep the receiver wait, then GetReport. If the device replies BUSY (0x01),
     /// it hasn't finished yet — wait and re-read a few times before giving up.
     func send(_ report: RazerReport) throws -> RazerReport {
+        try send(report, transactionId: nil)
+    }
+
+    /// `transactionId` overrides the registry's for this one command. Only the device test
+    /// passes one, to find which id an unknown model answers to; everything else passes nil.
+    func send(_ report: RazerReport, transactionId: UInt8?) throws -> RazerReport {
         var report = report
         // Per-model (and per-command-class) transaction id from the registry, stamped at
         // the single point every command passes through — the builders in `RazerCommands`
         // stay model-agnostic.
-        report.transactionId = RazerDevices.transactionId(pid: productID,
-                                                          commandClass: report.commandClass,
-                                                          commandId: report.commandId)
+        report.transactionId = transactionId ?? RazerDevices.transactionId(
+            pid: productID, commandClass: report.commandClass, commandId: report.commandId)
         let out = report.serialized()
         let setResult = out.withUnsafeBufferPointer { ptr in
             IOHIDDeviceSetReport(device, kIOHIDReportTypeFeature, 0, ptr.baseAddress!, ptr.count)
@@ -239,10 +274,15 @@ final class HIDDevice {
     /// Send with retry + linear backoff — the wireless dongle is documented as finicky and
     /// battery reads in particular time out intermittently. Falls through to the last error.
     func sendWithRetry(_ report: RazerReport, attempts: Int = HIDDevice.defaultAttempts) throws -> RazerReport {
+        try sendWithRetry(report, attempts: attempts, transactionId: nil)
+    }
+
+    /// As above, with the transaction id override `send(_:transactionId:)` describes.
+    func sendWithRetry(_ report: RazerReport, attempts: Int, transactionId: UInt8?) throws -> RazerReport {
         var lastError: Error = HIDError.timeout
         for attempt in 0..<attempts {
             do {
-                return try send(report)
+                return try send(report, transactionId: transactionId)
             } catch HIDError.notSupported {
                 // Deterministic per model/command — retrying can't change the answer, and
                 // the backoffs would just delay every poll on models lacking the feature.

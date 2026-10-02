@@ -77,12 +77,36 @@ enum DeviceProbe {
         ("ZERO", Razer.zeroLed), ("BACKLIGHT", Razer.backlightLed),
     ]
 
+    /// One HID interface a device exposes, as the device test reports it. No location or
+    /// serial: nothing here identifies a particular unit or Mac.
+    struct Interface: Codable, Equatable {
+        let productID: Int
+        let product: String
+        let usagePage: Int
+        let usage: Int
+        let maxFeatureReportSize: Int
+        let maxInputReportSize: Int
+        let transport: String
+    }
+
+    // MARK: - Identity
+
+    static func firmware(_ channel: DeviceProbeChannel) throws -> Reading<String> {
+        let response = try channel.sendWithRetry(RazerCommands.getFirmwareVersion(), attempts: attempts)
+        return Reading(value: RazerCommands.parseFirmwareVersion(response), response: response)
+    }
+
     // MARK: - Battery
 
     /// The raw 0-255 level. args[0] of the answer is the var-store echo; the level is args[1].
     static func battery(_ channel: DeviceProbeChannel) throws -> Reading<UInt8> {
         let response = try channel.sendWithRetry(RazerCommands.getBatteryLevel(), attempts: attempts)
         return Reading(value: response.arguments[1], response: response)
+    }
+
+    static func charging(_ channel: DeviceProbeChannel) throws -> Reading<Bool> {
+        let response = try channel.sendWithRetry(RazerCommands.getChargingStatus(), attempts: attempts)
+        return Reading(value: response.arguments[1] != 0, response: response)
     }
 
     // MARK: - DPI
