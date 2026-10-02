@@ -270,36 +270,45 @@ struct PopoverView: View {
     /// wired-only mouse as "2.4 GHz", since a wired mouse never reports charging.
     /// Bluetooth only reads "Connected" for models with Bluetooth control; any other Razer
     /// mouse on Bluetooth is surfaced separately (`bluetoothNotice`).
-    private var connectionType: (symbol: String, label: String, tint: Color, fill: Color)? {
+    private var connectionType: ConnectionChip? {
         guard controller.connected else { return nil }
         switch RazerDevices.connection(pid: controller.deviceID) {
         case .bluetooth:
             // Blue, the colour macOS and the mouse itself use for Bluetooth, so the link
             // reads at a glance as different from the green USB ones. A stronger fill than
             // theirs, or the blue is hard to read on the dark background.
-            return ("dot.radiowaves.left.and.right", "Bluetooth", .bluetoothBlue, .bluetoothBlue.opacity(0.3))
+            return ConnectionChip(symbol: "dot.radiowaves.left.and.right", label: "Bluetooth",
+                                  tint: .bluetoothBlue, fillOpacity: 0.3)
         case .wired:
-            return ("cable.connector", "Wired", .razerGreen, .razerGreen.opacity(0.15))
+            return ConnectionChip(symbol: "cable.connector", label: "Wired")
         case .wirelessDongle:
             // `charging` implies a USB-C cable is attached, even though control still
             // flows through the dongle's PID.
             return controller.charging
-                ? ("cable.connector", "Wired", .razerGreen, .razerGreen.opacity(0.15))
-                : ("antenna.radiowaves.left.and.right", "2.4 GHz", .razerGreen, .razerGreen.opacity(0.15))
+                ? ConnectionChip(symbol: "cable.connector", label: "Wired")
+                : ConnectionChip(symbol: "antenna.radiowaves.left.and.right", label: "2.4 GHz")
         case nil:
             // Unknown model: "USB" is true for both a cable and a dongle.
-            return ("cable.connector", "USB", .razerGreen, .razerGreen.opacity(0.15))
+            return ConnectionChip(symbol: "cable.connector", label: "USB")
         }
     }
 
-    private func connectionChip(_ ct: (symbol: String, label: String, tint: Color, fill: Color)) -> some View {
+    /// How a link's chip looks: green for the USB links, blue for Bluetooth.
+    private struct ConnectionChip {
+        let symbol: String
+        let label: String
+        var tint: Color = .razerGreen
+        var fillOpacity: Double = 0.15
+    }
+
+    private func connectionChip(_ ct: ConnectionChip) -> some View {
         HStack(spacing: 3) {
             Image(systemName: ct.symbol).font(.system(size: 8.5, weight: .bold))
             Text(ct.label).font(.system(size: 9.5, weight: .semibold))
         }
         .foregroundStyle(ct.tint)
         .padding(.horizontal, 5).padding(.vertical, 1.5)
-        .background(ct.fill, in: Capsule())
+        .background(ct.tint.opacity(ct.fillOpacity), in: Capsule())
     }
 
     /// Shown when a Razer mouse is on Bluetooth but not under control: either a model with no
@@ -968,7 +977,10 @@ struct PopoverView: View {
     /// while charging (the drain doesn't matter then) and with lighting off (0% or `.off`
     /// both mean the LEDs draw nothing, whatever the slider says).
     private var showsLightingBatteryHint: Bool {
-        controller.deviceHasBattery && !controller.charging && controller.effect != .off
+        // Bluetooth can't set or read an effect, only a colour, so `effect` there is left
+        // over from USB and says nothing about whether the lights are on.
+        controller.deviceHasBattery && !controller.charging
+            && (controller.effect != .off || !controller.supportsLightingEffects)
             && Int(brightnessValue) > Battery.lightingHintBrightnessPercent
     }
 

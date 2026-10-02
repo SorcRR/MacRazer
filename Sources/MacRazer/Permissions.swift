@@ -47,8 +47,12 @@ final class PermissionsModel: ObservableObject {
         self.controller = controller
     }
 
+    /// A mouse MacRazer controls over Bluetooth is connected. It needs no Input Monitoring.
+    @Published private(set) var bluetoothControllable = false
+
     /// Both required permissions satisfied (Accessibility is optional, so it doesn't gate this).
-    var allRequiredGranted: Bool { inputMonitoring }
+    /// A Bluetooth-controlled mouse needs neither.
+    var allRequiredGranted: Bool { inputMonitoring || bluetoothControllable }
 
     // MARK: - Status
 
@@ -56,6 +60,7 @@ final class PermissionsModel: ObservableObject {
     /// and whenever the app returns to the foreground (e.g. back from System Settings).
     func recheck() {
         inputMonitoring = IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) == kIOHIDAccessTypeGranted
+        bluetoothControllable = HIDDevice.bluetoothRazerMouse()?.controllablePID != nil
         // refreshAccessibility also (re)installs the event tap once granted.
         remapper?.refreshAccessibility(prompt: false)
         accessibility = remapper?.accessibilityGranted ?? accessibility

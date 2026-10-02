@@ -125,6 +125,11 @@ enum RazerDevices {
     /// Product ids reachable over Bluetooth, which `HIDDevice.bluetoothControlDevice()`
     /// looks for before anything touches CoreBluetooth.
     static var bluetoothPIDs: Set<Int> { Set(known.filter { $0.connection == .bluetooth }.map(\.pid)) }
+    /// Model names that work over Bluetooth, for user-facing text ("Razer Cobra HyperSpeed").
+    static var bluetoothModelNames: [String] {
+        known.filter { $0.connection == .bluetooth }
+            .map { $0.name.replacingOccurrences(of: " (Bluetooth)", with: "") }
+    }
     static func fullySupported(pid: Int) -> Bool { info(pid: pid)?.fullySupported ?? false }
     /// Defaults assume a full-featured mouse for unknown models (so we still attempt controls).
     static func hasBattery(pid: Int) -> Bool { info(pid: pid)?.hasBattery ?? true }

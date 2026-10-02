@@ -155,6 +155,12 @@ final class HIDDevice {
     /// with a Razer keyboard or second mouse attached, the mouse must be picked by rank
     /// (registry-known PID → mouse-usage device → score), not by raw interface score.
     static func open(vendorId: Int) throws -> HIDDevice {
+        try open(controlInterface(vendorId: vendorId))
+    }
+
+    /// The control interface `open(vendorId:)` would pick, without opening it — so a caller
+    /// can look at its product id first (see `MouseController.openTransport`).
+    static func controlInterface(vendorId: Int) throws -> IOHIDDevice {
         let devices = matchingDevices(vendorId: vendorId)
         guard !devices.isEmpty else { throw HIDError.notFound }
 
@@ -168,8 +174,12 @@ final class HIDDevice {
         guard let idx = HIDDeviceSelection.controlInterfaceIndex(interfaces: infos) else {
             throw HIDError.notFound
         }
-        let chosen = devices[idx]
+        return devices[idx]
+    }
 
+    static func productID(of dev: IOHIDDevice) -> Int { intProp(dev, kIOHIDProductIDKey) ?? 0 }
+
+    static func open(_ chosen: IOHIDDevice) throws -> HIDDevice {
         // stderr, not stdout: this fires on every (re)open inside the GUI app too, and the
         // CLI's actual output goes to stdout.
         FileHandle.standardError.write(Data("[MacRazer] control interface: \(describe(chosen))\n".utf8))

@@ -123,6 +123,8 @@ final class RazerDevicesTests: XCTestCase {
     /// brightness (verified over BLE: LOGO answers, SCROLL refuses) and same discharge curve.
     func testBluetoothCobraHyperSpeed() {
         XCTAssertEqual(RazerDevices.bluetoothPIDs, [0x00DC])
+        XCTAssertEqual(RazerDevices.bluetoothModelNames, ["Razer Cobra HyperSpeed"],
+                       "user-facing text names the model, not the link")
         XCTAssertEqual(RazerDevices.brightnessLed(pid: 0x00DC), Razer.logoLed)
         XCTAssertEqual(RazerDevices.dischargeCurveModelKey(pid: 0x00DC),
                        RazerDevices.dischargeCurveModelKey(pid: 0x00DB))

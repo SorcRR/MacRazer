@@ -577,10 +577,18 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 return nil
             }
         }
-        let d = read(RazerCommands.getDPI()) { Int(RazerCommands.parseDPI($0).x) }
+        let stagesReport = read(RazerCommands.getDPIStages()) { $0 }
+        let stages = stagesReport.map { RazerCommands.parseDPIStages($0) } ?? []
+        // Over Bluetooth the current DPI *is* the active stage: both reads are the same
+        // stage-table request (`BLEProtocol`), so take it from the one already made.
+        let d: Int? = dev.isBluetooth
+            ? stagesReport.flatMap { r in
+                let active = RazerCommands.parseActiveDPIStage(r)
+                return stages.indices.contains(active) ? stages[active] : nil
+            }
+            : read(RazerCommands.getDPI()) { Int(RazerCommands.parseDPI($0).x) }
         let p = read(RazerCommands.getPollingRate()) { RazerCommands.parsePollingRate($0) }
         let b = read(RazerCommands.getBrightness(led: RazerDevices.brightnessLed(pid: dev.productID))) { RazerCommands.brightnessPercent(fromRaw: $0.arguments[2]) }
-        let stages = read(RazerCommands.getDPIStages()) { RazerCommands.parseDPIStages($0) } ?? []
         publish {
             if let d { self.update(\.dpi, d) }
             if let p { self.update(\.pollRate, p) }
@@ -1002,10 +1010,12 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         let bt = HIDDevice.bluetoothRazerMouse().flatMap { m in m.controllablePID.map { (pid: $0, name: m.name) } }
         var usbError: Error?
         do {
-            let usb = try HIDDevice.open(vendorId: Razer.vendorId) // any Razer mouse
-            guard Self.prefersBluetooth(over: RazerDevices.connection(pid: usb.productID),
-                                        bluetoothControllable: bt != nil) else { return usb }
-            usb.close()
+            // Decided before opening, so an idle dongle isn't opened and closed on every poll.
+            let usb = try HIDDevice.controlInterface(vendorId: Razer.vendorId) // any Razer mouse
+            let connection = RazerDevices.connection(pid: HIDDevice.productID(of: usb))
+            if !Self.prefersBluetooth(over: connection, bluetoothControllable: bt != nil) {
+                return try HIDDevice.open(usb)
+            }
         } catch {
             // Whatever stopped USB (nothing there, or Input Monitoring not granted, which
             // Bluetooth doesn't need) still leaves a Bluetooth mouse to try.
@@ -1025,12 +1035,16 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             throw reportable ?? HIDDevice.HIDError.notFound
         }
         let started = Date()
+        // The first open is what shows the Bluetooth permission prompt, and Bluetooth stays
+        // "unknown" while it's up, so that open times out. That isn't a failure to back off
+        // from: the user may click Allow a second later.
+        let askingPermission = CBManager.authorization == .notDetermined
         do {
             let device = try BluetoothDevice.open(pid: bt.pid, hidName: bt.name)
             bluetoothOpenFailedAt = nil
             return device
         } catch {
-            if Date().timeIntervalSince(started) > 1 { bluetoothOpenFailedAt = Date() }
+            if !askingPermission, Date().timeIntervalSince(started) > 1 { bluetoothOpenFailedAt = Date() }
             throw reportable ?? error
         }
     }
