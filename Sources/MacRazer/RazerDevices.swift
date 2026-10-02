@@ -20,6 +20,7 @@ enum RazerMouseSilhouette {
 enum RazerConnection {
     case wired
     case wirelessDongle
+    case bluetooth
 }
 
 /// Minimal registry of Razer mice. The connected device reports its own name via the USB
@@ -98,6 +99,7 @@ enum RazerDevices {
         // vendor spec — the reporter exercised DPI at 6400, so the top of the range is the
         // one field here not demonstrated on a device.
         .init(pid: 0x00B9, name: "Razer Basilisk V3 X HyperSpeed", fullySupported: true, hasBattery: true, hasLighting: true, maxDPI: 18000, transactionId: 0x1f, matrixTransactionId: 0x1f, brightnessLed: Razer.scrollLed, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
+        .init(pid: 0x00BA, name: "Razer Basilisk V3 X HyperSpeed (Bluetooth)", fullySupported: true, hasBattery: true, hasLighting: true, maxDPI: 18000, transactionId: 0x1f, matrixTransactionId: 0x1f, brightnessLed: Razer.scrollLed, connection: .bluetooth, silhouette: .cobra, dischargeCurveModelKey: nil),
         // Basilisk X HyperSpeed: the older AA-cell sibling — no lighting at all, and
         // razermouse_driver.c gives it 0xFF for every command it supports. Not verified
         // on hardware by us.

@@ -16,7 +16,7 @@ import IOKit.hid
 /// the next thing to try is prefixing a report-id byte — verify against razer-macos.
 final class HIDDevice {
 
-    enum HIDError: Error, CustomStringConvertible {
+    enum HIDError: Error, CustomStringConvertible, LocalizedError {
         case notFound
         case openFailed(IOReturn)
         case setReportFailed(IOReturn)
@@ -29,7 +29,7 @@ final class HIDDevice {
         var description: String {
             func hex(_ r: IOReturn) -> String { String(format: "0x%08x", UInt32(bitPattern: r)) }
             switch self {
-            case .notFound: return "No Razer mouse found on USB (is the cable or 2.4GHz dongle plugged in?)"
+            case .notFound: return "No supported Razer mouse found; check its cable, 2.4GHz dongle, or supported Bluetooth connection."
             case .openFailed(let r): return "IOHIDDeviceOpen failed: \(hex(r))"
             case .setReportFailed(let r): return "SetReport failed: \(hex(r))"
             case .getReportFailed(let r): return "GetReport failed: \(hex(r))"
@@ -39,6 +39,8 @@ final class HIDDevice {
             case .notSupported: return "Device reports the command as not supported (status 0x05)"
             }
         }
+
+        var errorDescription: String? { description }
     }
 
     /// Whether an error string from a failed open/read means the macOS Input Monitoring
@@ -96,10 +98,8 @@ final class HIDDevice {
     ]
 
     /// If a Razer mouse is currently connected over **Bluetooth**, returns its product name.
-    /// Razer's control protocol (battery/DPI/lighting) is only exposed over USB — the 2.4GHz
-    /// dongle or a wired cable — so a Bluetooth connection enumerates as a plain HID mouse with
-    /// a non-Razer vendor id and no control interface. We detect it by transport + model name
-    /// so the UI can explain why control is unavailable and prompt switching to 2.4GHz / USB-C.
+    /// Bluetooth HID identity is generic; MacRazer has a separate, model-scoped GATT adapter
+    /// for the Basilisk V3 X HyperSpeed and uses this name for unsupported models or diagnostics.
     static func bluetoothRazerMouseName() -> String? {
         // Generic Desktop (0x01) / Mouse (0x02), any vendor — the BLE mouse isn't VID 0x1532.
         for dev in devices(matching: [
@@ -111,6 +111,23 @@ final class HIDDevice {
                   let name = strProp(dev, kIOHIDProductKey) else { continue }
             let lower = name.lowercased()
             if razerMouseKeywords.contains(where: { lower.contains($0) }) { return name }
+        }
+        return nil
+    }
+
+    /// The supported Bluetooth control adapter is deliberately restricted to this model.
+    static func bluetoothBasiliskV3XName() -> String? {
+        for dev in devices(matching: [
+            kIOHIDDeviceUsagePageKey as String: 0x01,
+            kIOHIDDeviceUsageKey as String: 0x02,
+        ]) {
+            let transport = strProp(dev, kIOHIDTransportKey) ?? ""
+            guard transport.localizedCaseInsensitiveContains("Bluetooth"),
+                  let name = strProp(dev, kIOHIDProductKey) else { continue }
+            let value = name.lowercased()
+            if (value.contains("basilisk") || value.contains("bsk")) && value.contains("v3") && value.contains("x") {
+                return name
+            }
         }
         return nil
     }

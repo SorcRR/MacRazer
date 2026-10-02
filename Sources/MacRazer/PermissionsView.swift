@@ -14,14 +14,16 @@ struct PermissionsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
-            permissionRow(
-                title: "Input Monitoring",
-                why: "Lets MacRazer talk to your mouse. Battery, DPI, polling rate and lighting all need it.",
-                granted: model.inputMonitoring,
-                required: true,
-                grant: { model.grantInputMonitoring() },
-                openSettings: { model.openInputMonitoringSettings() }
-            )
+            if !model.bluetoothAvailable {
+                permissionRow(
+                    title: "Input Monitoring",
+                    why: "Lets MacRazer talk to Razer mice over USB or the 2.4 GHz dongle. Bluetooth control does not need it.",
+                    granted: model.inputMonitoring,
+                    required: true,
+                    grant: { model.grantInputMonitoring() },
+                    openSettings: { model.openInputMonitoringSettings() }
+                )
+            }
             permissionRow(
                 title: "Accessibility",
                 why: "Only for remapping the extra mouse buttons. Skip it if you don't remap buttons.",
@@ -32,12 +34,15 @@ struct PermissionsView: View {
             )
             if model.needsRelaunch { relaunchBanner }
             statusLine
-            if !model.inputMonitoring { relaunchTip }
+            if !model.inputMonitoring && !model.bluetoothAvailable { relaunchTip }
             footer
         }
         .padding(22)
         .frame(width: 420)
         .onAppear { model.recheck() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            model.recheck()
+        }
     }
 
     // MARK: Header
@@ -54,7 +59,7 @@ struct PermissionsView: View {
             .frame(width: 44, height: 44)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Set up MacRazer").font(.system(size: 17, weight: .semibold))
-                Text("A couple of macOS permissions and you're ready to go.")
+                Text(model.bluetoothAvailable ? "The Basilisk V3 X HyperSpeed can be controlled over Bluetooth." : "A couple of macOS permissions and you're ready to go.")
                     .font(.system(size: 12)).foregroundStyle(.secondary)
             }
             Spacer()
@@ -152,9 +157,13 @@ struct PermissionsView: View {
                 .frame(width: 8, height: 8)
             if controller.connected, let name = controller.deviceName {
                 Text(verbatim: "\(name) connected").font(.system(size: 11, weight: .medium))
+            } else if model.bluetoothAvailable {
+                Text("Basilisk V3 X HyperSpeed detected over Bluetooth. Connecting to its control service…")
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             } else if model.inputMonitoring {
                 Text("No Razer mouse detected yet. Connect the 2.4 GHz dongle or a USB-C cable. "
-                     + "Bluetooth won't work.")
+                     + "Bluetooth control currently supports the Basilisk V3 X HyperSpeed.")
                     .font(.system(size: 11)).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
@@ -182,7 +191,7 @@ struct PermissionsView: View {
         HStack(spacing: 10) {
             Button("Re-check") { model.recheck() }
                 .buttonStyle(.bordered).font(.system(size: 12))
-            if !model.inputMonitoring {
+            if !model.inputMonitoring && !model.bluetoothAvailable {
                 Button("Quit & Relaunch") { model.relaunch() }
                     .buttonStyle(.bordered).font(.system(size: 12))
                     .help("Relaunch so macOS applies an Input Monitoring grant made while the app was running.")

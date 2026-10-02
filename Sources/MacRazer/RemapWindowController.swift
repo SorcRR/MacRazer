@@ -10,14 +10,18 @@ import SwiftUI
 final class RemapWindowController: AppWindowPresenter {
     private var window: NSWindow?
     private let remapper: ButtonRemapper
+    private let controller: MouseController
 
-    init(remapper: ButtonRemapper) { self.remapper = remapper }
+    init(remapper: ButtonRemapper, controller: MouseController) {
+        self.remapper = remapper
+        self.controller = controller
+    }
 
     var isVisible: Bool { window?.isVisible ?? false }
 
     func show() {
         if window == nil {
-            let hosting = NSHostingController(rootView: RemapView(remapper: remapper))
+            let hosting = NSHostingController(rootView: RemapView(remapper: remapper, controller: controller))
             hosting.sizingOptions = [.preferredContentSize]
             let w = NSWindow(contentViewController: hosting)
             w.title = "Configure Buttons"
@@ -28,7 +32,7 @@ final class RemapWindowController: AppWindowPresenter {
         }
         NSApp.activate(ignoringOtherApps: true)
         window?.makeKeyAndOrderFront(nil)
-        // Opening is a natural moment to (re)check / prompt for Accessibility.
-        remapper.refreshAccessibility(prompt: true)
+        // Recheck silently; only the explicit Request button should raise a native prompt.
+        remapper.refreshAccessibility(prompt: false)
     }
 }

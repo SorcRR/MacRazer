@@ -12,6 +12,9 @@ import Foundation
 import AppKit
 import ServiceManagement
 import SwiftUI
+#if DEBUG
+import ApplicationServices
+#endif
 
 let args = Array(CommandLine.arguments.dropFirst())
 
@@ -268,8 +271,45 @@ case "render-remap":
     _ = NSApplication.shared
     let path = outputPath(args.dropFirst(), default: "remap-preview.png")
     let r = ButtonRemapper()
-    r.loadPreviewState()
-    writeViewPNG(RemapView(remapper: r), to: path)
+    if args.contains("pending-access") {
+        r.loadBasiliskPendingAccessibilityPreview()
+    } else {
+        r.loadPreviewState()
+    }
+    writeViewPNG(RemapView(remapper: r, checkAccessibilityOnAppear: false), to: path)
+
+#if DEBUG
+case "permission-status":
+    // Read-only diagnostic using this app bundle's own TCC identity. This distinguishes
+    // Accessibility authorization from the newer, broader Device Control setting.
+    let trusted = AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": false] as CFDictionary)
+    print("Keyboard listening: \(CGPreflightListenEventAccess())")
+    print("Bundle ID: \(Bundle.main.bundleIdentifier ?? "unknown")")
+    print("Accessibility: \(trusted ? "granted" : "not granted")")
+
+case "remap-check":
+    // Open the existing remapper in a temporary window under this executable's own bundle
+    // identity, so its Accessibility event tap can be checked with the paired mouse.
+    let app = NSApplication.shared
+    app.setActivationPolicy(.regular)
+    let remapper = ButtonRemapper()
+    let controller = MouseController()
+    remapper.setActiveDevice("00ba")
+    remapper.start()
+    remapper.observeDpiCycle(controller: controller)
+    controller.start()
+    let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 440, height: 390),
+                          styleMask: [.titled, .closable], backing: .buffered, defer: false)
+    window.title = "Configure Buttons — Remap Check"
+    window.isReleasedWhenClosed = false
+    let hosting = NSHostingController(rootView: RemapView(remapper: remapper, controller: controller))
+    hosting.sizingOptions = [.preferredContentSize]
+    window.contentViewController = hosting
+    window.center()
+    app.activate(ignoringOtherApps: true)
+    window.makeKeyAndOrderFront(nil)
+    app.run()
+#endif
 
 case "render-permissions":
     _ = NSApplication.shared

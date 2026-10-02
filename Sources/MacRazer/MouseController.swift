@@ -49,6 +49,12 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     @Published private(set) var deviceHasLighting = true
     /// Max settable DPI for the connected model (drives the slider range).
     @Published private(set) var deviceMaxDPI = 26000
+    @Published private(set) var deviceIsBluetooth = false
+    @Published private(set) var deviceSupportsPollRate = true
+    @Published private(set) var deviceSupportsProfiles = true
+    @Published private(set) var dpiCycleButtonBinding: BLEVendorProtocol.DPIButtonBinding?
+    @Published private(set) var dpiCycleButtonError: String?
+    @Published private(set) var isUpdatingDpiCycleButton = false
     /// Bumped whenever a user-initiated device write fails, so the UI can snap its
     /// optimistic slider state back to the real values (the values themselves don't change
     /// on a failed write, so no other `@Published` transition fires).
@@ -57,8 +63,8 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     @Published private(set) var deviceID: Int?
     /// Stable per-unit key (serial number if available, else PID) — drives per-device settings.
     @Published private(set) var deviceKey: String?
-    /// Name of a Razer mouse seen on Bluetooth while we can't reach one over USB. Bluetooth
-    /// doesn't expose Razer's control protocol, so this drives a "switch to 2.4GHz / USB" hint.
+    /// Name of a Razer mouse seen on Bluetooth while no supported control connection is open.
+    /// The Basilisk V3 X HyperSpeed has a GATT adapter; other models remain detection-only.
     @Published private(set) var bluetoothMouseName: String?
     private var ioHasBattery = true // io-queue mirror of deviceHasBattery
 
@@ -126,7 +132,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     private func endUserWork() {
         userWorkLock.lock(); userWorkCount -= 1; userWorkLock.unlock()
     }
-    private var device: HIDDevice?
+    private var device: (any RazerControlTransport)?
     private var pollTimer: Timer?
     private var history = BatteryHistory(deviceKey: "default")
     private var cycleHistory = ChargeCycleHistory(deviceKey: "default")
@@ -462,8 +468,8 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         case .offline(let gone):
             FileHandle.standardError.write(Data(
                 "[MacRazer] battery read failed (\(pollState.consecutiveFailures)): \(errText ?? "?")\n".utf8))
-            // Can't reach a Razer mouse over USB — is one sitting on Bluetooth instead?
-            // (Razer's control protocol isn't exposed over BT, so that's the likely cause.)
+            // No supported control connection answered; surface a visible Bluetooth Razer
+            // device as a diagnostic hint (the supported Basilisk adapter may have failed too).
             let btName = HIDDevice.bluetoothRazerMouseName()
             let err = errText
             publish {
@@ -575,6 +581,63 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             self.publish {
                 guard ok else { self.lastWriteFailure = Date(); return }
                 self.dpi = Int(v); self.clearActiveProfileIfNeeded()
+            }
+        }
+    }
+
+    func refreshDpiCycleButtonBinding() {
+        userCommand { [weak self] in
+            guard let self else { return }
+            self.publish {
+                self.isUpdatingDpiCycleButton = true
+                self.dpiCycleButtonBinding = nil
+                self.dpiCycleButtonError = nil
+            }
+            do {
+                guard let bluetooth = try self.ensureDevice() as? BluetoothDevice else {
+                    throw HIDDevice.HIDError.notSupported
+                }
+                let binding = try bluetooth.readDpiCycleBinding()
+                self.publish {
+                    self.dpiCycleButtonBinding = binding
+                    self.dpiCycleButtonError = nil
+                    self.isUpdatingDpiCycleButton = false
+                }
+            } catch {
+                self.publish {
+                    self.dpiCycleButtonError = "Could not read this button over Bluetooth: \(error.localizedDescription)"
+                    self.isUpdatingDpiCycleButton = false
+                }
+            }
+        }
+    }
+
+    func setDpiCycleButtonBinding(_ binding: BLEVendorProtocol.DPIButtonBinding,
+                                  completion: @escaping @Sendable (Bool) -> Void = { _ in }) {
+        userCommand { [weak self] in
+            guard let self else { return }
+            self.publish { self.isUpdatingDpiCycleButton = true; self.dpiCycleButtonError = nil }
+            do {
+                guard let bluetooth = try self.ensureDevice() as? BluetoothDevice else {
+                    throw HIDDevice.HIDError.notSupported
+                }
+                try bluetooth.setDpiCycleBinding(binding)
+                let readback = try bluetooth.readDpiCycleBinding()
+                guard readback == binding else { throw HIDDevice.HIDError.badResponse }
+                self.publish {
+                    self.dpiCycleButtonBinding = readback
+                    self.dpiCycleButtonError = nil
+                    self.isUpdatingDpiCycleButton = false
+                    completion(true)
+                }
+            } catch {
+                self.publish {
+                    self.dpiCycleButtonError = "Button assignment failed or did not read back: \(error.localizedDescription)"
+                    self.isUpdatingDpiCycleButton = false
+                    self.lastWriteFailure = Date()
+                    self.dpiCycleButtonBinding = nil
+                    completion(false)
+                }
             }
         }
     }
@@ -923,9 +986,15 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     }
 
     /// Must be called on `io`.
-    private func ensureDevice() throws -> HIDDevice {
+    private func ensureDevice() throws -> any RazerControlTransport {
         if let d = device { return d }
-        let d = try HIDDevice.open(vendorId: Razer.vendorId) // any Razer mouse
+        let d: any RazerControlTransport
+        do {
+            d = try HIDDevice.open(vendorId: Razer.vendorId) // preserve the existing USB/dongle path
+        } catch HIDDevice.HIDError.notFound {
+            guard let name = HIDDevice.bluetoothBasiliskV3XName() else { throw HIDDevice.HIDError.notFound }
+            d = try BluetoothDevice.open(productName: name)
+        }
         device = d
         let pid = d.productID
         // Model-scoped (not per-serial) discharge curve, shared across every unit of a covered
@@ -943,13 +1012,18 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         // PID key — that fallback would fragment one mouse's history across two files on every
         // transient serial-read failure rather than just on a genuine device change.
         let serial: String?
+        if d.isBluetooth {
+            serial = nil
+        } else {
         if let known = knownSerial, known.locationID == d.locationID, known.pid == pid {
             serial = known.serial
         } else {
             serial = (try? d.sendWithRetry(RazerCommands.getSerial())).flatMap { RazerCommands.parseSerial($0) }
             if let serial { knownSerial = (d.locationID, pid, serial) }
         }
-        let key = serial ?? historyKey ?? String(format: "%04x", pid)
+        }
+        let pidKey = String(format: "%04x", pid)
+        let key = serial ?? (historyKey == pidKey ? historyKey : nil) ?? pidKey
         // Switch to this mouse's own battery history (per-device file + learned rate).
         if key != historyKey {
             // Same-session key upgrade: the serial probe failed on this session's first
@@ -1005,6 +1079,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         let name = d.productName
         let battery = RazerDevices.hasBattery(pid: pid)
         ioHasBattery = battery
+        let isBluetooth = d.isBluetooth
         publish {
             self.update(\.deviceID, pid)
             self.update(\.deviceKey, key)
@@ -1013,6 +1088,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             self.update(\.deviceHasBattery, battery)
             self.update(\.deviceHasLighting, RazerDevices.hasLighting(pid: pid))
             self.update(\.deviceMaxDPI, RazerDevices.maxDPI(pid: pid))
+            self.update(\.deviceIsBluetooth, isBluetooth)
+            self.update(\.deviceSupportsPollRate, !isBluetooth)
+            self.update(\.deviceSupportsProfiles, !isBluetooth)
         }
         return d
     }

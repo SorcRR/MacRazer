@@ -113,20 +113,25 @@ struct PopoverView: View {
         // a re-render dismisses an open SwiftUI Menu, collapsing the shortcut picker while
         // the user is still choosing. This page only depends on the remapper, whose own
         // publishes (detected buttons, mappings) still update it normally.
-        ButtonsPage(remapper: remapper, onBack: { page = .main }).equatable()
+        ButtonsPage(controller: controller, remapper: remapper, onBack: { page = .main }).equatable()
     }
 
     private struct ButtonsPage: View, Equatable {
+        let controller: MouseController
         let remapper: ButtonRemapper
         let onBack: () -> Void
 
         /// The closure is deliberately excluded: it's recreated on every parent render and
         /// always does the same thing (navigate back).
-        nonisolated static func == (a: Self, b: Self) -> Bool { a.remapper === b.remapper }
+        nonisolated static func == (a: Self, b: Self) -> Bool {
+            a.remapper === b.remapper
+                && a.controller.deviceID == b.controller.deviceID
+                && a.controller.deviceIsBluetooth == b.controller.deviceIsBluetooth
+        }
 
         var body: some View {
             ScrollView {
-                RemapView(remapper: remapper, onBack: onBack)
+                RemapView(remapper: remapper, controller: controller, onBack: onBack)
                     .frame(maxWidth: .infinity)
             }
         }
@@ -153,8 +158,8 @@ struct PopoverView: View {
             // Never both: an update waiting to be installed is the more useful thing to say
             // than one that already was.
             else if updateChecker.justUpdatedTo != nil { updatedCard }
-            // A Razer mouse on Bluetooth can't be controlled (no control protocol over BT) —
-            // explain it instead of just showing "offline".
+            // Explain when a Bluetooth mouse is visible but its supported control service
+            // could not be opened, instead of only showing "offline".
             if controller.bluetoothMouseName != nil && !controller.connected { bluetoothNotice }
             // Battery stays readable (last-known) but dims when offline; its refresh button
             // stays active so you can retry.
@@ -164,16 +169,20 @@ struct PopoverView: View {
             // Live mouse-config sections: dim AND disable while disconnected.
             Group {
                 dpiCard
-                pollCard
+                if controller.deviceSupportsPollRate { pollCard }
                 if controller.deviceHasLighting { lightingCard } // hidden for no-LED mice (e.g. Atheris)
             }
             .disabled(!controller.connected)
             .opacity(controller.connected ? 1 : 0.45)
 
-            configureButton // software remap — works offline, stays enabled
+            // Software remapping listens to macOS mouse events, so it remains available
+            // over Bluetooth. This is separate from writing onboard button bindings over GATT.
+            configureButton
             // Profiles bundle the sections above (plus remaps) into presets — placed after
             // them so the page reads "here are the controls, here's how to save/recall them".
-            profilesCard.disabled(!controller.connected).opacity(controller.connected ? 1 : 0.45)
+            if controller.deviceSupportsProfiles {
+                profilesCard.disabled(!controller.connected).opacity(controller.connected ? 1 : 0.45)
+            }
             footer
         }
         .padding(12)
@@ -263,10 +272,12 @@ struct PopoverView: View {
     /// the registry — the PID identifies the link (wireless models enumerate under a
     /// different PID when cabled). The old `charging ⇒ wired` heuristic mislabeled every
     /// wired-only mouse as "2.4 GHz", since a wired mouse never reports charging.
-    /// (Bluetooth can't carry control, so it never reads "Connected" — it's surfaced separately.)
+    /// Bluetooth is shown as its own transport when the model-specific GATT connection succeeds.
     private var connectionType: (symbol: String, label: String)? {
         guard controller.connected else { return nil }
         switch RazerDevices.connection(pid: controller.deviceID) {
+        case .bluetooth:
+            return ("dot.radiowaves.left.and.right", "Bluetooth")
         case .wired:
             return ("cable.connector", "Wired")
         case .wirelessDongle:
@@ -291,7 +302,7 @@ struct PopoverView: View {
         .background(Color.razerGreen.opacity(0.15), in: Capsule())
     }
 
-    /// Shown when a Razer mouse is detected on Bluetooth: control needs USB / the 2.4 GHz dongle.
+    /// Shown when a Razer mouse is visible on Bluetooth but MacRazer could not open its control service.
     private var bluetoothNotice: some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: "dot.radiowaves.left.and.right")
@@ -299,7 +310,7 @@ struct PopoverView: View {
                 .font(.system(size: 13, weight: .semibold))
             VStack(alignment: .leading, spacing: 2) {
                 Text("Connected via Bluetooth").font(.system(size: 12, weight: .semibold))
-                Text("\(controller.bluetoothMouseName ?? "Your Razer mouse") only reports battery, DPI and lighting over the 2.4 GHz dongle or USB-C, not over Bluetooth. Switch its mode to use MacRazer.")
+                Text("\(controller.bluetoothMouseName ?? "Your Razer mouse") is visible over Bluetooth, but MacRazer could not open its control service. Reconnect it in macOS Bluetooth settings and refresh.")
                     .font(.system(size: 11)).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -740,7 +751,7 @@ struct PopoverView: View {
         }
         .buttonStyle(.borderless)
         .foregroundStyle(.secondary)
-        .help("Refresh battery, DPI and polling rate")
+        .help(controller.deviceIsBluetooth ? "Refresh battery and DPI" : "Refresh battery, DPI and polling rate")
         .disabled(controller.isRefreshing)
     }
 
@@ -753,18 +764,20 @@ struct PopoverView: View {
                 Text(verbatim: "\(Int(dpiValue))")
                     .font(.system(size: 12, weight: .medium)).monospacedDigit()
             }
-            Slider(value: $dpiValue, in: 100...Double(controller.deviceMaxDPI), step: 50) { editing in
-                if !editing {
-                    let v = Int(dpiValue)
-                    controller.setDPI(v)
-                    if !displayedStages.contains(v) { saveCustomDPI(v) } // remember the manual value
+            if !controller.deviceIsBluetooth {
+                Slider(value: $dpiValue, in: 100...Double(controller.deviceMaxDPI), step: 50) { editing in
+                    if !editing {
+                        let v = Int(dpiValue)
+                        controller.setDPI(v)
+                        if !displayedStages.contains(v) { saveCustomDPI(v) }
+                    }
                 }
+                .tint(.razerGreen)
+                .controlSize(.small)
             }
-            .tint(.razerGreen)
-            .controlSize(.small)
             HStack(spacing: 6) {
                 ForEach(displayedStages, id: \.self) { dpiChip($0) }
-                customChip
+                if !controller.deviceIsBluetooth { customChip }
             }
         }
         }
@@ -898,13 +911,15 @@ struct PopoverView: View {
             // Bound straight to the controller: setEffect publishes only on a successful
             // device write, so a failed change snaps the picker back by itself — no local
             // state, no suppression flags.
-            Picker("", selection: Binding(get: { controller.effect },
-                                          set: { controller.setEffect($0) })) {
-                ForEach(LightingEffect.allCases) { Text($0.rawValue).tag($0) }
+            if !controller.deviceIsBluetooth {
+                Picker("", selection: Binding(get: { controller.effect },
+                                              set: { controller.setEffect($0) })) {
+                    ForEach(LightingEffect.allCases) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .controlSize(.small)
+                .labelsHidden()
             }
-            .pickerStyle(.segmented)
-            .controlSize(.small)
-            .labelsHidden()
 
             if controller.effect == .staticColor {
                 HStack(spacing: 7) {

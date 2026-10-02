@@ -46,4 +46,13 @@ final class ButtonRemapperWakeTests: XCTestCase {
         press(r, button: 4) // not mapped
         XCTAssertEqual(counter.checks, 0, "a release, or a button with no mapping, says nothing about our mouse")
     }
+
+    func testBasiliskSideButtonsAreConfigurableBeforeFirstPress() {
+        let remapper = ButtonRemapper()
+        remapper.setActiveDevice("00ba")
+
+        XCTAssertEqual(remapper.suggestedButtons, [3, 4])
+        XCTAssertTrue(remapper.seenButtons.isEmpty,
+                      "suggested controls are not claimed to have been physically detected")
+    }
 }
