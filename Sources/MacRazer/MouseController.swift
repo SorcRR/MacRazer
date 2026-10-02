@@ -227,6 +227,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// even while the menu/popover is being tracked.
     private func scheduleNextPoll(after interval: TimeInterval) {
         pollTimer?.invalidate()
+        // A poll already on the device queue when a test began still lands here when it
+        // finishes. `endDeviceTest` restarts the loop.
+        guard !deviceTestActive else { pollTimer = nil; return }
         let t = Timer(timeInterval: interval, repeats: false) { [weak self] _ in
             self?.pollTick()
         }
@@ -272,7 +275,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
 
     /// Settings (DPI + polling) only — no spinner. Call on the main thread.
     func refreshSettings() {
-        guard !settingsReadQueued else { return }
+        guard !settingsReadQueued, !deviceTestActive else { return }
         settingsReadQueued = true
         io.async { [weak self] in
             guard let self else { return }
@@ -288,7 +291,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     func setPopoverVisible(_ visible: Bool) {
         settingsTimer?.invalidate()
         settingsTimer = nil
-        guard visible else { return }
+        guard visible, !deviceTestActive else { return }
         // While the mouse is unreachable the poll backs off, so a mouse woken just before
         // opening the popover could otherwise still read offline. Looking is a good moment
         // to check.
@@ -345,6 +348,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// Full refresh (battery + settings) with the spinner — used by the refresh button.
     /// Re-reads DPI/poll so on-mouse changes (e.g. middle-button DPI cycling) show up.
     func refreshAll() {
+        guard !deviceTestActive else { return }
         publish { self.isRefreshing = true }
         io.async { [weak self] in
             guard let self else { return }
@@ -560,6 +564,54 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             }
         }
     }
+
+    // MARK: - Device test
+
+    /// Main thread. True while the device test holds the mouse. Each test step changes and
+    /// restores settings inside one block on the device queue, so nothing can land mid-step
+    /// anyway; this keeps the poll and the popover's settings reads from adding traffic and
+    /// noise to the session, or publishing a half-way state between steps.
+    private(set) var deviceTestActive = false
+
+    func beginDeviceTest() {
+        deviceTestActive = true
+        pollTimer?.invalidate()
+        pollTimer = nil
+        settingsTimer?.invalidate()
+        settingsTimer = nil
+    }
+
+    /// Reads everything again rather than trusting what was published before the test: steps
+    /// restore what they change, but if a restore failed (the mouse went away mid-step), the
+    /// popover should show what the mouse actually holds.
+    func endDeviceTest() {
+        guard deviceTestActive else { return }
+        deviceTestActive = false
+        refreshAll()
+        scheduleNextPoll(after: BatteryPollStateMachine.Cadence.settling)
+    }
+
+    /// Runs one test step on the device queue with the open device, ahead of background reads
+    /// like any user command. Throws only when there is no device to run it on: steps record
+    /// their own failures.
+    func runDeviceTestStep<T: Sendable>(_ body: @escaping @Sendable (HIDDevice) -> T) async throws -> T {
+        try await withCheckedThrowingContinuation { continuation in
+            userCommand { [weak self] in
+                guard let self else { return continuation.resume(throwing: HIDDevice.HIDError.notFound) }
+                do {
+                    let device = try self.ensureDevice()
+                    continuation.resume(returning: body(device))
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    /// The command for the lighting the app last set, for the test to return to after showing
+    /// red. Main thread. The protocol has no lighting read-back, so this is the app's own idea
+    /// of what the mouse shows, the same one its controls work from.
+    func lightingRestoreReport() -> RazerReport { report(for: effect, color: lightingColor) }
 
     // MARK: - Writes
 

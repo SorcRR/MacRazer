@@ -215,7 +215,8 @@ case "render-ui":
         : args.contains("profiles")
         ? AnyView(ProfilesView(controller: controller, remapper: ButtonRemapper(), onBack: {}))
         : AnyView(PopoverView(controller: controller, remapper: ButtonRemapper(), updateChecker: updateChecker,
-                              launchAtLogin: launchAtLogin, onOpenSettings: {})) // no windows in a render
+                              launchAtLogin: launchAtLogin, onOpenSettings: {},
+                              onOpenDeviceTest: {})) // no windows in a render
     writeViewPNG(rootView, to: path)
 
 case "render-settings":
@@ -263,6 +264,23 @@ case "render-about":
                                                    notes: ReleaseNotes.parse(PreviewNotes.releaseBody))]
                                  : []),
                    to: aboutPath)
+
+case "render-device-test":
+    // One screen of the device test, for checking layout and wording without a mouse:
+    // `render-device-test <stage> [unknown] [ran] [path.png]`, stage one of intro, permission,
+    // identify, battery, dpi, polling, lighting, buttons, review.
+    _ = NSApplication.shared
+    let path = outputPath(args.dropFirst(), default: "device-test-preview.png")
+    let stages: [String: DeviceTestModel.Stage] = [
+        "intro": .intro, "permission": .permission, "identify": .identify, "battery": .battery,
+        "dpi": .dpi, "polling": .polling, "lighting": .lighting, "buttons": .buttons, "review": .review,
+    ]
+    let stage = args.dropFirst().compactMap { stages[$0] }.first ?? .intro
+    let controller = MouseController()
+    controller.loadPreviewState()
+    let model = DeviceTestModel(controller: controller, permissions: PermissionsModel())
+    model.loadPreview(stage, known: !args.contains("unknown"), ranSteps: args.contains("ran"))
+    writeViewPNG(DeviceTestView(model: model, onClose: {}), to: path)
 
 case "render-remap":
     _ = NSApplication.shared

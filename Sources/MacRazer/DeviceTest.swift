@@ -79,7 +79,7 @@ struct DeviceReport: Codable, Equatable {
         case skipped
     }
 
-    struct StepRecord<Data: Codable & Equatable>: Codable, Equatable {
+    struct StepRecord<Data: Codable & Equatable & Sendable>: Codable, Equatable, Sendable {
         var outcome: Outcome = .skipped
         var data: Data?
         var error: String?

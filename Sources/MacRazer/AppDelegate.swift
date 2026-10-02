@@ -20,6 +20,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     private lazy var remapWindow = RemapWindowController(remapper: remapper)
     private lazy var permissions = PermissionsModel(remapper: remapper, controller: controller)
     private lazy var permissionsWindow = PermissionsWindowController(model: permissions, controller: controller)
+    private lazy var deviceTestWindow = DeviceTestWindowController(
+        model: DeviceTestModel(controller: controller, permissions: permissions))
     private let updateChecker = UpdateChecker()
     private let launchAtLogin = LaunchAtLogin()
     private lazy var aboutWindow = AboutWindowController()
@@ -69,7 +71,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         // longer matches whichever profile was last applied — let MouseController know so it
         // can drop the stale "active" highlight.
         remapper.onManualChange = { [weak controller] in controller?.clearActiveProfileIfManuallyChanged() }
-        if !permissions.inputMonitoring {
+        if UserDefaults.standard.bool(forKey: DeviceTestModel.resumeKey) {
+            // Relaunched from the device test to apply Input Monitoring: pick the test back up
+            // rather than showing the general setup window it was already past.
+            UserDefaults.standard.removeObject(forKey: DeviceTestModel.resumeKey)
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.present(self.deviceTestWindow)
+            }
+        } else if !permissions.inputMonitoring {
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 self.present(self.permissionsWindow)
@@ -106,6 +116,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
                 guard let self else { return }
                 self.popover.performClose(nil)
                 self.present(self.settingsWindow)
+            },
+            onOpenDeviceTest: { [weak self] in
+                // Closed first for the same reasons as Settings above.
+                guard let self else { return }
+                self.popover.performClose(nil)
+                self.present(self.deviceTestWindow)
             }))
         hosting.sizingOptions = [.preferredContentSize] // popover auto-fits the SwiftUI content
         popover.contentViewController = hosting
@@ -372,6 +388,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         configure.isEnabled = controller.connected // remapping is for a connected mouse
         menu.addItem(configure)
 
+        // Every connected mouse gets it: on an unverified one it gathers what's needed to
+        // support it, on a verified one it confirms it still works. Enabled whenever a Razer
+        // device is plugged in rather than only once connected, so someone missing Input
+        // Monitoring can still reach the screen that asks for it.
+        let verified = controller.connected && controller.deviceSupported
+        let test = NSMenuItem(title: verified ? "Test This Mouse…" : "Help Support This Mouse…",
+                              action: #selector(openDeviceTest), keyEquivalent: "")
+        test.target = self
+        test.isEnabled = controller.connected || !HIDDevice.matchingDevices(vendorId: Razer.vendorId).isEmpty
+        menu.addItem(test)
+
         let setup = NSMenuItem(title: "Setup & Permissions…", action: #selector(openPermissions), keyEquivalent: "")
         setup.target = self
         menu.addItem(setup)
@@ -438,7 +465,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     /// initializer only stores a few references, and the `NSWindow` is still created on the
     /// first `show()`. So the laziness that matters is intact.
     private var isShowingAWindow: Bool {
-        let windows: [AppWindowPresenter] = [remapWindow, permissionsWindow, aboutWindow, settingsWindow, updatedWindow]
+        // The device test in particular: an install ends in a relaunch, and that must never
+        // happen while a step has a test value on someone's mouse.
+        let windows: [AppWindowPresenter] = [remapWindow, permissionsWindow, aboutWindow, settingsWindow,
+                                             updatedWindow, deviceTestWindow]
         return windows.contains { $0.isVisible }
     }
 
@@ -447,6 +477,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     /// hasn't changed (so the deduplicated sink stays quiet) and the popover was never open.
     private func autoInstallSettingChanged() { autoInstallIfEnabled() }
     @objc private func openPermissions() { present(permissionsWindow) }
+    @objc private func openDeviceTest() { present(deviceTestWindow) }
     @objc private func quit() { NSApplication.shared.terminate(nil) }
 
     // MARK: - NSPopoverDelegate
