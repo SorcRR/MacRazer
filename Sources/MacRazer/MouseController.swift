@@ -289,6 +289,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// Called when the popover shows/hides. While it's open we re-read DPI/polling every
     /// couple of seconds so on-mouse changes (e.g. the DPI-cycle button) reflect live.
     func setPopoverVisible(_ visible: Bool) {
+        popoverVisible = visible
         settingsTimer?.invalidate()
         settingsTimer = nil
         guard visible, !deviceTestActive else { return }
@@ -589,7 +590,12 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         deviceTestActive = false
         refreshAll()
         scheduleNextPoll(after: BatteryPollStateMachine.Cadence.settling)
+        // A popover opened during the test didn't start its live reads; start them now.
+        if popoverVisible { setPopoverVisible(true) }
     }
+
+    /// Main thread. Whether the popover is showing, so a test ending can resume its reads.
+    private var popoverVisible = false
 
     /// Runs one test step on the device queue with the open device, ahead of background reads
     /// like any user command. Throws only when there is no device to run it on: steps record

@@ -68,6 +68,51 @@ final class DeviceTestTests: XCTestCase {
         XCTAssertFalse(record.exchanges.isEmpty, "the evidence travels with the step")
     }
 
+    func testIdentifyFallsBackToADPIReadWhenNoIdAnswersTheFirmwareRead() {
+        let mouse = FakeMouse()
+        mouse.acceptedIds = [0x00: [0x3F], 0x04: [0x3F]]
+        mouse.refuse = { $0.commandClass == 0x00 }
+        let (record, _) = DeviceTestSteps.identify(mouse, registry: nil)
+        XCTAssertEqual(record.outcome, .passed, "the DPI read got a real answer")
+        XCTAssertEqual(record.data?.standardId, 0x3F)
+        XCTAssertEqual(record.data?.dpiAttempts?.map(\.answered), [false, true, false, false, false])
+        XCTAssertNil(record.data?.firmware)
+    }
+
+    func testIdentifySkipsTheDPIReadWhenFirmwareAnswered() {
+        let mouse = FakeMouse()
+        let (record, _) = DeviceTestSteps.identify(mouse, registry: nil)
+        XCTAssertNil(record.data?.dpiAttempts)
+        XCTAssertFalse(record.exchanges.contains { $0.commandClass == 0x04 })
+    }
+
+    func testIdentifyFailsWhenOnlyRefusalsCameBack() {
+        // The id is known, but nothing was read with it.
+        let mouse = FakeMouse()
+        mouse.acceptedIds = [0x00: [0x3F], 0x04: [0x3F]]
+        mouse.refuse = { $0.commandClass != 0x0F }
+        let (record, _) = DeviceTestSteps.identify(mouse, registry: nil)
+        XCTAssertEqual(record.outcome, .failed)
+        XCTAssertEqual(record.data?.standardId, 0x3F)
+    }
+
+    func testIdentifyFailsAKnownModelWhoseLightingIdNoLongerAnswers() {
+        let mouse = FakeMouse()
+        mouse.acceptedIds = [0x0F: [0x3F]]
+        let (record, _) = DeviceTestSteps.identify(mouse, registry: RazerDevices.info(pid: 0x00DB))
+        XCTAssertEqual(record.outcome, .failed)
+        XCTAssertEqual(record.data?.lightingId, 0x3F)
+    }
+
+    func testIdentifyIgnoresLightingOnAKnownModelWithoutAny() {
+        // The Atheris has no lighting: nothing answering on class 0x0F is the right answer.
+        let mouse = FakeMouse()
+        mouse.acceptedIds = [0x0F: []]
+        let (record, _) = DeviceTestSteps.identify(mouse, registry: RazerDevices.info(pid: 0x0062))
+        XCTAssertEqual(record.outcome, .passed)
+        XCTAssertNil(record.data?.lightingId)
+    }
+
     // MARK: Battery
 
     func testBatteryOutcomes() {
@@ -142,6 +187,17 @@ final class DeviceTestTests: XCTestCase {
         }
         let record = DeviceTestSteps.dpi(mouse, maxProbe: true)
         XCTAssertEqual(record.data?.maxProbe, 30000)
+        XCTAssertEqual(record.outcome, .passed)
+        XCTAssertEqual(try dpiNow(mouse), 3200)
+    }
+
+    func testAMaxProbeThatGetsNoAnswerRecordsNothing() throws {
+        // 0 would read as the mouse's real ceiling.
+        let mouse = FakeMouse()
+        mouse.holds(RazerCommands.setDPI(x: 3200, y: 3200))
+        mouse.refuse = { $0.commandClass == 0x04 && $0.commandId == 0x05 && $0.arguments[1] == UInt8(45000 >> 8) }
+        let record = DeviceTestSteps.dpi(mouse, maxProbe: true)
+        XCTAssertNil(record.data?.maxProbe)
         XCTAssertEqual(record.outcome, .passed)
         XCTAssertEqual(try dpiNow(mouse), 3200)
     }

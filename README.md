@@ -50,8 +50,9 @@ the mouse connects, disconnects, or sleeps.
 
 ## Supported mice
 
-"Verified" below means someone ran the CLI probes against the mouse and posted the output,
-not that the protocol tables say it should work. Where nobody has, the row says so.
+"Verified" below means someone ran the CLI probes or the in-app test against the mouse and
+posted the output, not that the protocol tables say it should work. Where nobody has, the row
+says so.
 
 | Mouse | Verified on hardware | By |
 |---|---|---|
@@ -69,6 +70,12 @@ not that the protocol tables say it should work. Where nobody has, the row says 
 An unverified mouse is not a broken one. Detection and naming work for any Razer mouse, and
 the controls are attempted with values taken from OpenRazer's tables — they usually work. The
 column is about who has actually seen it happen.
+
+**Have a mouse that isn't verified?** The quickest way to help is in the app. Right-click the
+menu bar icon and choose **Help Support This Mouse…**. It runs the same probes as the
+commands below, puts every setting back, and builds the report for you to copy or open as a
+GitHub issue. On a verified mouse the item reads **Test This Mouse…**, and a report confirms
+it still works on your firmware.
 
 Adding a model is a small change to a registry plus on-hardware verification. See
 [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -172,6 +179,8 @@ swift run MacRazer dpi [x] [y]          # read or set DPI
 swift run MacRazer poll [125|500|1000]  # read or set polling rate
 swift run MacRazer rgb static ff0000    # static colour (or: spectrum | wave | off)
 swift run MacRazer brightness [0-100]   # read or set LED brightness
+swift run MacRazer discover             # which transaction ids the mouse answers to
+swift run MacRazer devicetest           # the in-app device test, printed as JSON
 ```
 
 ## How it works

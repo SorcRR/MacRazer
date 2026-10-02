@@ -14,14 +14,18 @@ protocol TransactionChannel: DeviceProbeChannel {
 extension HIDDevice: TransactionChannel {}
 
 /// Stamps chosen transaction ids instead of the registry's: `matrix` for lighting commands
-/// (class 0x0F) and `standard` for the rest, the same split `RazerDeviceInfo` makes.
+/// (class 0x0F) and `standard` for the rest, the same split `RazerDeviceInfo` makes, and
+/// a known model's per-command `overrides` (keyed class << 8 | id) ahead of both, the way
+/// the app's own traffic does.
 struct FixedTransactionChannel: DeviceProbeChannel {
     let base: TransactionChannel
     let standard: UInt8
     let matrix: UInt8
+    var overrides: [UInt16: UInt8] = [:]
 
     func transactionId(for report: RazerReport) -> UInt8 {
-        report.commandClass == 0x0F ? matrix : standard
+        if let id = overrides[UInt16(report.commandClass) << 8 | UInt16(report.commandId)] { return id }
+        return report.commandClass == 0x0F ? matrix : standard
     }
 
     func send(_ report: RazerReport) throws -> RazerReport {
@@ -114,6 +118,20 @@ extension DeviceProbe {
         /// mouse ignoring a wrong id can leave a stale or zero status behind, which must not
         /// count as an answer.
         var answered: Bool { (try? result.get())?.status == RazerStatus.successful.rawValue }
+        /// The mouse heard the id and said no (status 0x03 or 0x05). A wrong id goes unheard
+        /// and times out; a refusal means the id is right and the command isn't, which some
+        /// models do for a firmware read they simply don't have.
+        var refused: Bool {
+            if case .failure(let error) = result { return DeviceProbe.isRefusal(error) }
+            return false
+        }
+    }
+
+    static func isRefusal(_ error: Error) -> Bool {
+        switch error {
+        case HIDDevice.HIDError.commandFailed, HIDDevice.HIDError.notSupported: return true
+        default: return false
+        }
     }
 
     /// One id tried for lighting: a whole brightness sweep, since a refusal on one LED group
@@ -125,6 +143,10 @@ extension DeviceProbe {
             sweep.filter { (try? $0.result.get())?.response.status == RazerStatus.successful.rawValue }.map(\.name)
         }
         var answered: Bool { !answeredGroups.isEmpty }
+        /// Some group said no, so the id was heard: an unlit mouse refuses every group.
+        var refused: Bool {
+            sweep.contains { if case .failure(let error) = $0.result { return DeviceProbe.isRefusal(error) }; return false }
+        }
     }
 
     /// The candidates to try, `preferred` (the registry's id, when the model is known) first
@@ -159,8 +181,13 @@ extension DeviceProbe {
         }
     }
 
-    /// The id to use from here on: the registry's if the mouse answered to it, else the first
-    /// candidate that answered. Candidates put the registry's first, so that is one rule.
-    static func chosenId(_ attempts: [TransactionAttempt]) -> UInt8? { attempts.first(where: \.answered)?.id }
-    static func chosenId(_ attempts: [MatrixAttempt]) -> UInt8? { attempts.first(where: \.answered)?.id }
+    /// The id to use from here on: the first candidate that answered, else the first one the
+    /// mouse refused (heard, so right), else none. Candidates put the registry's first, so a
+    /// known model keeps its own id whenever it answers to it.
+    static func chosenId(_ attempts: [TransactionAttempt]) -> UInt8? {
+        (attempts.first(where: \.answered) ?? attempts.first(where: \.refused))?.id
+    }
+    static func chosenId(_ attempts: [MatrixAttempt]) -> UInt8? {
+        (attempts.first(where: \.answered) ?? attempts.first(where: \.refused))?.id
+    }
 }

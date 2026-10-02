@@ -64,6 +64,30 @@ final class DeviceProbeSessionTests: XCTestCase {
         XCTAssertEqual(attempts.count, DeviceProbe.knownTransactionIds.count)
     }
 
+    func testARefusalMeansTheIdWasHeard() {
+        // A model without the firmware command says no under its right id, and nothing at all
+        // under the wrong ones. "Said no" still picks the id.
+        let mouse = FakeMouse()
+        mouse.acceptedIds = [0x00: [0x3F]]
+        mouse.refuse = { $0.commandClass == 0x00 }
+        let attempts = DeviceProbe.discoverTransactionIds(mouse, read: firmwareRead, preferred: nil)
+        XCTAssertEqual(attempts.map(\.refused), [false, true, false, false, false])
+        XCTAssertFalse(attempts.contains(where: \.answered))
+        XCTAssertEqual(DeviceProbe.chosenId(attempts), 0x3F)
+    }
+
+    func testAnAnswerBeatsAnEarlierRefusal() {
+        var ok = firmwareRead
+        ok.status = RazerStatus.successful.rawValue
+        let attempts = [
+            DeviceProbe.TransactionAttempt(id: 0x1F, result: .failure(HIDDevice.HIDError.notSupported)),
+            DeviceProbe.TransactionAttempt(id: 0x3F, result: .failure(HIDDevice.HIDError.timeout)),
+            DeviceProbe.TransactionAttempt(id: 0xFF, result: .success(ok)),
+        ]
+        XCTAssertEqual(attempts.map(\.refused), [true, false, false], "a timeout is not a refusal")
+        XCTAssertEqual(DeviceProbe.chosenId(attempts), 0xFF)
+    }
+
     func testLightingDiscoveryCountsAnyGroupThatAnswers() {
         // Lighting on its own id, answering only on the scroll wheel: a LOGO refusal under
         // the right id must not rule that id out.
@@ -85,6 +109,18 @@ final class DeviceProbeSessionTests: XCTestCase {
         _ = try channel.send(RazerCommands.getBrightness(led: Razer.logoLed))
         _ = try DeviceProbe.readDPI(channel)
         XCTAssertEqual(mouse.transactionIds, [0x3F, 0xFF, 0x3F])
+    }
+
+    func testTheFixedChannelStampsAKnownModelsOverridesAheadOfBoth() throws {
+        // The Basilisk V3's DPI commands use their own id; the app's traffic honours that, so
+        // the test must too, or a known model fails on a step it handles fine.
+        let mouse = FakeMouse()
+        let channel = FixedTransactionChannel(base: mouse, standard: 0x1F, matrix: 0x3F,
+                                              overrides: [0x0485: 0xFF, 0x0F84: 0x08])
+        _ = try DeviceProbe.readDPI(channel)
+        _ = try DeviceProbe.battery(channel)
+        _ = try channel.send(RazerCommands.getBrightness(led: Razer.logoLed))
+        XCTAssertEqual(mouse.transactionIds, [0xFF, 0x1F, 0x08])
     }
 
     func testRecordingKeepsWhatWasAskedAndWhatCameBack() throws {

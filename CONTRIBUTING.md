@@ -72,11 +72,18 @@ real hardware so far; README's table says which, and what was run on each.
 
 ### 1. Run the probes and paste the output
 
-Not a summary of the output. The raw text is what lets a reviewer see the status bytes and
-the read-backs, and it is what earns a row in the README table.
+The easiest way is the app's own test. Right-click the menu bar icon, choose **Help Support
+This Mouse…**, and open a GitHub issue from its last screen. It runs everything below, plus
+transaction id discovery, and puts every setting back. From source,
+`swift run MacRazer devicetest` prints the same report as JSON.
+
+Running the probes by hand works too. Paste the output, not a summary of it. The raw text is
+what lets a reviewer see the status bytes and the read-backs, and it is what earns a row in
+the README table.
 
 ```sh
 swift run MacRazer info              # confirms detection and the PID it enumerates as
+swift run MacRazer discover          # which transaction ids it answers to
 swift run MacRazer battery
 swift run MacRazer dpi               # then: dpi 3200   (check the read-back matches)
 swift run MacRazer poll              # then: poll 1000  (check the read-back matches)
@@ -101,7 +108,9 @@ most common thing that needs fixing in review:
 
 - **`transactionId` / `matrixTransactionId`** differ per model. Find your PID in the driver's
   switch statements. Class `0x0F` uses `matrixTransactionId`, everything else uses
-  `transactionId`.
+  `transactionId`. `discover` (or the report's Identify step) shows which ids your mouse
+  actually answers to. Some receivers answer to several, so prefer OpenRazer's value when
+  it is one of them.
 - **`transactionOverrides`** is only for commands whose id differs from your model's own
   class default. If the override sets the value the default already produces, leave it out.
   It defaults to empty, and empty is usually right.

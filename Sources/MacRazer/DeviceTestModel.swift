@@ -37,11 +37,36 @@ final class DeviceTestModel: ObservableObject {
         case bluetoothOnly(String)
     }
 
-    /// Set before a relaunch for Input Monitoring, so the test window reopens afterwards.
-    static let resumeKey = "deviceTest.resumeAfterRelaunch"
+    /// When a relaunch for Input Monitoring was asked for, so the test window reopens after
+    /// it. A date rather than a flag: a relaunch that fails doesn't terminate, and a flag left
+    /// behind would open the test on some unrelated launch days later.
+    nonisolated static let resumeKey = "deviceTest.resumeAfterRelaunch"
+    nonisolated static let resumeWindow: TimeInterval = 120
+
+    /// Whether this launch is the relaunch the test asked for. Clears the request either way.
+    nonisolated static func takeResumeRequest(_ defaults: UserDefaults = .standard, now: Date = Date()) -> Bool {
+        let asked = defaults.object(forKey: resumeKey) as? Date
+        defaults.removeObject(forKey: resumeKey)
+        guard let asked else { return false }
+        return now.timeIntervalSince(asked) >= 0 && now.timeIntervalSince(asked) < resumeWindow
+    }
 
     @Published private(set) var stage: Stage = .intro
-    @Published private(set) var running = false
+    @Published private(set) var running = false {
+        didSet {
+            guard !running else { return }
+            let waiting = idleWaiters
+            idleWaiters = []
+            waiting.forEach { $0() }
+        }
+    }
+    private var idleWaiters: [() -> Void] = []
+
+    /// Runs `body` once no step is running: now, or when the current one finishes. Quit waits
+    /// on this, because a step may have the mouse dark, red or at a test DPI until it ends.
+    func whenIdle(_ body: @escaping () -> Void) {
+        if running { idleWaiters.append(body) } else { body() }
+    }
     @Published private(set) var report: DeviceReport?
     @Published private(set) var blocker: Blocker?
     @Published private(set) var needsRelaunch = false
@@ -59,13 +84,15 @@ final class DeviceTestModel: ObservableObject {
     @Published var credit = ""
     @Published var replyEmail = ""
     @Published private(set) var copied = false
-    @Published private(set) var issueNeedsPaste = false
+    @Published private(set) var issueOpened = false
 
     let controller: MouseController
     private let permissions: PermissionsModel
     private var capture: ButtonCapture?
     private var standardId: UInt8 = 0x1F
     private var matrixId: UInt8 = 0x1F
+    /// A known model's per-command ids, used as the app's own traffic would.
+    private var overrides: [UInt16: UInt8] = [:]
     private var lightSweep: [DeviceProbe.LEDAnswer]?
     private var sessionOpen = false
 
@@ -90,10 +117,22 @@ final class DeviceTestModel: ObservableObject {
 
     // MARK: - Starting
 
+    /// A Razer device with a mouse interface is plugged in by cable or dongle. Listing devices
+    /// needs no permission, so this works before Input Monitoring. A mouse interface, not just
+    /// the vendor id: with only a Razer keyboard attached, the test would otherwise run on it.
+    static var razerMousePresent: Bool {
+        !HIDDevice.devices(matching: [
+            kIOHIDVendorIDKey as String: Razer.vendorId,
+            kIOHIDDeviceUsagePageKey as String: kHIDPage_GenericDesktop,
+            kIOHIDDeviceUsageKey as String: kHIDUsage_GD_Mouse,
+        ]).isEmpty
+    }
+
     func start() {
+        // A window closed mid-step and reopened: that step is still finishing on the device.
+        guard !running else { return }
         blocker = nil
-        // Listing devices needs no permission, so this works before Input Monitoring.
-        guard !HIDDevice.matchingDevices(vendorId: Razer.vendorId).isEmpty else {
+        guard Self.razerMousePresent else {
             blocker = HIDDevice.bluetoothRazerMouseName().map(Blocker.bluetoothOnly) ?? .noMouse
             return
         }
@@ -119,13 +158,15 @@ final class DeviceTestModel: ObservableObject {
 
     /// macOS applies a fresh Input Monitoring grant to device access only after a relaunch.
     func relaunchAndResume() {
-        UserDefaults.standard.set(true, forKey: Self.resumeKey)
+        UserDefaults.standard.set(Date(), forKey: Self.resumeKey)
         permissions.relaunch()
     }
 
     /// Without Input Monitoring only what macOS lists for anyone can be reported: the product
     /// ID, name and interfaces. Still the first thing needed to add a mouse.
     func continueWithoutAccess() {
+        // Nothing more will touch the mouse, so the app's own reads can resume now.
+        endSession()
         let (interfaces, control) = HIDDevice.interfaceSummaries(vendorId: Razer.vendorId)
         let product = control.map { interfaces[$0] } ?? interfaces.first
         let pid = product?.productID ?? 0
@@ -172,6 +213,7 @@ final class DeviceTestModel: ObservableObject {
             report?.registry = info.map(DeviceReport.Registry.init)
             standardId = result.record.data?.standardId ?? info?.transactionId ?? 0x1F
             matrixId = result.record.data?.lightingId ?? standardId
+            overrides = info?.transactionOverrides ?? [:]
             lightSweep = result.sweep
             // Known models say how they connect; only an unknown one needs asking.
             switch info?.connection {
@@ -207,9 +249,9 @@ final class DeviceTestModel: ObservableObject {
     where T: Sendable {
         running = true
         defer { running = false }
-        let standard = standardId, matrix = matrixId
+        let standard = standardId, matrix = matrixId, overrides = overrides
         let record = try? await controller.runDeviceTestStep { device in
-            DeviceTestSteps.recorded(device, standard: standard, matrix: matrix, step)
+            DeviceTestSteps.recorded(device, standard: standard, matrix: matrix, overrides: overrides, step)
         }
         report?[keyPath: keyPath] = record ?? .init(outcome: .failed, error: "The mouse wasn't reachable.")
     }
@@ -275,40 +317,25 @@ final class DeviceTestModel: ObservableObject {
     // MARK: - Moving between screens
 
     func next() {
-        guard !running else { return }
-        switch stage {
-        case .identify:
-            stage = .battery
-            if report?.battery.data == nil { Task { await runBattery() } }
-        case .battery: stage = .dpi
-        case .dpi: stage = .polling
-        case .polling: stage = .lighting
-        case .lighting:
-            stage = .buttons
-            startListening()
-        case .buttons:
-            stopListening()
-            stage = .review
-        case .intro, .permission, .review: break
-        }
+        guard !running, let target = DeviceTestFlow.next(from: stage) else { return }
+        move(to: target)
     }
 
     func back() {
-        guard !running else { return }
-        switch stage {
-        case .battery: stage = .identify
-        case .dpi: stage = .battery
-        case .polling: stage = .dpi
-        case .lighting: stage = .polling
-        case .buttons:
-            stopListening()
-            stage = .lighting
-        case .review:
-            // Without Input Monitoring there were no steps to go back to.
-            if report?.identify.outcome == .skipped, !sessionOpen { return }
-            stage = .buttons
-            startListening()
-        case .intro, .permission, .identify: break
+        guard !running, let target = DeviceTestFlow.back(from: stage, identifyRan: report?.identify.data != nil)
+        else { return }
+        move(to: target)
+    }
+
+    /// The side effects of arriving at or leaving a screen: the button step listens only while
+    /// it is showing, and Battery reads itself the first time it appears.
+    private func move(to target: Stage) {
+        if stage == .buttons { stopListening() }
+        stage = target
+        switch target {
+        case .battery where report?.battery.data == nil: Task { await runBattery() }
+        case .buttons: startListening()
+        default: break
         }
     }
 
@@ -323,7 +350,8 @@ final class DeviceTestModel: ObservableObject {
         report.replyEmail = emailProblem == nil
             ? DeviceReportOutput.cleaned(replyEmail, max: DeviceReportOutput.maxEmail, singleLine: true) : nil
         report.verdict = report.currentVerdict()
-        return report
+        // Every way out carries the same report, so the one sized for Send.
+        return DeviceReportOutput.fitted(report)
     }
 
     /// Copies the report without the reply email: a clipboard tends to end up pasted somewhere
@@ -337,13 +365,10 @@ final class DeviceTestModel: ObservableObject {
 
     func openGitHubIssue() {
         guard let report = finalReport() else { return }
-        let issue = DeviceReportOutput.githubIssue(report)
-        if issue.needsClipboard {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(DeviceReportOutput.json(report, forPublic: true), forType: .string)
-        }
-        issueNeedsPaste = issue.needsClipboard
-        NSWorkspace.shared.open(issue.url)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(DeviceReportOutput.issueClipboard(report), forType: .string)
+        issueOpened = true
+        NSWorkspace.shared.open(DeviceReportOutput.githubIssue(report))
     }
 
     // MARK: - Ending
@@ -376,7 +401,7 @@ final class DeviceTestModel: ObservableObject {
         credit = ""
         replyEmail = ""
         copied = false
-        issueNeedsPaste = false
+        issueOpened = false
     }
 }
 
@@ -423,5 +448,35 @@ extension DeviceReport {
     static var currentMacOSVersion: String {
         let v = ProcessInfo.processInfo.operatingSystemVersion
         return "\(v.majorVersion).\(v.minorVersion).\(v.patchVersion)"
+    }
+}
+
+/// Which screen follows which. Pure, so the order is tested apart from the window: the model
+/// only adds what happens on arriving (Battery reads itself, the button step listens).
+enum DeviceTestFlow {
+    static func next(from stage: DeviceTestModel.Stage) -> DeviceTestModel.Stage? {
+        switch stage {
+        case .identify: return .battery
+        case .battery: return .dpi
+        case .dpi: return .polling
+        case .polling: return .lighting
+        case .lighting: return .buttons
+        case .buttons: return .review
+        case .intro, .permission, .review: return nil
+        }
+    }
+
+    /// `identifyRan` is false when the test went straight to Review without Input Monitoring:
+    /// there are no steps behind it to go back to.
+    static func back(from stage: DeviceTestModel.Stage, identifyRan: Bool) -> DeviceTestModel.Stage? {
+        switch stage {
+        case .battery: return .identify
+        case .dpi: return .battery
+        case .polling: return .dpi
+        case .lighting: return .polling
+        case .buttons: return .lighting
+        case .review: return identifyRan ? .buttons : nil
+        case .intro, .permission, .identify: return nil
+        }
     }
 }

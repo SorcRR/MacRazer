@@ -252,7 +252,7 @@ struct DeviceTestView: View {
         let report = model.finalReport()
         return VStack(alignment: .leading, spacing: 10) {
             title("Review")
-            note("Copy the report, or open a GitHub issue with it filled in. Nothing else leaves your Mac.")
+            note("Copy the report, or open a GitHub issue and paste it in. Nothing leaves your Mac until you do.")
             if let report, let verdict = report.verdict {
                 card {
                     VStack(spacing: 4) {
@@ -296,7 +296,7 @@ struct DeviceTestView: View {
                     .font(.system(size: 10)).foregroundStyle(.secondary)
             }
             if model.copied { note("Copied.") }
-            if model.issueNeedsPaste { note("The report was too long for the link, so it's on your clipboard. Paste it into the issue.") }
+            if model.issueOpened { note("The full report is on your clipboard. Paste it into the issue before you submit it.") }
         }
     }
 

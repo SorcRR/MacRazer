@@ -514,29 +514,28 @@ case "discover":
     // the registry doesn't know, since a wrong id makes every other probe fail.
     guard let dev = openDevice() else { exit(1) }
     defer { dev.close() }
+    // The device test's own Identify step, so this can't choose differently from it.
     let registry = RazerDevices.info(pid: dev.productID)
+    let (identify, _) = DeviceTestSteps.identify(dev, registry: registry)
+    guard let found = identify.data else { exit(2) }
     func hex(_ id: UInt8?) -> String { id.map { String(format: "0x%02x", $0) } ?? "none" }
-    print("Standard commands (firmware read). Registry says \(registry.map { hex($0.transactionId) } ?? "nothing"):")
-    let standard = DeviceProbe.discoverTransactionIds(dev, read: RazerCommands.getFirmwareVersion(),
-                                                      preferred: registry?.transactionId)
-    for attempt in standard {
-        switch attempt.result {
-        case .success(let r):
-            print("  \(hex(attempt.id)): status=0x\(String(r.status, radix: 16)) args[0..3]="
-                  + r.arguments[0..<4].map { String(format: "%02x", $0) }.joined(separator: " "))
-        case .failure(let e):
-            print("  \(hex(attempt.id)): \(e)")
+    func show(_ results: [DeviceReport.TransactionResult]) {
+        for r in results {
+            let groups = r.groups.map { $0.isEmpty ? "" : " on " + $0.joined(separator: ", ") } ?? ""
+            print("  \(hex(r.id)): " + (r.answered ? "answered" + groups
+                                        : r.refused ? "heard, but refused" : r.error ?? "no group answered"))
         }
     }
-    let chosen = DeviceProbe.chosenId(standard)
-    print("Lighting (brightness sweep). Registry says \(registry.map { hex($0.matrixTransactionId) } ?? "nothing"):")
-    let matrix = DeviceProbe.discoverMatrixTransactionIds(dev, standard: chosen ?? 0x1F,
-                                                          preferred: registry?.matrixTransactionId)
-    for attempt in matrix {
-        print("  \(hex(attempt.id)): " + (attempt.answered
-            ? "answered on \(attempt.answeredGroups.joined(separator: ", "))" : "no group answered"))
+    print("Standard commands (firmware read). Registry says \(registry.map { hex($0.transactionId) } ?? "nothing"):")
+    show(found.standardAttempts)
+    if let dpi = found.dpiAttempts {
+        print("No id answered the firmware read, so again with a DPI read:")
+        show(dpi)
     }
-    print("Would use: \(hex(chosen)) for standard commands, \(hex(DeviceProbe.chosenId(matrix))) for lighting")
+    print("Lighting (brightness sweep). Registry says \(registry.map { hex($0.matrixTransactionId) } ?? "nothing"):")
+    show(found.lightingAttempts)
+    print("Firmware: \(found.firmware ?? "unknown")")
+    print("Would use: \(hex(found.standardId)) for standard commands, \(hex(found.lightingId)) for lighting")
 
 case "devicetest":
     // The in-app device test without its window, for contributors running from source. Every
@@ -549,13 +548,14 @@ case "devicetest":
     let standardId = identify.data?.standardId ?? info?.transactionId ?? 0x1F
     let matrixId = identify.data?.lightingId ?? standardId
     func step<T>(_ body: (DeviceProbeChannel) -> DeviceReport.StepRecord<T>) -> DeviceReport.StepRecord<T> {
-        DeviceTestSteps.recorded(dev, standard: standardId, matrix: matrixId, body)
+        DeviceTestSteps.recorded(dev, standard: standardId, matrix: matrixId,
+                                 overrides: info?.transactionOverrides ?? [:], body)
     }
     FileHandle.standardError.write(Data("Running. The mouse's lights will go dark for two seconds.\n".utf8))
     let (interfaces, control) = HIDDevice.interfaceSummaries(vendorId: Razer.vendorId)
     var report = DeviceReport(
         appVersion: AppInfo.displayVersion,
-        macOSVersion: ProcessInfo.processInfo.operatingSystemVersionString,
+        macOSVersion: DeviceReport.currentMacOSVersion,
         device: .init(vendorID: Razer.vendorId, productID: dev.productID, name: dev.productName,
                       connection: nil, interfaces: interfaces, controlInterface: control),
         registry: info.map(DeviceReport.Registry.init),

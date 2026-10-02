@@ -22,8 +22,8 @@ final class DeviceReportOutputTests: XCTestCase {
         return r
     }
 
-    private func body(_ issue: DeviceReportOutput.Issue) -> String {
-        URLComponents(url: issue.url, resolvingAgainstBaseURL: false)?
+    private func body(_ url: URL) -> String {
+        URLComponents(url: url, resolvingAgainstBaseURL: false)?
             .queryItems?.first { $0.name == "body" }?.value ?? ""
     }
 
@@ -32,33 +32,73 @@ final class DeviceReportOutputTests: XCTestCase {
         let r = report(email: "person@example.com")
         XCTAssertFalse(DeviceReportOutput.json(r, forPublic: true).contains("person@example.com"))
         XCTAssertFalse(body(DeviceReportOutput.githubIssue(r)).contains("person@example.com"))
+        XCTAssertFalse(DeviceReportOutput.issueClipboard(r).contains("person@example.com"))
         XCTAssertTrue(DeviceReportOutput.json(r, forPublic: false).contains("person@example.com"),
                       "it is kept for the maintainer-only path")
     }
 
-    func testTheIssueCarriesASummaryAndTheFullReport() {
-        let issue = DeviceReportOutput.githubIssue(report())
-        XCTAssertFalse(issue.needsClipboard)
-        let text = body(issue)
+    func testTheIssueLinkCarriesTheSummaryAndTheClipboardTheReport() {
+        let r = report(comment: "Side buttons feel great")
+        let url = DeviceReportOutput.githubIssue(r)
+        let text = body(url)
         XCTAssertTrue(text.contains("**Razer Naga V3 Pro**, product ID 0x00C4, firmware v1.3, over the dongle"))
         XCTAssertTrue(text.contains("Failed: DPI"))
-        XCTAssertTrue(text.contains("```json"))
-        XCTAssertTrue(issue.url.absoluteString.hasPrefix("https://github.com/SorcRR/MacRazer/issues/new?"))
-        let title = URLComponents(url: issue.url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "title" }?.value
+        XCTAssertTrue(text.contains("> Side buttons feel great"))
+        XCTAssertTrue(text.contains("on your clipboard"))
+        XCTAssertFalse(text.contains("```json"), "the report itself never goes in the link")
+        XCTAssertTrue(url.absoluteString.hasPrefix("https://github.com/SorcRR/MacRazer/issues/new?"))
+        let title = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "title" }?.value
         XCTAssertEqual(title, "New mouse: 2 of 3 passed: Razer Naga V3 Pro (0x00C4)")
+
+        let clip = DeviceReportOutput.issueClipboard(r)
+        XCTAssertTrue(clip.contains("```json\n{"))
+        XCTAssertTrue(clip.contains("\"productID\" : 196"))
     }
 
-    func testAReportTooLongForALinkGoesOnTheClipboard() {
-        // Every exchange of a long run, plus a full comment: more than a link can carry.
-        var r = report(comment: String(repeating: "word ", count: 400))
-        r.dpi.exchanges = Array(repeating: .init(commandClass: 0x04, commandId: 0x85, transactionId: 0x3F, status: 0x02,
-                                                 response: [1, 2, 3, 4, 5, 6, 7, 8], error: nil, milliseconds: 40),
-                                count: 100)
-        let issue = DeviceReportOutput.githubIssue(r)
-        XCTAssertTrue(issue.needsClipboard)
-        XCTAssertLessThanOrEqual(issue.url.absoluteString.count, DeviceReportOutput.maxIssueURLLength)
-        XCTAssertTrue(body(issue).contains("on your clipboard"))
-        XCTAssertFalse(body(issue).contains("```json"))
+    func testALongCommentStaysInTheReportButLeavesTheLink() {
+        // 2000 characters that each escape to six: well past what a link can carry.
+        let r = report(comment: String(repeating: "é", count: DeviceReportOutput.maxComment))
+        let url = DeviceReportOutput.githubIssue(r)
+        XCTAssertLessThanOrEqual(url.absoluteString.count, DeviceReportOutput.maxIssueURLLength)
+        XCTAssertFalse(body(url).contains("éééé"))
+        XCTAssertTrue(body(url).contains("Failed: DPI"), "the summary still goes")
+        XCTAssertTrue(DeviceReportOutput.issueClipboard(r).contains(String(repeating: "é", count: 50)))
+    }
+
+    func testANormalReportIsSentWhole() {
+        let r = report(comment: "fine")
+        XCTAssertEqual(DeviceReportOutput.fitted(r), r)
+    }
+
+    func testAnOversizedReportShedsEvidenceThenCommentUntilItFits() {
+        // The most each step can record, and a comment of 2000 many-byte characters.
+        let exchange = RecordingChannel.Exchange(commandClass: 0x04, commandId: 0x85, transactionId: 0x3F, status: 0x02,
+                                                 response: [1, 2, 3, 4, 5, 6, 7, 8], error: "x", milliseconds: 40)
+        let many = Array(repeating: exchange, count: RecordingChannel.maxExchanges)
+        var r = report(comment: String(repeating: "👩‍👩‍👧‍👦", count: DeviceReportOutput.maxComment), email: "a@b.co")
+        r.identify.exchanges = many; r.battery.exchanges = many; r.dpi.exchanges = many
+        r.polling.exchanges = many; r.lighting.exchanges = many
+        XCTAssertGreaterThan(DeviceReportOutput.size(r), DeviceReportOutput.maxReportBytes)
+
+        let fitted = DeviceReportOutput.fitted(r)
+        XCTAssertLessThanOrEqual(DeviceReportOutput.size(fitted), DeviceReportOutput.maxReportBytes)
+        XCTAssertEqual(fitted.exchangesDropped, ["lighting", "polling", "dpi", "battery", "identify"])
+        XCTAssertEqual(fitted.identify.data, r.identify.data, "what each step found stays")
+        XCTAssertEqual(fitted.verdict, r.verdict)
+        XCTAssertEqual(fitted.replyEmail, "a@b.co")
+        XCTAssertTrue(r.comment!.hasPrefix(fitted.comment ?? ""), "the comment loses its end, not its start")
+    }
+
+    func testEvidenceGoesOneStepAtATimeAndOnlyAsMuchAsNeeded() {
+        let exchange = RecordingChannel.Exchange(commandClass: 0x04, commandId: 0x85, transactionId: 0x3F, status: 0x02,
+                                                 response: [1, 2, 3, 4, 5, 6, 7, 8], error: nil, milliseconds: 40)
+        var r = report(comment: "short")
+        r.identify.exchanges = Array(repeating: exchange, count: 20)
+        r.lighting.exchanges = Array(repeating: exchange, count: 20)
+        let fitted = DeviceReportOutput.fitted(r, maxBytes: DeviceReportOutput.size(r) - 1)
+        XCTAssertEqual(fitted.exchangesDropped, ["lighting"])
+        XCTAssertEqual(fitted.identify.exchanges.count, 20)
+        XCTAssertEqual(fitted.comment, "short")
     }
 
     func testEmailChecks() {

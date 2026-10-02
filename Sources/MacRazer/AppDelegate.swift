@@ -71,10 +71,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         // longer matches whichever profile was last applied — let MouseController know so it
         // can drop the stale "active" highlight.
         remapper.onManualChange = { [weak controller] in controller?.clearActiveProfileIfManuallyChanged() }
-        if UserDefaults.standard.bool(forKey: DeviceTestModel.resumeKey) {
+        if DeviceTestModel.takeResumeRequest() {
             // Relaunched from the device test to apply Input Monitoring: pick the test back up
             // rather than showing the general setup window it was already past.
-            UserDefaults.standard.removeObject(forKey: DeviceTestModel.resumeKey)
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 self.present(self.deviceTestWindow)
@@ -396,7 +395,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         let test = NSMenuItem(title: verified ? "Test This Mouse…" : "Help Support This Mouse…",
                               action: #selector(openDeviceTest), keyEquivalent: "")
         test.target = self
-        test.isEnabled = controller.connected || !HIDDevice.matchingDevices(vendorId: Razer.vendorId).isEmpty
+        test.isEnabled = controller.connected || DeviceTestModel.razerMousePresent
         menu.addItem(test)
 
         let setup = NSMenuItem(title: "Setup & Permissions…", action: #selector(openPermissions), keyEquivalent: "")
@@ -585,6 +584,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     /// back: whatever the user just moved to wins.
     func applicationDidResignActive(_ notification: Notification) {
         appBeforePopover = nil
+    }
+
+    /// A device test step may have the mouse dark, red, or at a test DPI, and puts it back when
+    /// it finishes, a few seconds at most. Quitting first would leave it that way: the history
+    /// flush below only waits two seconds for the device queue, less than the lighting step.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        let model = deviceTestWindow.model
+        guard model.running else { return .terminateNow }
+        model.whenIdle { NSApp.reply(toApplicationShouldTerminate: true) }
+        return .terminateLater
     }
 
     func applicationWillTerminate(_ notification: Notification) {

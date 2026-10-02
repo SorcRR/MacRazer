@@ -31,6 +31,9 @@ struct DeviceReport: Codable, Equatable {
     var credit: String?
     /// For a reply. Only ever sent to the maintainer; never put in a GitHub issue.
     var replyEmail: String?
+    /// Steps whose per-command evidence was left out to keep the report under the size the
+    /// Worker accepts (`DeviceReportOutput.fitted`). Their outcomes and data are all still here.
+    var exchangesDropped: [String]?
 
     struct Device: Codable, Equatable {
         var vendorID: Int
@@ -89,6 +92,8 @@ struct DeviceReport: Codable, Equatable {
     struct TransactionResult: Codable, Equatable {
         var id: UInt8
         var answered: Bool
+        /// Heard, but said no (status 0x03 or 0x05).
+        var refused: Bool = false
         /// The groups that answered, for lighting attempts.
         var groups: [String]?
         var error: String?
@@ -96,7 +101,11 @@ struct DeviceReport: Codable, Equatable {
 
     struct IdentifyData: Codable, Equatable {
         var firmware: String?
+        /// Every id tried with a firmware read.
         var standardAttempts: [TransactionResult]
+        /// Every id tried again with a DPI read, when none answered the firmware read: some
+        /// models don't have that command, and refusing it says little about the id.
+        var dpiAttempts: [TransactionResult]?
         var lightingAttempts: [TransactionResult]
         var standardId: UInt8?
         var lightingId: UInt8?
@@ -222,9 +231,11 @@ enum DeviceTestSteps {
     /// Runs a step over the ids Identify found, keeping the evidence of every command it sent.
     /// Identify is the exception: it chooses ids itself, and records its own exchanges.
     static func recorded<T>(_ device: TransactionChannel, standard: UInt8, matrix: UInt8,
+                            overrides: [UInt16: UInt8] = [:],
                             _ step: (DeviceProbeChannel) -> DeviceReport.StepRecord<T>) -> DeviceReport.StepRecord<T> {
         let recording = RecordingChannel(base: device)
-        var record = step(FixedTransactionChannel(base: recording, standard: standard, matrix: matrix))
+        var record = step(FixedTransactionChannel(base: recording, standard: standard, matrix: matrix,
+                                                  overrides: overrides))
         record.exchanges = recording.exchanges
         return record
     }
@@ -233,30 +244,43 @@ enum DeviceTestSteps {
     static func identify(_ device: TransactionChannel, registry: RazerDeviceInfo?)
         -> (record: DeviceReport.StepRecord<DeviceReport.IdentifyData>, sweep: [DeviceProbe.LEDAnswer]?) {
         let recording = RecordingChannel(base: device)
-        let standard = DeviceProbe.discoverTransactionIds(recording, read: RazerCommands.getFirmwareVersion(),
+        let firmware = DeviceProbe.discoverTransactionIds(recording, read: RazerCommands.getFirmwareVersion(),
                                                           preferred: registry?.transactionId)
+        let dpi = firmware.contains(where: \.answered) ? nil
+            : DeviceProbe.discoverTransactionIds(recording, read: RazerCommands.getDPI(), preferred: registry?.transactionId)
+        let standard = firmware + (dpi ?? [])
+        // An answer to either read beats a refusal of either, and the firmware read's come first.
         let standardId = DeviceProbe.chosenId(standard)
         let lighting = DeviceProbe.discoverMatrixTransactionIds(recording, standard: standardId ?? 0x1F,
                                                                 preferred: registry?.matrixTransactionId)
         let lightingId = DeviceProbe.chosenId(lighting)
 
-        var data = DeviceReport.IdentifyData(
-            standardAttempts: standard.map {
-                .init(id: $0.id, answered: $0.answered, groups: nil,
+        func results(_ attempts: [DeviceProbe.TransactionAttempt]) -> [DeviceReport.TransactionResult] {
+            attempts.map {
+                .init(id: $0.id, answered: $0.answered, refused: $0.refused, groups: nil,
                       error: { if case .failure(let e) = $0.result { return String(describing: e) }; return nil }($0))
+            }
+        }
+        var data = DeviceReport.IdentifyData(
+            standardAttempts: results(firmware), dpiAttempts: dpi.map(results),
+            lightingAttempts: lighting.map {
+                .init(id: $0.id, answered: $0.answered, refused: $0.refused, groups: $0.answeredGroups, error: nil)
             },
-            lightingAttempts: lighting.map { .init(id: $0.id, answered: $0.answered, groups: $0.answeredGroups, error: nil) },
             standardId: standardId, lightingId: lightingId)
-        if let standardId {
-            data.firmware = try? DeviceProbe.firmware(
-                FixedTransactionChannel(base: recording, standard: standardId, matrix: lightingId ?? standardId)).value
+        // The chosen id's own firmware answer, so the version costs no extra read.
+        if let answer = firmware.first(where: { $0.id == standardId && $0.answered }), case .success(let r) = answer.result {
+            data.firmware = RazerCommands.parseFirmwareVersion(r)
         }
 
-        // Failed when nothing answered at all, or when a known model didn't answer to the id
-        // on record: that is exactly the regression a confirmation exists to catch.
-        var outcome: DeviceReport.Outcome = standardId == nil ? .failed : .passed
-        if let registry, !standard.contains(where: { $0.id == registry.transactionId && $0.answered }) {
-            outcome = .failed
+        // Passed only when some read got a real answer. On a known model, the ids on record
+        // must be ones the mouse answers to: that is the regression a confirmation exists to
+        // catch, and lighting's id counts only where the model has lighting at all.
+        var outcome: DeviceReport.Outcome = standard.contains(where: \.answered) ? .passed : .failed
+        if let registry {
+            if !standard.contains(where: { $0.id == registry.transactionId && $0.answered }) { outcome = .failed }
+            if registry.hasLighting, !lighting.contains(where: { $0.id == registry.matrixTransactionId && $0.answered }) {
+                outcome = .failed
+            }
         }
         let sweep = lighting.first(where: { $0.id == lightingId })?.sweep
         return (.init(outcome: outcome, data: data, exchanges: recording.exchanges), sweep)
@@ -276,7 +300,7 @@ enum DeviceTestSteps {
             record.outcome = level.value == 0 ? .failed : .passed
         } catch {
             record.error = String(describing: error)
-            record.outcome = refusedOutright(error) && expectsBattery != true ? .notSupported : .failed
+            record.outcome = DeviceProbe.isRefusal(error) && expectsBattery != true ? .notSupported : .failed
         }
         record.data = data
         return record
@@ -302,7 +326,8 @@ enum DeviceTestSteps {
             let check = try DeviceProbe.writeDPI(channel, .init(x: test, y: test))
             data.readBack = Int(check.readBack.value.x)
             if maxProbe {
-                data.maxProbe = Int((try? DeviceProbe.writeDPI(channel, .init(x: 45000, y: 45000)))?.readBack.value.x ?? 0)
+                // nil, not 0, when the probe got no answer: 0 would read as a real ceiling.
+                data.maxProbe = (try? DeviceProbe.writeDPI(channel, .init(x: 45000, y: 45000))).map { Int($0.readBack.value.x) }
             }
             data.stages = try? DeviceProbe.readStages(channel).value.stages
             record.outcome = check.confirmed ? .passed : .failed
@@ -340,7 +365,7 @@ enum DeviceTestSteps {
             record.outcome = check.confirmed ? .passed : .failed
         } catch {
             record.error = String(describing: error)
-            record.outcome = refusedOutright(error) ? .notSupported : .failed
+            record.outcome = DeviceProbe.isRefusal(error) ? .notSupported : .failed
         }
         if record.outcome == .passed, !data.restored { record.outcome = .failed }
         record.data = data
@@ -419,10 +444,4 @@ enum DeviceTestSteps {
 
     /// A refusal (0x03) or not-supported (0x05) is the mouse saying no, as opposed to a
     /// timeout or a garbled answer, which say nothing about what it has.
-    private static func refusedOutright(_ error: Error) -> Bool {
-        switch error {
-        case HIDDevice.HIDError.commandFailed, HIDDevice.HIDError.notSupported: return true
-        default: return false
-        }
-    }
 }
