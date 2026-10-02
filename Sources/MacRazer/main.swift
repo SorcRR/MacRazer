@@ -520,6 +520,38 @@ case "discover":
     }
     print("Would use: \(hex(chosen)) for standard commands, \(hex(DeviceProbe.chosenId(matrix))) for lighting")
 
+case "devicetest":
+    // The in-app device test without its window, for contributors running from source. Every
+    // step puts back what it changes. Lighting only dims for a moment: the colour check needs
+    // the app's own lighting setting to return to, which only the app knows.
+    guard let dev = openDevice() else { exit(1) }
+    defer { dev.close() }
+    let info = RazerDevices.info(pid: dev.productID)
+    let (identify, lightSweep) = DeviceTestSteps.identify(dev, registry: info)
+    let standardId = identify.data?.standardId ?? info?.transactionId ?? 0x1F
+    let matrixId = identify.data?.lightingId ?? standardId
+    func step<T>(_ body: (DeviceProbeChannel) -> DeviceReport.StepRecord<T>) -> DeviceReport.StepRecord<T> {
+        DeviceTestSteps.recorded(dev, standard: standardId, matrix: matrixId, body)
+    }
+    FileHandle.standardError.write(Data("Running. The mouse's lights will go dark for two seconds.\n".utf8))
+    let (interfaces, control) = HIDDevice.interfaceSummaries(vendorId: Razer.vendorId)
+    var report = DeviceReport(
+        appVersion: AppInfo.displayVersion,
+        macOSVersion: ProcessInfo.processInfo.operatingSystemVersionString,
+        device: .init(vendorID: Razer.vendorId, productID: dev.productID, name: dev.productName,
+                      connection: nil, interfaces: interfaces, controlInterface: control),
+        registry: info.map(DeviceReport.Registry.init),
+        identify: identify,
+        battery: step { DeviceTestSteps.battery($0, expectsBattery: info?.hasBattery) },
+        dpi: step { DeviceTestSteps.dpi($0, maxProbe: false) },
+        polling: step { DeviceTestSteps.polling($0) },
+        lighting: step { DeviceTestSteps.lighting($0, sweep: lightSweep, restoreEffect: nil, seconds: 2) },
+        buttons: .init())
+    report.verdict = report.currentVerdict()
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+    print(String(decoding: (try? encoder.encode(report)) ?? Data(), as: UTF8.self))
+
 case "rgb":
     guard let dev = openDevice() else { exit(1) }
     defer { dev.close() }
@@ -560,6 +592,6 @@ case "rgb":
 
 default:
     print("Unknown command: \(command)")
-    print("Available: info, discover, battery, dpi [x] [y], poll [hz], stages [d1,d2,…] [active], rgb <static rrggbb|spectrum|wave|off>, brightness [pct], login-item [on|off]")
+    print("Available: info, discover, devicetest, battery, dpi [x] [y], poll [hz], stages [d1,d2,…] [active], rgb <static rrggbb|spectrum|wave|off>, brightness [pct], login-item [on|off]")
     exit(64)
 }
