@@ -347,9 +347,9 @@ case "battery":
     guard let dev = openDevice() else { exit(1) }
     defer { dev.close() }
     do {
-        let resp = try dev.sendWithRetry(RazerCommands.getBatteryLevel())
-        // arguments[1] holds the 0-255 level (arguments[0] is typically the var-store echo).
-        let raw = resp.arguments[1]
+        let battery = try DeviceProbe.battery(dev)
+        let resp = battery.response
+        let raw = battery.value
         let pct = RazerCommands.batteryPercent(fromRaw: raw)
         print("Battery: \(pct)%  (raw byte = \(raw), status = 0x\(String(resp.status, radix: 16)))")
         print("Full response args[0..8]: \(resp.arguments[0..<9].map { String(format: "%02x", $0) }.joined(separator: " "))")
@@ -369,18 +369,18 @@ case "dpi":
     defer { dev.close() }
     do {
         // Read current DPI first.
-        let before = RazerCommands.parseDPI(try dev.sendWithRetry(RazerCommands.getDPI()))
+        let before = try DeviceProbe.readDPI(dev).value
         print("Current DPI: x=\(before.x) y=\(before.y)")
 
         // If a value was given, set it and read back to confirm it persisted.
         if let arg = args.dropFirst().first, let x = UInt16(arg) {
             let y = args.dropFirst(2).first.flatMap { UInt16($0) } ?? x
             print("Setting DPI to x=\(x) y=\(y) …")
-            let resp = try dev.sendWithRetry(RazerCommands.setDPI(x: x, y: y))
-            print("  set status = 0x\(String(resp.status, radix: 16))")
-            let after = RazerCommands.parseDPI(try dev.sendWithRetry(RazerCommands.getDPI()))
+            let check = try DeviceProbe.writeDPI(dev, DeviceProbe.DPI(x: x, y: y))
+            print("  set status = 0x\(String(check.setResponse.status, radix: 16))")
+            let after = check.readBack.value
             print("Read-back DPI: x=\(after.x) y=\(after.y)")
-            if after.x == x && after.y == y {
+            if check.confirmed {
                 print("✓ DPI write confirmed (persisted to onboard memory)")
             } else {
                 print("⚠︎ Read-back doesn't match requested value — investigate.")
@@ -399,8 +399,8 @@ case "stages":
     guard let dev = openDevice() else { exit(1) }
     defer { dev.close() }
     do {
-        let before = try dev.sendWithRetry(RazerCommands.getDPIStages())
-        print("Current stages: \(RazerCommands.parseDPIStages(before)) (active byte = \(RazerCommands.parseActiveDPIStage(before)))")
+        let before = try DeviceProbe.readStages(dev).value
+        print("Current stages: \(before.stages) (active byte = \(before.activeByte))")
         if let arg = args.dropFirst().first {
             let tokens = arg.split(separator: ",")
             let stages = tokens.compactMap { Int($0) }
@@ -413,10 +413,10 @@ case "stages":
             }
             let active = args.dropFirst(2).first.flatMap { Int($0) } ?? 0
             print("Setting stages \(stages) (active \(active)) …")
-            let resp = try dev.sendWithRetry(RazerCommands.setDPIStages(stages, activeStage: active))
-            print("  set status = 0x\(String(resp.status, radix: 16))")
-            let after = try dev.sendWithRetry(RazerCommands.getDPIStages())
-            print("Read-back: \(RazerCommands.parseDPIStages(after)) (active byte = \(RazerCommands.parseActiveDPIStage(after)))")
+            let write = try DeviceProbe.writeStages(dev, stages: stages, activeStage: active)
+            print("  set status = 0x\(String(write.setResponse.status, radix: 16))")
+            let after = write.readBack.value
+            print("Read-back: \(after.stages) (active byte = \(after.activeByte))")
         } else {
             print("(pass values to set, e.g. `stages 400,800,1600 1` — last number is the active stage index)")
         }
@@ -430,7 +430,7 @@ case "poll":
     guard let dev = openDevice() else { exit(1) }
     defer { dev.close() }
     do {
-        let before = RazerCommands.parsePollingRate(try dev.sendWithRetry(RazerCommands.getPollingRate()))
+        let before = try DeviceProbe.readPollingRate(dev).value
         print("Current polling rate: \(before)Hz")
         if let arg = args.dropFirst().first, let hz = Int(arg) {
             guard RazerCommands.supportedPollingRates.contains(hz) else {
@@ -438,11 +438,10 @@ case "poll":
                 exit(64)
             }
             print("Setting polling rate to \(hz)Hz …")
-            let resp = try dev.sendWithRetry(RazerCommands.setPollingRate(hz))
-            print("  set status = 0x\(String(resp.status, radix: 16))")
-            let after = RazerCommands.parsePollingRate(try dev.sendWithRetry(RazerCommands.getPollingRate()))
-            print("Read-back: \(after)Hz")
-            print(after == hz ? "✓ Polling rate write confirmed" : "⚠︎ Read-back doesn't match.")
+            let check = try DeviceProbe.writePollingRate(dev, hz: hz)
+            print("  set status = 0x\(String(check.setResponse.status, radix: 16))")
+            print("Read-back: \(check.readBack.value)Hz")
+            print(check.confirmed ? "✓ Polling rate write confirmed" : "⚠︎ Read-back doesn't match.")
         } else {
             print("(pass a value to set: \(RazerCommands.supportedPollingRates.map { "\($0)" }.joined(separator: "/"))Hz, e.g. `poll 1000`)")
         }
@@ -459,35 +458,30 @@ case "brightness":
         "status=0x\(String(r.status, radix: 16)) args[0..5]=" + r.arguments[0..<6].map { String(format: "%02x", $0) }.joined(separator: " ")
     }
     do {
-        // Probe every LED group, LOGO first. A refusal on any one of them — including
-        // LOGO — is expected on some models (the Basilisk V3 X HyperSpeed lights only its
-        // scroll wheel and answers 0x03 for LOGO), so this must not abort the sweep: the
-        // whole point is to discover which LEDs answer on a model we don't know yet.
-        for (name, led) in [("LOGO", Razer.logoLed), ("SCROLL", Razer.scrollLed),
-                            ("ZERO", Razer.zeroLed), ("BACKLIGHT", Razer.backlightLed)] {
-            do {
-                // `send`, not `sendWithRetry`: a FAILURE (0x03) for a given model and LED is
-                // deterministic — the same answer three times, 150ms apart. Retrying it turns
-                // a four-group sweep on a model where three refuse into nine round trips and
-                // most of a second of pure backoff, in a diagnostic whose whole job is to
-                // report which group answered.
-                let rr = try dev.send(RazerCommands.getBrightness(led: led))
-                print("GET brightness (led \(name)=0x\(String(format: "%02x", led))): \(dump(rr))"
-                      + " → \(RazerCommands.brightnessPercent(fromRaw: rr.arguments[2]))%")
-            } catch {
-                print("GET brightness (led \(name)=0x\(String(format: "%02x", led))): refused — \(error)")
+        // Every LED group, LOGO first. A refusal on any one of them, LOGO included, is
+        // expected on some models (the Basilisk V3 X HyperSpeed lights only its scroll wheel
+        // and answers 0x03 for LOGO), so the sweep reports it and carries on: the whole point
+        // is to discover which LEDs answer on a model we don't know yet.
+        for answer in DeviceProbe.brightnessSweep(dev) {
+            let label = "GET brightness (led \(answer.name)=0x\(String(format: "%02x", answer.led)))"
+            switch answer.result {
+            case .success(let reading):
+                print("\(label): \(dump(reading.response))"
+                      + " → \(RazerCommands.brightnessPercent(fromRaw: reading.value))%")
+            case .failure(let error):
+                print("\(label): refused — \(error)")
             }
         }
         if let arg = args.dropFirst().first, let pct = Int(arg) {
             let led = RazerDevices.brightnessLed(pid: dev.productID)
-            // Deliberately outside the sweep's per-LED catch: a refusal here is a real
-            // failure to report, not a group that simply doesn't answer.
+            // The sweep records a refusal per group and carries on; this write throws on one
+            // instead, because here it is a real failure to report, not a group that simply
+            // doesn't answer.
             let raw = RazerCommands.brightnessRaw(fromPercent: pct)
             print("SET brightness \(pct)% (raw \(raw)) on led 0x\(String(format: "%02x", led)) …")
-            let sr = try dev.sendWithRetry(RazerCommands.setBrightness(raw, led: led))
-            print("  set: \(dump(sr))")
-            let back = try dev.sendWithRetry(RazerCommands.getBrightness(led: led))
-            print("  read-back: \(dump(back)) → \(RazerCommands.brightnessPercent(fromRaw: back.arguments[2]))%")
+            let check = try DeviceProbe.writeBrightness(dev, raw: raw, led: led)
+            print("  set: \(dump(check.setResponse))")
+            print("  read-back: \(dump(check.readBack.response)) → \(RazerCommands.brightnessPercent(fromRaw: check.readBack.value))%")
         }
     } catch {
         // The sweep above handles its own refusals per LED, so only the optional write can
@@ -526,7 +520,7 @@ case "rgb":
             print("Usage: rgb <static rrggbb | spectrum | wave | off>")
             exit(64)
         }
-        let resp = try dev.sendWithRetry(report)
+        let resp = try DeviceProbe.applyLighting(dev, report)
         let ok = resp.status == RazerStatus.successful.rawValue
         print("  status = 0x\(String(resp.status, radix: 16)) \(ok ? "✓" : "⚠︎")")
     } catch {

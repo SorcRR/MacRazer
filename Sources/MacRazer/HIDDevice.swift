@@ -232,9 +232,13 @@ final class HIDDevice {
         throw lastProblem
     }
 
+    /// How many tries everyday traffic gets. `DeviceProbe` uses the same number, so a probe
+    /// that passes says the app's own reads and writes will too.
+    static let defaultAttempts = 3
+
     /// Send with retry + linear backoff — the wireless dongle is documented as finicky and
     /// battery reads in particular time out intermittently. Falls through to the last error.
-    func sendWithRetry(_ report: RazerReport, attempts: Int = 3) throws -> RazerReport {
+    func sendWithRetry(_ report: RazerReport, attempts: Int = HIDDevice.defaultAttempts) throws -> RazerReport {
         var lastError: Error = HIDError.timeout
         for attempt in 0..<attempts {
             do {
