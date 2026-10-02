@@ -13,6 +13,14 @@ expect rough edges until 1.0.
  yet, it asks again the moment a connection appears, instead of waiting for the next
  round. Opening the popover also asks, if a check is due.
 
+- **The CLI probes run on shared code.** `battery`, `dpi`, `stages`, `poll`, `brightness` and
+ `rgb` now go through `DeviceProbe`, which the coming in-app device test will use too, so what
+ a contributor pastes from a terminal and what the app reports can't describe different
+ commands. The output is unchanged: each command was run against a Cobra HyperSpeed before and
+ after, including writing DPI, polling rate and brightness back to their current values, and
+ printed the same lines. `DeviceProbeTests` cover what each probe sends, in what order, and how
+ it reads the answers, using a fake mouse instead of hardware.
+
 ### Added
 - **A window confirms an update worked.** After "Update & Restart", the first launch on the
  new version opens a window saying it updated successfully, with the release notes for
