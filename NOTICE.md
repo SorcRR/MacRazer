@@ -18,6 +18,11 @@ It is GPL because it is derived from OpenRazer (see below).
 - **Razer Cobra HyperSpeed support** is based on OpenRazer PR
  [#2583](https://github.com/openrazer/openrazer/pull/2583) by **dyharlan**, reviewed by
  **z3ntu**, which confirmed the device reuses the Cobra Pro protocol.
+- **Bluetooth control** uses Razer's vendor GATT service as reverse-engineered by
+ **[@ungrav](https://github.com/ungrav)** on the Basilisk V3 X HyperSpeed in
+ [#32](https://github.com/SorcRR/MacRazer/pull/32): the service and characteristic ids, the
+ frame layout and the command keys. This project confirmed the same service on the Cobra
+ HyperSpeed.
 - The app uses its **own original mouse icon/logo**; it does not bundle or display Razer's
  logo or marks.
 - Hardware findings unique to this project (e.g. brightness living on the LOGO LED, the

@@ -14,6 +14,15 @@ expect rough edges until 1.0.
  round. Opening the popover also asks, if a check is due.
 
 ### Added
+- **The Cobra HyperSpeed works over Bluetooth.** Battery, DPI, brightness and lighting
+ colour all work with the mouse in Bluetooth mode, so you no longer need the dongle or a
+ cable. The battery history carries over too, because the mouse reports the same serial on
+ both links. Polling rate, lighting effects other than a static colour, custom DPI values
+ and profiles still need the dongle or a cable, so the popover hides them on Bluetooth. The
+ app asks for Bluetooth access the first time it finds the mouse there. If the dongle stays
+ plugged in while the mouse is on Bluetooth, the app uses Bluetooth. A cable still wins,
+ since it can do more. The Bluetooth protocol was worked out by
+ [@ungrav](https://github.com/ungrav) in #32.
 - **A window confirms an update worked.** After "Update & Restart", the first launch on the
  new version opens a window saying it updated successfully, with the release notes for
  everything you gained. Closing it clears the "Updated to …" card in the popover too, so the

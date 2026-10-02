@@ -20,6 +20,9 @@ enum RazerMouseSilhouette {
 enum RazerConnection {
     case wired
     case wirelessDongle
+    /// Razer's vendor GATT service (`BLEProtocol`). These PIDs come from the Bluetooth
+    /// vendor id 0x068E, not USB's 0x1532.
+    case bluetooth
 }
 
 /// Minimal registry of Razer mice. The connected device reports its own name via the USB
@@ -79,6 +82,10 @@ enum RazerDevices {
         // OpenRazer uses for the whole Cobra Pro family.
         .init(pid: 0x00DB, name: "Razer Cobra HyperSpeed", fullySupported: true, hasBattery: true, hasLighting: true, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobraPro, dischargeCurveModelKey: "cobra-hyperspeed"),
         .init(pid: 0x00DA, name: "Razer Cobra HyperSpeed (Wired)", fullySupported: true, hasBattery: true, hasLighting: true, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobraPro, dischargeCurveModelKey: "cobra-hyperspeed"),
+        // Over Bluetooth (vendor 0x068E). Hardware-verified with this app: battery, serial,
+        // DPI stages and brightness on LOGO_LED, the same LED as over USB. Transaction ids
+        // don't apply: BLE frames carry their own request id.
+        .init(pid: 0x00DC, name: "Razer Cobra HyperSpeed (Bluetooth)", fullySupported: true, hasBattery: true, hasLighting: true, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .bluetooth, silhouette: .cobraPro, dischargeCurveModelKey: "cobra-hyperspeed"),
         // Plain Cobra per razermouse_driver.c: 0xFF for standard/misc (serial :1509,
         // polling :2011/:2193, DPI :2600/:2781) but 0x1f for every extended-matrix
         // command (brightness :4202/:4312, spectrum :4622, static :5085, none :5301).
@@ -115,6 +122,9 @@ enum RazerDevices {
     ]
 
     static func info(pid: Int) -> RazerDeviceInfo? { known.first { $0.pid == pid } }
+    /// Product ids reachable over Bluetooth, which `HIDDevice.bluetoothControlDevice()`
+    /// looks for before anything touches CoreBluetooth.
+    static var bluetoothPIDs: Set<Int> { Set(known.filter { $0.connection == .bluetooth }.map(\.pid)) }
     static func fullySupported(pid: Int) -> Bool { info(pid: pid)?.fullySupported ?? false }
     /// Defaults assume a full-featured mouse for unknown models (so we still attempt controls).
     static func hasBattery(pid: Int) -> Bool { info(pid: pid)?.hasBattery ?? true }

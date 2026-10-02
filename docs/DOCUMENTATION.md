@@ -134,6 +134,32 @@ interfere with the control-interface open. Fires `onAppear` / `onRemove` callbac
 main queue. (Polling, §5, is the fallback for the wireless-sleep case where the dongle stays
 plugged in.)
 
+### Bluetooth LE: `BLEProtocol.swift` + `BluetoothDevice.swift`
+Over Bluetooth the mouse is a plain HID pointer (feature report size 1, no control
+interface). Razer's control protocol lives in a separate **vendor GATT service**
+(`52401523-F97C-7F90-0E7F-6C6F4E36DB1C`), reverse-engineered by @ungrav in #32 and confirmed
+on the Cobra HyperSpeed (Bluetooth PID `0x00DC`, vendor `0x068E`).
+
+- **Framing.** A request is a header `[id, payloadLength, 0, 0, class, command, arg, arg]`
+ written to `…1524`, then the payload in 20-byte writes. The reply arrives as notifications
+ on `…1525`: a header `[id, length, 0, 0, 0, 0, 0, status]` (status `02` ok, `03` failure,
+ `05` not supported) followed by `length` payload bytes. The mouse also sends an
+ unsolicited `01 … 03` frame when notifications are enabled, which the assembler skips.
+- **Commands (verified on the Cobra HyperSpeed):** battery `05 81 00 01` (0-255, same scale
+ as USB), serial `01 83 00 00` (the same serial as over the dongle), DPI stages get/set
+ `0B 84 01 00` / `0B 04 01 00`, brightness get/set `10 85 01 <led>` / `10 05 01 <led>` (LOGO
+ `04` on the Cobra, like USB), static colour `10 04 00 00`.
+- **Stage table.** `[activeID, count]` then per stage `[id, x_lo, x_hi, y_lo, y_hi, 0, 0]`,
+ ids from 1, little-endian. Replies drop the last reserved byte. There is no direct "set
+ DPI", so selecting a DPI rewrites the table with a new active stage, then reads it back.
+- `BLEProtocol` translates `RazerReport` requests and replies, so `MouseController` and the
+ `RazerCommands` parsers are shared with USB. Commands without a BLE equivalent (polling
+ rate, effects other than static) throw `notSupported`, and the popover hides them.
+- **Link choice** (`MouseController.openTransport`): a cable wins. An idle dongle loses to a
+ supported mouse on Bluetooth, because the mouse is on one wireless link at a time and the
+ dongle would only time out. Detection runs on IOHID (`HIDDevice.bluetoothRazerMouse`), so
+ CoreBluetooth and its permission prompt only appear for someone who has such a mouse.
+
 ---
 
 ## 5. The controller, `MouseController.swift`
@@ -313,6 +339,9 @@ that path draws the content but needs an explicit size, since there is no window
 | `MouseController.swift` | Orchestrator: poll loop, connection logic, writes, battery, published state. |
 | `HIDDevice.swift` | IOKit HID open/enumerate + request/response send. |
 | `HIDMonitor.swift` | IOKit service notifications for plug/unplug. |
+| `RazerTransport.swift` | Transport protocol shared by USB and Bluetooth, plus the shared retry ladder. |
+| `BLEProtocol.swift` | Bluetooth LE framing and `RazerReport` translation. |
+| `BluetoothDevice.swift` | CoreBluetooth connection to Razer's vendor GATT service. |
 | `RazerReport.swift` | 90-byte `razer_report` struct + CRC. |
 | `RazerCommands.swift` | Command-byte builders (battery/DPI/poll/RGB/brightness) + Razer constants. |
 | `RazerDevices.swift` | PID to {name, supported, hasBattery} registry. |

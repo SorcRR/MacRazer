@@ -106,8 +106,27 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(RazerDevices.connection(pid: 0x00DB), .wirelessDongle)
         XCTAssertEqual(RazerDevices.connection(pid: 0x00DA), .wired)
         XCTAssertEqual(RazerDevices.connection(pid: 0x0099), .wired) // Basilisk V3: wired-only
+        XCTAssertEqual(RazerDevices.connection(pid: 0x00DC), .bluetooth)
         XCTAssertNil(RazerDevices.connection(pid: 0x9999), "unknown models show the neutral USB chip")
         XCTAssertNil(RazerDevices.connection(pid: nil))
+    }
+
+    /// Bluetooth PIDs come from Razer's Bluetooth vendor id (0x068E), USB ones from 0x1532,
+    /// but the registry is keyed by PID alone. A clash would hand one model's capabilities
+    /// to the other, so keep every row's PID unique.
+    func testPIDsAreUnique() {
+        let pids = RazerDevices.known.map(\.pid)
+        XCTAssertEqual(pids.count, Set(pids).count)
+    }
+
+    /// The Bluetooth Cobra HyperSpeed is the same mouse as the dongle one: same LED for
+    /// brightness (verified over BLE: LOGO answers, SCROLL refuses) and same discharge curve.
+    func testBluetoothCobraHyperSpeed() {
+        XCTAssertEqual(RazerDevices.bluetoothPIDs, [0x00DC])
+        XCTAssertEqual(RazerDevices.brightnessLed(pid: 0x00DC), Razer.logoLed)
+        XCTAssertEqual(RazerDevices.dischargeCurveModelKey(pid: 0x00DC),
+                       RazerDevices.dischargeCurveModelKey(pid: 0x00DB))
+        XCTAssertEqual(RazerDevices.maxDPI(pid: 0x00DC), RazerDevices.maxDPI(pid: 0x00DB))
     }
 
     func testCapabilityDefaultsForUnknownModels() {

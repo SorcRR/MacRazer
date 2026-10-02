@@ -154,7 +154,7 @@ struct PermissionsView: View {
                 Text(verbatim: "\(name) connected").font(.system(size: 11, weight: .medium))
             } else if model.inputMonitoring {
                 Text("No Razer mouse detected yet. Connect the 2.4 GHz dongle or a USB-C cable. "
-                     + "Bluetooth won't work.")
+                     + "Bluetooth works on the Cobra HyperSpeed only.")
                     .font(.system(size: 11)).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
