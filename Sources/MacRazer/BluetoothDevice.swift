@@ -125,7 +125,7 @@ final class BluetoothDevice: NSObject, RazerTransport, @unchecked Sendable {
     // MARK: - RazerTransport
 
     func sendWithRetry(_ report: RazerReport) throws -> RazerReport {
-        try RazerRetry.run(attempts: 3) { try send(report) }
+        try RazerRetry.run(attempts: HIDDevice.defaultAttempts) { try send(report) }
     }
 
     private func send(_ report: RazerReport) throws -> RazerReport {

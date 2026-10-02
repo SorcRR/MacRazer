@@ -20,7 +20,7 @@ protocol RazerTransport: AnyObject {
 extension HIDDevice: RazerTransport {
     var isBluetooth: Bool { false }
     func sendWithRetry(_ report: RazerReport) throws -> RazerReport {
-        try sendWithRetry(report, attempts: 3)
+        try sendWithRetry(report, attempts: HIDDevice.defaultAttempts)
     }
 }
 

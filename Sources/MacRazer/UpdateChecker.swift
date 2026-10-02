@@ -525,15 +525,11 @@ final class UpdateChecker: ObservableObject {
     /// failed open must leave the running (old) app alive rather than turn "Update" into
     /// "Quit" — the user can relaunch by hand and get the new version.
     private func relaunch(at url: URL) {
-        let config = NSWorkspace.OpenConfiguration()
-        config.createsNewApplicationInstance = true
-        NSWorkspace.shared.openApplication(at: url, configuration: config) { app, error in
-            Task { @MainActor in
-                if app != nil, error == nil {
-                    NSApp.terminate(nil)
-                } else {
-                    self.phase = .needsRestart
-                }
+        AppRelaunch.openNewInstance(of: url) { [weak self] launched in
+            if launched {
+                NSApp.terminate(nil)
+            } else {
+                self?.phase = .needsRestart
             }
         }
     }
