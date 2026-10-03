@@ -44,13 +44,18 @@ func printPermissionHintIfDenied(_ error: Error) -> Bool {
     return true
 }
 
-func openDevice() -> HIDDevice? {
+/// `statusOnStderr` is for commands whose output is data, like `devicetest`'s JSON: the
+/// "Opened" line would otherwise make `devicetest > report.json` unreadable.
+func openDevice(statusOnStderr: Bool = false) -> HIDDevice? {
+    func say(_ line: String) {
+        if statusOnStderr { FileHandle.standardError.write(Data((line + "\n").utf8)) } else { print(line) }
+    }
     do {
         let dev = try HIDDevice.open(vendorId: Razer.vendorId)
-        print("✓ Opened \(dev.productName) (VID 0x1532, PID 0x\(String(format: "%04x", dev.productID)))")
+        say("✓ Opened \(dev.productName) (VID 0x1532, PID 0x\(String(format: "%04x", dev.productID)))")
         return dev
     } catch {
-        print("✗ \(error)")
+        say("✗ \(error)")
         printPermissionHintIfDenied(error)
         return nil
     }
@@ -541,7 +546,7 @@ case "devicetest":
     // The in-app device test without its window, for contributors running from source. Every
     // step puts back what it changes. Lighting only dims for a moment: the colour check needs
     // the app's own lighting setting to return to, which only the app knows.
-    guard let dev = openDevice() else { exit(1) }
+    guard let dev = openDevice(statusOnStderr: true) else { exit(1) }
     defer { dev.close() }
     let info = RazerDevices.info(pid: dev.productID)
     let (identify, lightSweep) = DeviceTestSteps.identify(dev, registry: info)
