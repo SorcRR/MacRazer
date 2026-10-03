@@ -9,8 +9,10 @@ reports per day, used for the caps below.
 `POST /v1/device-report` with `Content-Type: application/json`, at most 16 KB. The report must
 match the app's format exactly ([src/validate.ts](src/validate.ts)). An unknown field, a value
 out of range, a vendor other than Razer, or a line break in the reply address gets it refused.
-The email is built from the checked fields only. Its subject comes from the step results, not
-from anything the request claims.
+Text that comes from the mouse rather than the person, like product names and error messages,
+is cleaned of control characters and cut to length instead, so one odd byte doesn't lose a
+report. The email is built from the checked fields only. Its subject comes from the step
+results, not from anything the request claims.
 
 | Status | Meaning | What the app says |
 |---|---|---|
@@ -24,6 +26,8 @@ from anything the request claims.
 - **Counters only**, in D1: one row per day for the total, and one per sender. A sender is a
   SHA-256 hash of the IP address with a secret salt and the date, so the table can't be matched
   against a list of addresses, and the same IP looks different every day. Rows go after two days.
+  The burst limiter is given the same hash, never the address. A report that fails to send
+  isn't counted.
 - **No report content.** The report exists in memory long enough to build the email.
 - On success the Worker logs the mouse's product ID. On failure it logs the email service's
   error code. Nothing else is logged.

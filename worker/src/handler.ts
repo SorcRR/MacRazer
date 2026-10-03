@@ -5,7 +5,7 @@
 // every named export of the main module as an entry point, and refuses to start on a constant.
 
 import { emailFor, type OutgoingEmail } from "./email";
-import { admit, type Database } from "./limits";
+import { admit, dayOf, ipKey, refund, type Database } from "./limits";
 import { validateReport, ValidationError } from "./validate";
 
 export interface Env {
@@ -45,8 +45,9 @@ export async function handle(request: Request, env: Env, now: Date): Promise<Res
     return reply(503, "unavailable");
   }
 
-  const ip = request.headers.get("cf-connecting-ip") ?? "unknown";
-  if (!(await env.BURST.limit({ key: ip })).success) return reply(429, "slow_down");
+  // The sender is only ever known by a salted hash of the IP, the burst limiter included.
+  const sender = await ipKey(request.headers.get("cf-connecting-ip") ?? "unknown", env.IP_SALT, dayOf(now));
+  if (!(await env.BURST.limit({ key: sender })).success) return reply(429, "slow_down");
 
   const body = await readCapped(request, MAX_BYTES);
   if (body === null) return reply(413, "too_large");
@@ -67,13 +68,15 @@ export async function handle(request: Request, env: Env, now: Date): Promise<Res
   // Counted only for a valid report, so junk can't use up the day's allowance; the burst
   // limit above is what holds junk back.
   const caps = { perIp: positive(env.DAILY_PER_IP, 10), total: positive(env.DAILY_TOTAL, 200) };
-  if (!(await admit(env.DB, ip, env.IP_SALT, now, caps))) return reply(429, "daily_limit");
+  const admission = await admit(env.DB, sender, now, caps);
+  if (!admission.allowed) return reply(429, "daily_limit");
 
   try {
     await env.EMAIL.send(emailFor(report, env.DESTINATION_ADDRESS, env.SENDER_ADDRESS));
   } catch (error) {
     // The error's code (E_SENDER_NOT_VERIFIED and so on) is what setup problems show up as.
     console.error("send failed", (error as { code?: string }).code ?? String(error));
+    await refund(env.DB, admission);
     return reply(503, "unavailable");
   }
   console.log("sent", report.device.productID);

@@ -46,6 +46,17 @@ function str(max: number, opts: { multiline?: boolean; pattern?: RegExp } = {}):
   };
 }
 
+/// Text the person didn't type and can't fix: USB product strings, error descriptions,
+/// version numbers. Cleaned rather than refused, so one odd byte from a mouse doesn't lose
+/// the whole report. Control characters go (so a name can't carry a line break into the
+/// subject), and the rest is cut to `max`.
+function text(max: number): Check {
+  return (v, path) => {
+    if (typeof v !== "string") fail(path, "not a string");
+    return (v as string).replace(new RegExp(CONTROL_ANY.source, "g"), "").slice(0, max);
+  };
+}
+
 function oneOf(...allowed: string[]): Check {
   return (v, path) => (typeof v === "string" && allowed.includes(v) ? v : fail(path, `not one of ${allowed.join(", ")}`));
 }
@@ -66,7 +77,8 @@ function obj(required: Record<string, Check>, optional: Record<string, Check> = 
     if (typeof v !== "object" || v === null || Array.isArray(v)) fail(path, "not an object");
     const o = v as Record<string, unknown>;
     for (const key of Object.keys(o)) {
-      if (!(key in required) && !(key in optional)) fail(`${path}.${key}`, "unknown field");
+      // Own keys only: `in` would also find toString, constructor and __proto__.
+      if (!Object.hasOwn(required, key) && !Object.hasOwn(optional, key)) fail(`${path}.${key}`, "unknown field");
     }
     const out: Record<string, unknown> = {};
     for (const [key, check] of Object.entries(required)) {
@@ -100,7 +112,7 @@ export const MAX_COMMENT = 8000;
 export const MAX_EMAIL = 254;
 /// RecordingChannel.maxExchanges in the app.
 const MAX_EXCHANGES = 150;
-const ERROR = str(500);
+const ERROR = text(500);
 const LED_GROUPS = ["LOGO", "SCROLL", "ZERO", "BACKLIGHT"];
 export const STEP_NAMES = ["Identify", "Battery", "DPI", "Polling rate", "Lighting"];
 const STEP_KEYS = ["identify", "battery", "dpi", "polling", "lighting", "buttons"];
@@ -137,32 +149,34 @@ const dpiValue = int(0, 100_000);
 const reportSchema = obj(
   {
     schemaVersion: int(1, 1),
-    appVersion: str(32),
-    macOSVersion: str(64),
+    appVersion: text(32),
+    macOSVersion: text(64),
     device: obj(
       {
         vendorID: int(RAZER_VENDOR_ID, RAZER_VENDOR_ID),
         productID: int(0, 0xffff),
-        name: str(128),
+        name: text(128),
+        // Every interface of every Razer device attached: a keyboard, a headset and a dock
+        // bring several each.
         interfaces: list(
           obj({
             productID: int(0, 0xffff),
-            product: str(128),
+            product: text(128),
             usagePage: int(0, 0xffff),
             usage: int(0, 0xffff),
             maxFeatureReportSize: int(0, 65_535),
             maxInputReportSize: int(0, 65_535),
-            transport: str(32),
+            transport: text(32),
           }),
-          32,
+          64,
         ),
       },
-      { connection: oneOf("cable", "dongle"), controlInterface: int(0, 31) },
+      { connection: oneOf("cable", "dongle"), controlInterface: int(0, 63) },
     ),
     identify: step(
       obj(
         { standardAttempts: list(transactionResult, 8), lightingAttempts: list(transactionResult, 8) },
-        { firmware: str(32), dpiAttempts: list(transactionResult, 8), standardId: byte, lightingId: byte },
+        { firmware: text(32), dpiAttempts: list(transactionResult, 8), standardId: byte, lightingId: byte },
       ),
     ),
     battery: step(obj({}, { raw: byte, percent: int(0, 100), charging: bool })),
@@ -179,11 +193,13 @@ const reportSchema = obj(
         { dimmed: bool, turnedRed: bool },
       ),
     ),
-    buttons: step(obj({ seen: list(str(5, { pattern: /^[0-9a-f]{2}:[0-9a-f]{2}$/ }), 128) })),
+    // "page:usage" in hex, as ButtonCapture.label writes it. %02x is a minimum: consumer
+    // usages run past 0xFF (AC Home is 0c:223).
+    buttons: step(obj({ seen: list(str(7, { pattern: /^[0-9a-f]{2}:[0-9a-f]{2,4}$/ }), 128) })),
   },
   {
     registry: obj({
-      name: str(128),
+      name: text(128),
       fullySupported: bool,
       hasBattery: bool,
       hasLighting: bool,

@@ -44,7 +44,8 @@ final class DeviceReportSenderTests: XCTestCase {
             lighting: .init(outcome: .passed,
                             data: .init(groups: ["LOGO": 10], dimShown: true, redShown: true, dimmed: true,
                                         turnedRed: true, restored: true)),
-            buttons: .init(outcome: .passed, data: .init(seen: ["09:04", "09:05", "07:1e"]), error: "none"),
+            // 0c:223 is AC Home: consumer usages run past two hex digits.
+            buttons: .init(outcome: .passed, data: .init(seen: ["09:04", "09:05", "07:1e", "0c:223"]), error: "none"),
             verdict: nil, comment: "Works on my Mac.\nSide buttons too.", credit: "@someone",
             replyEmail: "person@example.com", exchangesDropped: ["lighting"])
         report.polling.error = "an example error"
@@ -65,8 +66,13 @@ final class DeviceReportSenderTests: XCTestCase {
         if ProcessInfo.processInfo.environment["UPDATE_WORKER_FIXTURE"] == "1" {
             try json.write(to: Self.fixture, atomically: true, encoding: .utf8)
         }
-        let onDisk = try String(contentsOf: Self.fixture, encoding: .utf8)
-        XCTAssertEqual(onDisk, json, """
+        // Compared as parsed JSON, not text: another Foundation (CI's macOS) may space or
+        // escape the same report differently.
+        func parsed(_ data: Data) throws -> NSDictionary {
+            try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? NSDictionary)
+        }
+        let onDisk = try parsed(Data(contentsOf: Self.fixture))
+        XCTAssertEqual(onDisk, try parsed(Data(json.utf8)), """
             The report's format changed. Rewrite the fixture with UPDATE_WORKER_FIXTURE=1 swift test \
             --filter DeviceReportSenderTests, update worker/src/validate.ts to match, and run the Worker's tests.
             """)

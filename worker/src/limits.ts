@@ -41,12 +41,30 @@ export interface Caps {
   total: number;
 }
 
-/// Counts one report and says whether it is within today's caps. The total is only counted
-/// for an IP still within its own cap, so one sender going over can't use up everyone's day.
-export async function admit(db: Database, ip: string, salt: string, now: Date, caps: Caps): Promise<boolean> {
+export interface Admission {
+  allowed: boolean;
+  day: string;
+  /// What was counted, for `refund`.
+  counted: string[];
+}
+
+/// Counts one report from `sender` (an `ipKey`) and says whether it is within today's caps.
+/// The total is only counted for a sender still within its own cap, so one sender going
+/// over can't use up everyone's day.
+export async function admit(db: Database, sender: string, now: Date, caps: Caps): Promise<Admission> {
   const day = dayOf(now);
-  if ((await hit(db, day, await ipKey(ip, salt, day))) > caps.perIp) return false;
-  return (await hit(db, day, "total")) <= caps.total;
+  if ((await hit(db, day, sender)) > caps.perIp) return { allowed: false, day, counted: [sender] };
+  const allowed = (await hit(db, day, "total")) <= caps.total;
+  return { allowed, day, counted: [sender, "total"] };
+}
+
+/// Takes back an admitted report that wasn't sent after all, so a failure (a setup mistake,
+/// or the email service's own limits) doesn't spend anyone's allowance.
+export async function refund(db: Database, admission: Admission): Promise<void> {
+  for (const key of admission.counted) {
+    await db.prepare("UPDATE counters SET count = count - 1 WHERE day = ?1 AND key = ?2 AND count > 0")
+      .bind(admission.day, key).run();
+  }
 }
 
 /// Run daily by the cron trigger. Rows go once they're more than two days old; only today's

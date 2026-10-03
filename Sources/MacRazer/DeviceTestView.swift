@@ -366,8 +366,9 @@ struct DeviceTestView: View {
                 Button("Open GitHub issue") { model.openGitHubIssue() }
                 Spacer()
                 Button("Done", action: onClose)
+                // No default action on this screen: Return in the email or credit field would
+                // send the report before the comment is written, and it can't be sent twice.
                 Button("Send") { model.send() }
-                    .keyboardShortcut(.defaultAction)
                     .disabled(model.sendState == .sending || model.emailProblem != nil)
             default:
                 Button("Back") { model.back() }.disabled(model.running || model.stage == .identify)

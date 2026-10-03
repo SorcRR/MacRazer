@@ -42,17 +42,23 @@ function sqlite(): Database & { rows(): Record<string, unknown>[] } {
 
 function setup(overrides: Partial<Env> = {}, burstAllows = true) {
   const sent: OutgoingEmail[] = [];
+  const burstKeys: string[] = [];
   const db = sqlite();
   const env: Env = {
     EMAIL: { send: async (m) => void sent.push(m) },
-    BURST: { limit: async () => ({ success: burstAllows }) },
+    BURST: {
+      limit: async ({ key }) => {
+        burstKeys.push(key);
+        return { success: burstAllows };
+      },
+    },
     DB: db,
     SENDER_ADDRESS: "reports@example.org",
     DESTINATION_ADDRESS: "maintainer@example.org",
     IP_SALT: "test-salt",
     ...overrides,
   };
-  return { env, sent, db };
+  return { env, sent, db, burstKeys };
 }
 
 function post(body: unknown, init: { ip?: string; headers?: Record<string, string>; path?: string } = {}): Request {
@@ -209,7 +215,6 @@ describe("reports that are refused", () => {
     ["another vendor", (r) => (r.device.vendorID = 0x046d), "report.device.vendorID"],
     ["a header injected through the email", (r) => (r.replyEmail = "a@b.co\r\nBcc: x@y.z"), "report.replyEmail"],
     ["an email that isn't one", (r) => (r.replyEmail = "not-an-address"), "report.replyEmail"],
-    ["a name across two lines", (r) => (r.device.name = "Razer\nSubject: hi"), "report.device.name"],
     ["a comment over the cap", (r) => (r.comment = "x".repeat(8001)), "report.comment"],
     ["too many exchanges", (r) => {
       // The smallest exchange there is, and none elsewhere, so the count trips before the size.
@@ -222,6 +227,9 @@ describe("reports that are refused", () => {
     ["a missing step", (r) => delete r.polling, "report.polling"],
     ["a schema from the future", (r) => (r.schemaVersion = 2), "report.schemaVersion"],
     ["a list where an object goes", (r) => (r.device = []), "report.device"],
+    ["a field named like one of Object's own", (r) => (r.device.constructor = 1), "report.device.constructor"],
+    ["a button label that isn't one", (r) => (r.buttons.data = { seen: ["0c:22345"] }), "report.buttons.data.seen[0]"],
+    ["a comment with a control character", (r) => (r.comment = "fine\u0007"), "report.comment"],
   ];
   for (const [what, edit, path] of cases) {
     it(`with ${what}`, async () => {
@@ -235,6 +243,15 @@ describe("reports that are refused", () => {
       expect(db.rows(), "junk doesn't use up the day's allowance").toHaveLength(0);
     });
   }
+
+  it("with a __proto__ field", async () => {
+    const { env, sent } = setup();
+    const body = JSON.stringify(cobra()).replace(/^\{/, '{"__proto__":{"x":1},');
+    const { status: code, body: answer } = await status(env, post(body));
+    expect(code).toBe(400);
+    expect(answer.detail).toContain("report.__proto__");
+    expect(sent).toHaveLength(0);
+  });
 
   it("that isn't JSON, or isn't UTF-8", async () => {
     const { env } = setup();
@@ -258,6 +275,35 @@ describe("reports that are refused", () => {
   });
 });
 
+describe("text from the mouse, not the person", () => {
+  it("is cleaned rather than refused, so no line break reaches the subject", async () => {
+    const { env, sent } = setup();
+    const r = cobra();
+    r.device.name = "Razer\r\nBcc: someone@example.com\u0000";
+    r.device.interfaces[0].product = "Razer\u0001 Cobra";
+    r.dpi.exchanges[0].error = "x".repeat(600);
+    expect((await status(env, post(r))).status).toBe(200);
+    expect(sent[0].subject).toBe("[MacRazer] Partly tested: RazerBcc: someone@example.com (0x00DB)");
+    expect(sent[0].text).toContain('"product": "Razer Cobra"');
+    expect(sent[0].text).not.toContain("x".repeat(501));
+  });
+
+  it("includes media keys past 0xFF", async () => {
+    const { env } = setup();
+    const r = cobra();
+    r.buttons = { outcome: "passed", exchanges: [], data: { seen: ["0c:223", "09:04"] } };
+    expect((await status(env, post(r))).status).toBe(200);
+  });
+
+  it("includes a desk full of Razer devices", async () => {
+    const { env } = setup();
+    const r = cobra();
+    r.device.interfaces = Array(40).fill(r.device.interfaces[0]);
+    r.device.controlInterface = 39;
+    expect((await status(env, post(r))).status).toBe(200);
+  });
+});
+
 describe("daily caps", () => {
   it("stop one sender at its cap without spending everyone's", async () => {
     const { env, sent, db } = setup({ DAILY_PER_IP: "2", DAILY_TOTAL: "3" });
@@ -276,14 +322,32 @@ describe("daily caps", () => {
     expect((await handle(post(cobra()), env, new Date("2026-10-04T00:00:01Z"))).status).toBe(200);
   });
 
+  it("aren't spent by a report that didn't go out", async () => {
+    let failing = true;
+    const { env, db, sent } = setup({ DAILY_PER_IP: "1" });
+    const deliver = env.EMAIL.send;
+    env.EMAIL = {
+      send: async (m) => {
+        if (failing) throw Object.assign(new Error("nope"), { code: "E_SENDER_NOT_VERIFIED" });
+        return deliver(m);
+      },
+    };
+    for (let i = 0; i < 3; i++) expect((await status(env, post(cobra()))).status).toBe(503);
+    expect(db.rows().map((r) => r.count)).toEqual([0, 0]);
+    failing = false;
+    expect((await status(env, post(cobra()))).status).toBe(200);
+    expect(sent).toHaveLength(1);
+  });
+
   it("keep no IP address, and nothing from the report", async () => {
-    const { env, db } = setup();
+    const { env, db, burstKeys } = setup();
     await status(env, post({ ...cobra(), replyEmail: "person@example.com" }));
     const stored = JSON.stringify(db.rows());
     expect(stored).not.toContain("203.0.113.7");
     expect(stored).not.toContain("person@example.com");
     expect(stored).not.toContain("Cobra");
     expect(db.rows().map((r) => r.key)).toEqual([await ipKey("203.0.113.7", "test-salt", dayOf(NOW)), "total"]);
+    expect(burstKeys, "the burst limiter sees the hash too").toEqual([db.rows()[0].key]);
   });
 
   it("hash an IP differently each day and per salt", async () => {

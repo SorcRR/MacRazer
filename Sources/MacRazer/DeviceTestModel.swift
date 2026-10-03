@@ -373,9 +373,14 @@ final class DeviceTestModel: ObservableObject {
             ? DeviceReportOutput.cleaned(replyEmail, max: DeviceReportOutput.maxEmail,
                                          units: DeviceReportOutput.maxEmail, singleLine: true) : nil
         report.verdict = report.currentVerdict()
-        // Every way out carries the same report, so the one sized for Send.
-        return DeviceReportOutput.fitted(report)
+        // Every way out carries the same report, so the one sized for Send. Fitting encodes it
+        // to measure it, and the review screen asks on every keystroke, so the last fit is kept.
+        if let lastFit, lastFit.input == report { return lastFit.output }
+        let fitted = DeviceReportOutput.fitted(report)
+        lastFit = (report, fitted)
+        return fitted
     }
+    private var lastFit: (input: DeviceReport, output: DeviceReport)?
 
     /// Copies the report without the reply email: a clipboard tends to end up pasted somewhere
     /// public, and the address is only for the maintainer.
