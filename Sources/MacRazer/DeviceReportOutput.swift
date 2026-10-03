@@ -40,10 +40,16 @@ enum DeviceReportOutput {
             r[keyPath: path] = []
             r.exchangesDropped = (r.exchangesDropped ?? []) + [name]
         }
-        // Every scalar is at least a byte, so dropping as many scalars as there are bytes
-        // over always gets under, in one pass. The loop is only a guard.
+        // Cut by bytes, not characters: an emoji is four bytes or more, and dropping one
+        // character per byte over would throw away far more than it has to. Whole characters
+        // only, so a family emoji isn't left half built. The loop re-checks, since a character
+        // JSON escapes takes more room in the report than in the comment.
         while case let excess = size(r) - maxBytes, excess > 0, let comment = r.comment, !comment.isEmpty {
-            let kept = String(comment.unicodeScalars.dropLast(excess))
+            var budget = comment.utf8.count - excess
+            let kept = String(comment.prefix {
+                budget -= $0.utf8.count
+                return budget >= 0
+            })
             r.comment = kept.isEmpty ? nil : kept
         }
         return r

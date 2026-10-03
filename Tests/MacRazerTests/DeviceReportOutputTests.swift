@@ -89,6 +89,19 @@ final class DeviceReportOutputTests: XCTestCase {
         XCTAssertTrue(r.comment!.hasPrefix(fitted.comment ?? ""), "the comment loses its end, not its start")
     }
 
+    func testALongCommentIsCutByBytesNotCharacters() {
+        // Each emoji is four bytes. Cutting a character per byte over would throw away four
+        // times too much, and here more characters than the comment has.
+        let r = report(comment: String(repeating: "😀", count: DeviceReportOutput.maxComment))
+        let limit = 4000
+        let fitted = DeviceReportOutput.fitted(r, maxBytes: limit)
+        let size = DeviceReportOutput.size(fitted)
+        XCTAssertNotNil(fitted.comment, "some of the comment survives")
+        XCTAssertTrue(r.comment!.hasPrefix(fitted.comment ?? ""))
+        XCTAssertLessThanOrEqual(size, limit)
+        XCTAssertGreaterThan(size, limit - 4, "no more than one emoji short of the limit")
+    }
+
     func testEvidenceGoesOneStepAtATimeAndOnlyAsMuchAsNeeded() {
         let exchange = RecordingChannel.Exchange(commandClass: 0x04, commandId: 0x85, transactionId: 0x3F, status: 0x02,
                                                  response: [1, 2, 3, 4, 5, 6, 7, 8], error: nil, milliseconds: 40)
