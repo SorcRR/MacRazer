@@ -37,12 +37,19 @@ expect rough edges until 1.0.
  takes a couple of minutes. It finds which transaction ids the mouse answers to, reads the
  battery and firmware, and changes DPI, polling rate and lighting for a moment. It also
  listens for the side buttons. Everything it changes goes back before the next step, and
- quitting waits for a step to finish. Every step can be skipped. At the end you can copy the
- report or open a GitHub issue with it, plus an optional comment and a name to credit. The
+ quitting waits for a step to finish. Every step can be skipped. At the end, **Send** emails
+ the report to the maintainer, with an optional comment, a name to credit, and an address for a
+ reply. You can also copy it or open a GitHub issue with it, which leave the address out. If
+ your mouse is already fully supported, a sent report confirms it on your firmware. The
  report never includes the mouse's serial number. The test needs the dongle or a cable,
  even on a mouse that also works over Bluetooth. If Input Monitoring isn't granted yet, the
  test asks for it first. A mouse the app doesn't know yet also gets a "Help test it" link in
  the popover.
+
+- **A small Cloudflare Worker receives sent reports** (`worker/`). It checks each report
+ against the app's exact format, emails it, and keeps nothing but daily counters. It caps
+ reports at 3 a minute and 10 a day per sender, and 200 a day in total. The address reports
+ go to is one line in its config.
 
 - **Two new CLI commands for contributors.** `discover` shows which transaction ids a mouse
  answers to, and `devicetest` runs the whole test without the window and prints the report.

@@ -1,0 +1,340 @@
+{
+  "appVersion" : "0.6.0",
+  "battery" : {
+    "data" : {
+      "charging" : false,
+      "percent" : 36,
+      "raw" : 92
+    },
+    "exchanges" : [
+      {
+        "commandClass" : 4,
+        "commandId" : 133,
+        "milliseconds" : 38,
+        "response" : [
+          1,
+          25,
+          0,
+          25,
+          0,
+          0,
+          0,
+          0
+        ],
+        "status" : 2,
+        "transactionId" : 31
+      }
+    ],
+    "outcome" : "passed"
+  },
+  "buttons" : {
+    "data" : {
+      "seen" : [
+        "09:04",
+        "09:05",
+        "07:1e",
+        "0c:223"
+      ]
+    },
+    "error" : "none",
+    "exchanges" : [
+
+    ],
+    "outcome" : "passed"
+  },
+  "comment" : "Works on my Mac.\nSide buttons too.",
+  "credit" : "@someone",
+  "device" : {
+    "connection" : "dongle",
+    "controlInterface" : 0,
+    "interfaces" : [
+      {
+        "maxFeatureReportSize" : 90,
+        "maxInputReportSize" : 8,
+        "product" : "Razer Cobra HyperSpeed",
+        "productID" : 219,
+        "transport" : "USB",
+        "usage" : 2,
+        "usagePage" : 1
+      }
+    ],
+    "name" : "Razer Cobra HyperSpeed",
+    "productID" : 219,
+    "vendorID" : 5426
+  },
+  "dpi" : {
+    "data" : {
+      "maxProbe" : 26000,
+      "original" : 6400,
+      "readBack" : 6350,
+      "restored" : true,
+      "stages" : [
+        400,
+        800,
+        1600,
+        3200,
+        6400
+      ],
+      "test" : 6350
+    },
+    "exchanges" : [
+      {
+        "commandClass" : 4,
+        "commandId" : 133,
+        "milliseconds" : 38,
+        "response" : [
+          1,
+          25,
+          0,
+          25,
+          0,
+          0,
+          0,
+          0
+        ],
+        "status" : 2,
+        "transactionId" : 31
+      }
+    ],
+    "outcome" : "passed"
+  },
+  "exchangesDropped" : [
+    "lighting"
+  ],
+  "identify" : {
+    "data" : {
+      "dpiAttempts" : [
+        {
+          "answered" : true,
+          "groups" : [
+            "LOGO"
+          ],
+          "id" : 31,
+          "refused" : false
+        },
+        {
+          "answered" : false,
+          "error" : "Device command timed out",
+          "groups" : [
+
+          ],
+          "id" : 63,
+          "refused" : false
+        },
+        {
+          "answered" : false,
+          "error" : "Device command timed out",
+          "groups" : [
+
+          ],
+          "id" : 255,
+          "refused" : false
+        },
+        {
+          "answered" : false,
+          "error" : "Device command timed out",
+          "groups" : [
+
+          ],
+          "id" : 8,
+          "refused" : false
+        },
+        {
+          "answered" : false,
+          "error" : "Device command timed out",
+          "groups" : [
+
+          ],
+          "id" : 128,
+          "refused" : false
+        }
+      ],
+      "firmware" : "v1.0",
+      "lightingAttempts" : [
+        {
+          "answered" : true,
+          "groups" : [
+            "LOGO"
+          ],
+          "id" : 31,
+          "refused" : false
+        },
+        {
+          "answered" : false,
+          "error" : "Device command timed out",
+          "groups" : [
+
+          ],
+          "id" : 63,
+          "refused" : false
+        },
+        {
+          "answered" : false,
+          "error" : "Device command timed out",
+          "groups" : [
+
+          ],
+          "id" : 255,
+          "refused" : false
+        },
+        {
+          "answered" : false,
+          "error" : "Device command timed out",
+          "groups" : [
+
+          ],
+          "id" : 8,
+          "refused" : false
+        },
+        {
+          "answered" : false,
+          "error" : "Device command timed out",
+          "groups" : [
+
+          ],
+          "id" : 128,
+          "refused" : false
+        }
+      ],
+      "lightingId" : 31,
+      "standardAttempts" : [
+        {
+          "answered" : true,
+          "groups" : [
+            "LOGO"
+          ],
+          "id" : 31,
+          "refused" : false
+        },
+        {
+          "answered" : false,
+          "error" : "Device command timed out",
+          "groups" : [
+
+          ],
+          "id" : 63,
+          "refused" : false
+        },
+        {
+          "answered" : false,
+          "error" : "Device command timed out",
+          "groups" : [
+
+          ],
+          "id" : 255,
+          "refused" : false
+        },
+        {
+          "answered" : false,
+          "error" : "Device command timed out",
+          "groups" : [
+
+          ],
+          "id" : 8,
+          "refused" : false
+        },
+        {
+          "answered" : false,
+          "error" : "Device command timed out",
+          "groups" : [
+
+          ],
+          "id" : 128,
+          "refused" : false
+        }
+      ],
+      "standardId" : 31
+    },
+    "exchanges" : [
+      {
+        "commandClass" : 4,
+        "commandId" : 133,
+        "milliseconds" : 38,
+        "response" : [
+          1,
+          25,
+          0,
+          25,
+          0,
+          0,
+          0,
+          0
+        ],
+        "status" : 2,
+        "transactionId" : 31
+      },
+      {
+        "commandClass" : 0,
+        "commandId" : 129,
+        "error" : "Device command timed out",
+        "milliseconds" : 412,
+        "response" : [
+
+        ],
+        "transactionId" : 255
+      }
+    ],
+    "outcome" : "passed"
+  },
+  "lighting" : {
+    "data" : {
+      "dimShown" : true,
+      "dimmed" : true,
+      "groups" : {
+        "LOGO" : 10
+      },
+      "redShown" : true,
+      "restored" : true,
+      "turnedRed" : true
+    },
+    "exchanges" : [
+
+    ],
+    "outcome" : "passed"
+  },
+  "macOSVersion" : "26.6.2",
+  "polling" : {
+    "data" : {
+      "original" : 500,
+      "readBack" : 1000,
+      "restored" : true,
+      "test" : 1000
+    },
+    "error" : "an example error",
+    "exchanges" : [
+
+    ],
+    "outcome" : "passed"
+  },
+  "registry" : {
+    "brightnessLed" : 4,
+    "fullySupported" : true,
+    "hasBattery" : true,
+    "hasLighting" : true,
+    "matrixTransactionId" : 31,
+    "maxDPI" : 26000,
+    "name" : "Razer Cobra HyperSpeed",
+    "transactionId" : 31
+  },
+  "replyEmail" : "person@example.com",
+  "schemaVersion" : 1,
+  "verdict" : {
+    "failed" : [
+
+    ],
+    "kind" : "confirmed",
+    "notSupported" : [
+
+    ],
+    "passed" : [
+      "Identify",
+      "Battery",
+      "DPI",
+      "Polling rate",
+      "Lighting"
+    ],
+    "skipped" : [
+
+    ]
+  }
+}

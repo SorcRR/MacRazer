@@ -1,0 +1,39 @@
+# The Worker behind the device test's Send button. Setup steps are in README.md.
+name = "macrazer-reports"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+
+# Reports go to this one address and nowhere else: the binding can't send anywhere else,
+# whatever a request says. It must be a verified destination address in Email Routing.
+# To change it, verify the new address, change it here AND in DESTINATION_ADDRESS below
+# (`npm test` fails if they differ), and run `npm run deploy`.
+[[send_email]]
+name = "EMAIL"
+destination_address = "you@example.com"
+
+[vars]
+# The same address as destination_address above. The Worker passes it as the email's `to`.
+DESTINATION_ADDRESS = "you@example.com"
+# The From address. It must be on a domain with Email Routing enabled in the same account.
+SENDER_ADDRESS = "macrazer-reports@example.com"
+# Reports accepted per day, per sender and in total. A sender is a salted hash of the IP.
+DAILY_PER_IP = "10"
+DAILY_TOTAL = "200"
+
+# Bursts: at most 3 reports a minute from one IP, per Cloudflare location. The id is any
+# number unique among this account's rate limiters.
+[[ratelimits]]
+name = "BURST"
+namespace_id = "7401"
+simple = { limit = 3, period = 60 }
+
+# Counters for the daily caps. Replace database_id with the id `wrangler d1 create` prints.
+[[d1_databases]]
+binding = "DB"
+database_name = "macrazer-reports"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
+
+# Clears old counters once a day.
+[triggers]
+crons = ["17 3 * * *"]

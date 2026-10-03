@@ -209,6 +209,27 @@ struct DeviceTestVerdict: Codable, Equatable {
                                  notSupported: notSupported, skipped: skipped)
     }
 
+    /// What the window says once Send worked. A known model that passed everything is told
+    /// it is already supported: the report is what lets the supported list say so.
+    func thankYou(firmware: String?) -> String {
+        func names(_ steps: [String]) -> String {
+            steps.count < 2 ? steps.joined() : steps.dropLast().joined(separator: ", ") + " and " + steps.last!
+        }
+        switch kind {
+        case .confirmed:
+            return "Your mouse is already fully supported, and your report confirms it"
+                + (firmware.map { " on firmware \($0)" } ?? "") + ". It helps keep the supported list accurate."
+        case .possibleRegression:
+            return "Your mouse should be fully supported, but \(names(failed)) didn't work. Your report shows us what to fix."
+        case .newAllPassed:
+            return "Everything worked. Once we've looked at your report, your mouse moves to the supported list."
+        case .newPartlyPassed:
+            return "\(names(failed)) didn't work, so your report shows us exactly what to fix for your mouse."
+        case .partlyTested:
+            return "Some steps were skipped, so this is a partial report. It still helps."
+        }
+    }
+
     /// The email subject's prefix, so the maintainer's inbox sorts itself.
     var subjectPrefix: String {
         let ran = passed.count + failed.count

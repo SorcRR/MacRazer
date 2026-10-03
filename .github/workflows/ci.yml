@@ -53,3 +53,26 @@ jobs:
         run: swift build
       - name: Test
         run: swift test
+
+  # The Worker behind the device test's Send button. Its tests include the app's own full
+  # report (worker/test/fixtures/full-report.json, written by DeviceReportSenderTests), so a
+  # change to the report's format that the Worker would refuse fails here.
+  worker:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: worker
+    env:
+      WRANGLER_SEND_METRICS: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: worker/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      # Builds the Worker and checks wrangler.toml without deploying (no account needed).
+      - run: npm run check

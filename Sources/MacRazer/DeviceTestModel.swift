@@ -86,6 +86,15 @@ final class DeviceTestModel: ObservableObject {
     @Published private(set) var copied = false
     @Published private(set) var issueOpened = false
 
+    enum SendState: Equatable {
+        case idle, sending, sent
+        case failed(DeviceReportSender.Outcome)
+    }
+    @Published private(set) var sendState = SendState.idle
+    /// Bumped by `reset`, so a Send still in flight when the window closes can't land on the
+    /// next test.
+    private var generation = 0
+
     let controller: MouseController
     private let permissions: PermissionsModel
     private var capture: ButtonCapture?
@@ -356,14 +365,22 @@ final class DeviceTestModel: ObservableObject {
     /// the verdict worked out.
     func finalReport() -> DeviceReport? {
         guard var report else { return nil }
-        report.comment = DeviceReportOutput.cleaned(comment, max: DeviceReportOutput.maxComment, singleLine: false)
-        report.credit = DeviceReportOutput.cleaned(credit, max: DeviceReportOutput.maxCredit, singleLine: true)
+        report.comment = DeviceReportOutput.cleaned(comment, max: DeviceReportOutput.maxComment,
+                                                    units: DeviceReportOutput.maxCommentUnits, singleLine: false)
+        report.credit = DeviceReportOutput.cleaned(credit, max: DeviceReportOutput.maxCredit,
+                                                   units: DeviceReportOutput.maxCreditUnits, singleLine: true)
         report.replyEmail = emailProblem == nil
-            ? DeviceReportOutput.cleaned(replyEmail, max: DeviceReportOutput.maxEmail, singleLine: true) : nil
+            ? DeviceReportOutput.cleaned(replyEmail, max: DeviceReportOutput.maxEmail,
+                                         units: DeviceReportOutput.maxEmail, singleLine: true) : nil
         report.verdict = report.currentVerdict()
-        // Every way out carries the same report, so the one sized for Send.
-        return DeviceReportOutput.fitted(report)
+        // Every way out carries the same report, so the one sized for Send. Fitting encodes it
+        // to measure it, and the review screen asks on every keystroke, so the last fit is kept.
+        if let lastFit, lastFit.input == report { return lastFit.output }
+        let fitted = DeviceReportOutput.fitted(report)
+        lastFit = (report, fitted)
+        return fitted
     }
+    private var lastFit: (input: DeviceReport, output: DeviceReport)?
 
     /// Copies the report without the reply email: a clipboard tends to end up pasted somewhere
     /// public, and the address is only for the maintainer.
@@ -372,6 +389,18 @@ final class DeviceTestModel: ObservableObject {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(DeviceReportOutput.json(report, forPublic: true), forType: .string)
         copied = true
+    }
+
+    /// Emails the report, with the reply address, to the maintainer through the Worker.
+    func send() {
+        guard sendState != .sending, sendState != .sent, emailProblem == nil, let report = finalReport() else { return }
+        sendState = .sending
+        let started = generation
+        Task {
+            let outcome = await DeviceReportSender.send(report)
+            guard generation == started else { return }
+            sendState = outcome == .sent ? .sent : .failed(outcome)
+        }
     }
 
     func openGitHubIssue() {
@@ -413,12 +442,19 @@ final class DeviceTestModel: ObservableObject {
         replyEmail = ""
         copied = false
         issueOpened = false
+        sendState = .idle
+        generation += 1
     }
 }
 
 extension DeviceTestModel {
     /// Sample state for the `render-device-test` command: one screen of a plausible run, no
     /// device needed. The values are illustrative, not from any real mouse.
+    func previewSendState(_ state: SendState) {
+        sendState = state
+        replyEmail = state == .sent ? "you@example.com" : replyEmail
+    }
+
     func loadPreview(_ stage: Stage, known: Bool, ranSteps: Bool) {
         previewKnown = known
         func attempts(_ answered: [UInt8]) -> [DeviceReport.TransactionResult] {
@@ -448,6 +484,8 @@ extension DeviceTestModel {
         report.buttons = .init(outcome: .passed, data: .init(seen: buttonsSeen))
         listening = true
         connection = .dongle
+        // A known model's verdict comes from its registry entry, as in a real run.
+        if known { report.registry = RazerDevices.info(pid: 0x00DB).map(DeviceReport.Registry.init) }
         self.report = report
         self.report?.device.connection = .dongle
         self.stage = stage

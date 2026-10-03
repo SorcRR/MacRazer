@@ -1,0 +1,806 @@
+{
+  "appVersion" : "dev",
+  "battery" : {
+    "data" : {
+      "charging" : false,
+      "percent" : 36,
+      "raw" : 92
+    },
+    "exchanges" : [
+      {
+        "commandClass" : 7,
+        "commandId" : 128,
+        "milliseconds" : 40,
+        "response" : [
+          0,
+          92,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "status" : 2,
+        "transactionId" : 31
+      },
+      {
+        "commandClass" : 7,
+        "commandId" : 132,
+        "milliseconds" : 40,
+        "response" : [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "status" : 2,
+        "transactionId" : 31
+      }
+    ],
+    "outcome" : "passed"
+  },
+  "buttons" : {
+    "exchanges" : [
+
+    ],
+    "outcome" : "skipped"
+  },
+  "device" : {
+    "controlInterface" : 0,
+    "interfaces" : [
+      {
+        "maxFeatureReportSize" : 90,
+        "maxInputReportSize" : 8,
+        "product" : "Razer Cobra HyperSpeed",
+        "productID" : 219,
+        "transport" : "USB",
+        "usage" : 2,
+        "usagePage" : 1
+      },
+      {
+        "maxFeatureReportSize" : 0,
+        "maxInputReportSize" : 8,
+        "product" : "Razer Cobra HyperSpeed",
+        "productID" : 219,
+        "transport" : "USB",
+        "usage" : 6,
+        "usagePage" : 1
+      },
+      {
+        "maxFeatureReportSize" : 1,
+        "maxInputReportSize" : 16,
+        "product" : "Razer Cobra HyperSpeed",
+        "productID" : 219,
+        "transport" : "USB",
+        "usage" : 6,
+        "usagePage" : 1
+      },
+      {
+        "maxFeatureReportSize" : 51,
+        "maxInputReportSize" : 1,
+        "product" : "Razer Cobra HyperSpeed",
+        "productID" : 219,
+        "transport" : "USB",
+        "usage" : 1,
+        "usagePage" : 89
+      },
+      {
+        "maxFeatureReportSize" : 51,
+        "maxInputReportSize" : 1,
+        "product" : "Razer Cobra HyperSpeed",
+        "productID" : 219,
+        "transport" : "USB",
+        "usage" : 1,
+        "usagePage" : 89
+      }
+    ],
+    "name" : "Razer Cobra HyperSpeed",
+    "productID" : 219,
+    "vendorID" : 5426
+  },
+  "dpi" : {
+    "data" : {
+      "original" : 6400,
+      "readBack" : 6350,
+      "restored" : true,
+      "stages" : [
+        400,
+        800,
+        1600,
+        3200,
+        6400
+      ],
+      "test" : 6350
+    },
+    "exchanges" : [
+      {
+        "commandClass" : 4,
+        "commandId" : 133,
+        "milliseconds" : 39,
+        "response" : [
+          1,
+          25,
+          0,
+          25,
+          0,
+          0,
+          0,
+          0
+        ],
+        "status" : 2,
+        "transactionId" : 31
+      },
+      {
+        "commandClass" : 4,
+        "commandId" : 5,
+        "milliseconds" : 38,
+        "response" : [
+          1,
+          24,
+          206,
+          24,
+          206,
+          0,
+          0,
+          0
+        ],
+        "status" : 2,
+        "transactionId" : 31
+      },
+      {
+        "commandClass" : 4,
+        "commandId" : 133,
+        "milliseconds" : 40,
+        "response" : [
+          1,
+          24,
+          206,
+          24,
+          206,
+          0,
+          0,
+          0
+        ],
+        "status" : 2,
+        "transactionId" : 31
+      },
+      {
+        "commandClass" : 4,
+        "commandId" : 134,
+        "milliseconds" : 39,
+        "response" : [
+          1,
+          5,
+          5,
+          1,
+          1,
+          144,
+          1,
+          144
+        ],
+        "status" : 2,
+        "transactionId" : 31
+      },
+      {
+        "commandClass" : 4,
+        "commandId" : 5,
+        "milliseconds" : 40,
+        "response" : [
+          1,
+          25,
+          0,
+          25,
+          0,
+          0,
+          0,
+          0
+        ],
+        "status" : 2,
+        "transactionId" : 31
+      },
+      {
+        "commandClass" : 4,
+        "commandId" : 133,
+        "milliseconds" : 40,
+        "response" : [
+          1,
+          25,
+          0,
+          25,
+          0,
+          0,
+          0,
+          0
+        ],
+        "status" : 2,
+        "transactionId" : 31
+      }
+    ],
+    "outcome" : "passed"
+  },
+  "identify" : {
+    "data" : {
+      "firmware" : "v1.0",
+      "lightingAttempts" : [
+        {
+          "answered" : true,
+          "groups" : [
+            "LOGO"
+          ],
+          "id" : 31,
+          "refused" : true
+        },
+        {
+          "answered" : true,
+          "groups" : [
+            "LOGO"
+          ],
+          "id" : 63,
+          "refused" : true
+        },
+        {
+          "answered" : false,
+          "groups" : [
+
+          ],
+          "id" : 255,
+          "refused" : false
+        },
+        {
+          "answered" : true,
+          "groups" : [
+            "LOGO"
+          ],
+          "id" : 8,
+          "refused" : true
+        },
+        {
+          "answered" : false,
+          "groups" : [
+
+          ],
+          "id" : 128,
+          "refused" : false
+        }
+      ],
+      "lightingId" : 31,
+      "standardAttempts" : [
+        {
+          "answered" : true,
+          "id" : 31,
+          "refused" : false
+        },
+        {
+          "answered" : true,
+          "id" : 63,
+          "refused" : false
+        },
+        {
+          "answered" : false,
+          "error" : "Device command timed out (known-finicky over the wireless dongle)",
+          "id" : 255,
+          "refused" : false
+        },
+        {
+          "answered" : true,
+          "id" : 8,
+          "refused" : false
+        },
+        {
+          "answered" : false,
+          "error" : "Device command timed out (known-finicky over the wireless dongle)",
+          "id" : 128,
+          "refused" : false
+        }
+      ],
+      "standardId" : 31
+    },
+    "exchanges" : [
+      {
+        "commandClass" : 0,
+        "commandId" : 129,
+        "milliseconds" : 39,
+        "response" : [
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "status" : 2,
+        "transactionId" : 31
+      },
+      {
+        "commandClass" : 0,
+        "commandId" : 129,
+        "milliseconds" : 40,
+        "response" : [
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "status" : 2,
+        "transactionId" : 63
+      },
+      {
+        "commandClass" : 0,
+        "commandId" : 129,
+        "error" : "Device command timed out (known-finicky over the wireless dongle)",
+        "milliseconds" : 275,
+        "response" : [
+
+        ],
+        "transactionId" : 255
+      },
+      {
+        "commandClass" : 0,
+        "commandId" : 129,
+        "milliseconds" : 38,
+        "response" : [
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "status" : 2,
+        "transactionId" : 8
+      },
+      {
+        "commandClass" : 0,
+        "commandId" : 129,
+        "error" : "Device command timed out (known-finicky over the wireless dongle)",
+        "milliseconds" : 272,
+        "response" : [
+
+        ],
+        "transactionId" : 128
+      },
+      {
+        "commandClass" : 15,
+        "commandId" : 132,
+        "milliseconds" : 39,
+        "response" : [
+          1,
+          4,
+          10,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "status" : 2,
+        "transactionId" : 31
+      },
+      {
+        "commandClass" : 15,
+        "commandId" : 132,
+        "error" : "Device reported the command failed (status 0x03)",
+        "milliseconds" : 38,
+        "response" : [
+
+        ],
+        "transactionId" : 31
+      },
+      {
+        "commandClass" : 15,
+        "commandId" : 132,
+        "error" : "Device reported the command failed (status 0x03)",
+        "milliseconds" : 38,
+        "response" : [
+
+        ],
+        "transactionId" : 31
+      },
+      {
+        "commandClass" : 15,
+        "commandId" : 132,
+        "error" : "Device reported the command failed (status 0x03)",
+        "milliseconds" : 36,
+        "response" : [
+
+        ],
+        "transactionId" : 31
+      },
+      {
+        "commandClass" : 15,
+        "commandId" : 132,
+        "milliseconds" : 40,
+        "response" : [
+          1,
+          4,
+          10,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "status" : 2,
+        "transactionId" : 63
+      },
+      {
+        "commandClass" : 15,
+        "commandId" : 132,
+        "error" : "Device reported the command failed (status 0x03)",
+        "milliseconds" : 40,
+        "response" : [
+
+        ],
+        "transactionId" : 63
+      },
+      {
+        "commandClass" : 15,
+        "commandId" : 132,
+        "error" : "Device reported the command failed (status 0x03)",
+        "milliseconds" : 41,
+        "response" : [
+
+        ],
+        "transactionId" : 63
+      },
+      {
+        "commandClass" : 15,
+        "commandId" : 132,
+        "error" : "Device reported the command failed (status 0x03)",
+        "milliseconds" : 39,
+        "response" : [
+
+        ],
+        "transactionId" : 63
+      },
+      {
+        "commandClass" : 15,
+        "commandId" : 132,
+        "error" : "Device command timed out (known-finicky over the wireless dongle)",
+        "milliseconds" : 41,
+        "response" : [
+
+        ],
+        "transactionId" : 255
+      },
+      {
+        "commandClass" : 15,
+        "commandId" : 132,
+        "error" : "Device command timed out (known-finicky over the wireless dongle)",
+        "milliseconds" : 38,
+        "response" : [
+
+        ],
+        "transactionId" : 255
+      },
+      {
+        "commandClass" : 15,
+        "commandId" : 132,
+        "error" : "Device command timed out (known-finicky over the wireless dongle)",
+        "milliseconds" : 41,
+        "response" : [
+
+        ],
+        "transactionId" : 255
+      },
+      {
+        "commandClass" : 15,
+        "commandId" : 132,
+        "error" : "Device command timed out (known-finicky over the wireless dongle)",
+        "milliseconds" : 36,
+        "response" : [
+
+        ],
+        "transactionId" : 255
+      },
+      {
+        "commandClass" : 15,
+        "commandId" : 132,
+        "milliseconds" : 40,
+        "response" : [
+          1,
+          4,
+          10,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "status" : 2,
+        "transactionId" : 8
+      },
+      {
+        "commandClass" : 15,
+        "commandId" : 132,
+        "error" : "Device reported the command failed (status 0x03)",
+        "milliseconds" : 41,
+        "response" : [
+
+        ],
+        "transactionId" : 8
+      },
+      {
+        "commandClass" : 15,
+        "commandId" : 132,
+        "error" : "Device reported the command failed (status 0x03)",
+        "milliseconds" : 40,
+        "response" : [
+
+        ],
+        "transactionId" : 8
+      },
+      {
+        "commandClass" : 15,
+        "commandId" : 132,
+        "error" : "Device reported the command failed (status 0x03)",
+        "milliseconds" : 39,
+        "response" : [
+
+        ],
+        "transactionId" : 8
+      },
+      {
+        "commandClass" : 15,
+        "commandId" : 132,
+        "error" : "Device command timed out (known-finicky over the wireless dongle)",
+        "milliseconds" : 40,
+        "response" : [
+
+        ],
+        "transactionId" : 128
+      },
+      {
+        "commandClass" : 15,
+        "commandId" : 132,
+        "error" : "Device command timed out (known-finicky over the wireless dongle)",
+        "milliseconds" : 40,
+        "response" : [
+
+        ],
+        "transactionId" : 128
+      },
+      {
+        "commandClass" : 15,
+        "commandId" : 132,
+        "error" : "Device command timed out (known-finicky over the wireless dongle)",
+        "milliseconds" : 36,
+        "response" : [
+
+        ],
+        "transactionId" : 128
+      },
+      {
+        "commandClass" : 15,
+        "commandId" : 132,
+        "error" : "Device command timed out (known-finicky over the wireless dongle)",
+        "milliseconds" : 40,
+        "response" : [
+
+        ],
+        "transactionId" : 128
+      }
+    ],
+    "outcome" : "passed"
+  },
+  "lighting" : {
+    "data" : {
+      "dimShown" : true,
+      "groups" : {
+        "LOGO" : 10
+      },
+      "redShown" : false,
+      "restored" : true
+    },
+    "exchanges" : [
+      {
+        "commandClass" : 15,
+        "commandId" : 4,
+        "milliseconds" : 37,
+        "response" : [
+          1,
+          4,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "status" : 2,
+        "transactionId" : 31
+      },
+      {
+        "commandClass" : 15,
+        "commandId" : 132,
+        "milliseconds" : 41,
+        "response" : [
+          1,
+          4,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "status" : 2,
+        "transactionId" : 31
+      },
+      {
+        "commandClass" : 15,
+        "commandId" : 4,
+        "milliseconds" : 39,
+        "response" : [
+          1,
+          4,
+          10,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "status" : 2,
+        "transactionId" : 31
+      },
+      {
+        "commandClass" : 15,
+        "commandId" : 132,
+        "milliseconds" : 40,
+        "response" : [
+          1,
+          4,
+          10,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "status" : 2,
+        "transactionId" : 31
+      }
+    ],
+    "outcome" : "skipped"
+  },
+  "macOSVersion" : "26.6.2",
+  "polling" : {
+    "data" : {
+      "original" : 500,
+      "readBack" : 1000,
+      "restored" : true,
+      "test" : 1000
+    },
+    "exchanges" : [
+      {
+        "commandClass" : 0,
+        "commandId" : 133,
+        "milliseconds" : 40,
+        "response" : [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "status" : 2,
+        "transactionId" : 31
+      },
+      {
+        "commandClass" : 0,
+        "commandId" : 5,
+        "milliseconds" : 36,
+        "response" : [
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "status" : 2,
+        "transactionId" : 31
+      },
+      {
+        "commandClass" : 0,
+        "commandId" : 133,
+        "milliseconds" : 40,
+        "response" : [
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "status" : 2,
+        "transactionId" : 31
+      },
+      {
+        "commandClass" : 0,
+        "commandId" : 5,
+        "milliseconds" : 37,
+        "response" : [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "status" : 2,
+        "transactionId" : 31
+      },
+      {
+        "commandClass" : 0,
+        "commandId" : 133,
+        "milliseconds" : 38,
+        "response" : [
+          2,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "status" : 2,
+        "transactionId" : 31
+      }
+    ],
+    "outcome" : "passed"
+  },
+  "registry" : {
+    "brightnessLed" : 4,
+    "fullySupported" : true,
+    "hasBattery" : true,
+    "hasLighting" : true,
+    "matrixTransactionId" : 31,
+    "maxDPI" : 26000,
+    "name" : "Razer Cobra HyperSpeed",
+    "transactionId" : 31
+  },
+  "schemaVersion" : 1,
+  "verdict" : {
+    "failed" : [
+
+    ],
+    "kind" : "partlyTested",
+    "notSupported" : [
+
+    ],
+    "passed" : [
+      "Identify",
+      "Battery",
+      "DPI",
+      "Polling rate"
+    ],
+    "skipped" : [
+      "Lighting"
+    ]
+  }
+}

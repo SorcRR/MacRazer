@@ -106,17 +106,38 @@ final class DeviceReportOutputTests: XCTestCase {
             XCTAssertNil(DeviceReportOutput.emailProblem(ok), ok)
         }
         for bad in ["plainaddress", "@example.com", "a@b", "a@.com", "a@b.", "two@@example.com", "a b@example.com",
-                    "a@example.com\nBcc: x@y.z", String(repeating: "a", count: 250) + "@x.com"] {
+                    "a@example.com\nBcc: x@y.z", String(repeating: "a", count: 250) + "@x.com",
+                    "a\tb@example.com", "a@example.com\r", "a\u{2028}@example.com", "\u{FEFF}a@example.com",
+                    "a\u{7}@example.com"] {
             XCTAssertNotNil(DeviceReportOutput.emailProblem(bad), bad)
         }
     }
 
     func testFreeTextIsTrimmedCappedAndEmptyBecomesNothing() {
-        XCTAssertNil(DeviceReportOutput.cleaned("   \n ", max: 10, singleLine: false))
-        XCTAssertEqual(DeviceReportOutput.cleaned("  hi  ", max: 10, singleLine: false), "hi")
-        XCTAssertEqual(DeviceReportOutput.cleaned("abcdef", max: 3, singleLine: false), "abc")
-        XCTAssertEqual(DeviceReportOutput.cleaned("Jane\nDoe", max: 64, singleLine: true), "Jane Doe",
+        XCTAssertNil(DeviceReportOutput.cleaned("   \n ", max: 10, units: 40, singleLine: false))
+        XCTAssertEqual(DeviceReportOutput.cleaned("  hi  ", max: 10, units: 40, singleLine: false), "hi")
+        XCTAssertEqual(DeviceReportOutput.cleaned("abcdef", max: 3, units: 40, singleLine: false), "abc")
+        XCTAssertEqual(DeviceReportOutput.cleaned("Jane\nDoe", max: 64, units: 256, singleLine: true), "Jane Doe",
                        "a credit is one line")
+    }
+
+    func testFreeTextLosesWhatTheWorkerRefuses() {
+        // A pasted comment: Windows line endings, a tab, a bell, a stray line separator.
+        XCTAssertEqual(DeviceReportOutput.cleaned("one\r\ntwo\rthree\tfour\u{7}\u{2028}five", max: 100, units: 100,
+                                                  singleLine: false),
+                       "one\ntwo\nthree\tfour\nfive")
+        XCTAssertEqual(DeviceReportOutput.cleaned("Jane\tDoe\u{1B}", max: 64, units: 256, singleLine: true), "Jane Doe")
+        XCTAssertEqual(DeviceReportOutput.cleaned("👩‍👩‍👧‍👦", max: 10, units: 100, singleLine: true), "👩‍👩‍👧‍👦",
+                       "joiners inside an emoji are not control characters")
+    }
+
+    func testFreeTextFitsTheWorkersCountToo() {
+        // 64 characters, but each is eleven UTF-16 units: the Worker would see 704.
+        let family = String(repeating: "👩‍👩‍👧‍👦", count: DeviceReportOutput.maxCredit)
+        let credit = DeviceReportOutput.cleaned(family, max: DeviceReportOutput.maxCredit,
+                                                units: DeviceReportOutput.maxCreditUnits, singleLine: true)!
+        XCTAssertLessThanOrEqual(credit.utf16.count, DeviceReportOutput.maxCreditUnits)
+        XCTAssertEqual(credit.count, DeviceReportOutput.maxCreditUnits / 11, "cut between characters, never inside one")
     }
 
     // MARK: Button labels
