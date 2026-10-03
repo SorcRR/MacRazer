@@ -52,6 +52,12 @@ func printPermissionHintIfDenied(_ error: Error) -> Bool {
 }
 
 func openDevice() -> HIDDevice? {
+    // These commands only speak USB. With the mouse on Bluetooth and the dongle still plugged
+    // in, they would open the idle dongle and every read would time out with no hint why.
+    if let bt = HIDDevice.bluetoothRazerMouse() {
+        status("Note: \(bt.name) is connected over Bluetooth, which these commands can't reach.")
+        status("      If that's the mouse to probe, switch it to the dongle or plug in the cable.")
+    }
     do {
         let dev = try HIDDevice.open(vendorId: Razer.vendorId)
         status("✓ Opened \(dev.productName) (VID 0x1532, PID 0x\(String(format: "%04x", dev.productID)))")

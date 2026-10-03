@@ -647,23 +647,51 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// Main thread. Whether the popover is showing, so a test ending can resume its reads.
     private var popoverVisible = false
 
+    /// Why a device test step can't run on the link the app is using.
+    enum DeviceTestLinkError: Error, CustomStringConvertible {
+        /// The mouse is on Bluetooth. The test's probes are HID feature reports with chosen
+        /// transaction ids, which Razer's Bluetooth protocol doesn't have.
+        case bluetooth(name: String)
+
+        var description: String {
+            switch self {
+            case .bluetooth(let name): return "\(name) is on Bluetooth, which the test can't use."
+            }
+        }
+    }
+
     /// Runs one test step on the device queue with the open device, ahead of background reads
-    /// like any user command. Throws only when there is no device to run it on: steps record
-    /// their own failures. USB only: the test's probes are HID feature reports with chosen
-    /// transaction ids, which Bluetooth's protocol doesn't have, so a mouse that moved to
-    /// Bluetooth mid-test counts as gone.
+    /// like any user command. Throws only when there is no device to run it on, or it is on
+    /// Bluetooth (`DeviceTestLinkError`): steps record their own failures.
     func runDeviceTestStep<T: Sendable>(_ body: @escaping @Sendable (HIDDevice) -> T) async throws -> T {
         try await withCheckedThrowingContinuation { continuation in
             userCommand { [weak self] in
                 guard let self else { return continuation.resume(throwing: HIDDevice.HIDError.notFound) }
                 do {
-                    guard let device = try self.ensureDevice() as? HIDDevice else { throw HIDDevice.HIDError.notFound }
+                    let device = try self.deviceTestDevice()
                     continuation.resume(returning: body(device))
                 } catch {
                     continuation.resume(throwing: error)
                 }
             }
         }
+    }
+
+    /// Must be called on `io`, which knows the link for certain; the published
+    /// `deviceIsBluetooth` lags it. Never opens Bluetooth: the test can't use it, and a first
+    /// open shows macOS's Bluetooth prompt and can hold the queue for seconds.
+    private func deviceTestDevice() throws -> HIDDevice {
+        if device == nil, let bt = HIDDevice.bluetoothRazerMouse() {
+            let usb = try? HIDDevice.controlInterface(vendorId: Razer.vendorId)
+            if Self.wouldOpenBluetooth(usbPresent: usb != nil,
+                                       usbConnection: usb.flatMap { RazerDevices.connection(pid: HIDDevice.productID(of: $0)) },
+                                       bluetoothControllable: bt.controllablePID != nil) {
+                throw DeviceTestLinkError.bluetooth(name: bt.name)
+            }
+        }
+        let open = try ensureDevice()
+        guard let hid = open as? HIDDevice else { throw DeviceTestLinkError.bluetooth(name: open.productName) }
+        return hid
     }
 
     /// The command for the lighting the app last set, for the test to return to after showing
@@ -1046,6 +1074,14 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// nothing behind the dongle (picking it timed out on every poll on the Cobra HyperSpeed).
     static func prefersBluetooth(over usb: RazerConnection?, bluetoothControllable: Bool) -> Bool {
         bluetoothControllable && usb == .wirelessDongle
+    }
+
+    /// `openTransport`'s choice of link, made without opening anything: Bluetooth when it can
+    /// be controlled and USB has nothing, or only a dongle (`prefersBluetooth`).
+    static func wouldOpenBluetooth(usbPresent: Bool, usbConnection: RazerConnection?,
+                                   bluetoothControllable: Bool) -> Bool {
+        bluetoothControllable
+            && (!usbPresent || prefersBluetooth(over: usbConnection, bluetoothControllable: true))
     }
 
     /// io-queue only. Moves from one device's battery history to another's, in the order

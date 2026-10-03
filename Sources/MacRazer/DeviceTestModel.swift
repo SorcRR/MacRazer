@@ -128,14 +128,19 @@ final class DeviceTestModel: ObservableObject {
         ]).isEmpty
     }
 
+    /// Why there's no mouse for the test: on Bluetooth, or not connected at all.
+    private static func unavailable() -> Blocker {
+        HIDDevice.bluetoothRazerMouse().map { .bluetoothOnly($0.name) } ?? .noMouse
+    }
+
     func start() {
         // A window closed mid-step and reopened: that step is still finishing on the device.
         guard !running else { return }
         blocker = nil
-        // The app may be controlling the mouse over Bluetooth, even with the dongle plugged in
-        // (`MouseController.prefersBluetooth`), but the test needs the USB link.
-        guard Self.razerMousePresent, !controller.deviceIsBluetooth else {
-            blocker = HIDDevice.bluetoothRazerMouse().map { .bluetoothOnly($0.name) } ?? .noMouse
+        // A mouse on Bluetooth with the dongle still plugged in gets this far. Identify finds
+        // that out on the device queue, which knows the link for certain.
+        guard Self.razerMousePresent else {
+            blocker = Self.unavailable()
             return
         }
         guard Self.inputMonitoringGranted else {
@@ -229,7 +234,11 @@ final class DeviceTestModel: ObservableObject {
                 needsRelaunch = true
                 stage = .permission
             } else {
-                blocker = .noMouse
+                if case MouseController.DeviceTestLinkError.bluetooth(let name) = error {
+                    blocker = .bluetoothOnly(name)
+                } else {
+                    blocker = Self.unavailable()
+                }
                 endSession()
                 stage = .intro
             }

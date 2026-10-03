@@ -150,14 +150,8 @@ final class HIDDevice {
                 maxInputReportSize: intProp(dev, kIOHIDMaxInputReportSizeKey) ?? 0,
                 transport: strProp(dev, kIOHIDTransportKey) ?? "")
         }
-        let infos = devices.map { dev in
-            HIDInterfaceInfo(pid: intProp(dev, kIOHIDProductIDKey) ?? 0,
-                             locationID: intProp(dev, kIOHIDLocationIDKey) ?? 0,
-                             usagePage: intProp(dev, kIOHIDPrimaryUsagePageKey) ?? 0,
-                             usage: intProp(dev, kIOHIDPrimaryUsageKey) ?? 0,
-                             maxFeatureReportSize: intProp(dev, kIOHIDMaxFeatureReportSizeKey) ?? 0)
-        }
-        let chosen = HIDDeviceSelection.controlInterfaceIndex(interfaces: infos).map { summaries[$0] }
+        // The same choice `controlInterface(vendorId:)` makes, so the report names the one opened.
+        let chosen = HIDDeviceSelection.controlInterfaceIndex(interfaces: interfaceInfos(devices)).map { summaries[$0] }
         let sorted = summaries.sorted {
             ($0.productID, $0.usagePage, $0.usage, $0.maxFeatureReportSize, $0.maxInputReportSize)
                 < ($1.productID, $1.usagePage, $1.usage, $1.maxFeatureReportSize, $1.maxInputReportSize)
@@ -194,17 +188,21 @@ final class HIDDevice {
         let devices = matchingDevices(vendorId: vendorId)
         guard !devices.isEmpty else { throw HIDError.notFound }
 
-        let infos = devices.map { dev in
+        guard let idx = HIDDeviceSelection.controlInterfaceIndex(interfaces: interfaceInfos(devices)) else {
+            throw HIDError.notFound
+        }
+        return devices[idx]
+    }
+
+    /// What `HIDDeviceSelection` ranks each interface by.
+    private static func interfaceInfos(_ devices: [IOHIDDevice]) -> [HIDInterfaceInfo] {
+        devices.map { dev in
             HIDInterfaceInfo(pid: intProp(dev, kIOHIDProductIDKey) ?? 0,
                              locationID: intProp(dev, kIOHIDLocationIDKey) ?? 0,
                              usagePage: intProp(dev, kIOHIDPrimaryUsagePageKey) ?? 0,
                              usage: intProp(dev, kIOHIDPrimaryUsageKey) ?? 0,
                              maxFeatureReportSize: intProp(dev, kIOHIDMaxFeatureReportSizeKey) ?? 0)
         }
-        guard let idx = HIDDeviceSelection.controlInterfaceIndex(interfaces: infos) else {
-            throw HIDError.notFound
-        }
-        return devices[idx]
     }
 
     static func productID(of dev: IOHIDDevice) -> Int { intProp(dev, kIOHIDProductIDKey) ?? 0 }

@@ -39,7 +39,8 @@ expect rough edges until 1.0.
  listens for the side buttons. Everything it changes goes back before the next step, and
  quitting waits for a step to finish. Every step can be skipped. At the end you can copy the
  report or open a GitHub issue with it, plus an optional comment and a name to credit. The
- report never includes the mouse's serial number. If Input Monitoring isn't granted yet, the
+ report never includes the mouse's serial number. The test needs the dongle or a cable,
+ even on a mouse that also works over Bluetooth. If Input Monitoring isn't granted yet, the
  test asks for it first. A mouse the app doesn't know yet also gets a "Help test it" link in
  the popover.
 

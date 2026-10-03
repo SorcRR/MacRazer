@@ -75,7 +75,8 @@ column is about who has actually seen it happen.
 menu bar icon and choose **Help Support This Mouse…**. It runs the same probes as the
 commands below, puts every setting back, and builds the report for you to copy or open as a
 GitHub issue. On a verified mouse the item reads **Test This Mouse…**, and a report confirms
-it still works on your firmware.
+it still works on your firmware. The test needs the dongle or a cable, even on a mouse that
+also works over Bluetooth.
 
 Adding a model is a small change to a registry plus on-hardware verification. See
 [CONTRIBUTING.md](CONTRIBUTING.md).
