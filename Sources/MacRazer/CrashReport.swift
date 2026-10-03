@@ -66,6 +66,10 @@ enum CrashReportParser {
     /// the rest is run loop.
     static let maxFrames = 60
     static let maxMessage = 1000
+    /// Long enough for any ordinary frame. A demangled generic specialization can run to
+    /// thousands of characters, and twenty of those would keep a report over the Worker's
+    /// limit even after `CrashReportOutput.fitted` has cut the stack down to what it keeps.
+    static let maxFrameLine = 300
 
     /// The report, or nil when the file isn't a MacRazer crash in a format this understands.
     ///
@@ -137,7 +141,9 @@ enum CrashReportParser {
         }()
         if let symbol = frame["symbol"] as? String {
             let location = (frame["symbolLocation"] as? Int).map { " + \($0)" } ?? ""
-            return redacted("\(image)  \(symbol)\(location)")
+            let line = redacted("\(image)  \(symbol)\(location)")
+            // The start says which code it is. The offset at the end matters less.
+            return line.count > maxFrameLine ? String(line.prefix(maxFrameLine - 1)) + "…" : line
         }
         let offset = (frame["imageOffset"] as? Int).map { String(format: "0x%x", $0) } ?? "?"
         return "\(image)  +\(offset)"
@@ -229,6 +235,13 @@ struct CrashLogScanner {
         nonmutating set { defaults.set(newValue, forKey: Self.offerKey) }
     }
 
+    /// Marks everything up to now handled without reading any of it. For while the person has
+    /// said not to ask: otherwise those crashes pile up and the first launch after they turn
+    /// it back on offers one from months ago, counting every crash in between.
+    func skipAll(now: Date = Date()) {
+        defaults.set(now, forKey: Self.handledThroughKey)
+    }
+
     /// The newest MacRazer crash since the last look, and how many there were in all, or nil.
     /// Marks every one of them handled either way, so each crash is offered once at most.
     func takeNewCrash(now: Date = Date()) -> (report: CrashReport, count: Int)? {
@@ -240,13 +253,12 @@ struct CrashLogScanner {
         guard let newest = found.last else { return nil }
         defaults.set(newest.date, forKey: Self.handledThroughKey)
         // Newest first: the one most likely to be the version running now. A file that won't
-        // parse (a hang, a format from a future macOS) is passed over, not offered blank.
-        for file in found.reversed() {
-            if let data = try? Data(contentsOf: file.url), let report = CrashReportParser.parse(data) {
-                return (report, found.count)
-            }
+        // parse (a hang, a `swift run` build, a format from a future macOS) is passed over,
+        // not offered blank, and not counted either: "it quit 4 times" has to mean 4 crashes.
+        let reports = found.reversed().compactMap { file in
+            (try? Data(contentsOf: file.url)).flatMap(CrashReportParser.parse)
         }
-        return nil
+        return reports.first.map { ($0, reports.count) }
     }
 
     /// `MacRazer-*.ips` written after `since`, oldest first.

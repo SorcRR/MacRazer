@@ -29,8 +29,12 @@ final class CrashReportWindowController: NSObject, AppWindowPresenter, NSWindowD
     /// nothing while a report is already on screen: that one is still being answered, and
     /// the next look will find any newer crash.
     func offerNewCrash() {
-        guard let deliver = CrashReporting.deliver, scanner.isOffering, !isVisible,
-              let found = scanner.takeNewCrash() else { return }
+        guard let deliver = CrashReporting.deliver else { return }
+        guard scanner.isOffering else {
+            scanner.skipAll()
+            return
+        }
+        guard !isVisible, let found = scanner.takeNewCrash() else { return }
         let model = CrashReportModel(report: found.report, count: found.count)
         model.deliver = deliver
         self.model = model

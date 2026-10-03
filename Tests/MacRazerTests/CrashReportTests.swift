@@ -7,13 +7,15 @@ import XCTest
 /// A trimmed `.ips` in the real two-document shape, modelled on the relaunch crash. It keeps
 /// the fields that must never be sent, so the tests can check they aren't.
 enum CrashFixture {
-    static func ips(bundleID: String = CrashReportParser.bundleID, bugType: String = "309",
-                    frames: Int = 5, asi: String? = nil) -> Data {
-        let header: [String: Any] = [
+    static func ips(bundleID: String? = CrashReportParser.bundleID, bugType: String = "309",
+                    frames: Int = 5, asi: String? = nil, symbolLength: Int? = nil) -> Data {
+        var header: [String: Any] = [
             "app_name": "MacRazer", "app_version": "0.6.0", "build_version": "41",
-            "bundleID": bundleID, "bug_type": bugType, "os_version": "macOS 26.6.2 (25G83)",
+            "bug_type": bugType, "os_version": "macOS 26.6.2 (25G83)",
             "incident_id": "5E0C7B1A-8F43-4C2B-9D7E-1A2B3C4D5E6F", "timestamp": "2026-09-23 18:23:32.00 +0300",
         ]
+        // `swift run` builds crash under the same name with no bundle ID at all.
+        if let bundleID { header["bundleID"] = bundleID }
         let top: [[String: Any]] = [
             ["imageOffset": 1000, "symbol": "_dispatch_assert_queue_fail", "symbolLocation": 120, "imageIndex": 1],
             ["imageOffset": 2000, "symbol": "swift_task_isCurrentExecutorImpl", "symbolLocation": 284, "imageIndex": 2],
@@ -22,7 +24,8 @@ enum CrashFixture {
             ["imageOffset": 0x1234, "imageIndex": 0],
         ]
         let filler: [[String: Any]] = (0..<max(0, frames - top.count)).map {
-            ["imageOffset": $0, "symbol": "__CFRunLoopRun_padding_frame_\($0)", "symbolLocation": $0, "imageIndex": 3]
+            let symbol = symbolLength.map { String(repeating: "x", count: $0) } ?? "__CFRunLoopRun_padding_frame_\($0)"
+            return ["imageOffset": $0, "symbol": symbol, "symbolLocation": $0, "imageIndex": 3]
         }
         var body: [String: Any] = [
             "modelCode": "Mac14,6", "cpuType": "ARM-64", "translated": false,
@@ -47,6 +50,10 @@ enum CrashFixture {
             ],
         ]
         if let asi { body["asi"] = ["libswiftCore.dylib": [asi]] }
+        if symbolLength != nil {
+            // An Objective-C exception's stack as well, so both kept stacks are long.
+            body["lastExceptionBacktrace"] = Array(filler.prefix(frames))
+        }
         let h = try! JSONSerialization.data(withJSONObject: header)
         let b = try! JSONSerialization.data(withJSONObject: body, options: .prettyPrinted)
         return h + Data("\n".utf8) + b
@@ -91,9 +98,19 @@ final class CrashReportParserTests: XCTestCase {
 
     func testRefusesOtherAppsAndOtherReports() {
         XCTAssertNil(CrashReportParser.parse(CrashFixture.ips(bundleID: "com.example.other")))
+        XCTAssertNil(CrashReportParser.parse(CrashFixture.ips(bundleID: nil)), "a swift run build")
         XCTAssertNil(CrashReportParser.parse(CrashFixture.ips(bugType: "288")), "a hang, not a crash")
         XCTAssertNil(CrashReportParser.parse(Data("not a report".utf8)))
         XCTAssertNil(CrashReportParser.parse(Data()))
+    }
+
+    func testCapsAFrameLine() {
+        let r = CrashReportParser.parse(CrashFixture.ips(frames: 6, symbolLength: 5000))!
+        let long = r.frames[5]
+        XCTAssertEqual(long.count, CrashReportParser.maxFrameLine)
+        XCTAssertTrue(long.hasPrefix("AppKit  xxx"), "the start, which names the code, is kept")
+        XCTAssertTrue(long.hasSuffix("…"))
+        XCTAssertEqual(r.frames[2], "MacRazer  closure #1 in UpdateChecker.relaunch(at:) + 52", "short ones untouched")
     }
 
     func testCapsTheStackDepth() {
@@ -117,6 +134,18 @@ final class CrashReportOutputTests: XCTestCase {
         XCTAssertEqual(Array(fitted.frames.prefix(5)), Array(r.frames.prefix(5)))
         XCTAssertEqual(fitted.frames.count + (fitted.framesDropped ?? 0), 60)
         XCTAssertEqual(fitted.comment, "short", "frames give way before the comment does")
+    }
+
+    func testTheWorstCaseStillFitsWithoutAComment() {
+        // Every frame as long as a line can be, on both stacks, with the longest message and
+        // termination: what's left after trimming must be under the limit, or Send can't work.
+        let longest = String(repeating: "é", count: CrashReportParser.maxMessage * 2)
+        var r = CrashReportParser.parse(CrashFixture.ips(frames: 60, asi: longest, symbolLength: 5000))!
+        r.termination = String(longest.prefix(CrashReportParser.maxMessage))
+        let fitted = CrashReportOutput.fitted(r)
+        XCTAssertLessThanOrEqual(CrashReportOutput.size(fitted), CrashReportOutput.maxReportBytes)
+        XCTAssertGreaterThanOrEqual(fitted.frames.count, 10, "the top of the stack is never cut")
+        XCTAssertEqual(Array(fitted.frames.prefix(3)), Array(r.frames.prefix(3)))
     }
 
     func testTheCommentIsCutOnlyOnceFramesAreDown() {
@@ -202,10 +231,28 @@ final class CrashLogScannerTests: XCTestCase {
         defaults.set(start, forKey: CrashLogScanner.handledThroughKey)
         write("MacRazer-a.ips", at: start.addingTimeInterval(10))
         write("MacRazer-hang.ips", CrashFixture.ips(bugType: "288"), at: start.addingTimeInterval(20))
-        XCTAssertEqual(scanner.takeNewCrash()?.count, 2, "the crash behind the hang is still offered")
+        XCTAssertEqual(scanner.takeNewCrash()?.count, 1, "the crash behind the hang is offered, and the hang isn't counted")
         write("MacRazer-hang2.ips", CrashFixture.ips(bugType: "288"), at: Date().addingTimeInterval(-5))
         XCTAssertNil(scanner.takeNewCrash())
         XCTAssertNil(scanner.takeNewCrash(), "and not looked at again")
+    }
+
+    func testCountsOnlyCrashesItWouldOffer() throws {
+        let start = Date().addingTimeInterval(-1000)
+        defaults.set(start, forKey: CrashLogScanner.handledThroughKey)
+        for i in 0..<3 { write("MacRazer-dev\(i).ips", CrashFixture.ips(bundleID: nil), at: start.addingTimeInterval(Double(10 + i))) }
+        write("MacRazer-app.ips", at: start.addingTimeInterval(5))
+        XCTAssertEqual(try XCTUnwrap(scanner.takeNewCrash()).count, 1, "the swift run crashes aren't this app quitting")
+    }
+
+    func testCrashesWhileNotAskingAreNeverOfferedLater() {
+        let start = Date().addingTimeInterval(-1000)
+        defaults.set(start, forKey: CrashLogScanner.handledThroughKey)
+        write("MacRazer-while-off.ips", at: start.addingTimeInterval(10))
+        scanner.skipAll()
+        XCTAssertNil(scanner.takeNewCrash(), "turning it back on starts from then, not from before")
+        write("MacRazer-after.ips", at: Date().addingTimeInterval(5))
+        XCTAssertEqual(scanner.takeNewCrash()?.count, 1)
     }
 
     func testDontAskAgainIsRemembered() {
