@@ -296,6 +296,14 @@ case "render-device-test":
     model.loadPreview(stage, known: !args.contains("unknown"), ranSteps: args.contains("ran"))
     writeViewPNG(DeviceTestView(model: model, onClose: {}), to: path)
 
+case "render-crash-report":
+    // The window shown on the launch after a crash. `sent` shows the thank-you.
+    _ = NSApplication.shared
+    let crashPath = outputPath(args.dropFirst(), default: "crash-report-preview.png")
+    let crashModel = CrashReportModel.preview()
+    if args.contains("sent") { crashModel.loadPreviewSent() }
+    writeHostedPNG(CrashReportView(model: crashModel, onDone: {}, onDontAskAgain: {}), to: crashPath)
+
 case "render-remap":
     _ = NSApplication.shared
     let path = outputPath(args.dropFirst(), default: "remap-preview.png")

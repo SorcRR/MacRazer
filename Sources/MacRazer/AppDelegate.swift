@@ -32,6 +32,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     private lazy var updatedWindow = UpdatedWindowController(
         updateChecker: updateChecker,
         onClosed: { [weak self] in self?.autoInstallIfEnabled() })
+    /// Closing it re-asks the auto-install gate, for the same reason as `updatedWindow`.
+    private lazy var crashReportWindow = CrashReportWindowController(
+        onClosed: { [weak self] in self?.autoInstallIfEnabled() })
     private lazy var settingsWindow = SettingsWindowController(
         controller: controller, launchAtLogin: launchAtLogin, updateChecker: updateChecker,
         onAutoInstallChanged: { [weak self] in self?.autoInstallSettingChanged() })
@@ -235,6 +238,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         // they are doing something else.
         if updateChecker.justUpdatedTo != nil {
             updatedWindow.show(activating: !updateChecker.autoInstallEnabled)
+        }
+        // A crash since the last launch, offered once. Looked for again a little later
+        // because the crash most likely to be waiting is the one in the instance that just
+        // handed over to this one, during a relaunch: macOS writes its report a few seconds
+        // after this instance has already started.
+        crashReportWindow.offerNewCrash()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in
+            self?.crashReportWindow.offerNewCrash()
         }
         // Unthrottled: a launch is rare, and it is when someone who just installed or reopened
         // the app most expects it to know about the latest release.
@@ -468,7 +479,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         // The device test in particular: an install ends in a relaunch, and that must never
         // happen while a step has a test value on someone's mouse.
         let windows: [AppWindowPresenter] = [remapWindow, permissionsWindow, aboutWindow, settingsWindow,
-                                             updatedWindow, deviceTestWindow]
+                                             updatedWindow, deviceTestWindow, crashReportWindow]
         return windows.contains { $0.isVisible }
     }
 
