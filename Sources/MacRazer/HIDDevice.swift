@@ -90,9 +90,12 @@ final class HIDDevice {
 
     /// Razer mouse model keywords — used to recognise a Bluetooth-connected Razer mouse, which
     /// reports a generic (non-Razer) vendor id and a shortened product name (e.g. "Cobra HS").
+    /// "pcv2"/"pro click" cover the Pro Click V2 (Vertical Edition tested live): its Bluetooth
+    /// LE advertisement name is "PCV2 Ver" — no "Razer" prefix, so it fell through this list
+    /// entirely before, surfacing as "No mouse connected" instead of the Bluetooth hint below.
     private static let razerMouseKeywords = [
         "razer", "cobra", "basilisk", "deathadder", "naga", "viper", "mamba",
-        "lancehead", "orochi", "atheris", "hyperspeed",
+        "lancehead", "orochi", "atheris", "hyperspeed", "pro click", "pcv2",
     ]
 
     /// A Razer mouse macOS has connected over Bluetooth.

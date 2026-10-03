@@ -119,6 +119,23 @@ enum RazerDevices {
         .init(pid: 0x007b, name: "Razer Viper Ultimate (Wireless)", fullySupported: true, hasBattery: true, hasLighting: true, maxDPI: 20000, transactionId: 0xff, matrixTransactionId: 0x3f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
         // Viper Ultimate (Wired)
         .init(pid: 0x007a, name: "Razer Viper Ultimate (Wired)", fullySupported: false, hasBattery: true, hasLighting: true, maxDPI: 20000, transactionId: 0xff, matrixTransactionId: 0x3f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
+        // Pro Click V2 Vertical Edition (Wired, USB-C): hardware-verified with this app —
+        // battery read (real percentage + raw status byte) and static-color lighting (status
+        // 0x2 ack, user-confirmed the mouse actually lit the requested color) both worked on
+        // the default 0x1f transaction id, no override needed. maxDPI is the vendor spec
+        // (Focus Pro 30K sensor); DPI read/write, polling rate and effects beyond static
+        // weren't exercised, so those stay unverified like `fullySupported` already implies
+        // for anything this struct doesn't explicitly claim. No custom silhouette — this
+        // model's body shape was never drawn, so it keeps the generic Cobra fallback.
+        .init(pid: 0x00C7, name: "Razer Pro Click V2 Vertical Edition (Wired)", fullySupported: true, hasBattery: true, hasLighting: true, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
+        // Pro Click V2 Vertical Edition (2.4 GHz HyperSpeed dongle): same physical mouse as
+        // above, different PID over the dongle link. The HID interface enumerates and opens
+        // fine (confirmed), but every battery-read attempt through it timed out in our
+        // testing — switching the same mouse to the wired cable is what got a real response.
+        // Left `fullySupported: false` until someone gets a clean read over the dongle itself;
+        // this row exists so the dongle link is at least recognised by name instead of falling
+        // through to an unlabelled unknown-PID device.
+        .init(pid: 0x00C8, name: "Razer Pro Click V2 Vertical Edition", fullySupported: false, hasBattery: true, hasLighting: true, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
     ]
 
     static func info(pid: Int) -> RazerDeviceInfo? { known.first { $0.pid == pid } }
