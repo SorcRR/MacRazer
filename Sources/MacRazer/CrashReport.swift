@@ -187,14 +187,15 @@ enum CrashReportOutput {
             r.frames.removeLast()
             r.framesDropped = (r.framesDropped ?? 0) + 1
         }
-        // Cut by bytes, not characters: an emoji is four bytes, and dropping one character
-        // per byte over would throw away four times what it has to.
+        // Cut by bytes, not characters: an emoji is four bytes or more, and dropping one
+        // character per byte over would throw away far more than it has to. Whole characters
+        // only, so a family emoji isn't left half built.
         while case let excess = size(r) - maxBytes, excess > 0, let comment = r.comment, !comment.isEmpty {
             var budget = comment.utf8.count - excess
-            let kept = String(String.UnicodeScalarView(comment.unicodeScalars.prefix {
+            let kept = String(comment.prefix {
                 budget -= $0.utf8.count
                 return budget >= 0
-            }))
+            })
             r.comment = kept.isEmpty ? nil : kept
         }
         return r

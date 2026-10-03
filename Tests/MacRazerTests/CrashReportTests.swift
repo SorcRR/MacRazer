@@ -128,6 +128,18 @@ final class CrashReportOutputTests: XCTestCase {
         XCTAssertGreaterThan(CrashReportOutput.size(fitted), 4000 - 8, "only as much comment as needed goes")
         XCTAssertTrue(fitted.comment?.allSatisfy { $0 == "😀" } ?? false, "cut between emoji, not inside one")
     }
+
+    func testAMultiScalarEmojiIsNeverLeftHalfBuilt() {
+        // One character of seven scalars, joined. A cut between scalars would leave a broken family.
+        let family = "👩‍👩‍👧‍👦"
+        var r = CrashReportParser.parse(CrashFixture.ips(frames: 30))!
+        r.comment = String(repeating: family, count: 300)
+        let fitted = CrashReportOutput.fitted(r, maxBytes: 4000)
+        XCTAssertLessThanOrEqual(CrashReportOutput.size(fitted), 4000)
+        XCTAssertFalse(fitted.comment?.isEmpty ?? true, "some of the comment survives")
+        XCTAssertTrue(fitted.comment?.allSatisfy { $0 == Character(family) } ?? false, "whole families only")
+        XCTAssertGreaterThan(CrashReportOutput.size(fitted), 4000 - family.utf8.count, "within one family of the limit")
+    }
 }
 
 final class CrashLogScannerTests: XCTestCase {
