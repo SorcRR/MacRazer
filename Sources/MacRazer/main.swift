@@ -27,6 +27,13 @@ if args.isEmpty {
 
 let command = args.first!
 
+/// Status and diagnostics: which device opened, why it didn't, how to fix that. They go to
+/// stderr so stdout carries only a command's results, and `devicetest > report.json` (or
+/// any other redirect) gets the results alone while the person still sees the rest.
+func status(_ line: String) {
+    FileHandle.standardError.write(Data((line + "\n").utf8))
+}
+
 /// Turn a permission-denied failure into the fix, instead of leaving a bare hex code on
 /// screen. The GUI already does this (PopoverView / PermissionsModel); every CLI catch
 /// routes through here so it does too. Returns whether the error was a permission problem,
@@ -34,28 +41,23 @@ let command = args.first!
 @discardableResult
 func printPermissionHintIfDenied(_ error: Error) -> Bool {
     guard HIDDevice.errorLooksPermissionDenied(String(describing: error)) else { return false }
-    print("  → macOS is refusing HID access (Input Monitoring).")
-    print("    Running via `swift run MacRazer …`? The grant belongs to the terminal that")
-    print("    launched it, not to the SwiftPM binary — grant Terminal (or iTerm/your IDE) in")
-    print("    System Settings › Privacy & Security › Input Monitoring, then start a new")
-    print("    terminal session and retry.")
-    print("    Running MacRazer.app? Grant MacRazer itself there, then relaunch it — macOS")
-    print("    only applies the grant to a freshly-launched app.")
+    status("  → macOS is refusing HID access (Input Monitoring).")
+    status("    Running via `swift run MacRazer …`? The grant belongs to the terminal that")
+    status("    launched it, not to the SwiftPM binary — grant Terminal (or iTerm/your IDE) in")
+    status("    System Settings › Privacy & Security › Input Monitoring, then start a new")
+    status("    terminal session and retry.")
+    status("    Running MacRazer.app? Grant MacRazer itself there, then relaunch it — macOS")
+    status("    only applies the grant to a freshly-launched app.")
     return true
 }
 
-/// `statusOnStderr` is for commands whose output is data, like `devicetest`'s JSON: the
-/// "Opened" line would otherwise make `devicetest > report.json` unreadable.
-func openDevice(statusOnStderr: Bool = false) -> HIDDevice? {
-    func say(_ line: String) {
-        if statusOnStderr { FileHandle.standardError.write(Data((line + "\n").utf8)) } else { print(line) }
-    }
+func openDevice() -> HIDDevice? {
     do {
         let dev = try HIDDevice.open(vendorId: Razer.vendorId)
-        say("✓ Opened \(dev.productName) (VID 0x1532, PID 0x\(String(format: "%04x", dev.productID)))")
+        status("✓ Opened \(dev.productName) (VID 0x1532, PID 0x\(String(format: "%04x", dev.productID)))")
         return dev
     } catch {
-        say("✗ \(error)")
+        status("✗ \(error)")
         printPermissionHintIfDenied(error)
         return nil
     }
@@ -546,7 +548,7 @@ case "devicetest":
     // The in-app device test without its window, for contributors running from source. Every
     // step puts back what it changes. Lighting only dims for a moment: the colour check needs
     // the app's own lighting setting to return to, which only the app knows.
-    guard let dev = openDevice(statusOnStderr: true) else { exit(1) }
+    guard let dev = openDevice() else { exit(1) }
     defer { dev.close() }
     let info = RazerDevices.info(pid: dev.productID)
     let (identify, lightSweep) = DeviceTestSteps.identify(dev, registry: info)
@@ -556,7 +558,7 @@ case "devicetest":
         DeviceTestSteps.recorded(dev, standard: standardId, matrix: matrixId,
                                  overrides: info?.transactionOverrides ?? [:], body)
     }
-    FileHandle.standardError.write(Data("Running. The mouse's lights will go dark for two seconds.\n".utf8))
+    status("Running. The mouse's lights will go dark for two seconds.")
     let (interfaces, control) = HIDDevice.interfaceSummaries(vendorId: Razer.vendorId)
     var report = DeviceReport(
         appVersion: AppInfo.displayVersion,
@@ -571,9 +573,13 @@ case "devicetest":
         lighting: step { DeviceTestSteps.lighting($0, sweep: lightSweep, restoreEffect: nil, seconds: 2) },
         buttons: .init())
     report.verdict = report.currentVerdict()
-    let encoder = JSONEncoder()
-    encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-    print(String(decoding: (try? encoder.encode(report)) ?? Data(), as: UTF8.self))
+    // Encoded as the app encodes it, so a pasted CLI report reads like an in-app one.
+    let json = DeviceReportOutput.json(report, forPublic: true)
+    guard !json.isEmpty else {
+        status("✗ The report couldn't be encoded.")
+        exit(2)
+    }
+    print(json)
 
 case "rgb":
     guard let dev = openDevice() else { exit(1) }
