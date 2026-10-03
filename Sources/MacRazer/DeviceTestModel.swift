@@ -132,8 +132,10 @@ final class DeviceTestModel: ObservableObject {
         // A window closed mid-step and reopened: that step is still finishing on the device.
         guard !running else { return }
         blocker = nil
-        guard Self.razerMousePresent else {
-            blocker = HIDDevice.bluetoothRazerMouseName().map(Blocker.bluetoothOnly) ?? .noMouse
+        // The app may be controlling the mouse over Bluetooth, even with the dongle plugged in
+        // (`MouseController.prefersBluetooth`), but the test needs the USB link.
+        guard Self.razerMousePresent, !controller.deviceIsBluetooth else {
+            blocker = HIDDevice.bluetoothRazerMouse().map { .bluetoothOnly($0.name) } ?? .noMouse
             return
         }
         guard Self.inputMonitoringGranted else {

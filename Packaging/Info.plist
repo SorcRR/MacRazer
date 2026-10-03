@@ -22,6 +22,8 @@
 	<string>14.0</string>
 	<key>LSUIElement</key>
 	<true/>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>MacRazer uses Bluetooth to read the battery and change the settings of a Razer mouse connected over Bluetooth.</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>Community project. Not affiliated with Razer Inc.</string>
 </dict>

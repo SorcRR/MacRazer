@@ -95,24 +95,44 @@ final class HIDDevice {
         "lancehead", "orochi", "atheris", "hyperspeed",
     ]
 
-    /// If a Razer mouse is currently connected over **Bluetooth**, returns its product name.
-    /// Razer's control protocol (battery/DPI/lighting) is only exposed over USB — the 2.4GHz
-    /// dongle or a wired cable — so a Bluetooth connection enumerates as a plain HID mouse with
-    /// a non-Razer vendor id and no control interface. We detect it by transport + model name
-    /// so the UI can explain why control is unavailable and prompt switching to 2.4GHz / USB-C.
-    static func bluetoothRazerMouseName() -> String? {
+    /// A Razer mouse macOS has connected over Bluetooth.
+    struct BluetoothMouse: Equatable {
+        let name: String
+        /// Set when the registry can control this model over Bluetooth
+        /// (`RazerDevices.bluetoothPIDs`), through Razer's GATT service (`BluetoothDevice`).
+        let controllablePID: Int?
+    }
+
+    /// The Razer mouse connected over **Bluetooth**, if any, preferring one MacRazer can
+    /// control. Over Bluetooth the mouse enumerates as a plain HID mouse with no control
+    /// interface, so this is plain IOHID enumeration: nothing is opened, no permission is
+    /// needed, and CoreBluetooth (with its permission prompt) stays away from everyone who
+    /// has no such mouse. Models without Bluetooth control are recognised by name so the UI
+    /// can explain why and prompt switching to 2.4GHz / USB-C.
+    static func bluetoothRazerMouse() -> BluetoothMouse? {
         // Generic Desktop (0x01) / Mouse (0x02), any vendor — the BLE mouse isn't VID 0x1532.
-        for dev in devices(matching: [
+        let found = devices(matching: [
             kIOHIDDeviceUsagePageKey as String: 0x01,
             kIOHIDDeviceUsageKey as String: 0x02,
-        ]) {
-            let transport = strProp(dev, kIOHIDTransportKey) ?? ""
-            guard transport.localizedCaseInsensitiveContains("Bluetooth"),
-                  let name = strProp(dev, kIOHIDProductKey) else { continue }
-            let lower = name.lowercased()
-            if razerMouseKeywords.contains(where: { lower.contains($0) }) { return name }
+        ]).compactMap { dev -> BluetoothMouse? in
+            guard (strProp(dev, kIOHIDTransportKey) ?? "").localizedCaseInsensitiveContains("Bluetooth"),
+                  let name = strProp(dev, kIOHIDProductKey) else { return nil }
+            return classifyBluetoothMouse(vendorID: intProp(dev, kIOHIDVendorIDKey),
+                                          productID: intProp(dev, kIOHIDProductIDKey), name: name)
         }
-        return nil
+        return found.first { $0.controllablePID != nil } ?? found.first
+    }
+
+    /// Whether a Bluetooth HID mouse is a Razer one, and one we can control. Control needs
+    /// the exact Bluetooth vendor and product id (a name match could be another model on the
+    /// same service); recognising it for the hint only needs the name.
+    static func classifyBluetoothMouse(vendorID: Int?, productID: Int?, name: String) -> BluetoothMouse? {
+        if vendorID == BLEProtocol.vendorId, let pid = productID, RazerDevices.bluetoothPIDs.contains(pid) {
+            return BluetoothMouse(name: name, controllablePID: pid)
+        }
+        let lower = name.lowercased()
+        guard razerMouseKeywords.contains(where: { lower.contains($0) }) else { return nil }
+        return BluetoothMouse(name: name, controllablePID: nil)
     }
 
     /// Every HID interface the vendor's devices expose, in a stable order, and which one
@@ -165,6 +185,12 @@ final class HIDDevice {
     /// with a Razer keyboard or second mouse attached, the mouse must be picked by rank
     /// (registry-known PID → mouse-usage device → score), not by raw interface score.
     static func open(vendorId: Int) throws -> HIDDevice {
+        try open(controlInterface(vendorId: vendorId))
+    }
+
+    /// The control interface `open(vendorId:)` would pick, without opening it — so a caller
+    /// can look at its product id first (see `MouseController.openTransport`).
+    static func controlInterface(vendorId: Int) throws -> IOHIDDevice {
         let devices = matchingDevices(vendorId: vendorId)
         guard !devices.isEmpty else { throw HIDError.notFound }
 
@@ -178,8 +204,12 @@ final class HIDDevice {
         guard let idx = HIDDeviceSelection.controlInterfaceIndex(interfaces: infos) else {
             throw HIDError.notFound
         }
-        let chosen = devices[idx]
+        return devices[idx]
+    }
 
+    static func productID(of dev: IOHIDDevice) -> Int { intProp(dev, kIOHIDProductIDKey) ?? 0 }
+
+    static func open(_ chosen: IOHIDDevice) throws -> HIDDevice {
         // stderr, not stdout: this fires on every (re)open inside the GUI app too, and the
         // CLI's actual output goes to stdout.
         FileHandle.standardError.write(Data("[MacRazer] control interface: \(describe(chosen))\n".utf8))
@@ -272,31 +302,14 @@ final class HIDDevice {
     static let defaultAttempts = 3
 
     /// Send with retry + linear backoff — the wireless dongle is documented as finicky and
-    /// battery reads in particular time out intermittently. Falls through to the last error.
+    /// battery reads in particular time out intermittently. See `RazerRetry`.
     func sendWithRetry(_ report: RazerReport, attempts: Int = HIDDevice.defaultAttempts) throws -> RazerReport {
         try sendWithRetry(report, attempts: attempts, transactionId: nil)
     }
 
     /// As above, with the transaction id override `send(_:transactionId:)` describes.
     func sendWithRetry(_ report: RazerReport, attempts: Int, transactionId: UInt8?) throws -> RazerReport {
-        var lastError: Error = HIDError.timeout
-        for attempt in 0..<attempts {
-            do {
-                return try send(report, transactionId: transactionId)
-            } catch HIDError.notSupported {
-                // Deterministic per model/command — retrying can't change the answer, and
-                // the backoffs would just delay every poll on models lacking the feature.
-                throw HIDError.notSupported
-            } catch {
-                lastError = error
-                // No backoff after the final attempt: it would only delay reporting the
-                // failure (offline detection, queued user writes on the serial queue).
-                if attempt < attempts - 1 {
-                    usleep(useconds_t(50_000 * (attempt + 1))) // 50ms, 100ms...
-                }
-            }
-        }
-        throw lastError
+        try RazerRetry.run(attempts: attempts) { try send(report, transactionId: transactionId) }
     }
 
     func close() {

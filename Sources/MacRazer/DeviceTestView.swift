@@ -69,7 +69,7 @@ struct DeviceTestView: View {
             case .noMouse?:
                 warning("No Razer mouse is connected by cable or dongle right now. Connect it and press Start again.")
             case .bluetoothOnly(let name)?:
-                warning("\(name) is connected over Bluetooth, which doesn't carry Razer's settings. Switch it to the dongle or plug in the cable, then press Start again.")
+                warning("\(name) is connected over Bluetooth. The test needs the dongle or the cable, so switch it over and press Start again.")
             case nil:
                 EmptyView()
             }

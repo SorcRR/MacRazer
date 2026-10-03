@@ -111,10 +111,15 @@ a serial).
 
 macOS 14 or later (Apple Silicon).
 
-**Connect over the 2.4 GHz dongle or a USB-C cable, not Bluetooth.** Razer only exposes its
-control protocol (battery, DPI, lighting) over USB; over Bluetooth the mouse is just a plain
-pointer, so MacRazer can't read or change anything. If your mouse has a mode switch, set it to
-2.4 GHz. (MacRazer will tell you when it sees your mouse on Bluetooth.)
+**Connect over the 2.4 GHz dongle or a USB-C cable.** That's where Razer exposes its full
+control protocol. The **Cobra HyperSpeed also works over Bluetooth**: battery, DPI stages,
+brightness and a static lighting colour. Polling rate, other lighting effects, custom DPI
+values and profiles still need the dongle or a cable. MacRazer asks for Bluetooth access the
+first time it finds the mouse there.
+
+Other models are a plain pointer over Bluetooth, so MacRazer can't read or change anything.
+If your mouse has a mode switch, set it to 2.4 GHz. MacRazer tells you when it sees your
+mouse on Bluetooth.
 
 ## Install
 
