@@ -61,6 +61,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         // whenever that required permission is missing (and stop the moment it's granted), so a
         // user without it is always walked through it rather than left with a silently-dead app.
         // Button remapping additionally needs Accessibility (optional; surfaced in the same window).
+        // A mouse MacRazer controls over Bluetooth needs neither, so it doesn't trigger the window.
         permissions.recheck()
         // Explicit, not a side effect of constructing the model — see the doc comment there.
         launchAtLogin.applyDefaultOnFirstRun()
@@ -69,7 +70,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         // longer matches whichever profile was last applied — let MouseController know so it
         // can drop the stale "active" highlight.
         remapper.onManualChange = { [weak controller] in controller?.clearActiveProfileIfManuallyChanged() }
-        if !permissions.inputMonitoring {
+        if !permissions.allRequiredGranted {
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 self.present(self.permissionsWindow)

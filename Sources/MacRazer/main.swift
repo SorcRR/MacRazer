@@ -179,6 +179,7 @@ case "render-ui":
     controller.loadPreviewState()
     if args.contains("offline") { controller.setPreviewOffline() }
     if args.contains("bluetooth") { controller.setPreviewBluetooth() }
+    if args.contains("bluetooth-connected") { controller.setPreviewBluetoothConnected() }
     let updateChecker = UpdateChecker()
     if args.contains("update") { updateChecker.loadPreviewState(notes: PreviewNotes.releaseBody) }
     if args.contains("updated") { updateChecker.loadPreviewUpdated(notes: PreviewNotes.releaseBody) }

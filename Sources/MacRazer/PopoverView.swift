@@ -15,6 +15,9 @@ extension Color {
     static let razerGreen = Color(red: 0x44 / 255, green: 0xD6 / 255, blue: 0x2C / 255)
     /// A brighter, more vivid green for the logo so it really pops on the dark background.
     static let razerGreenBright = Color(red: 0.42, green: 1.0, blue: 0.25)
+    /// The Bluetooth chip's colour. System blue is too dark to read on the popover's dark
+    /// background.
+    static let bluetoothBlue = Color(red: 0.47, green: 0.72, blue: 1.0)
     // Battery *state* uses Apple system colors (meaning), never the brand green.
     static let batteryFull = Color(red: 0x34 / 255, green: 0xC7 / 255, blue: 0x59 / 255)
     static let batteryMid = Color(red: 0xFF / 255, green: 0x9F / 255, blue: 0x0A / 255)
@@ -155,7 +158,7 @@ struct PopoverView: View {
             else if updateChecker.justUpdatedTo != nil { updatedCard }
             // A Razer mouse on Bluetooth can't be controlled (no control protocol over BT) —
             // explain it instead of just showing "offline".
-            if controller.bluetoothMouseName != nil && !controller.connected { bluetoothNotice }
+            if controller.bluetoothMouse != nil && !controller.connected { bluetoothNotice }
             // Battery stays readable (last-known) but dims when offline; its refresh button
             // stays active so you can retry.
             if controller.deviceHasBattery {
@@ -164,7 +167,7 @@ struct PopoverView: View {
             // Live mouse-config sections: dim AND disable while disconnected.
             Group {
                 dpiCard
-                pollCard
+                if controller.supportsPollRate { pollCard }
                 if controller.deviceHasLighting { lightingCard } // hidden for no-LED mice (e.g. Atheris)
             }
             .disabled(!controller.connected)
@@ -173,7 +176,9 @@ struct PopoverView: View {
             configureButton // software remap — works offline, stays enabled
             // Profiles bundle the sections above (plus remaps) into presets — placed after
             // them so the page reads "here are the controls, here's how to save/recall them".
-            profilesCard.disabled(!controller.connected).opacity(controller.connected ? 1 : 0.45)
+            if controller.supportsProfiles {
+                profilesCard.disabled(!controller.connected).opacity(controller.connected ? 1 : 0.45)
+            }
             footer
         }
         .padding(12)
@@ -254,7 +259,7 @@ struct PopoverView: View {
 
     private var headerSubtitle: String {
         if controller.connected { return controller.deviceSupported ? "Connected" : "Connected · limited support" }
-        if controller.bluetoothMouseName != nil { return "On Bluetooth" }
+        if controller.bluetoothMouse != nil { return "On Bluetooth" }
         if controller.deviceName != nil { return "Offline" }
         return "Connect a Razer mouse"
     }
@@ -263,35 +268,64 @@ struct PopoverView: View {
     /// the registry — the PID identifies the link (wireless models enumerate under a
     /// different PID when cabled). The old `charging ⇒ wired` heuristic mislabeled every
     /// wired-only mouse as "2.4 GHz", since a wired mouse never reports charging.
-    /// (Bluetooth can't carry control, so it never reads "Connected" — it's surfaced separately.)
-    private var connectionType: (symbol: String, label: String)? {
+    /// Bluetooth only reads "Connected" for models with Bluetooth control; any other Razer
+    /// mouse on Bluetooth is surfaced separately (`bluetoothNotice`).
+    private var connectionType: ConnectionChip? {
         guard controller.connected else { return nil }
         switch RazerDevices.connection(pid: controller.deviceID) {
+        case .bluetooth:
+            // Blue, the colour macOS and the mouse itself use for Bluetooth, so the link
+            // reads at a glance as different from the green USB ones. A stronger fill than
+            // theirs, or the blue is hard to read on the dark background.
+            return ConnectionChip(symbol: "dot.radiowaves.left.and.right", label: "Bluetooth",
+                                  tint: .bluetoothBlue, fillOpacity: 0.3)
         case .wired:
-            return ("cable.connector", "Wired")
+            return ConnectionChip(symbol: "cable.connector", label: "Wired")
         case .wirelessDongle:
             // `charging` implies a USB-C cable is attached, even though control still
             // flows through the dongle's PID.
             return controller.charging
-                ? ("cable.connector", "Wired")
-                : ("antenna.radiowaves.left.and.right", "2.4 GHz")
+                ? ConnectionChip(symbol: "cable.connector", label: "Wired")
+                : ConnectionChip(symbol: "antenna.radiowaves.left.and.right", label: "2.4 GHz")
         case nil:
             // Unknown model: "USB" is true for both a cable and a dongle.
-            return ("cable.connector", "USB")
+            return ConnectionChip(symbol: "cable.connector", label: "USB")
         }
     }
 
-    private func connectionChip(_ ct: (symbol: String, label: String)) -> some View {
+    /// How a link's chip looks: green for the USB links, blue for Bluetooth.
+    private struct ConnectionChip {
+        let symbol: String
+        let label: String
+        var tint: Color = .razerGreen
+        var fillOpacity: Double = 0.15
+    }
+
+    private func connectionChip(_ ct: ConnectionChip) -> some View {
         HStack(spacing: 3) {
             Image(systemName: ct.symbol).font(.system(size: 8.5, weight: .bold))
             Text(ct.label).font(.system(size: 9.5, weight: .semibold))
         }
-        .foregroundStyle(Color.razerGreen)
+        .foregroundStyle(ct.tint)
         .padding(.horizontal, 5).padding(.vertical, 1.5)
-        .background(Color.razerGreen.opacity(0.15), in: Capsule())
+        .background(ct.tint.opacity(ct.fillOpacity), in: Capsule())
     }
 
-    /// Shown when a Razer mouse is detected on Bluetooth: control needs USB / the 2.4 GHz dongle.
+    /// Shown when a Razer mouse is on Bluetooth but not under control: either a model with no
+    /// Bluetooth control (switch modes), or a supported one MacRazer can't reach right now.
+    private var bluetoothNoticeText: String {
+        switch controller.bluetoothMouse {
+        case .accessDenied(let name):
+            return "\(name) can be controlled over Bluetooth, but MacRazer isn't allowed to use Bluetooth. Turn it on in System Settings → Privacy & Security → Bluetooth."
+        case .connecting(let name):
+            return "MacRazer couldn't reach \(name) over Bluetooth yet. It will keep trying."
+        case .needsModeSwitch(let name):
+            return "\(name) only reports battery, DPI and lighting over the 2.4 GHz dongle or USB-C, not over Bluetooth. Switch its mode to use MacRazer."
+        case nil:
+            return ""
+        }
+    }
+
     private var bluetoothNotice: some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: "dot.radiowaves.left.and.right")
@@ -299,7 +333,7 @@ struct PopoverView: View {
                 .font(.system(size: 13, weight: .semibold))
             VStack(alignment: .leading, spacing: 2) {
                 Text("Connected via Bluetooth").font(.system(size: 12, weight: .semibold))
-                Text("\(controller.bluetoothMouseName ?? "Your Razer mouse") only reports battery, DPI and lighting over the 2.4 GHz dongle or USB-C, not over Bluetooth. Switch its mode to use MacRazer.")
+                Text(bluetoothNoticeText)
                     .font(.system(size: 11)).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -706,7 +740,12 @@ struct PopoverView: View {
         if controller.charging { return "Charging" }
         if let est = controller.timeEstimate { return est }
         if !controller.connected {
-            if controller.bluetoothMouseName != nil { return "On Bluetooth. Use 2.4 GHz or USB-C" }
+            switch controller.bluetoothMouse {
+            case .needsModeSwitch: return "On Bluetooth. Use 2.4 GHz or USB-C"
+            case .connecting: return "On Bluetooth. Connecting…"
+            case .accessDenied: return "On Bluetooth. Needs Bluetooth access"
+            case nil: break
+            }
             if needsPermission { return "Needs Input Monitoring permission" }
             return "Disconnected. Wake the mouse and refresh"
         }
@@ -740,7 +779,7 @@ struct PopoverView: View {
         }
         .buttonStyle(.borderless)
         .foregroundStyle(.secondary)
-        .help("Refresh battery, DPI and polling rate")
+        .help(controller.supportsPollRate ? "Refresh battery, DPI and polling rate" : "Refresh battery and DPI")
         .disabled(controller.isRefreshing)
     }
 
@@ -753,18 +792,20 @@ struct PopoverView: View {
                 Text(verbatim: "\(Int(dpiValue))")
                     .font(.system(size: 12, weight: .medium)).monospacedDigit()
             }
-            Slider(value: $dpiValue, in: 100...Double(controller.deviceMaxDPI), step: 50) { editing in
-                if !editing {
-                    let v = Int(dpiValue)
-                    controller.setDPI(v)
-                    if !displayedStages.contains(v) { saveCustomDPI(v) } // remember the manual value
+            if controller.supportsFreeDPI {
+                Slider(value: $dpiValue, in: 100...Double(controller.deviceMaxDPI), step: 50) { editing in
+                    if !editing {
+                        let v = Int(dpiValue)
+                        controller.setDPI(v)
+                        if !displayedStages.contains(v) { saveCustomDPI(v) } // remember the manual value
+                    }
                 }
+                .tint(.razerGreen)
+                .controlSize(.small)
             }
-            .tint(.razerGreen)
-            .controlSize(.small)
             HStack(spacing: 6) {
                 ForEach(displayedStages, id: \.self) { dpiChip($0) }
-                customChip
+                if controller.supportsFreeDPI { customChip }
             }
         }
         }
@@ -898,15 +939,17 @@ struct PopoverView: View {
             // Bound straight to the controller: setEffect publishes only on a successful
             // device write, so a failed change snaps the picker back by itself — no local
             // state, no suppression flags.
-            Picker("", selection: Binding(get: { controller.effect },
-                                          set: { controller.setEffect($0) })) {
-                ForEach(LightingEffect.allCases) { Text($0.rawValue).tag($0) }
+            if controller.supportsLightingEffects {
+                Picker("", selection: Binding(get: { controller.effect },
+                                              set: { controller.setEffect($0) })) {
+                    ForEach(LightingEffect.allCases) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .controlSize(.small)
+                .labelsHidden()
             }
-            .pickerStyle(.segmented)
-            .controlSize(.small)
-            .labelsHidden()
 
-            if controller.effect == .staticColor {
+            if controller.effect == .staticColor || !controller.supportsLightingEffects {
                 HStack(spacing: 7) {
                     ForEach(Array(swatches.enumerated()), id: \.offset) { _, sw in
                         swatch(sw)
@@ -934,7 +977,10 @@ struct PopoverView: View {
     /// while charging (the drain doesn't matter then) and with lighting off (0% or `.off`
     /// both mean the LEDs draw nothing, whatever the slider says).
     private var showsLightingBatteryHint: Bool {
-        controller.deviceHasBattery && !controller.charging && controller.effect != .off
+        // Bluetooth can't set or read an effect, only a colour, so `effect` there is left
+        // over from USB and says nothing about whether the lights are on.
+        controller.deviceHasBattery && !controller.charging
+            && (controller.effect != .off || !controller.supportsLightingEffects)
             && Int(brightnessValue) > Battery.lightingHintBrightnessPercent
     }
 
