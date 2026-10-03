@@ -8,64 +8,6 @@ import XCTest
 /// These drive it with a fake mouse that records every command and answers the way the real
 /// protocol does, so the probes' commands, order and decoding are pinned without hardware.
 final class DeviceProbeTests: XCTestCase {
-    /// A mouse that remembers the last value written to each setting and answers reads with
-    /// it, since the protocol's set and get layouts mirror each other. `refuse` makes chosen
-    /// commands answer FAILURE, and `clamp` lets a write land as something else.
-    private final class FakeMouse: DeviceProbeChannel {
-        enum Call: Equatable {
-            case once(UInt8, UInt8)
-            case retried(UInt8, UInt8, attempts: Int)
-        }
-
-        private(set) var calls: [Call] = []
-        var refuse: (RazerReport) -> Bool = { _ in false }
-        var clamp: (RazerReport) -> RazerReport = { $0 }
-        /// Last written arguments, keyed by command class, the read's command id and, for
-        /// lighting (class 0x0F), the LED group, so each group holds its own brightness.
-        private var stored: [UInt32: [UInt8]] = [:]
-
-        func send(_ report: RazerReport) throws -> RazerReport {
-            calls.append(.once(report.commandClass, report.commandId))
-            return try answer(report)
-        }
-
-        func sendWithRetry(_ report: RazerReport, attempts: Int) throws -> RazerReport {
-            calls.append(.retried(report.commandClass, report.commandId, attempts: attempts))
-            return try answer(report)
-        }
-
-        /// The mouse already holds this setting, as if `write` had been sent earlier.
-        func holds(_ write: RazerReport) {
-            stored[key(write, id: write.commandId | 0x80)] = write.arguments
-        }
-
-        /// For values nothing writes, like the battery level: answer `read` with these bytes.
-        func answers(_ read: RazerReport, _ edit: (inout [UInt8]) -> Void) {
-            var arguments = read.arguments
-            edit(&arguments)
-            stored[key(read, id: read.commandId)] = arguments
-        }
-
-        private func key(_ report: RazerReport, id: UInt8) -> UInt32 {
-            let led = report.commandClass == 0x0F ? UInt32(report.arguments[1]) : 0
-            return UInt32(report.commandClass) << 16 | UInt32(id) << 8 | led
-        }
-
-        private func answer(_ report: RazerReport) throws -> RazerReport {
-            if refuse(report) { throw HIDDevice.HIDError.commandFailed }
-            var reply = report
-            reply.status = RazerStatus.successful.rawValue
-            if report.commandId & 0x80 == 0 {
-                // A write: remember it under the matching read's id (set 0x05 → get 0x85).
-                let landed = clamp(report)
-                stored[key(report, id: report.commandId | 0x80)] = landed.arguments
-            } else if let previous = stored[key(report, id: report.commandId)] {
-                reply.arguments = previous
-            }
-            return reply
-        }
-    }
-
     func testBatteryReadsTheLevelByte() throws {
         let mouse = FakeMouse()
         mouse.answers(RazerCommands.getBatteryLevel()) { $0[1] = 217 }

@@ -267,6 +267,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// even while the menu/popover is being tracked.
     private func scheduleNextPoll(after interval: TimeInterval) {
         pollTimer?.invalidate()
+        // A poll already on the device queue when a test began still lands here when it
+        // finishes. `endDeviceTest` restarts the loop.
+        guard !deviceTestActive else { pollTimer = nil; return }
         let t = Timer(timeInterval: interval, repeats: false) { [weak self] _ in
             self?.pollTick()
         }
@@ -312,7 +315,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
 
     /// Settings (DPI + polling) only — no spinner. Call on the main thread.
     func refreshSettings() {
-        guard !settingsReadQueued else { return }
+        guard !settingsReadQueued, !deviceTestActive else { return }
         settingsReadQueued = true
         io.async { [weak self] in
             guard let self else { return }
@@ -326,9 +329,10 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// Called when the popover shows/hides. While it's open we re-read DPI/polling every
     /// couple of seconds so on-mouse changes (e.g. the DPI-cycle button) reflect live.
     func setPopoverVisible(_ visible: Bool) {
+        popoverVisible = visible
         settingsTimer?.invalidate()
         settingsTimer = nil
-        guard visible else { return }
+        guard visible, !deviceTestActive else { return }
         // While the mouse is unreachable the poll backs off, so a mouse woken just before
         // opening the popover could otherwise still read offline. Looking is a good moment
         // to check.
@@ -385,6 +389,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// Full refresh (battery + settings) with the spinner — used by the refresh button.
     /// Re-reads DPI/poll so on-mouse changes (e.g. middle-button DPI cycling) show up.
     func refreshAll() {
+        guard !deviceTestActive else { return }
         publish { self.isRefreshing = true }
         io.async { [weak self] in
             guard let self else { return }
@@ -610,6 +615,89 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             }
         }
     }
+
+    // MARK: - Device test
+
+    /// Main thread. True while the device test holds the mouse. Each test step changes and
+    /// restores settings inside one block on the device queue, so nothing can land mid-step
+    /// anyway; this keeps the poll and the popover's settings reads from adding traffic and
+    /// noise to the session, or publishing a half-way state between steps.
+    private(set) var deviceTestActive = false
+
+    func beginDeviceTest() {
+        deviceTestActive = true
+        pollTimer?.invalidate()
+        pollTimer = nil
+        settingsTimer?.invalidate()
+        settingsTimer = nil
+    }
+
+    /// Reads everything again rather than trusting what was published before the test: steps
+    /// restore what they change, but if a restore failed (the mouse went away mid-step), the
+    /// popover should show what the mouse actually holds.
+    func endDeviceTest() {
+        guard deviceTestActive else { return }
+        deviceTestActive = false
+        refreshAll()
+        scheduleNextPoll(after: BatteryPollStateMachine.Cadence.settling)
+        // A popover opened during the test didn't start its live reads; start them now.
+        if popoverVisible { setPopoverVisible(true) }
+    }
+
+    /// Main thread. Whether the popover is showing, so a test ending can resume its reads.
+    private var popoverVisible = false
+
+    /// Why a device test step can't run on the link the app is using.
+    enum DeviceTestLinkError: Error, CustomStringConvertible {
+        /// The mouse is on Bluetooth. The test's probes are HID feature reports with chosen
+        /// transaction ids, which Razer's Bluetooth protocol doesn't have.
+        case bluetooth(name: String)
+
+        var description: String {
+            switch self {
+            case .bluetooth(let name): return "\(name) is on Bluetooth, which the test can't use."
+            }
+        }
+    }
+
+    /// Runs one test step on the device queue with the open device, ahead of background reads
+    /// like any user command. Throws only when there is no device to run it on, or it is on
+    /// Bluetooth (`DeviceTestLinkError`): steps record their own failures.
+    func runDeviceTestStep<T: Sendable>(_ body: @escaping @Sendable (HIDDevice) -> T) async throws -> T {
+        try await withCheckedThrowingContinuation { continuation in
+            userCommand { [weak self] in
+                guard let self else { return continuation.resume(throwing: HIDDevice.HIDError.notFound) }
+                do {
+                    let device = try self.deviceTestDevice()
+                    continuation.resume(returning: body(device))
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+    }
+
+    /// Must be called on `io`, which knows the link for certain; the published
+    /// `deviceIsBluetooth` lags it. Never opens Bluetooth: the test can't use it, and a first
+    /// open shows macOS's Bluetooth prompt and can hold the queue for seconds.
+    private func deviceTestDevice() throws -> HIDDevice {
+        if device == nil, let bt = HIDDevice.bluetoothRazerMouse() {
+            let usb = try? HIDDevice.controlInterface(vendorId: Razer.vendorId)
+            if Self.wouldOpenBluetooth(usbPresent: usb != nil,
+                                       usbConnection: usb.flatMap { RazerDevices.connection(pid: HIDDevice.productID(of: $0)) },
+                                       bluetoothControllable: bt.controllablePID != nil) {
+                throw DeviceTestLinkError.bluetooth(name: bt.name)
+            }
+        }
+        let open = try ensureDevice()
+        guard let hid = open as? HIDDevice else { throw DeviceTestLinkError.bluetooth(name: open.productName) }
+        return hid
+    }
+
+    /// The command for the lighting the app last set, for the test to return to after showing
+    /// red. Main thread. The protocol has no lighting read-back, so this is the app's own idea
+    /// of what the mouse shows, the same one its controls work from.
+    func lightingRestoreReport() -> RazerReport { report(for: effect, color: lightingColor) }
 
     // MARK: - Writes
 
@@ -986,6 +1074,14 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// nothing behind the dongle (picking it timed out on every poll on the Cobra HyperSpeed).
     static func prefersBluetooth(over usb: RazerConnection?, bluetoothControllable: Bool) -> Bool {
         bluetoothControllable && usb == .wirelessDongle
+    }
+
+    /// `openTransport`'s choice of link, made without opening anything: Bluetooth when it can
+    /// be controlled and USB has nothing, or only a dongle (`prefersBluetooth`).
+    static func wouldOpenBluetooth(usbPresent: Bool, usbConnection: RazerConnection?,
+                                   bluetoothControllable: Bool) -> Bool {
+        bluetoothControllable
+            && (!usbPresent || prefersBluetooth(over: usbConnection, bluetoothControllable: true))
     }
 
     /// io-queue only. Moves from one device's battery history to another's, in the order

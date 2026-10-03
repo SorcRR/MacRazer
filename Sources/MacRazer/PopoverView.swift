@@ -34,6 +34,9 @@ struct PopoverView: View {
     /// handler and ship a gear button that depresses and does nothing, with no compiler error.
     /// The preview passes an explicit `{}`.
     var onOpenSettings: () -> Void
+    /// Opens the device test, from the "Help test it" link on a mouse with limited support.
+    /// Not defaulted, for the same reason as `onOpenSettings`.
+    var onOpenDeviceTest: () -> Void
 
     enum Page { case main, color, buttons, usage, profiles, whatsNew }
     @State private var page: Page = .main
@@ -247,6 +250,19 @@ struct PopoverView: View {
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
                         if let ct = connectionType { connectionChip(ct) }
+                    }
+                    // Only where it helps: an unverified mouse. A verified one reaches the same
+                    // test from the right-click menu, without the popover asking every time.
+                    if controller.connected && !controller.deviceSupported {
+                        Button(action: onOpenDeviceTest) {
+                            HStack(spacing: 3) {
+                                Text("Help test it")
+                                Image(systemName: "arrow.right").font(.system(size: 9, weight: .semibold))
+                            }
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(Color.razerGreen)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
                 Spacer()

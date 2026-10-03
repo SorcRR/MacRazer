@@ -27,6 +27,13 @@ if args.isEmpty {
 
 let command = args.first!
 
+/// Status and diagnostics: which device opened, why it didn't, how to fix that. They go to
+/// stderr so stdout carries only a command's results, and `devicetest > report.json` (or
+/// any other redirect) gets the results alone while the person still sees the rest.
+func status(_ line: String) {
+    FileHandle.standardError.write(Data((line + "\n").utf8))
+}
+
 /// Turn a permission-denied failure into the fix, instead of leaving a bare hex code on
 /// screen. The GUI already does this (PopoverView / PermissionsModel); every CLI catch
 /// routes through here so it does too. Returns whether the error was a permission problem,
@@ -34,23 +41,29 @@ let command = args.first!
 @discardableResult
 func printPermissionHintIfDenied(_ error: Error) -> Bool {
     guard HIDDevice.errorLooksPermissionDenied(String(describing: error)) else { return false }
-    print("  → macOS is refusing HID access (Input Monitoring).")
-    print("    Running via `swift run MacRazer …`? The grant belongs to the terminal that")
-    print("    launched it, not to the SwiftPM binary — grant Terminal (or iTerm/your IDE) in")
-    print("    System Settings › Privacy & Security › Input Monitoring, then start a new")
-    print("    terminal session and retry.")
-    print("    Running MacRazer.app? Grant MacRazer itself there, then relaunch it — macOS")
-    print("    only applies the grant to a freshly-launched app.")
+    status("  → macOS is refusing HID access (Input Monitoring).")
+    status("    Running via `swift run MacRazer …`? The grant belongs to the terminal that")
+    status("    launched it, not to the SwiftPM binary — grant Terminal (or iTerm/your IDE) in")
+    status("    System Settings › Privacy & Security › Input Monitoring, then start a new")
+    status("    terminal session and retry.")
+    status("    Running MacRazer.app? Grant MacRazer itself there, then relaunch it — macOS")
+    status("    only applies the grant to a freshly-launched app.")
     return true
 }
 
 func openDevice() -> HIDDevice? {
+    // These commands only speak USB. With the mouse on Bluetooth and the dongle still plugged
+    // in, they would open the idle dongle and every read would time out with no hint why.
+    if let bt = HIDDevice.bluetoothRazerMouse() {
+        status("Note: \(bt.name) is connected over Bluetooth, which these commands can't reach.")
+        status("      If that's the mouse to probe, switch it to the dongle or plug in the cable.")
+    }
     do {
         let dev = try HIDDevice.open(vendorId: Razer.vendorId)
-        print("✓ Opened \(dev.productName) (VID 0x1532, PID 0x\(String(format: "%04x", dev.productID)))")
+        status("✓ Opened \(dev.productName) (VID 0x1532, PID 0x\(String(format: "%04x", dev.productID)))")
         return dev
     } catch {
-        print("✗ \(error)")
+        status("✗ \(error)")
         printPermissionHintIfDenied(error)
         return nil
     }
@@ -216,7 +229,8 @@ case "render-ui":
         : args.contains("profiles")
         ? AnyView(ProfilesView(controller: controller, remapper: ButtonRemapper(), onBack: {}))
         : AnyView(PopoverView(controller: controller, remapper: ButtonRemapper(), updateChecker: updateChecker,
-                              launchAtLogin: launchAtLogin, onOpenSettings: {})) // no windows in a render
+                              launchAtLogin: launchAtLogin, onOpenSettings: {},
+                              onOpenDeviceTest: {})) // no windows in a render
     writeViewPNG(rootView, to: path)
 
 case "render-settings":
@@ -264,6 +278,23 @@ case "render-about":
                                                    notes: ReleaseNotes.parse(PreviewNotes.releaseBody))]
                                  : []),
                    to: aboutPath)
+
+case "render-device-test":
+    // One screen of the device test, for checking layout and wording without a mouse:
+    // `render-device-test <stage> [unknown] [ran] [path.png]`, stage one of intro, permission,
+    // identify, battery, dpi, polling, lighting, buttons, review.
+    _ = NSApplication.shared
+    let path = outputPath(args.dropFirst(), default: "device-test-preview.png")
+    let stages: [String: DeviceTestModel.Stage] = [
+        "intro": .intro, "permission": .permission, "identify": .identify, "battery": .battery,
+        "dpi": .dpi, "polling": .polling, "lighting": .lighting, "buttons": .buttons, "review": .review,
+    ]
+    let stage = args.dropFirst().compactMap { stages[$0] }.first ?? .intro
+    let controller = MouseController()
+    controller.loadPreviewState()
+    let model = DeviceTestModel(controller: controller, permissions: PermissionsModel())
+    model.loadPreview(stage, known: !args.contains("unknown"), ranSteps: args.contains("ran"))
+    writeViewPNG(DeviceTestView(model: model, onClose: {}), to: path)
 
 case "render-remap":
     _ = NSApplication.shared
@@ -492,6 +523,71 @@ case "brightness":
         exit(2)
     }
 
+case "discover":
+    // Which transaction ids the mouse answers to: the first thing to find out about a model
+    // the registry doesn't know, since a wrong id makes every other probe fail.
+    guard let dev = openDevice() else { exit(1) }
+    defer { dev.close() }
+    // The device test's own Identify step, so this can't choose differently from it.
+    let registry = RazerDevices.info(pid: dev.productID)
+    let (identify, _) = DeviceTestSteps.identify(dev, registry: registry)
+    guard let found = identify.data else { exit(2) }
+    func hex(_ id: UInt8?) -> String { id.map { String(format: "0x%02x", $0) } ?? "none" }
+    func show(_ results: [DeviceReport.TransactionResult]) {
+        for r in results {
+            let groups = r.groups.map { $0.isEmpty ? "" : " on " + $0.joined(separator: ", ") } ?? ""
+            print("  \(hex(r.id)): " + (r.answered ? "answered" + groups
+                                        : r.refused ? "heard, but refused" : r.error ?? "no group answered"))
+        }
+    }
+    print("Standard commands (firmware read). Registry says \(registry.map { hex($0.transactionId) } ?? "nothing"):")
+    show(found.standardAttempts)
+    if let dpi = found.dpiAttempts {
+        print("No id answered the firmware read, so again with a DPI read:")
+        show(dpi)
+    }
+    print("Lighting (brightness sweep). Registry says \(registry.map { hex($0.matrixTransactionId) } ?? "nothing"):")
+    show(found.lightingAttempts)
+    print("Firmware: \(found.firmware ?? "unknown")")
+    print("Would use: \(hex(found.standardId)) for standard commands, \(hex(found.lightingId)) for lighting")
+
+case "devicetest":
+    // The in-app device test without its window, for contributors running from source. Every
+    // step puts back what it changes. Lighting only dims for a moment: the colour check needs
+    // the app's own lighting setting to return to, which only the app knows.
+    guard let dev = openDevice() else { exit(1) }
+    defer { dev.close() }
+    let info = RazerDevices.info(pid: dev.productID)
+    let (identify, lightSweep) = DeviceTestSteps.identify(dev, registry: info)
+    let standardId = identify.data?.standardId ?? info?.transactionId ?? 0x1F
+    let matrixId = identify.data?.lightingId ?? standardId
+    func step<T>(_ body: (DeviceProbeChannel) -> DeviceReport.StepRecord<T>) -> DeviceReport.StepRecord<T> {
+        DeviceTestSteps.recorded(dev, standard: standardId, matrix: matrixId,
+                                 overrides: info?.transactionOverrides ?? [:], body)
+    }
+    status("Running. The mouse's lights will go dark for two seconds.")
+    let (interfaces, control) = HIDDevice.interfaceSummaries(vendorId: Razer.vendorId)
+    var report = DeviceReport(
+        appVersion: AppInfo.displayVersion,
+        macOSVersion: DeviceReport.currentMacOSVersion,
+        device: .init(vendorID: Razer.vendorId, productID: dev.productID, name: dev.productName,
+                      connection: nil, interfaces: interfaces, controlInterface: control),
+        registry: info.map(DeviceReport.Registry.init),
+        identify: identify,
+        battery: step { DeviceTestSteps.battery($0, expectsBattery: info?.hasBattery) },
+        dpi: step { DeviceTestSteps.dpi($0, maxProbe: false) },
+        polling: step { DeviceTestSteps.polling($0) },
+        lighting: step { DeviceTestSteps.lighting($0, sweep: lightSweep, restoreEffect: nil, seconds: 2) },
+        buttons: .init())
+    report.verdict = report.currentVerdict()
+    // Encoded as the app encodes it, so a pasted CLI report reads like an in-app one.
+    let json = DeviceReportOutput.json(report, forPublic: true)
+    guard !json.isEmpty else {
+        status("✗ The report couldn't be encoded.")
+        exit(2)
+    }
+    print(json)
+
 case "rgb":
     guard let dev = openDevice() else { exit(1) }
     defer { dev.close() }
@@ -532,6 +628,6 @@ case "rgb":
 
 default:
     print("Unknown command: \(command)")
-    print("Available: info, battery, dpi [x] [y], poll [hz], stages [d1,d2,…] [active], rgb <static rrggbb|spectrum|wave|off>, brightness [pct], login-item [on|off]")
+    print("Available: info, discover, devicetest, battery, dpi [x] [y], poll [hz], stages [d1,d2,…] [active], rgb <static rrggbb|spectrum|wave|off>, brightness [pct], login-item [on|off]")
     exit(64)
 }

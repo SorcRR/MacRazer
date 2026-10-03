@@ -31,6 +31,22 @@ expect rough edges until 1.0.
  plugged in while the mouse is on Bluetooth, the app uses Bluetooth. A cable still wins,
  since it can do more. The Bluetooth protocol was worked out by
  [@ungrav](https://github.com/ungrav) in #32.
+
+- **Test your mouse from the app.** Right-click the menu bar icon and choose "Help Support
+ This Mouse…". A mouse that's already verified shows "Test This Mouse…" instead. The test
+ takes a couple of minutes. It finds which transaction ids the mouse answers to, reads the
+ battery and firmware, and changes DPI, polling rate and lighting for a moment. It also
+ listens for the side buttons. Everything it changes goes back before the next step, and
+ quitting waits for a step to finish. Every step can be skipped. At the end you can copy the
+ report or open a GitHub issue with it, plus an optional comment and a name to credit. The
+ report never includes the mouse's serial number. The test needs the dongle or a cable,
+ even on a mouse that also works over Bluetooth. If Input Monitoring isn't granted yet, the
+ test asks for it first. A mouse the app doesn't know yet also gets a "Help test it" link in
+ the popover.
+
+- **Two new CLI commands for contributors.** `discover` shows which transaction ids a mouse
+ answers to, and `devicetest` runs the whole test without the window and prints the report.
+
 - **A window confirms an update worked.** After "Update & Restart", the first launch on the
  new version opens a window saying it updated successfully, with the release notes for
  everything you gained. Closing it clears the "Updated to …" card in the popover too, so the

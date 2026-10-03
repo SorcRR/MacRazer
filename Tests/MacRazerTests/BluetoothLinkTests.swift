@@ -24,6 +24,20 @@ final class BluetoothLinkTests: XCTestCase {
                        "an unknown USB model may be a cable; keep it")
     }
 
+    func testTheDeviceTestKnowsWhenTheAppWouldPickBluetooth() {
+        // The test can't use Bluetooth, so it stops before opening it, on exactly the cases
+        // `openTransport` would pick it.
+        func bt(_ present: Bool, _ connection: RazerConnection?, _ controllable: Bool) -> Bool {
+            MouseController.wouldOpenBluetooth(usbPresent: present, usbConnection: connection,
+                                               bluetoothControllable: controllable)
+        }
+        XCTAssertTrue(bt(false, nil, true), "nothing on USB")
+        XCTAssertTrue(bt(true, .wirelessDongle, true), "an idle dongle")
+        XCTAssertFalse(bt(true, .wired, true), "a cable")
+        XCTAssertFalse(bt(true, nil, true), "an unknown USB model")
+        XCTAssertFalse(bt(false, nil, false), "a Bluetooth mouse the app can't control is never opened")
+    }
+
     func testTimeoutKeepsTheHandleOnlyWhenNothingBetterExists() {
         // The existing rule: a known serial keeps the handle through a timeout.
         XCTAssertTrue(MouseController.keepsHandleOnTimeout(serialKnown: true, onDongle: true,

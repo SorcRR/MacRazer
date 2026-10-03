@@ -32,14 +32,14 @@ enum DeviceProbe {
     static let attempts = HIDDevice.defaultAttempts
 
     /// A value read from the mouse, with the response it was decoded from.
-    struct Reading<Value> {
+    struct Reading<Value: Sendable>: Sendable {
         let value: Value
         let response: RazerReport
     }
 
     /// A write followed by a read of the same setting. The acknowledgement only says the
     /// command arrived; the read-back is what says it took.
-    struct WriteCheck<Value> {
+    struct WriteCheck<Value: Sendable>: Sendable {
         let requested: Value
         let setResponse: RazerReport
         let readBack: Reading<Value>
@@ -58,14 +58,14 @@ enum DeviceProbe {
 
     /// A stage-table write and the table read back. There is no `confirmed` here, unlike
     /// `WriteCheck`: the active byte a mouse answers with need not be the index it was given.
-    struct StageWrite {
+    struct StageWrite: Sendable {
         let setResponse: RazerReport
         let readBack: Reading<StageTable>
     }
 
     /// One LED group's answer to a brightness read. Refusals are expected, not failures: most
     /// models answer on one or two of the four groups, and which ones is the point of asking.
-    struct LEDAnswer {
+    struct LEDAnswer: Sendable {
         let name: String
         let led: UInt8
         let result: Result<Reading<UInt8>, Error>
@@ -77,12 +77,36 @@ enum DeviceProbe {
         ("ZERO", Razer.zeroLed), ("BACKLIGHT", Razer.backlightLed),
     ]
 
+    /// One HID interface a device exposes, as the device test reports it. No location or
+    /// serial: nothing here identifies a particular unit or Mac.
+    struct Interface: Codable, Equatable {
+        let productID: Int
+        let product: String
+        let usagePage: Int
+        let usage: Int
+        let maxFeatureReportSize: Int
+        let maxInputReportSize: Int
+        let transport: String
+    }
+
+    // MARK: - Identity
+
+    static func firmware(_ channel: DeviceProbeChannel) throws -> Reading<String> {
+        let response = try channel.sendWithRetry(RazerCommands.getFirmwareVersion(), attempts: attempts)
+        return Reading(value: RazerCommands.parseFirmwareVersion(response), response: response)
+    }
+
     // MARK: - Battery
 
     /// The raw 0-255 level. args[0] of the answer is the var-store echo; the level is args[1].
     static func battery(_ channel: DeviceProbeChannel) throws -> Reading<UInt8> {
         let response = try channel.sendWithRetry(RazerCommands.getBatteryLevel(), attempts: attempts)
         return Reading(value: response.arguments[1], response: response)
+    }
+
+    static func charging(_ channel: DeviceProbeChannel) throws -> Reading<Bool> {
+        let response = try channel.sendWithRetry(RazerCommands.getChargingStatus(), attempts: attempts)
+        return Reading(value: response.arguments[1] != 0, response: response)
     }
 
     // MARK: - DPI

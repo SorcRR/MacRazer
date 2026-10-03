@@ -72,6 +72,17 @@ enum RazerCommands {
         Int((Double(raw) * 100.0 / 255.0).rounded())
     }
 
+    /// razer_chroma_standard_get_firmware_version() -> get_razer_report(0x00, 0x81, 0x02).
+    /// Response args[0] = major, args[1] = minor.
+    static func getFirmwareVersion() -> RazerReport {
+        RazerReport(commandClass: 0x00, commandId: 0x81, dataSize: 0x02)
+    }
+
+    /// "v1.3", the way OpenRazer prints it.
+    static func parseFirmwareVersion(_ resp: RazerReport) -> String {
+        "v\(resp.arguments[0]).\(resp.arguments[1])"
+    }
+
     /// razer_chroma_misc_get_charging_status() — command_class 0x07, command_id 0x84
     /// (confirmed against razerchromacommon.c:1067).
     static func getChargingStatus() -> RazerReport {
