@@ -248,11 +248,31 @@ struct DeviceTestView: View {
         }
     }
 
-    private var review: some View {
+    @ViewBuilder private var review: some View {
+        if model.sendState == .sent, let report = model.finalReport(), let verdict = report.verdict {
+            sent(report, verdict)
+        } else {
+            reviewForm
+        }
+    }
+
+    private func sent(_ report: DeviceReport, _ verdict: DeviceTestVerdict) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            title("Thank you")
+            card {
+                Text(verdict.thankYou(firmware: report.identify.data?.firmware))
+                    .font(.system(size: 13)).fixedSize(horizontal: false, vertical: true)
+            }
+            note(report.replyEmail.map { "Your report is on its way to the maintainer, who can reply to \($0)." }
+                 ?? "Your report is on its way to the maintainer.")
+        }
+    }
+
+    private var reviewForm: some View {
         let report = model.finalReport()
         return VStack(alignment: .leading, spacing: 10) {
             title("Review")
-            note("Copy the report, or open a GitHub issue and paste it in. Nothing leaves your Mac until you do.")
+            note("Send emails this report to the maintainer. You can also copy it, or open a GitHub issue and paste it in. Nothing leaves your Mac until you choose one.")
             if let report, let verdict = report.verdict {
                 card {
                     VStack(spacing: 4) {
@@ -276,9 +296,17 @@ struct DeviceTestView: View {
             }
             TextField("Name or GitHub handle to credit (optional)", text: $model.credit)
                 .textFieldStyle(.roundedBorder).controlSize(.small)
-            // No reply-email field yet: Copy and the GitHub issue are both public-facing and
-            // leave it out by design, so it would be asked for and go nowhere. It arrives with
-            // Send, which delivers to the maintainer alone.
+            VStack(alignment: .leading, spacing: 2) {
+                TextField("Your email, if you'd like a reply (optional)", text: $model.replyEmail)
+                    .textFieldStyle(.roundedBorder).controlSize(.small)
+                if let problem = model.emailProblem {
+                    warning(problem)
+                } else {
+                    // Copy and the GitHub issue are public-facing, so they leave it out.
+                    Text("Only Send includes it, and only the maintainer sees it.")
+                        .font(.system(size: 10)).foregroundStyle(.secondary)
+                }
+            }
             VStack(alignment: .trailing, spacing: 2) {
                 TextEditor(text: Binding(get: { model.comment },
                                          set: { model.comment = String($0.prefix(DeviceReportOutput.maxComment)) }))
@@ -297,6 +325,19 @@ struct DeviceTestView: View {
             }
             if model.copied { note("Copied.") }
             if model.issueOpened { note("The full report is on your clipboard. Paste it into the issue before you submit it.") }
+            switch model.sendState {
+            case .sending: running("Sending…")
+            case .failed(let outcome): warning(Self.sendFailure(outcome))
+            case .idle, .sent: EmptyView()
+            }
+        }
+    }
+
+    static func sendFailure(_ outcome: DeviceReportSender.Outcome) -> String {
+        switch outcome {
+        case .tooMany: return "Too many reports from here today. Try again tomorrow, or open a GitHub issue instead."
+        case .refused: return "The report server didn't accept this report. Open a GitHub issue instead, please, and mention it."
+        case .unavailable, .sent: return "Couldn't reach the report server. Check your connection and try again, or open a GitHub issue."
         }
     }
 
@@ -317,11 +358,17 @@ struct DeviceTestView: View {
                 } else {
                     Button("Grant access") { model.grantAccess() }.keyboardShortcut(.defaultAction)
                 }
+            case .review where model.sendState == .sent:
+                Spacer()
+                Button("Done", action: onClose).keyboardShortcut(.defaultAction)
             case .review:
                 Button("Copy") { model.copyReport() }
                 Button("Open GitHub issue") { model.openGitHubIssue() }
                 Spacer()
-                Button("Done", action: onClose).keyboardShortcut(.defaultAction)
+                Button("Done", action: onClose)
+                Button("Send") { model.send() }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(model.sendState == .sending || model.emailProblem != nil)
             default:
                 Button("Back") { model.back() }.disabled(model.running || model.stage == .identify)
                 Spacer()

@@ -281,8 +281,8 @@ case "render-about":
 
 case "render-device-test":
     // One screen of the device test, for checking layout and wording without a mouse:
-    // `render-device-test <stage> [unknown] [ran] [path.png]`, stage one of intro, permission,
-    // identify, battery, dpi, polling, lighting, buttons, review.
+    // `render-device-test <stage> [unknown] [ran] [sent|failed] [path.png]`, stage one of
+    // intro, permission, identify, battery, dpi, polling, lighting, buttons, review.
     _ = NSApplication.shared
     let path = outputPath(args.dropFirst(), default: "device-test-preview.png")
     let stages: [String: DeviceTestModel.Stage] = [
@@ -294,6 +294,8 @@ case "render-device-test":
     controller.loadPreviewState()
     let model = DeviceTestModel(controller: controller, permissions: PermissionsModel())
     model.loadPreview(stage, known: !args.contains("unknown"), ranSteps: args.contains("ran"))
+    if args.contains("sent") { model.previewSendState(.sent) }
+    if args.contains("failed") { model.previewSendState(.failed(.tooMany)) }
     writeViewPNG(DeviceTestView(model: model, onClose: {}), to: path)
 
 case "render-remap":

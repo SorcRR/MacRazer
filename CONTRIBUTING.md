@@ -73,8 +73,8 @@ real hardware so far; README's table says which, and what was run on each.
 ### 1. Run the probes and paste the output
 
 The easiest way is the app's own test. Right-click the menu bar icon, choose **Help Support
-This Mouse…**, and open a GitHub issue from its last screen. It runs everything below, plus
-transaction id discovery, and puts every setting back. From source,
+This Mouse…**, and press **Send** or open a GitHub issue on its last screen. It runs
+everything below, plus transaction id discovery, and puts every setting back. From source,
 `swift run MacRazer devicetest` prints the same report as JSON.
 
 Running the probes by hand works too. Paste the output, not a summary of it. The raw text is
