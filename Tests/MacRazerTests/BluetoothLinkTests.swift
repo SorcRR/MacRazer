@@ -59,6 +59,21 @@ final class BluetoothLinkTests: XCTestCase {
         XCTAssertFalse(asked, "the IOHID enumeration only runs when it can change the answer")
     }
 
+    func testWakeAndInputBypassOnlyTheSlowBluetoothOpenCooldown() {
+        let failure = Date(timeIntervalSince1970: 100)
+        let now = Date(timeIntervalSince1970: 101)
+        XCTAssertTrue(MouseController.shouldSkipBluetoothRetry(lastFailure: failure, now: now,
+                                                               bypassCooldown: false))
+        XCTAssertFalse(MouseController.shouldSkipBluetoothRetry(lastFailure: failure, now: now,
+                                                                bypassCooldown: true))
+        XCTAssertFalse(MouseController.shouldSkipBluetoothRetry(lastFailure: nil, now: now,
+                                                                bypassCooldown: false))
+        XCTAssertFalse(MouseController.shouldSkipBluetoothRetry(
+            lastFailure: failure, now: failure.addingTimeInterval(MouseController.bluetoothRetryInterval),
+            bypassCooldown: false))
+        XCTAssertEqual(MouseController.bluetoothWakeRetryDelays, [0.3, 1.0, 2.0])
+    }
+
     // MARK: Recognising the mouse on Bluetooth
 
     func testControllableNeedsTheExactBluetoothIDs() {

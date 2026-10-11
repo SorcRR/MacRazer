@@ -30,6 +30,7 @@ import IOKit.hid
 /// there too. `@unchecked Sendable` states that discipline, the same as `HIDMonitor`.
 final class HIDInputWatcher: @unchecked Sendable {
     private let vendorId: Int
+    private let includeBluetooth: Bool
     private let onInput: @Sendable () -> Void
     private var open: [(device: IOHIDDevice, buffer: UnsafeMutablePointer<UInt8>, size: Int)] = []
     /// Retained for the C callback's context, released by `stop()` — the same rule as
@@ -39,8 +40,9 @@ final class HIDInputWatcher: @unchecked Sendable {
     /// ignored rather than queueing a check per movement.
     private var fired = false
 
-    init(vendorId: Int, onInput: @escaping @Sendable () -> Void) {
+    init(vendorId: Int, includeBluetooth: Bool = true, onInput: @escaping @Sendable () -> Void) {
         self.vendorId = vendorId
+        self.includeBluetooth = includeBluetooth
         self.onInput = onInput
     }
 
@@ -55,12 +57,23 @@ final class HIDInputWatcher: @unchecked Sendable {
         let context = Unmanaged.passRetained(self).toOpaque()
 
         // Mouse interfaces only (Generic Desktop / Mouse). A Razer keyboard on the same
-        // vendor id says nothing about this mouse.
-        let devices = HIDDevice.devices(matching: [
-            kIOHIDVendorIDKey as String: vendorId,
+        // vendor id says nothing about this mouse. Bluetooth HID devices use vendor 0x068E,
+        // so include only the Bluetooth PIDs MacRazer knows how to control; otherwise the
+        // offline wake signal would never fire for a sleeping Basilisk/Cobra.
+        let mouseUsage: [String: Any] = [
             kIOHIDDeviceUsagePageKey as String: kHIDPage_GenericDesktop,
             kIOHIDDeviceUsageKey as String: kHIDUsage_GD_Mouse,
-        ])
+        ]
+        let usbDevices = HIDDevice.devices(matching: [
+            kIOHIDVendorIDKey as String: vendorId,
+        ].merging(mouseUsage) { _, usage in usage })
+        let bluetoothDevices = includeBluetooth ? HIDDevice.devices(matching: mouseUsage).filter { device in
+            let transport = IOHIDDeviceGetProperty(device, kIOHIDTransportKey as CFString) as? String ?? ""
+            let deviceVendor = IOHIDDeviceGetProperty(device, kIOHIDVendorIDKey as CFString) as? Int
+            let productID = IOHIDDeviceGetProperty(device, kIOHIDProductIDKey as CFString) as? Int
+            return Self.isWakeSource(vendorID: deviceVendor, productID: productID, transport: transport)
+        } : []
+        let devices = usbDevices + bluetoothDevices
         var opened: [(device: IOHIDDevice, buffer: UnsafeMutablePointer<UInt8>, size: Int)] = []
         for device in devices {
             let size = IOHIDDeviceGetProperty(device, kIOHIDMaxInputReportSizeKey as CFString) as? Int ?? 0
@@ -84,6 +97,13 @@ final class HIDInputWatcher: @unchecked Sendable {
         }
         open = opened
         selfContext = context
+    }
+
+    static func isWakeSource(vendorID: Int?, productID: Int?, transport: String) -> Bool {
+        guard transport.localizedCaseInsensitiveContains("Bluetooth"),
+              vendorID == BLEProtocol.vendorId,
+              let productID else { return false }
+        return RazerDevices.bluetoothPIDs.contains(productID)
     }
 
     /// Stops listening and closes everything. Safe to call when not running.

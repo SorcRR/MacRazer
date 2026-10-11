@@ -39,9 +39,78 @@ enum BLEProtocol {
         static let serial = Key(0x01, 0x83, 0x00, 0x00)
         static let dpiStagesGet = Key(0x0B, 0x84, 0x01, 0x00)
         static let dpiStagesSet = Key(0x0B, 0x04, 0x01, 0x00)
+        static let powerTimeoutGet = Key(0x05, 0x84, 0x00, 0x00)
+        static let powerTimeoutSet = Key(0x05, 0x04, 0x00, 0x00)
         static func brightnessGet(led: UInt8) -> Key { Key(0x10, 0x85, 0x01, led) }
         static func brightnessSet(led: UInt8) -> Key { Key(0x10, 0x05, 0x01, led) }
         static let staticColor = Key(0x10, 0x04, 0x00, 0x00)
+        // The Basilisk DPI Cycle assignment lives in the mouse's function table. Reads
+        // target the active bank; writes use the projection bank and are read back by the
+        // BluetoothDevice helper before the UI reports success.
+        static let dpiButtonGet = Key(0x08, 0x84, 0x00, 0x60)
+        static let dpiButtonSet = Key(0x08, 0x04, 0x01, 0x60)
+    }
+
+    /// Assignments supported by the Basilisk V3 X HyperSpeed's DPI Cycle control. Media
+    /// actions and custom shortcuts use `softwareBridge` (the mouse emits F20 and MacRazer
+    /// turns that signal into the saved macOS action); no undocumented consumer-control
+    /// payload is sent to the mouse.
+    enum DPIButtonBinding: Equatable, Identifiable, Sendable {
+        case dpiCycle
+        case leftClick
+        case rightClick
+        case middleClick
+        case back
+        case forward
+        case scrollUp
+        case scrollDown
+        case keyboardShortcut(hidUsage: UInt8, modifiers: UInt8)
+
+        static let allCases: [Self] = [
+            .dpiCycle, .leftClick, .rightClick, .middleClick, .back, .forward, .scrollUp, .scrollDown,
+        ]
+
+        static let softwareBridge: Self = .keyboardShortcut(hidUsage: 0x6F, modifiers: 0)
+
+        var id: String {
+            switch self {
+            case .keyboardShortcut(let usage, let modifiers): return "keyboard-\(usage)-\(modifiers)"
+            default: return label
+            }
+        }
+
+        var label: String {
+            switch self {
+            case .dpiCycle: return "DPI Cycle (default)"
+            case .leftClick: return "Left Click"
+            case .rightClick: return "Right Click"
+            case .middleClick: return "Middle Click"
+            case .back: return "Back"
+            case .forward: return "Forward"
+            case .scrollUp: return "Scroll Up"
+            case .scrollDown: return "Scroll Down"
+            case .keyboardShortcut(let usage, let modifiers):
+                return "Shortcut \(shortcutLabel(hidUsage: usage, modifiers: modifiers))"
+            }
+        }
+
+        var buttonID: UInt8? {
+            switch self {
+            case .leftClick: return 0x01
+            case .rightClick: return 0x02
+            case .middleClick: return 0x03
+            case .back: return 0x04
+            case .forward: return 0x05
+            case .scrollUp: return 0x09
+            case .scrollDown: return 0x0A
+            case .dpiCycle, .keyboardShortcut: return nil
+            }
+        }
+
+        var keyboardPayload: [UInt8]? {
+            guard case .keyboardShortcut(let usage, let modifiers) = self else { return nil }
+            return [0x02, 0x02, modifiers, usage, 0, 0, 0]
+        }
     }
 
     /// What a reply's payload means, so `response(to:payload:)` knows how to fold it back.
@@ -76,6 +145,106 @@ enum BLEProtocol {
             offset = end
         }
         return frames
+    }
+
+    static func dpiButtonPayload(for binding: DPIButtonBinding) -> Data {
+        if let keyboard = binding.keyboardPayload {
+            return Data([0x01, 0x60, 0x00] + keyboard)
+        }
+        if let buttonID = binding.buttonID {
+            return Data([0x01, 0x60, 0x00, 0x01, 0x01, buttonID, 0, 0, 0, 0])
+        }
+        return Data([0x01, 0x60, 0x00, 0x06, 0x01, 0x06, 0, 0, 0, 0])
+    }
+
+    static let sleepTimeoutRange = 60...900
+    static let sleepTimeoutStep = 15
+
+    static func sleepTimeoutPayload(seconds: Int) -> Data? {
+        guard sleepTimeoutRange.contains(seconds), seconds.isMultiple(of: sleepTimeoutStep) else { return nil }
+        return Data([UInt8(seconds & 0xFF), UInt8((seconds >> 8) & 0xFF)])
+    }
+
+    static func parseSleepTimeout(_ payload: Data) throws -> Int {
+        guard payload.count >= 2 else { throw HIDDevice.HIDError.badResponse }
+        let value = Int(payload[0]) | (Int(payload[1]) << 8)
+        guard sleepTimeoutRange.contains(value), value.isMultiple(of: sleepTimeoutStep) else {
+            throw HIDDevice.HIDError.badResponse
+        }
+        return value
+    }
+
+    static func parseDpiButtonBinding(_ payload: Data) throws -> DPIButtonBinding {
+        let bytes = Array(payload)
+        let functionBlock: [UInt8]
+        if bytes.count >= 10, bytes[0] == 0x01, bytes[1] == 0x60 {
+            functionBlock = Array(bytes[3..<10])
+        } else if bytes.count >= 16, bytes[0] == 0x60 {
+            let packed = Array(bytes.dropFirst(2))
+            functionBlock = Array(packed.enumerated().compactMap { index, byte in
+                index.isMultiple(of: 2) ? byte : nil
+            }.prefix(7))
+        } else {
+            throw HIDDevice.HIDError.badResponse
+        }
+
+        if functionBlock == [0x06, 0x01, 0x06, 0, 0, 0, 0] { return .dpiCycle }
+        if functionBlock.count == 7, functionBlock[0] == 0x02, functionBlock[1] == 0x02,
+           functionBlock[4...6].allSatisfy({ $0 == 0 }), functionBlock[3] != 0 {
+            return .keyboardShortcut(hidUsage: functionBlock[3], modifiers: functionBlock[2])
+        }
+        guard functionBlock.count == 7,
+              functionBlock[0] == 0x01,
+              functionBlock[1] == 0x01,
+              let binding = DPIButtonBinding.allCases.first(where: { $0.buttonID == functionBlock[2] }) else {
+            throw HIDDevice.HIDError.notSupported
+        }
+        return binding
+    }
+
+    /// Translate a macOS virtual key code into the USB HID usage used by the Basilisk
+    /// function table. Unknown keys fail closed instead of writing an ambiguous binding.
+    static func hidUsage(forMacKeyCode keyCode: UInt16) -> UInt8? {
+        let map: [UInt16: UInt8] = [
+            0: 0x04, 1: 0x16, 2: 0x07, 3: 0x09, 4: 0x0B, 5: 0x0A,
+            6: 0x1D, 7: 0x1B, 8: 0x06, 9: 0x19, 11: 0x05, 12: 0x14,
+            13: 0x1A, 14: 0x08, 15: 0x15, 16: 0x1C, 17: 0x17,
+            18: 0x1E, 19: 0x1F, 20: 0x20, 21: 0x21, 22: 0x23,
+            23: 0x22, 25: 0x26, 26: 0x24, 28: 0x25, 29: 0x27,
+            24: 0x2E, 27: 0x2D, 30: 0x30, 31: 0x12, 32: 0x18, 33: 0x2F,
+            34: 0x0C, 35: 0x13, 36: 0x28, 37: 0x0F, 38: 0x0D, 39: 0x34,
+            40: 0x0E, 41: 0x33, 42: 0x31, 43: 0x36, 44: 0x38, 45: 0x11,
+            46: 0x10, 47: 0x37, 48: 0x2B, 49: 0x2C, 50: 0x35, 51: 0x2A,
+            53: 0x29, 76: 0x58, 115: 0x4A, 116: 0x4B, 117: 0x4C, 119: 0x4D,
+            121: 0x4E, 123: 0x50, 124: 0x4F, 125: 0x51, 126: 0x52,
+        ]
+        return map[keyCode]
+    }
+
+    static func shortcutLabel(hidUsage: UInt8, modifiers: UInt8) -> String {
+        var label = ""
+        if modifiers & 0x01 != 0 { label += "⌃" }
+        if modifiers & 0x04 != 0 { label += "⌥" }
+        if modifiers & 0x02 != 0 { label += "⇧" }
+        if modifiers & 0x08 != 0 { label += "⌘" }
+        let key: String
+        switch hidUsage {
+        case 0x04...0x1D:
+            let letters = ["A","B","C","D","E","F","G","H","I","J","K","L","M","N","O","P","Q","R","S","T","U","V","W","X","Y","Z"]
+            key = letters[Int(hidUsage - 0x04)]
+        case 0x1E...0x27:
+            key = ["1","2","3","4","5","6","7","8","9","0"][Int(hidUsage - 0x1E)]
+        case 0x28: key = "↩"; case 0x29: key = "⎋"; case 0x2A: key = "⌫"
+        case 0x2B: key = "⇥"; case 0x2C: key = "Space"; case 0x2D: key = "-"
+        case 0x2E: key = "="; case 0x2F: key = "["; case 0x30: key = "]"
+        case 0x31: key = "\\"; case 0x33: key = ";"; case 0x34: key = "'"
+        case 0x35: key = "`"; case 0x36: key = ","; case 0x37: key = "."; case 0x38: key = "/"
+        case 0x45: key = "F12"; case 0x6F: key = "F20"
+        case 0x4C: key = "⌦"; case 0x4F: key = "→"; case 0x50: key = "←"
+        case 0x51: key = "↓"; case 0x52: key = "↑"
+        default: key = "Key 0x\(String(hidUsage, radix: 16, uppercase: true))"
+        }
+        return label + key
     }
 
     /// Collects the notifications that answer one request: a header frame
@@ -213,7 +382,7 @@ enum BLEProtocol {
     /// `[id, x_lo, x_hi, y_lo, y_hi, 0, 0]` with ids from 1 and little-endian DPI. The mouse
     /// leaves the final reserved byte off its replies (36 bytes for five stages, not 37),
     /// so decoding needs only the first five bytes of the last record.
-    struct DPIStageTable: Equatable {
+    struct DPIStageTable: Equatable, Sendable {
         /// 0-based index into `values`.
         var active: Int
         var values: [Int]
