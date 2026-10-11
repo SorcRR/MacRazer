@@ -70,7 +70,9 @@ final class DpiCycleSoftwareBridgeTests: XCTestCase {
         MouseController.migratePerDeviceData(from: oldKey, to: newKey)
 
         XCTAssertNil(defaults.object(forKey: source))
-        XCTAssertEqual(defaults.data(forKey: destination), try JSONEncoder().encode(action))
+        // Compare the decoded action, not the bytes: JSONEncoder doesn't guarantee key order.
+        XCTAssertEqual(try defaults.data(forKey: destination).map { try JSONDecoder().decode(RemapAction.self, from: $0) },
+                       action)
     }
 
     func testKeyboardTapMaskIsOptIn() {
