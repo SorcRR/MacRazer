@@ -623,6 +623,12 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 self.update(\.charging, false)
                 self.update(\.lastError, err)
                 self.update(\.bluetoothMouse, btStatus)
+                // The DPI Cycle assignment read before the mouse went away says nothing about
+                // what it holds when it comes back (firmware can reset it). Forget it, so the F20
+                // bridge stays unconfirmed until it's read again.
+                self.update(\.dpiCycleButtonBinding, nil)
+                // Same for the sleep timeout: the controls wait for a fresh read.
+                self.update(\.sleepTimeout, nil)
                 if gone {
                     self.update(\.deviceName, nil)
                     self.update(\.deviceID, nil)
@@ -842,12 +848,13 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         }
     }
 
-    func setDPIStageValues(_ values: [Int], activeStage: Int? = nil) {
-        guard deviceIsBluetooth, deviceID.map(RazerDevices.supportsStageEditing(pid:)) == true,
-              values.count >= 1, values.count <= RazerCommands.maxDPIStages else { return }
-        let active = activeStage ?? activeDpiStage ?? max(0, values.firstIndex(of: dpi) ?? 0)
-        guard values.indices.contains(active) else { return }
-        let clamped = values.map { max(100, min($0, deviceMaxDPI)) }
+    /// Changes one stage's DPI. The table is read from the mouse right before the write, so
+    /// the active stage and the other stages are whatever the mouse holds now: the published
+    /// copy can be up to one settings refresh old, and writing it back would undo a press of
+    /// the mouse's DPI button made in the meantime.
+    func setDPIStageValue(_ value: Int, at index: Int) {
+        guard deviceIsBluetooth, deviceID.map(RazerDevices.supportsStageEditing(pid:)) == true else { return }
+        let dpiValue = max(100, min(value, deviceMaxDPI))
         isUpdatingDpiStages = true
         dpiStagesError = nil
         userCommand { [weak self] in
@@ -855,12 +862,15 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             do {
                 guard let bluetooth = try self.ensureDevice() as? BluetoothDevice,
                       RazerDevices.supportsStageEditing(pid: bluetooth.productID) else { throw HIDDevice.HIDError.notSupported }
-                let table = BLEProtocol.DPIStageTable(active: active, values: clamped)
+                var table = try bluetooth.readDpiStages()
+                guard table.values.indices.contains(index) else { throw HIDDevice.HIDError.badResponse }
+                table.values[index] = dpiValue
                 try bluetooth.setDpiStages(table)
+                let written = table
                 self.publish {
-                    self.dpiStages = clamped
-                    self.activeDpiStage = active
-                    self.dpi = clamped[active]
+                    self.dpiStages = written.values
+                    self.activeDpiStage = written.active
+                    self.dpi = written.values[written.active]
                     self.isUpdatingDpiStages = false
                     self.dpiStagesError = nil
                     self.clearActiveProfileIfNeeded()
@@ -941,11 +951,10 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                       RazerDevices.supportsDpiButtonBinding(pid: bluetooth.productID) else {
                     throw HIDDevice.HIDError.notSupported
                 }
+                // Throws unless the mouse reads back exactly this binding.
                 try bluetooth.setDpiCycleBinding(binding)
-                let readback = try bluetooth.readDpiCycleBinding()
-                guard readback == binding else { throw HIDDevice.HIDError.badResponse }
                 self.publish {
-                    self.dpiCycleButtonBinding = readback
+                    self.dpiCycleButtonBinding = binding
                     self.dpiCycleButtonError = nil
                     self.isUpdatingDpiCycleButton = false
                     completion(true)
@@ -981,7 +990,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 let led = RazerDevices.brightnessLed(pid: dev.productID)
                 let raw = RazerCommands.brightnessRaw(fromPercent: pct)
                 _ = try dev.sendWithRetry(RazerCommands.setBrightness(raw, led: led))
-                if dev.isBluetooth, dev.productID == 0x00BA {
+                if RazerDevices.verifiesBrightnessWrite(pid: dev.productID) {
                     let readback = try dev.sendWithRetry(RazerCommands.getBrightness(led: led)).arguments[2]
                     guard readback == raw else { throw HIDDevice.HIDError.commandFailed }
                 }

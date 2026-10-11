@@ -208,6 +208,7 @@ struct PopoverView: View {
         .onChange(of: controller.lastWriteFailure) { _, _ in
             if controller.dpi != 0 { dpiValue = Double(controller.dpi) }
             brightnessValue = Double(controller.brightness)
+            if let timeout = controller.sleepTimeout { sleepTimeoutValue = Double(timeout) }
         }
         .onChange(of: controller.deviceKey) { _, _ in loadCustomDPI() } // reload/clamp per mouse
         .onChange(of: controller.deviceMaxDPI) { _, _ in loadCustomDPI() }
@@ -905,14 +906,9 @@ struct PopoverView: View {
             dpiStageError = "DPI must be between 100 and \(controller.deviceMaxDPI)."
             return
         }
-        guard !controller.dpiStages.isEmpty else { return }
-        var values = controller.dpiStages
-        guard values.indices.contains(index), values[index] != value else { return }
-        values[index] = value
+        guard controller.dpiStages.indices.contains(index), controller.dpiStages[index] != value else { return }
         dpiStageError = nil
-        // Keep the active stage where it is, even when the edited chip is the active one.
-        let active = controller.activeDpiStage
-        controller.setDPIStageValues(values, activeStage: active)
+        controller.setDPIStageValue(value, at: index)
     }
 
     @State private var sleepTimeoutValue: Double = 300
@@ -923,7 +919,9 @@ struct PopoverView: View {
                 HStack {
                     sectionLabel("Power Management", "moon.zzz")
                     Spacer()
-                    Text(formatSleepTimeout(Int(sleepTimeoutValue)))
+                    // Nothing to show until the mouse has reported its value: the slider's
+                    // starting position is a placeholder, not the mouse's setting.
+                    Text(controller.sleepTimeout == nil ? "…" : formatSleepTimeout(Int(sleepTimeoutValue)))
                         .font(.system(size: 12, weight: .medium)).monospacedDigit()
                         .foregroundStyle(.secondary)
                 }
@@ -935,6 +933,7 @@ struct PopoverView: View {
                     .tint(.razerGreen)
                     .controlSize(.small)
                 }
+                .disabled(controller.sleepTimeout == nil)
                 HStack(spacing: 5) {
                     ForEach([60, 120, 300, 600, 900], id: \.self) { value in
                         Button(formatSleepTimeout(value)) {
@@ -948,6 +947,7 @@ struct PopoverView: View {
                         .background(Int(sleepTimeoutValue) == value ? Color.razerGreen : Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
                     }
                 }
+                .disabled(controller.sleepTimeout == nil)
                 if let error = controller.sleepTimeoutError {
                     Text(error).font(.system(size: 10.5)).foregroundStyle(Color.batteryLow)
                 }

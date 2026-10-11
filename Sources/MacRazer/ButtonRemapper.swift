@@ -134,6 +134,9 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
 
     /// Re-check the Accessibility grant (call when the window appears / returns to front).
     func refreshAccessibility(prompt: Bool) {
+        // An explicit Re-check is the user saying they changed a permission: try the
+        // keyboard-capable tap again.
+        if prompt { keyboardTapRefused = false }
         // Use the literal key to avoid touching the non-Sendable global CFString symbol.
         let granted = AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": prompt] as CFDictionary)
         accessibilityGranted = granted
@@ -207,23 +210,11 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         mappings = [3: .keystroke(keyCode: 8, modifiers: CGEventFlags.maskCommand.rawValue, name: "Copy  ⌘C")]
     }
 
-    func loadBasiliskPendingAccessibilityPreview() {
-        activeKey = "00ba"
-        activeDeviceID = 0x00BA
-        accessibilityGranted = false
-        eventTapAvailable = false
-        remappingPaused = false
-        lastDetectedButton = nil
-        seenButtons = []
-        suggestedButtons = [3, 4]
-        mappings = [:]
-    }
-
     // MARK: - Event tap
 
     private func installTapIfNeeded() {
         guard accessibilityGranted else { return }
-        let includeKeyboard = shouldCaptureKeyboard
+        let includeKeyboard = shouldCaptureKeyboard && !keyboardTapRefused
         guard tap == nil || tapIncludesKeyboard != includeKeyboard else {
             if let tap {
                 if !CGEvent.tapIsEnabled(tap: tap) { CGEvent.tapEnable(tap: tap, enable: true) }
@@ -235,6 +226,10 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         removeTap()
         installTap(includeKeyboard: includeKeyboard)
     }
+
+    /// macOS refused the keyboard-capable tap this session. Cleared by an explicit Re-check
+    /// (`refreshAccessibility(prompt: true)`) or a relaunch.
+    private var keyboardTapRefused = false
 
     private var shouldCaptureKeyboard: Bool {
         isBasiliskV3XHyperSpeed && dpiCycleSoftwareAction != nil
@@ -253,8 +248,15 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else {
             // macOS may reject keyboard capture while allowing mouse events. Keep ordinary
-            // button remapping available even when the optional F20 bridge cannot run.
-            if includeKeyboard { installTap(includeKeyboard: false) }
+            // button remapping available even when the optional F20 bridge cannot run, and
+            // remember the refusal: otherwise every state change would tear down the working
+            // mouse-only tap to try the keyboard one again.
+            if includeKeyboard {
+                installTap(includeKeyboard: false)
+                // Only a refusal if mouse events still work. When both fail, the cause is
+                // something else (Accessibility not effective yet), so try both again later.
+                keyboardTapRefused = tap != nil
+            }
             return
         }
 
@@ -470,8 +472,10 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
 
     func shouldRestoreDpiBridge(binding: BLEProtocol.DPIButtonBinding?, connected: Bool,
                                 bluetooth: Bool, alreadyAttempted: Bool) -> Bool {
+        // `binding` must have been read from the mouse: nil means "not known yet" (after a
+        // reconnect), and restoring then would write before the fresh read.
         isBasiliskV3XHyperSpeed && connected && bluetooth && !alreadyAttempted
-            && binding != .softwareBridge && dpiCycleSoftwareAction != nil
+            && binding != nil && binding != .softwareBridge && dpiCycleSoftwareAction != nil
     }
 
     func configureDpiCycle(_ binding: BLEProtocol.DPIButtonBinding,

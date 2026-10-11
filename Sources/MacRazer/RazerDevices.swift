@@ -75,6 +75,8 @@ struct RazerDeviceInfo {
     var supportsDpiButtonBinding = false
     var supportsSleepTimeout = false
     var supportsStageEditing = false
+    /// Read brightness back after setting it, and treat a mismatch as a failed write.
+    var verifiesBrightnessWrite = false
 }
 
 enum RazerDevices {
@@ -92,7 +94,7 @@ enum RazerDevices {
         // Basilisk V3 X HyperSpeed over Bluetooth. The shared BLE layer covers battery, DPI,
         // stages and static lighting; the DPI Cycle assignment is handled by BluetoothDevice.
         // Its only lit zone is the scroll wheel, so brightness must target SCROLL_LED.
-        .init(pid: 0x00BA, name: "Razer Basilisk V3 X HyperSpeed (Bluetooth)", fullySupported: true, hasBattery: true, hasLighting: true, maxDPI: 18000, transactionId: 0x1f, matrixTransactionId: 0x1f, brightnessLed: Razer.scrollLed, connection: .bluetooth, silhouette: .cobra, dischargeCurveModelKey: nil, supportsDpiButtonBinding: true, supportsSleepTimeout: true, supportsStageEditing: true),
+        .init(pid: 0x00BA, name: "Razer Basilisk V3 X HyperSpeed (Bluetooth)", fullySupported: true, hasBattery: true, hasLighting: true, maxDPI: 18000, transactionId: 0x1f, matrixTransactionId: 0x1f, brightnessLed: Razer.scrollLed, connection: .bluetooth, silhouette: .cobra, dischargeCurveModelKey: nil, supportsDpiButtonBinding: true, supportsSleepTimeout: true, supportsStageEditing: true, verifiesBrightnessWrite: true),
         // Plain Cobra per razermouse_driver.c: 0xFF for standard/misc (serial :1509,
         // polling :2011/:2193, DPI :2600/:2781) but 0x1f for every extended-matrix
         // command (brightness :4202/:4312, spectrum :4622, static :5085, none :5301).
@@ -145,6 +147,7 @@ enum RazerDevices {
     static func supportsDpiButtonBinding(pid: Int) -> Bool { info(pid: pid)?.supportsDpiButtonBinding ?? false }
     static func supportsSleepTimeout(pid: Int) -> Bool { info(pid: pid)?.supportsSleepTimeout ?? false }
     static func supportsStageEditing(pid: Int) -> Bool { info(pid: pid)?.supportsStageEditing ?? false }
+    static func verifiesBrightnessWrite(pid: Int) -> Bool { info(pid: pid)?.verifiesBrightnessWrite ?? false }
     /// Per-command transaction id: explicit per-command override, else the class split
     /// (see `RazerDeviceInfo.matrixTransactionId`). 0x1f default for unknown models — the
     /// Cobra-family id this app has hardware verified.
