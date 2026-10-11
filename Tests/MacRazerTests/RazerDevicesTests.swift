@@ -143,6 +143,9 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertFalse(RazerDevices.supportsDpiButtonBinding(pid: 0x00DC))
         XCTAssertFalse(RazerDevices.supportsSleepTimeout(pid: 0x00DC))
         XCTAssertFalse(RazerDevices.supportsStageEditing(pid: 0x00DC))
+        XCTAssertTrue(RazerDevices.verifiesBrightnessWrite(pid: 0x00BA))
+        XCTAssertFalse(RazerDevices.verifiesBrightnessWrite(pid: 0x00DC),
+                       "the Cobra's brightness isn't read back after writing")
     }
 
     func testCapabilityDefaultsForUnknownModels() {

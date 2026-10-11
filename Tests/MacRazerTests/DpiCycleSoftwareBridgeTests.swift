@@ -33,6 +33,9 @@ final class DpiCycleSoftwareBridgeTests: XCTestCase {
         remapper.saveDpiSoftwareAction(.mediaKey(code: 16, name: "Play / Pause"))
         XCTAssertTrue(remapper.shouldRestoreDpiBridge(binding: .dpiCycle, connected: true,
                                                       bluetooth: true, alreadyAttempted: false))
+        // Not read yet (cleared on disconnect): never restore before the fresh read.
+        XCTAssertFalse(remapper.shouldRestoreDpiBridge(binding: nil, connected: true,
+                                                       bluetooth: true, alreadyAttempted: false))
         remapper.confirmDpiBridge(binding: .softwareBridge)
         XCTAssertTrue(remapper.dpiBridgeBindingConfirmed)
         remapper.confirmDpiBridge(binding: .dpiCycle)

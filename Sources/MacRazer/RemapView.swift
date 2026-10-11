@@ -18,7 +18,6 @@ struct RemapView: View {
     @ObservedObject var remapper: ButtonRemapper
     var controller: MouseController?
     var onBack: (() -> Void)?
-    var checkAccessibilityOnAppear = true
     @State private var recordingButton: Int?
     @State private var recordingDpiCycleShortcut = false
     @State private var recorderError: String?
@@ -50,7 +49,7 @@ struct RemapView: View {
         .padding(18)
         .frame(width: onBack == nil ? 440 : 320)
         .onAppear {
-            if checkAccessibilityOnAppear { remapper.refreshAccessibility(prompt: false) }
+            remapper.refreshAccessibility(prompt: false)
         }
         .overlay { if recordingButton != nil || recordingDpiCycleShortcut { recorderOverlay } }
     }
