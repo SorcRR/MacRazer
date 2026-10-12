@@ -24,7 +24,7 @@ struct BackButton: View {
         }
         .buttonStyle(.plain)
         .keyboardShortcut(escapes ? KeyboardShortcut.cancelAction : nil)
-        .help("Back (Esc)")
+        .help(escapes ? "Back (Esc)" : "Back")
     }
 }
 

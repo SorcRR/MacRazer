@@ -66,18 +66,17 @@ struct PopoverView: View {
     private var displayedStages: [Int] {
         controller.dpiStages.isEmpty ? defaultStages : controller.dpiStages
     }
-    /// Spoken and tooltip names for `swatches`, in the same order.
-    private let swatchNames = ["Red", "Orange", "Yellow", "Green", "Cyan", "Blue", "Purple", "Pink"]
     // Distinct hues with a true red (SwiftUI .red is a warm orange-red; .green duplicated razerGreen).
-    private let swatches: [Color] = [
-        Color(red: 1.0, green: 0.0, blue: 0.0),    // true red
-        Color(red: 1.0, green: 0.5, blue: 0.0),    // orange
-        Color(red: 1.0, green: 0.85, blue: 0.0),   // yellow
-        .razerGreen,                                // green
-        Color(red: 0.0, green: 0.8, blue: 1.0),    // cyan
-        Color(red: 0.15, green: 0.35, blue: 1.0),  // blue
-        Color(red: 0.6, green: 0.2, blue: 1.0),    // purple
-        Color(red: 1.0, green: 0.2, blue: 0.65),   // pink
+    // Each carries its spoken/tooltip name.
+    private let swatches: [(name: String, color: Color)] = [
+        ("Red", Color(red: 1.0, green: 0.0, blue: 0.0)),
+        ("Orange", Color(red: 1.0, green: 0.5, blue: 0.0)),
+        ("Yellow", Color(red: 1.0, green: 0.85, blue: 0.0)),
+        ("Green", .razerGreen),
+        ("Cyan", Color(red: 0.0, green: 0.8, blue: 1.0)),
+        ("Blue", Color(red: 0.15, green: 0.35, blue: 1.0)),
+        ("Purple", Color(red: 0.6, green: 0.2, blue: 1.0)),
+        ("Pink", Color(red: 1.0, green: 0.2, blue: 0.65)),
     ]
 
     /// Popover sizes to the MAIN page content (no empty space); sub-pages match that height
@@ -163,6 +162,18 @@ struct PopoverView: View {
         }
     }
 
+    /// ⌘R — the same shortcut the right-click menu's "Refresh Now" shows. Bound once for the
+    /// whole main page rather than to a control inside one card, so it works whichever cards
+    /// are showing (a mouse without a battery has no battery card and no refresh button).
+    private var refreshShortcut: some View {
+        Button("Refresh") { controller.refreshAll() }
+            .keyboardShortcut("r")
+            .disabled(controller.isRefreshing)
+            .opacity(0)
+            .frame(width: 0, height: 0)
+            .accessibilityHidden(true)
+    }
+
     private var mainPage: some View {
         VStack(alignment: .leading, spacing: 10) {
             headerCard
@@ -174,10 +185,10 @@ struct PopoverView: View {
             // explain it instead of just showing "offline".
             if controller.bluetoothMouse != nil && !controller.connected { bluetoothNotice }
             if noMouse {
-                // A last reading is still worth showing; with none, the battery card would be
-                // a "—" and nothing else, so the empty state says what to do instead.
+                // A last reading is still worth showing (the snapshot is persisted, so most
+                // returning users have one); the empty-state card still says what to do.
                 if controller.lastBatterySnapshot != nil { batteryCard.opacity(0.55) }
-                else { noMouseCard }
+                noMouseCard
             } else {
                 // Battery stays readable (last-known) but dims when offline; its refresh button
                 // stays active so you can retry.
@@ -194,7 +205,7 @@ struct PopoverView: View {
                 .disabled(!controller.connected)
                 .opacity(controller.connected ? 1 : 0.45)
 
-                configureButton // software remap — works offline, stays enabled
+                configureButton
                 // Profiles bundle the sections above (plus remaps) into presets — placed after
                 // them so the page reads "here are the controls, here's how to save/recall them".
                 if controller.supportsProfiles {
@@ -205,6 +216,7 @@ struct PopoverView: View {
         }
         .padding(12)
         .frame(width: popoverWidth)
+        .background(refreshShortcut)
         .background(GeometryReader { g in Color.clear.preference(key: HeightKey.self, value: g.size.height) })
         .onAppear {
             if controller.dpi != 0 { dpiValue = Double(controller.dpi) }
@@ -271,7 +283,6 @@ struct PopoverView: View {
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                     .disabled(controller.isRefreshing)
-                    .keyboardShortcut("r")
                 }
             }
             .frame(maxWidth: .infinity)
@@ -494,11 +505,13 @@ struct PopoverView: View {
             controller.applyProfile(profile, remapper: remapper)
         } label: {
             Text(profile.name)
+                .padding(.horizontal, 10)
+                .frame(maxHeight: .infinity)
+                .contentShape(Capsule())
         }
         .buttonStyle(.plain)
         .font(.system(size: 10.5, weight: active ? .semibold : .regular))
         .foregroundStyle(active ? .white : .secondary)
-        .padding(.horizontal, 10)
         .frame(height: 24)
         .background(active ? Color.razerGreen : Color.primary.opacity(0.08), in: Capsule())
         .hoverHighlight(Capsule())
@@ -803,7 +816,8 @@ struct PopoverView: View {
             } else {
                 batterySubtitleText
             }
-            if needsPermission {
+            // With no mouse at all, `noMouseCard` below carries this button instead.
+            if needsPermission && !noMouse {
                 Button {
                     AppDelegate.openInputMonitoringSettings()
                 } label: {
@@ -911,8 +925,6 @@ struct PopoverView: View {
         .foregroundStyle(.secondary)
         .help(controller.supportsPollRate ? "Refresh battery, DPI and polling rate (⌘R)" : "Refresh battery and DPI (⌘R)")
         .accessibilityLabel("Refresh")
-        // The same shortcut the right-click menu's "Refresh Now" shows.
-        .keyboardShortcut("r")
         .disabled(controller.isRefreshing)
     }
 
@@ -969,7 +981,10 @@ struct PopoverView: View {
                     dpiValue = Double(value)
                     controller.setDPI(value)
                 } label: {
+                    // Fill the chip so the whole hover-highlighted area is clickable.
                     Text(verbatim: "\(value)")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
@@ -989,7 +1004,7 @@ struct PopoverView: View {
         }
         // The stage editor lives in a context menu, which nothing on the chip hints at.
         .help(supportsBasiliskBluetooth ? "Stage \(index + 1) · Right-click to edit" : "Stage \(index + 1)")
-        .accessibilityLabel("\(value) DPI, stage \(index + 1)")
+        .accessibilityLabel(editing ? "Stage \(index + 1) DPI" : "\(value) DPI, stage \(index + 1)")
         .accessibilityAddTraits(active ? .isSelected : [])
         .disabled(controller.isUpdatingDpiStages || (editingDpiStage != nil && !editing))
     }
@@ -1040,9 +1055,13 @@ struct PopoverView: View {
                 .disabled(controller.sleepTimeout == nil)
                 HStack(spacing: 5) {
                     ForEach([60, 120, 300, 600, 900], id: \.self) { value in
-                        Button(formatSleepTimeout(value, compact: true)) {
+                        Button {
                             sleepTimeoutValue = Double(value)
                             controller.setSleepTimeout(value)
+                        } label: {
+                            Text(formatSleepTimeout(value, compact: true))
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .font(.system(size: 9.5, weight: Int(sleepTimeoutValue) == value ? .semibold : .regular).monospacedDigit())
@@ -1078,6 +1097,8 @@ struct PopoverView: View {
             controller.setDPI(customDPI)
         } label: {
             Text(verbatim: "\(active ? Int(dpiValue) : customDPI)")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .font(.system(size: 10.5, weight: active ? .semibold : .regular).monospacedDigit())
@@ -1195,8 +1216,8 @@ struct PopoverView: View {
 
             if controller.effect == .staticColor || !controller.supportsLightingEffects {
                 HStack(spacing: 7) {
-                    ForEach(Array(swatches.enumerated()), id: \.offset) { index, sw in
-                        swatch(sw, name: swatchNames[index])
+                    ForEach(swatches.indices, id: \.self) { i in
+                        swatch(swatches[i].color, name: swatches[i].name)
                     }
                     customColorWell
                     Spacer(minLength: 0)
