@@ -40,6 +40,9 @@ struct PopoverView: View {
 
     enum Page { case main, color, buttons, usage, profiles, whatsNew }
     @State private var page: Page = .main
+    /// The popover is on screen. Its hosting controller outlives each showing, so views here
+    /// stay mounted while it's closed; anything periodic has to check this.
+    @State private var isShown = false
     @State private var isAddingProfile = false
     @State private var newProfileName = ""
     @State private var dpiValue: Double = 1600
@@ -101,7 +104,8 @@ struct PopoverView: View {
         // Closing the popover resets navigation: reopening onto a stale sub-page (whose
         // gating card may have been disabled in the meantime — e.g. Profiles after a
         // disconnect) is disorienting.
-        .onDisappear { page = .main }
+        .onAppear { isShown = true }
+        .onDisappear { page = .main; isShown = false }
     }
 
     // MARK: Sub-pages
@@ -720,11 +724,13 @@ struct PopoverView: View {
                 }
             }
             .frame(height: 6)
-            // While offline, re-rendered every 30 s so the "· 2 min. ago" age keeps up with the
-            // popover open: nothing else republishes while the mouse is away. Connected, the
-            // subtitle follows published state, so the tick is effectively off.
-            TimelineView(.periodic(from: .now, by: controller.connected ? 3600 : 30)) { _ in
-                Text(batterySubtitle).font(.system(size: 11)).foregroundStyle(.secondary)
+            // Offline and on screen, re-rendered every 30 s so the "· 2 min. ago" age keeps up:
+            // nothing else republishes while the mouse is away. Otherwise no timer at all, so a
+            // closed popover never wakes the app.
+            if isShown && !controller.connected {
+                TimelineView(.periodic(from: .now, by: 30)) { _ in batterySubtitleText }
+            } else {
+                batterySubtitleText
             }
             if needsPermission {
                 Button {
@@ -774,6 +780,10 @@ struct PopoverView: View {
                 .fill(Color.secondary.opacity(0.55))
                 .frame(width: 2.5, height: 5.5)
         }
+    }
+
+    private var batterySubtitleText: some View {
+        Text(batterySubtitle).font(.system(size: 11)).foregroundStyle(.secondary)
     }
 
     private var batterySubtitle: String {
