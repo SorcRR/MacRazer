@@ -40,11 +40,11 @@ enum DeviceReportOutput {
             r[keyPath: path] = []
             r.exchangesDropped = (r.exchangesDropped ?? []) + [name]
         }
-        // Every scalar is at least a byte, so dropping as many scalars as there are bytes
-        // over always gets under, in one pass. The loop is only a guard.
+        // One trim fits, since it measures the comment as the encoder writes it (see
+        // `ReportComment`). The loop is only a guard in case that measurement and the
+        // report's encoding ever disagree.
         while case let excess = size(r) - maxBytes, excess > 0, let comment = r.comment, !comment.isEmpty {
-            let kept = String(comment.unicodeScalars.dropLast(excess))
-            r.comment = kept.isEmpty ? nil : kept
+            r.comment = ReportComment.trimmed(comment, dropping: excess)
         }
         return r
     }

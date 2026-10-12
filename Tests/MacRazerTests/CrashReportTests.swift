@@ -158,6 +158,15 @@ final class CrashReportOutputTests: XCTestCase {
         XCTAssertTrue(fitted.comment?.allSatisfy { $0 == "😀" } ?? false, "cut between emoji, not inside one")
     }
 
+    func testEscapedCharactersAreCutAtTheirJSONSize() {
+        // Quotes, backslashes, newlines and slashes are two bytes each in the JSON.
+        var r = CrashReportParser.parse(CrashFixture.ips(frames: 30))!
+        r.comment = String(repeating: "\"\\\n/", count: 500)
+        let fitted = CrashReportOutput.fitted(r, maxBytes: 4000)
+        XCTAssertLessThanOrEqual(CrashReportOutput.size(fitted), 4000)
+        XCTAssertGreaterThan(CrashReportOutput.size(fitted), 4000 - 2, "cut to the byte, not more")
+    }
+
     func testAMultiScalarEmojiIsNeverLeftHalfBuilt() {
         // One character of seven scalars, joined. A cut between scalars would leave a broken family.
         let family = "👩‍👩‍👧‍👦"
