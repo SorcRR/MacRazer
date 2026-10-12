@@ -122,13 +122,30 @@ final class RazerDevicesTests: XCTestCase {
     /// The Bluetooth Cobra HyperSpeed is the same mouse as the dongle one: same LED for
     /// brightness (verified over BLE: LOGO answers, SCROLL refuses) and same discharge curve.
     func testBluetoothCobraHyperSpeed() {
-        XCTAssertEqual(RazerDevices.bluetoothPIDs, [0x00DC])
-        XCTAssertEqual(RazerDevices.bluetoothModelNames, ["Razer Cobra HyperSpeed"],
+        XCTAssertEqual(RazerDevices.bluetoothPIDs, [0x00BA, 0x00DC])
+        XCTAssertEqual(RazerDevices.bluetoothModelNames, ["Razer Cobra HyperSpeed", "Razer Basilisk V3 X HyperSpeed"],
                        "user-facing text names the model, not the link")
         XCTAssertEqual(RazerDevices.brightnessLed(pid: 0x00DC), Razer.logoLed)
         XCTAssertEqual(RazerDevices.dischargeCurveModelKey(pid: 0x00DC),
                        RazerDevices.dischargeCurveModelKey(pid: 0x00DB))
         XCTAssertEqual(RazerDevices.maxDPI(pid: 0x00DC), RazerDevices.maxDPI(pid: 0x00DB))
+    }
+
+    func testBluetoothBasiliskHyperSpeed() {
+        XCTAssertEqual(RazerDevices.connection(pid: 0x00BA), .bluetooth)
+        XCTAssertTrue(RazerDevices.hasBattery(pid: 0x00BA))
+        XCTAssertTrue(RazerDevices.hasLighting(pid: 0x00BA))
+        XCTAssertEqual(RazerDevices.brightnessLed(pid: 0x00BA), Razer.scrollLed)
+        XCTAssertEqual(RazerDevices.maxDPI(pid: 0x00BA), 18000)
+        XCTAssertTrue(RazerDevices.supportsDpiButtonBinding(pid: 0x00BA))
+        XCTAssertTrue(RazerDevices.supportsSleepTimeout(pid: 0x00BA))
+        XCTAssertTrue(RazerDevices.supportsStageEditing(pid: 0x00BA))
+        XCTAssertFalse(RazerDevices.supportsDpiButtonBinding(pid: 0x00DC))
+        XCTAssertFalse(RazerDevices.supportsSleepTimeout(pid: 0x00DC))
+        XCTAssertFalse(RazerDevices.supportsStageEditing(pid: 0x00DC))
+        XCTAssertTrue(RazerDevices.verifiesBrightnessWrite(pid: 0x00BA))
+        XCTAssertFalse(RazerDevices.verifiesBrightnessWrite(pid: 0x00DC),
+                       "the Cobra's brightness isn't read back after writing")
     }
 
     func testCapabilityDefaultsForUnknownModels() {
