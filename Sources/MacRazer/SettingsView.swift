@@ -29,6 +29,7 @@ struct SettingsView: View {
             header
             titledSection("General") {
                 launchAtLoginRow
+                connectionSoundsRow
                 // Hidden rather than disabled for a mouse with no battery: there is no
                 // percentage to show, so the switch would be a promise about nothing.
                 if controller.deviceHasBattery { batteryPercentRow }
@@ -90,6 +91,15 @@ struct SettingsView: View {
                     .foregroundStyle(Color.razerGreen)
             }
         }
+    }
+
+    private var connectionSoundsRow: some View {
+        settingRow(
+            title: "Connection sounds",
+            detail: "Play a sound when the mouse connects or disconnects.",
+            isOn: Binding(get: { controller.connectionSoundsEnabled },
+                          set: { controller.connectionSoundsEnabled = $0 })
+        )
     }
 
     private var batteryPercentRow: some View {
