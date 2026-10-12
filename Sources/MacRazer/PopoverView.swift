@@ -256,7 +256,8 @@ struct PopoverView: View {
                 }
                 .frame(width: 34, height: 34)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(controller.deviceName ?? controller.bluetoothMouse?.name ?? "No mouse connected")
+                    Text(controller.deviceName ?? controller.bluetoothMouse?.name
+                         ?? controller.lastBatterySnapshot?.deviceName ?? "No mouse connected")
                         .font(.system(size: 13, weight: .semibold))
                         .lineLimit(1)
                     HStack(spacing: 5) {
@@ -772,6 +773,14 @@ struct PopoverView: View {
 
     private var batterySubtitle: String {
         if !controller.connected {
+            if let snapshot = controller.lastBatterySnapshot {
+                let age = LastBatterySnapshot.relativeAgeFormatter.localizedString(for: snapshot.observedAt, relativeTo: Date())
+                if snapshot.wasCharging { return "Last reading: \(snapshot.percent)% · charging · \(age)" }
+                if let estimate = snapshot.shortEstimateText {
+                    return "\(estimate) · \(age)"
+                }
+                return "Last reading: \(snapshot.percent)% · \(age) · no estimate yet"
+            }
             switch controller.bluetoothMouse {
             case .needsModeSwitch: return "On Bluetooth. Use 2.4 GHz or USB-C"
             case .connecting: return "On Bluetooth. Connecting…"

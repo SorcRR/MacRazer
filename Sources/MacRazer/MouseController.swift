@@ -67,6 +67,8 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     @Published private(set) var sleepTimeoutError: String?
     @Published private(set) var isUpdatingSleepTimeout = false
     @Published private(set) var timeEstimate: String?
+    /// The most recent trusted battery reading, retained while disconnected.
+    @Published private(set) var lastBatterySnapshot: LastBatterySnapshot?
     /// Snapshots of `io`-queue-owned history, republished on the main queue for the usage graph.
     @Published private(set) var batterySamples: [BatterySample] = []
     /// The last finished cycle's curve, drawn dimmed behind the current one (~2 charges of
@@ -206,6 +208,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     private var history = BatteryHistory(deviceKey: "default")
     private var cycleHistory = ChargeCycleHistory(deviceKey: "default")
     private var historyKey: String? // device the current history belongs to
+    private let lastBatterySnapshotStore = LastBatterySnapshotStore()
+    /// io-queue copy used by sleep/termination saves.
+    private var latestBatterySnapshotForIO: LastBatterySnapshot?
     /// Learned per-percent discharge curve — only set for models `RazerDevices` covers (see
     /// `dischargeCurveModelKey`); nil leaves every other mouse on the generic rate estimate.
     private var curveModel: DischargeCurveModel?
@@ -321,6 +326,11 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     func refreshNotificationAuthorization() { lowBatteryNotifier.refreshAuthorization() }
 
     func start() {
+        if let snapshot = lastBatterySnapshotStore.load() {
+            lastBatterySnapshot = snapshot
+            batteryPercent = snapshot.percent
+            latestBatterySnapshotForIO = snapshot
+        }
         wireHistory()
         lowBatteryNotifier.refreshAuthorization()
         refreshAll()
@@ -346,6 +356,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         io.async { [weak self] in
             self?.history.saveNow()
             self?.curveModel?.saveNow()
+            if let snapshot = self?.latestBatterySnapshotForIO {
+                self?.lastBatterySnapshotStore.save(snapshot, force: true)
+            }
         }
     }
 
@@ -585,7 +598,21 @@ final class MouseController: ObservableObject, @unchecked Sendable {
 
         case .reading(let pct, let isCharging, let recordSample):
             if recordSample { history.record(percent: pct, charging: isCharging) }
-            let estimate = isCharging ? "Charging" : history.estimateString(currentPercent: pct, curveModel: curveModel)
+            let estimateHours = isCharging ? nil : history.estimateHoursRemaining(currentPercent: pct, curveModel: curveModel)
+            let snapshot = LastBatterySnapshot(
+                deviceKey: historyKey ?? String(format: "%04x", device?.productID ?? 0),
+                productID: device?.productID ?? 0,
+                deviceName: device?.productName ?? "Razer Mouse",
+                percent: pct,
+                observedAt: Date(),
+                estimatedHoursRemaining: estimateHours,
+                wasCharging: isCharging
+            )
+            let previousSnapshot = latestBatterySnapshotForIO?.deviceKey == snapshot.deviceKey
+                ? latestBatterySnapshotForIO : lastBatterySnapshotStore.load(snapshot.deviceKey)
+            lastBatterySnapshotStore.save(snapshot, previous: previousSnapshot)
+            latestBatterySnapshotForIO = snapshot
+            let estimate = isCharging ? "Charging" : snapshot.estimateText
             let snap = historySnapshot()
             let chargingNow = observedCharging // immutable capture for the @Sendable publish block
             publishConnected {
@@ -593,6 +620,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 // apply" banner would now be lying (polls clear it within ~15s of a wake).
                 self.update(\.profileApplyFailed, false)
                 self.update(\.batteryPercent, pct)
+                if !snapshot.sameDisplayedState(as: self.lastBatterySnapshot) {
+                    self.update(\.lastBatterySnapshot, snapshot)
+                }
                 // Published for display (menu bar bolt, popover badge) off the *observed*
                 // flag, not the debounced one: the debounce exists to guard the destructive
                 // history reset below, and applying it here blinks the bolt off for a full
@@ -1250,6 +1280,12 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// For the `render-ui offline` preview: keep last-known values but mark disconnected.
     func setPreviewOffline() {
         connected = false
+        let readingDate = Date().addingTimeInterval(-2 * 60)
+        lastBatterySnapshot = LastBatterySnapshot(
+            deviceKey: "preview", productID: deviceID ?? 0x00DB,
+            deviceName: deviceName ?? "Razer Mouse", percent: batteryPercent ?? 72,
+            observedAt: readingDate, estimatedHoursRemaining: 39, wasCharging: false
+        )
         updateStatusText()
     }
 
@@ -1287,6 +1323,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         io.async {
             self.history.saveNow()
             self.curveModel?.saveNow()
+            if let snapshot = self.latestBatterySnapshotForIO {
+                self.lastBatterySnapshotStore.save(snapshot, force: true)
+            }
             done.signal()
         }
         _ = done.wait(timeout: .now() + 2)
@@ -1468,8 +1507,33 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             // session, same connection); without this, everything recorded so far would be
             // orphaned forever. Cross-session PID orphans are deliberately NOT migrated:
             // with two same-model units, they could belong to the other mouse.
-            let isSameUnitKeyUpgrade = historyKey != nil && serial != nil
-                && historyKey == String(format: "%04x", pid)
+            let transition = SnapshotDeviceTransition.resolve(
+                currentKey: historyKey, newKey: key, serial: serial,
+                pidKey: String(format: "%04x", pid))
+            let isSameUnitKeyUpgrade = transition == .upgradedFromPID
+            if let oldKey = historyKey, let saved = lastBatterySnapshotStore.load(oldKey), saved.deviceKey != key {
+                if isSameUnitKeyUpgrade, saved.deviceKey == oldKey {
+                    let rekeyed = LastBatterySnapshot(
+                        deviceKey: key, productID: saved.productID, deviceName: saved.deviceName,
+                        percent: saved.percent, observedAt: saved.observedAt,
+                        estimatedHoursRemaining: saved.estimatedHoursRemaining,
+                        wasCharging: saved.wasCharging
+                    )
+                    lastBatterySnapshotStore.save(rekeyed, force: true)
+                    lastBatterySnapshotStore.remove(saved.deviceKey)
+                    latestBatterySnapshotForIO = rekeyed
+                }
+            }
+            // A missing serial is a failed identity probe, not evidence of a new mouse.
+            // Preserve the current offline snapshot and all other devices' snapshots.
+            let savedSnapshotForKey = serial == nil
+                ? (lastBatterySnapshotStore.load(key) ?? latestBatterySnapshotForIO)
+                : lastBatterySnapshotStore.load(key)
+            latestBatterySnapshotForIO = savedSnapshotForKey
+            let restoredEstimate: String? = {
+                guard let savedSnapshotForKey else { return nil }
+                return savedSnapshotForKey.wasCharging ? "Charging" : savedSnapshotForKey.estimateText
+            }()
             history = Self.handOverHistory(
                 history, outgoingKey: historyKey,
                 migrate: isSameUnitKeyUpgrade ? { old in Self.migratePerDeviceData(from: old, to: key) } : nil,
@@ -1493,6 +1557,11 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             let loadedProfiles = ProfileStore.profiles(forDevice: key)
             let loadedActiveID = ProfileStore.activeProfileID(forDevice: key)
             publish {
+                if self.lastBatterySnapshot?.deviceKey != key {
+                    self.update(\.lastBatterySnapshot, savedSnapshotForKey)
+                    self.update(\.batteryPercent, savedSnapshotForKey?.percent)
+                    self.update(\.timeEstimate, restoredEstimate)
+                }
                 self.batterySamples = snap.samples
                 self.previousCycleSamples = snap.previous
                 self.dischargeRatePerHour = snap.rate
