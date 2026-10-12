@@ -32,6 +32,22 @@ expect rough edges until 1.0.
  since it can do more. The Bluetooth protocol was worked out by
  [@ungrav](https://github.com/ungrav) in #32.
 
+- **The Basilisk V3 X HyperSpeed works over Bluetooth too.** Battery, DPI stages, brightness
+ and a static lighting colour work in Bluetooth mode. You can also edit each DPI stage
+ (right-click a DPI chip), set how long the mouse waits before it sleeps, and reassign its
+ DPI button to a mouse button, a keyboard shortcut or a media key. Media keys and other
+ actions only the app can perform need MacRazer running, and they use F20 as the signal,
+ so F20 from a keyboard is taken over while one is set. Choose "DPI Cycle (default)" to
+ give the button back. Contributed by [@ungrav](https://github.com/ungrav) in #32.
+
+- **The last battery reading stays visible while the mouse is away.** When the mouse is
+ asleep, switched off or out of range, the popover keeps showing its last percentage and
+ estimate, with how long ago it was read, for example "~1d 15h left · 2 min ago". Each mouse
+ keeps its own. Contributed by [@ungrav](https://github.com/ungrav) in #42.
+
+- **The connect and disconnect sounds can be turned off.** Settings → General → Connection
+ sounds. Contributed by [@ungrav](https://github.com/ungrav) in #43.
+
 - **Test your mouse from the app.** Right-click the menu bar icon and choose "Help Support
  This Mouse…". A mouse that's already verified shows "Test This Mouse…" instead. The test
  takes a couple of minutes. It finds which transaction ids the mouse answers to, reads the

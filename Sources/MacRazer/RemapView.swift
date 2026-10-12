@@ -3,56 +3,111 @@
 
 import SwiftUI
 
+enum DPIShortcutModifiers {
+    static func hidValue(from flags: CGEventFlags) -> UInt8 {
+        var value: UInt8 = 0
+        if flags.contains(.maskControl) { value |= 0x01 }
+        if flags.contains(.maskShift) { value |= 0x02 }
+        if flags.contains(.maskAlternate) { value |= 0x04 }
+        if flags.contains(.maskCommand) { value |= 0x08 }
+        return value
+    }
+}
+
 struct RemapView: View {
     @ObservedObject var remapper: ButtonRemapper
+    var controller: MouseController?
     var onBack: (() -> Void)?
     @State private var recordingButton: Int?
+    @State private var recordingDpiCycleShortcut = false
+    @State private var recorderError: String?
 
     private var buttons: [Int] {
-        Array(remapper.seenButtons.union(remapper.mappings.keys)).sorted()
+        Array(remapper.seenButtons.union(remapper.suggestedButtons).union(remapper.mappings.keys)).sorted()
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
-            if !remapper.accessibilityGranted {
+            if !remapper.remappingPermissionsGranted {
                 accessibilityBanner
+                buttonList
             } else {
                 if remapper.remappingPaused { pausedNote }
                 detectionHint
                 buttonList
             }
+            if let controller {
+                DpiCycleBindingSection(controller: controller, remapper: remapper) {
+                    recorderError = nil
+                    recordingDpiCycleShortcut = true
+                }
+            }
+            if remapper.isBasiliskV3XHyperSpeed { basiliskButtonLimits }
             footer
         }
         .padding(18)
         .frame(width: onBack == nil ? 440 : 320)
-        .onAppear { remapper.refreshAccessibility(prompt: false) }
-        .overlay { if recordingButton != nil { recorderOverlay } }
+        .onAppear {
+            remapper.refreshAccessibility(prompt: false)
+        }
+        .overlay { if recordingButton != nil || recordingDpiCycleShortcut { recorderOverlay } }
     }
 
     private var recorderOverlay: some View {
         ZStack {
-            Color.black.opacity(0.45).onTapGesture { recordingButton = nil }
+            Color.black.opacity(0.45).onTapGesture {
+                recordingButton = nil
+                recordingDpiCycleShortcut = false
+                recorderError = nil
+            }
             VStack(spacing: 14) {
                 Text("Press a key combination").font(.system(size: 14, weight: .semibold))
-                Text("for \(recordingButton.map { ButtonRemapper.label(for: $0) } ?? "")")
+                Text("for \(recordingDpiCycleShortcut ? "DPI Cycle" : recordingButton.map { ButtonRemapper.label(for: $0) } ?? "")")
                     .font(.system(size: 11)).foregroundStyle(.secondary)
                 KeyRecorderView(onCapture: { keyCode, flags, display in
                     if let b = recordingButton {
                         remapper.setAction(.keystroke(keyCode: keyCode, modifiers: flags.rawValue, name: display), for: b)
                     }
+                    if recordingDpiCycleShortcut {
+                        if let binding = dpiShortcutBinding(keyCode: keyCode, flags: flags), let controller {
+                            remapper.configureDpiCycle(binding, controller: controller)
+                            recordingDpiCycleShortcut = false
+                            recorderError = nil
+                        } else {
+                            recorderError = "This key is not supported by the mouse's Bluetooth shortcut format."
+                        }
+                    } else {
+                        recordingButton = nil
+                    }
+                }, onCancel: {
                     recordingButton = nil
-                }, onCancel: { recordingButton = nil })
+                    recordingDpiCycleShortcut = false
+                    recorderError = nil
+                })
                 .frame(height: 46)
                 .frame(maxWidth: .infinity)
                 .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.10)))
                 .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.razerGreen, lineWidth: 1.5))
-                Button("Cancel") { recordingButton = nil }
+                if let recorderError {
+                    Text(recorderError).font(.system(size: 10)).foregroundStyle(Color.batteryMid)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Button("Cancel") {
+                    recordingButton = nil
+                    recordingDpiCycleShortcut = false
+                    recorderError = nil
+                }
             }
             .padding(20)
             .frame(width: 260)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
         }
+    }
+
+    private func dpiShortcutBinding(keyCode: UInt16, flags: CGEventFlags) -> BLEProtocol.DPIButtonBinding? {
+        guard let usage = BLEProtocol.hidUsage(forMacKeyCode: keyCode) else { return nil }
+        return .keyboardShortcut(hidUsage: usage, modifiers: DPIShortcutModifiers.hidValue(from: flags))
     }
 
     private var header: some View {
@@ -68,10 +123,11 @@ struct RemapView: View {
 
     private var accessibilityBanner: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label("Accessibility permission required", systemImage: "lock.shield")
+            Label(remapper.accessibilityGranted ? "Button event tap unavailable" : "Accessibility permission required", systemImage: "lock.shield")
                 .font(.system(size: 13, weight: .medium))
-            Text("Button remapping intercepts mouse events, which needs Accessibility access. "
-                 + "Enable “MacRazer” in System Settings, then relaunch the app.")
+            Text(remapper.accessibilityGranted
+                 ? "macOS did not create the event tap. Re-check the exact MacRazer app in System Settings, then press Re-check."
+                 : "Button remapping intercepts mouse events, which needs Accessibility access. Enable MacRazer in System Settings, then press Re-check.")
                 .font(.system(size: 11)).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             HStack {
@@ -178,6 +234,109 @@ struct RemapView: View {
              + "pointing device. Mappings are saved automatically.")
             .font(.system(size: 10)).foregroundStyle(.tertiary)
             .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var basiliskButtonLimits: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "info.circle").foregroundStyle(Color.batteryMid)
+            Text("The Multi-function/Hypershift trigger remains an onboard modifier. This firmware does not expose it for Bluetooth remapping. DPI Cycle can be configured through the mouse's Bluetooth control channel.")
+                .font(.system(size: 11)).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.batteryMid.opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
+    }
+}
+
+private struct DpiCycleBindingSection: View {
+    @ObservedObject var controller: MouseController
+    @ObservedObject var remapper: ButtonRemapper
+    var onRecordShortcut: () -> Void
+
+    var body: some View {
+        if controller.deviceIsBluetooth,
+           controller.deviceID.map(RazerDevices.supportsDpiButtonBinding(pid:)) == true {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    Text("DPI Cycle").font(.system(size: 12, weight: .medium))
+                    Spacer(minLength: 6)
+                    Menu {
+                        Button("DPI Cycle (default)") {
+                            remapper.configureDpiCycle(.dpiCycle, controller: controller)
+                        }
+                        Menu("Shortcut") {
+                            ForEach(ButtonRemapper.presets) { preset in
+                                if let binding = dpiShortcutBinding(for: preset) {
+                                    Button(preset.name) { remapper.configureDpiCycle(binding, controller: controller) }
+                                }
+                            }
+                        }
+                        Menu("Mouse") {
+                            ForEach(BLEProtocol.DPIButtonBinding.allCases.filter { $0.buttonID != nil }) { binding in
+                                Button(binding.label) { remapper.configureDpiCycle(binding, controller: controller) }
+                            }
+                            Button("Double Click") {
+                                remapper.configureDpiCycle(.softwareBridge, softwareAction: .doubleClick, controller: controller)
+                            }
+                            .disabled(!remapper.remappingPermissionsGranted)
+                        }
+                        Menu("Media") {
+                            ForEach(ButtonRemapper.mediaOptions, id: \.code) { option in
+                                Button(option.name) {
+                                    remapper.configureDpiCycle(.softwareBridge,
+                                        softwareAction: .mediaKey(code: option.code, name: option.name), controller: controller)
+                                }
+                            }
+                        }
+                        .disabled(!remapper.remappingPermissionsGranted)
+                        Divider()
+                        Button("Record Custom Shortcut…", action: onRecordShortcut)
+                    } label: {
+                        Text(controller.dpiCycleButtonBinding.map { remapper.dpiCycleLabel(for: $0) }
+                             ?? (controller.isUpdatingDpiCycleButton ? "Reading…" : "Read from mouse…"))
+                            .lineLimit(1)
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+                    }
+                    .menuStyle(.borderlessButton)
+                    .frame(width: 190)
+                    .disabled(controller.isUpdatingDpiCycleButton || controller.dpiCycleButtonBinding == nil)
+                }
+                Text("Media and Double Click require MacRazer running with Accessibility and Input Monitoring enabled. They reserve F20 while active; select DPI Cycle (default) to restore the original button.")
+                    .font(.system(size: 10)).foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if remapper.dpiCycleSoftwareAction != nil {
+                    HStack {
+                        Text(remapper.dpiBridgeStatus).font(.system(size: 10)).foregroundStyle(.secondary)
+                        Spacer()
+                        if !remapper.keyboardCaptureAvailable {
+                            Button("Input Monitoring") { SystemSettingsPanes.openInputMonitoring() }
+                                .font(.system(size: 10))
+                        }
+                    }
+                }
+
+                if let error = controller.dpiCycleButtonError {
+                    HStack(spacing: 8) {
+                        Text(error).font(.system(size: 10)).foregroundStyle(Color.batteryMid)
+                        Button("Retry") { controller.refreshDpiCycleButtonBinding() }.font(.system(size: 10))
+                    }
+                } else if controller.dpiCycleButtonBinding == nil {
+                    Button("Read button assignment") { controller.refreshDpiCycleButtonBinding() }
+                        .font(.system(size: 10))
+                        .disabled(controller.isUpdatingDpiCycleButton)
+                }
+            }
+            .padding(12)
+            .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 10))
+            .onAppear { controller.refreshDpiCycleButtonBinding() }
+        }
+    }
+
+    private func dpiShortcutBinding(for preset: RemapPreset) -> BLEProtocol.DPIButtonBinding? {
+        guard let usage = BLEProtocol.hidUsage(forMacKeyCode: preset.keyCode) else { return nil }
+        return .keyboardShortcut(hidUsage: usage, modifiers: DPIShortcutModifiers.hidValue(from: preset.flags))
     }
 }
 

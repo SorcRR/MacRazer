@@ -280,7 +280,11 @@ final class BatteryHistory {
     /// Human-readable "~Xh Ym" / "~Xd Yh" string, or nil.
     func estimateString(currentPercent: Int, curveModel: DischargeCurveModel? = nil) -> String? {
         guard let hours = estimateHoursRemaining(currentPercent: currentPercent, curveModel: curveModel) else { return nil }
-        return "~\(Self.formatDuration(hours: hours)) left (est.)"
+        return Self.formatEstimate(hours: hours)
+    }
+
+    static func formatEstimate(hours: Double) -> String {
+        "~\(formatDuration(hours: hours)) left (est.)"
     }
 
     /// "Xd Yh" past a day, "Xh Ym" past an hour, else "Xm" — used for every duration-based stat

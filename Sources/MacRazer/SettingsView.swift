@@ -21,15 +21,20 @@ struct SettingsView: View {
     /// is *already* known — the one moment the user is watching for the setting to do
     /// something, and the moment none of the other triggers fire.
     var onAutoInstallChanged: (() -> Void)?
+    /// The crash window's "Don't Ask Again" writes the same key, so this is how to undo it.
+    @AppStorage(CrashLogScanner.offerKey) private var offerCrashReports = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             header
             titledSection("General") {
                 launchAtLoginRow
+                connectionSoundsRow
                 // Hidden rather than disabled for a mouse with no battery: there is no
                 // percentage to show, so the switch would be a promise about nothing.
                 if controller.deviceHasBattery { batteryPercentRow }
+                // Hidden while there's nowhere to send a report; see `CrashReporting`.
+                if CrashReporting.isAvailable { crashReportsRow }
             }
             titledSection("Updates") {
                 autoInstallRow
@@ -88,12 +93,30 @@ struct SettingsView: View {
         }
     }
 
+    private var connectionSoundsRow: some View {
+        settingRow(
+            title: "Connection sounds",
+            detail: "Play a sound when the mouse connects or disconnects.",
+            isOn: Binding(get: { controller.connectionSoundsEnabled },
+                          set: { controller.connectionSoundsEnabled = $0 })
+        )
+    }
+
     private var batteryPercentRow: some View {
         settingRow(
             title: "Show battery % in menu bar",
             detail: "Off leaves just the mouse icon, which takes less room in a crowded menu bar.",
             isOn: Binding(get: { controller.showPercentInMenuBar },
                           set: { controller.showPercentInMenuBar = $0 })
+        )
+    }
+
+    private var crashReportsRow: some View {
+        settingRow(
+            title: "Offer to send crash reports",
+            detail: "If MacRazer quits unexpectedly, ask next time whether to send a report. "
+                + "You see exactly what's in it first.",
+            isOn: $offerCrashReports
         )
     }
 

@@ -16,8 +16,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     private let controller = MouseController()
     private var cancellables = Set<AnyCancellable>()
     private var monitor: HIDMonitor?
+    private var bluetoothMonitor: HIDMonitor?
     private let remapper = ButtonRemapper()
-    private lazy var remapWindow = RemapWindowController(remapper: remapper)
+    private lazy var remapWindow = RemapWindowController(remapper: remapper, controller: controller)
     private lazy var permissions = PermissionsModel(remapper: remapper, controller: controller)
     private lazy var permissionsWindow = PermissionsWindowController(model: permissions, controller: controller)
     private lazy var deviceTestWindow = DeviceTestWindowController(
@@ -31,6 +32,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     /// the popover next opened and closed.
     private lazy var updatedWindow = UpdatedWindowController(
         updateChecker: updateChecker,
+        onClosed: { [weak self] in self?.autoInstallIfEnabled() })
+    /// Closing it re-asks the auto-install gate, for the same reason as `updatedWindow`.
+    private lazy var crashReportWindow = CrashReportWindowController(
         onClosed: { [weak self] in self?.autoInstallIfEnabled() })
     private lazy var settingsWindow = SettingsWindowController(
         controller: controller, launchAtLogin: launchAtLogin, updateChecker: updateChecker,
@@ -189,7 +193,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
             }
         )
 
+        // A Basilisk on Bluetooth enumerates under Razer's BLE vendor id (0x068E), not the
+        // USB id above. An appearance starts recovery but keeps a healthy GATT session;
+        // only an observed removal invalidates it before the next probe.
+        bluetoothMonitor = HIDMonitor(
+            vendorId: BLEProtocol.vendorId,
+            onAppear: { pids in
+                guard pids.isEmpty || pids.contains(where: RazerDevices.bluetoothPIDs.contains) else { return }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                    ctrl.beginBluetoothWakeRecovery()
+                }
+            },
+            onRemove: { pids in
+                guard pids.contains(where: RazerDevices.bluetoothPIDs.contains) else { return }
+                DispatchQueue.main.async { ctrl.beginBluetoothWakeRecovery(discardBluetoothSession: true) }
+            }
+        )
+
         remapper.start()
+        remapper.observeDpiCycle(controller: controller)
 
         // Load the connected mouse's own button mappings when the device changes (per-unit key).
         controller.$deviceKey
@@ -235,6 +257,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         // they are doing something else.
         if updateChecker.justUpdatedTo != nil {
             updatedWindow.show(activating: !updateChecker.autoInstallEnabled)
+        }
+        // A crash since the last launch, offered once. Looked for again a little later
+        // because the crash most likely to be waiting is the one in the instance that just
+        // handed over to this one, during a relaunch: macOS writes its report a few seconds
+        // after this instance has already started.
+        crashReportWindow.offerNewCrash()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in
+            self?.crashReportWindow.offerNewCrash()
         }
         // Unthrottled: a launch is rare, and it is when someone who just installed or reopened
         // the app most expects it to know about the latest release.
@@ -468,7 +498,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         // The device test in particular: an install ends in a relaunch, and that must never
         // happen while a step has a test value on someone's mouse.
         let windows: [AppWindowPresenter] = [remapWindow, permissionsWindow, aboutWindow, settingsWindow,
-                                             updatedWindow, deviceTestWindow]
+                                             updatedWindow, deviceTestWindow, crashReportWindow]
         return windows.contains { $0.isVisible }
     }
 
