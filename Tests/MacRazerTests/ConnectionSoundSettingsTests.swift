@@ -26,23 +26,27 @@ final class ConnectionSoundSettingsTests: XCTestCase {
         XCTAssertEqual(defaults.object(forKey: key) as? Bool, true)
     }
 
-    func testDisabledConnectionSoundDoesNotInvokePlayback() {
-        var playbackInvoked = false
-
-        MouseController.playConnectionSoundIfEnabled(false) {
-            playbackInvoked = true
+    /// Goes through the controller's real `playSound`, so it fails if the setting stops
+    /// gating playback, not just if a helper breaks.
+    func testSettingGatesConnectionSounds() {
+        let key = MouseController.connectionSoundsEnabledKey
+        let previousValue = UserDefaults.standard.object(forKey: key)
+        defer {
+            if let previousValue { UserDefaults.standard.set(previousValue, forKey: key) }
+            else { UserDefaults.standard.removeObject(forKey: key) }
         }
+        let controller = MouseController()
+        var played: [Bool] = []
+        controller.playConnectionSound = { played.append($0) }
 
-        XCTAssertFalse(playbackInvoked)
-    }
+        controller.connectionSoundsEnabled = false
+        controller.playSound(connected: true)
+        controller.playSound(connected: false)
+        XCTAssertEqual(played, [], "muted: no sound either way")
 
-    func testEnabledConnectionSoundInvokesPlayback() {
-        var playbackInvoked = false
-
-        MouseController.playConnectionSoundIfEnabled(true) {
-            playbackInvoked = true
-        }
-
-        XCTAssertTrue(playbackInvoked)
+        controller.connectionSoundsEnabled = true
+        controller.playSound(connected: true)
+        controller.playSound(connected: false)
+        XCTAssertEqual(played, [true, false])
     }
 }

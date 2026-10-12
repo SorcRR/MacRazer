@@ -22,7 +22,8 @@ final class LastBatterySnapshotStoreTests: XCTestCase {
         let (store, defaults, suiteName) = try makeStore()
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
-        let first = snapshot(at: Date(timeIntervalSince1970: 1_700_000_000))
+        // An hour old: older than `latest`, but well inside `maxAge`, so pruning keeps it.
+        let first = snapshot(at: Date().addingTimeInterval(-3600))
         store.save(first)
         XCTAssertEqual(store.load(), first)
 
@@ -46,16 +47,17 @@ final class LastBatterySnapshotStoreTests: XCTestCase {
         XCTAssertNil(defaults.data(forKey: LastBatterySnapshotStore.storageKey))
     }
 
-    func testLoadsLegacySingleSnapshotAndPreservesItWhenAnotherMouseSaves() throws {
+    func testPrunesMiceNotSeenForAMonth() throws {
         let (store, defaults, suiteName) = try makeStore()
         defer { defaults.removePersistentDomain(forName: suiteName) }
-        let first = snapshot(key: "mouse-1", at: Date(timeIntervalSince1970: 1_700_000_000))
-        defaults.set(try JSONEncoder().encode(first), forKey: LastBatterySnapshotStore.storageKey)
+        let now = Date()
+        store.save(snapshot(key: "old", at: now.addingTimeInterval(-31 * 24 * 3600)), force: true)
+        store.save(snapshot(key: "recent", at: now.addingTimeInterval(-29 * 24 * 3600)), force: true)
+        store.save(snapshot(key: "current", at: now), force: true)
 
-        XCTAssertEqual(store.load("mouse-1"), first)
-        store.save(snapshot(key: "mouse-2", percent: 71, hours: 20))
-        XCTAssertEqual(store.load("mouse-1"), first)
-        XCTAssertEqual(store.load("mouse-2")?.percent, 71)
+        XCTAssertNil(store.load("old"), "older than a month: dropped")
+        XCTAssertNotNil(store.load("recent"))
+        XCTAssertNotNil(store.load("current"))
     }
 
     func testFormatsTheSavedEstimateWithoutAdvancingIt() {

@@ -153,7 +153,10 @@ struct UsageGraphView: View {
         card {
             VStack(alignment: .leading, spacing: 8) {
                 statRow("Discharge rate", dischargeRateText)
-                statRow("Estimated time remaining", remainingText)
+                // Periodic so an offline reading's age keeps up, like the popover's subtitle.
+                TimelineView(.periodic(from: .now, by: controller.connected ? 3600 : 30)) { _ in
+                    statRow("Estimated time remaining", remainingText)
+                }
                 statRow("Time since last charge", sinceChargeText)
                 statRow("Average battery life per charge", averageLifeText)
             }
@@ -172,9 +175,8 @@ struct UsageGraphView: View {
             let age = LastBatterySnapshot.relativeAgeFormatter.localizedString(for: snapshot.observedAt, relativeTo: Date())
             return "Last: \(estimate) · \(age)"
         }
-        // Reuse `timeEstimate` (the same value the main battery card shows) rather than
-        // recomputing percent/rate here — keeps the two displays from ever disagreeing, and
-        // automatically picks up the learned discharge-curve estimate where one applies.
+        // Same snapshot the battery card reads, so the two displays can't disagree, and the
+        // learned discharge-curve estimate applies here too.
         if controller.charging { return "Charging" }
         return controller.lastBatterySnapshot?.shortEstimateText ?? "—"
     }

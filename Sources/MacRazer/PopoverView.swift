@@ -720,7 +720,12 @@ struct PopoverView: View {
                 }
             }
             .frame(height: 6)
-            Text(batterySubtitle).font(.system(size: 11)).foregroundStyle(.secondary)
+            // While offline, re-rendered every 30 s so the "· 2 min. ago" age keeps up with the
+            // popover open: nothing else republishes while the mouse is away. Connected, the
+            // subtitle follows published state, so the tick is effectively off.
+            TimelineView(.periodic(from: .now, by: controller.connected ? 3600 : 30)) { _ in
+                Text(batterySubtitle).font(.system(size: 11)).foregroundStyle(.secondary)
+            }
             if needsPermission {
                 Button {
                     AppDelegate.openInputMonitoringSettings()
