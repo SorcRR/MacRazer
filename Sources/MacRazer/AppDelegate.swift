@@ -16,8 +16,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     private let controller = MouseController()
     private var cancellables = Set<AnyCancellable>()
     private var monitor: HIDMonitor?
+    private var bluetoothMonitor: HIDMonitor?
     private let remapper = ButtonRemapper()
-    private lazy var remapWindow = RemapWindowController(remapper: remapper)
+    private lazy var remapWindow = RemapWindowController(remapper: remapper, controller: controller)
     private lazy var permissions = PermissionsModel(remapper: remapper, controller: controller)
     private lazy var permissionsWindow = PermissionsWindowController(model: permissions, controller: controller)
     private lazy var deviceTestWindow = DeviceTestWindowController(
@@ -192,7 +193,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
             }
         )
 
+        // A Basilisk on Bluetooth enumerates under Razer's BLE vendor id (0x068E), not the
+        // USB id above. An appearance starts recovery but keeps a healthy GATT session;
+        // only an observed removal invalidates it before the next probe.
+        bluetoothMonitor = HIDMonitor(
+            vendorId: BLEProtocol.vendorId,
+            onAppear: { pids in
+                guard pids.isEmpty || pids.contains(where: RazerDevices.bluetoothPIDs.contains) else { return }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                    ctrl.beginBluetoothWakeRecovery()
+                }
+            },
+            onRemove: { pids in
+                guard pids.contains(where: RazerDevices.bluetoothPIDs.contains) else { return }
+                DispatchQueue.main.async { ctrl.beginBluetoothWakeRecovery(discardBluetoothSession: true) }
+            }
+        )
+
         remapper.start()
+        remapper.observeDpiCycle(controller: controller)
 
         // Load the connected mouse's own button mappings when the device changes (per-unit key).
         controller.$deviceKey

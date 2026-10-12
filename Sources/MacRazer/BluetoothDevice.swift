@@ -152,6 +152,59 @@ final class BluetoothDevice: NSObject, RazerTransport, @unchecked Sendable {
         return try BLEProtocol.DPIStageTable(decoding: Array(exchange(request)))
     }
 
+    func readDpiStages() throws -> BLEProtocol.DPIStageTable {
+        try RazerRetry.run(attempts: HIDDevice.defaultAttempts) { try readStages() }
+    }
+
+    func setDpiStages(_ stages: BLEProtocol.DPIStageTable) throws {
+        let request = BLEProtocol.Request(key: .dpiStagesSet, payload: stages.encoded(), reply: .ack)
+        try RazerRetry.run(attempts: HIDDevice.defaultAttempts) {
+            _ = try exchange(request)
+            guard try readStages() == stages else { throw HIDDevice.HIDError.commandFailed }
+        }
+    }
+
+    func readSleepTimeout() throws -> Int {
+        let request = BLEProtocol.Request(key: .powerTimeoutGet, payload: [], reply: .ack)
+        let payload = try RazerRetry.run(attempts: HIDDevice.defaultAttempts) { try exchange(request) }
+        return try BLEProtocol.parseSleepTimeout(payload)
+    }
+
+    func setSleepTimeout(_ seconds: Int) throws {
+        guard let payload = BLEProtocol.sleepTimeoutPayload(seconds: seconds) else {
+            throw HIDDevice.HIDError.notSupported
+        }
+        let request = BLEProtocol.Request(key: .powerTimeoutSet, payload: Array(payload), reply: .ack)
+        try RazerRetry.run(attempts: HIDDevice.defaultAttempts) {
+            _ = try exchange(request)
+            guard try BLEProtocol.parseSleepTimeout(exchange(BLEProtocol.Request(key: .powerTimeoutGet, payload: [], reply: .ack))) == seconds else {
+                throw HIDDevice.HIDError.commandFailed
+            }
+        }
+    }
+
+    /// Read the Basilisk V3 X HyperSpeed's dedicated DPI Cycle assignment. This is a
+    /// model-specific control layered on the shared BLE framing; ordinary Razer reports
+    /// continue to use `sendWithRetry` above.
+    func readDpiCycleBinding() throws -> BLEProtocol.DPIButtonBinding {
+        let request = BLEProtocol.Request(key: .dpiButtonGet, payload: [], reply: .ack)
+        let payload = try RazerRetry.run(attempts: HIDDevice.defaultAttempts) { try exchange(request) }
+        return try BLEProtocol.parseDpiButtonBinding(payload)
+    }
+
+    /// Write a DPI Cycle assignment and verify the mouse's readback before returning. A
+    /// software action is represented by the reserved F20 keyboard usage and is interpreted
+    /// by ButtonRemapper while this app is running.
+    func setDpiCycleBinding(_ binding: BLEProtocol.DPIButtonBinding) throws {
+        let request = BLEProtocol.Request(key: .dpiButtonSet,
+                                          payload: Array(BLEProtocol.dpiButtonPayload(for: binding)),
+                                          reply: .ack)
+        _ = try exchange(request)
+        guard try readDpiCycleBinding() == binding else {
+            throw HIDDevice.HIDError.badResponse
+        }
+    }
+
     private func exchange(_ request: BLEProtocol.Request) throws -> Data {
         let id = nextID
         // Stay clear of 0x00 and 0x01: the mouse uses 0x01 for its unsolicited frame.
