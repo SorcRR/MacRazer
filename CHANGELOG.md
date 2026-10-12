@@ -7,6 +7,16 @@ expect rough edges until 1.0.
 ## [Unreleased]
 
 ### Changed
+- **The popover behaves more like a native Mac panel.** Esc on a sub-page (Colour, Buttons,
+  Battery Usage, Profiles, What's New) now goes back one level instead of closing the whole
+  popover, and every sub-page uses the same Back button, What's New included. ⌘R refreshes and
+  ⌘, opens Settings, matching the right-click menu. Chips and rows highlight on hover, the
+  colour swatches are real buttons with names, and the icon-only buttons have VoiceOver labels
+  and tooltips. A DPI chip that can be edited says so in its tooltip, since the editor is only
+  reachable by right-click. The sleep timer reads "5 min" instead of "5m 00s".
+  With no mouse plugged in, the popover shows one card explaining how to connect and a
+  "Look Again" button, instead of a column of greyed-out controls for a mouse that isn't there.
+
 - **Updates are found within hours, not a day.** The app used to ask GitHub once a day. Now
  it asks every time it starts, and again whenever its last answer is more than three hours
  old. A Mac that slept longer than that asks as soon as it wakes. If the network isn't back

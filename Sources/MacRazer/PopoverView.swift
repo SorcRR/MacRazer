@@ -66,6 +66,8 @@ struct PopoverView: View {
     private var displayedStages: [Int] {
         controller.dpiStages.isEmpty ? defaultStages : controller.dpiStages
     }
+    /// Spoken and tooltip names for `swatches`, in the same order.
+    private let swatchNames = ["Red", "Orange", "Yellow", "Green", "Cyan", "Blue", "Purple", "Pink"]
     // Distinct hues with a true red (SwiftUI .red is a warm orange-red; .green duplicated razerGreen).
     private let swatches: [Color] = [
         Color(red: 1.0, green: 0.0, blue: 0.0),    // true red
@@ -171,26 +173,33 @@ struct PopoverView: View {
             // A Razer mouse on Bluetooth can't be controlled (no control protocol over BT) —
             // explain it instead of just showing "offline".
             if controller.bluetoothMouse != nil && !controller.connected { bluetoothNotice }
-            // Battery stays readable (last-known) but dims when offline; its refresh button
-            // stays active so you can retry.
-            if controller.deviceHasBattery {
-                batteryCard.opacity(controller.connected ? 1 : 0.55)
-            }
-            // Live mouse-config sections: dim AND disable while disconnected.
-            Group {
-                dpiCard
-                if controller.supportsPollRate { pollCard }
-                if controller.deviceHasLighting { lightingCard } // hidden for no-LED mice (e.g. Atheris)
-                if supportsBasiliskBluetooth { powerManagementCard }
-            }
-            .disabled(!controller.connected)
-            .opacity(controller.connected ? 1 : 0.45)
+            if noMouse {
+                // A last reading is still worth showing; with none, the battery card would be
+                // a "—" and nothing else, so the empty state says what to do instead.
+                if controller.lastBatterySnapshot != nil { batteryCard.opacity(0.55) }
+                else { noMouseCard }
+            } else {
+                // Battery stays readable (last-known) but dims when offline; its refresh button
+                // stays active so you can retry.
+                if controller.deviceHasBattery {
+                    batteryCard.opacity(controller.connected ? 1 : 0.55)
+                }
+                // Live mouse-config sections: dim AND disable while disconnected.
+                Group {
+                    dpiCard
+                    if controller.supportsPollRate { pollCard }
+                    if controller.deviceHasLighting { lightingCard } // hidden for no-LED mice (e.g. Atheris)
+                    if supportsBasiliskBluetooth { powerManagementCard }
+                }
+                .disabled(!controller.connected)
+                .opacity(controller.connected ? 1 : 0.45)
 
-            configureButton // software remap — works offline, stays enabled
-            // Profiles bundle the sections above (plus remaps) into presets — placed after
-            // them so the page reads "here are the controls, here's how to save/recall them".
-            if controller.supportsProfiles {
-                profilesCard.disabled(!controller.connected).opacity(controller.connected ? 1 : 0.45)
+                configureButton // software remap — works offline, stays enabled
+                // Profiles bundle the sections above (plus remaps) into presets — placed after
+                // them so the page reads "here are the controls, here's how to save/recall them".
+                if controller.supportsProfiles {
+                    profilesCard.disabled(!controller.connected).opacity(controller.connected ? 1 : 0.45)
+                }
             }
             footer
         }
@@ -217,6 +226,57 @@ struct PopoverView: View {
         .onChange(of: controller.deviceKey) { _, _ in loadCustomDPI() } // reload/clamp per mouse
         .onChange(of: controller.deviceMaxDPI) { _, _ in loadCustomDPI() }
         .onChange(of: controller.sleepTimeout) { _, new in if let new { sleepTimeoutValue = Double(new) } }
+    }
+
+    /// No mouse is known at all: never seen this session, or unplugged (which forgets its
+    /// name). Not a sleeping or out-of-range one, which keeps its name and its dimmed
+    /// controls. With no model to describe, those controls would be placeholders for a mouse
+    /// that isn't there — every card disabled, the DPI chips showing defaults — so the page
+    /// shows one card that says what to do, the way Control Center's Bluetooth module does
+    /// with nothing paired.
+    private var noMouse: Bool {
+        !controller.connected && controller.deviceName == nil && controller.bluetoothMouse == nil
+    }
+
+    private var noMouseCard: some View {
+        card {
+            VStack(spacing: 8) {
+                Image(systemName: "computermouse")
+                    .font(.system(size: 26, weight: .light))
+                    .foregroundStyle(.tertiary)
+                Text(needsPermission ? "MacRazer can't see your mouse yet" : "No Razer mouse found")
+                    .font(.system(size: 12.5, weight: .semibold))
+                Text(needsPermission
+                     ? "It needs Input Monitoring permission to talk to the mouse."
+                     : "Plug in the wireless dongle or a USB cable, or move the mouse to wake it.")
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                if needsPermission {
+                    Button {
+                        AppDelegate.openInputMonitoringSettings()
+                    } label: {
+                        Label("Grant Input Monitoring…", systemImage: "lock.shield")
+                            .font(.system(size: 11, weight: .medium))
+                    }
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(Color.razerGreen)
+                } else {
+                    Button {
+                        controller.refreshAll()
+                    } label: {
+                        Text(controller.isRefreshing ? "Looking…" : "Look Again")
+                            .font(.system(size: 11, weight: .medium))
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(controller.isRefreshing)
+                    .keyboardShortcut("r")
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 6)
+        }
     }
 
     private var supportsBasiliskBluetooth: Bool {
@@ -288,6 +348,7 @@ struct PopoverView: View {
                 Circle()
                     .fill(controller.connected ? Color.green : Color.secondary)
                     .frame(width: 8, height: 8)
+                    .accessibilityLabel(controller.connected ? "Connected" : "Not connected")
             }
         }
     }
@@ -440,7 +501,9 @@ struct PopoverView: View {
         .padding(.horizontal, 10)
         .frame(height: 24)
         .background(active ? Color.razerGreen : Color.primary.opacity(0.08), in: Capsule())
+        .hoverHighlight(Capsule())
         .lineLimit(1)
+        .accessibilityAddTraits(active ? .isSelected : [])
     }
 
     /// Default name that never collides with an existing profile (count+1 repeats after
@@ -517,9 +580,13 @@ struct PopoverView: View {
                         updateChecker.dismiss(version)
                     } label: {
                         Image(systemName: "xmark").font(.system(size: 9, weight: .bold))
+                            .frame(width: 16, height: 16)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.tertiary)
+                    .help("Skip this version")
+                    .accessibilityLabel("Skip version \(version)")
                 }
             }
             if let error = updateChecker.downloadError {
@@ -632,9 +699,13 @@ struct PopoverView: View {
                     updateChecker.dismissAnnouncement()
                 } label: {
                     Image(systemName: "xmark").font(.system(size: 9, weight: .bold))
+                        .frame(width: 16, height: 16)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.tertiary)
+                .help("Dismiss")
+                .accessibilityLabel("Dismiss")
             }
             if !updateChecker.installedNotes.isEmpty {
                 Button { page = .whatsNew } label: {
@@ -820,6 +891,7 @@ struct PopoverView: View {
         .buttonStyle(.borderless)
         .foregroundStyle(.secondary)
         .help("View battery usage history")
+        .accessibilityLabel("Battery usage history")
     }
 
     private var refreshButton: some View {
@@ -837,7 +909,10 @@ struct PopoverView: View {
         }
         .buttonStyle(.borderless)
         .foregroundStyle(.secondary)
-        .help(controller.supportsPollRate ? "Refresh battery, DPI and polling rate" : "Refresh battery and DPI")
+        .help(controller.supportsPollRate ? "Refresh battery, DPI and polling rate (⌘R)" : "Refresh battery and DPI (⌘R)")
+        .accessibilityLabel("Refresh")
+        // The same shortcut the right-click menu's "Refresh Now" shows.
+        .keyboardShortcut("r")
         .disabled(controller.isRefreshing)
     }
 
@@ -906,11 +981,16 @@ struct PopoverView: View {
         .frame(height: 24)
         .background(active ? Color.razerGreen : Color.primary.opacity(0.08),
                     in: RoundedRectangle(cornerRadius: 6))
+        .hoverHighlight(RoundedRectangle(cornerRadius: 6))
         .contextMenu {
             if supportsBasiliskBluetooth {
                 Button("Edit DPI") { beginDpiStageEdit(index: index, value: value) }
             }
         }
+        // The stage editor lives in a context menu, which nothing on the chip hints at.
+        .help(supportsBasiliskBluetooth ? "Stage \(index + 1) · Right-click to edit" : "Stage \(index + 1)")
+        .accessibilityLabel("\(value) DPI, stage \(index + 1)")
+        .accessibilityAddTraits(active ? .isSelected : [])
         .disabled(controller.isUpdatingDpiStages || (editingDpiStage != nil && !editing))
     }
 
@@ -960,7 +1040,7 @@ struct PopoverView: View {
                 .disabled(controller.sleepTimeout == nil)
                 HStack(spacing: 5) {
                     ForEach([60, 120, 300, 600, 900], id: \.self) { value in
-                        Button(formatSleepTimeout(value)) {
+                        Button(formatSleepTimeout(value, compact: true)) {
                             sleepTimeoutValue = Double(value)
                             controller.setSleepTimeout(value)
                         }
@@ -969,6 +1049,8 @@ struct PopoverView: View {
                         .foregroundStyle(Int(sleepTimeoutValue) == value ? .white : .secondary)
                         .frame(maxWidth: .infinity).frame(height: 23)
                         .background(Int(sleepTimeoutValue) == value ? Color.razerGreen : Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+                        .hoverHighlight(RoundedRectangle(cornerRadius: 6))
+                        .accessibilityLabel("Sleep after \(formatSleepTimeout(value))")
                     }
                 }
                 .disabled(controller.sleepTimeout == nil)
@@ -979,8 +1061,12 @@ struct PopoverView: View {
         }
     }
 
-    private func formatSleepTimeout(_ seconds: Int) -> String {
-        "\(seconds / 60)m \(String(format: "%02d", seconds % 60))s"
+    /// "5 min" or "4 min 45 s", the way System Settings words its sleep timers, instead of
+    /// "5m 00s". `compact` is for the preset chips, five to a row: "5m".
+    private func formatSleepTimeout(_ seconds: Int, compact: Bool = false) -> String {
+        let minutes = seconds / 60, rest = seconds % 60
+        if compact { return rest == 0 ? "\(minutes)m" : "\(minutes)m\(rest)s" }
+        return rest == 0 ? "\(minutes) min" : "\(minutes) min \(rest) s"
     }
 
     /// The custom DPI chip — shows the saved manual value, green outline to mark it as the
@@ -1002,6 +1088,10 @@ struct PopoverView: View {
                     in: RoundedRectangle(cornerRadius: 6))
         .overlay(RoundedRectangle(cornerRadius: 6)
             .stroke(active ? Color.clear : Color.razerGreen.opacity(0.55), lineWidth: 1))
+        .hoverHighlight(RoundedRectangle(cornerRadius: 6))
+        .help("Your custom DPI. Set it with the slider.")
+        .accessibilityLabel("Custom, \(active ? Int(dpiValue) : customDPI) DPI")
+        .accessibilityAddTraits(active ? .isSelected : [])
     }
 
     private var pollCard: some View {
@@ -1105,8 +1195,8 @@ struct PopoverView: View {
 
             if controller.effect == .staticColor || !controller.supportsLightingEffects {
                 HStack(spacing: 7) {
-                    ForEach(Array(swatches.enumerated()), id: \.offset) { _, sw in
-                        swatch(sw)
+                    ForEach(Array(swatches.enumerated()), id: \.offset) { index, sw in
+                        swatch(sw, name: swatchNames[index])
                     }
                     customColorWell
                     Spacer(minLength: 0)
@@ -1138,13 +1228,21 @@ struct PopoverView: View {
             && Int(brightnessValue) > Battery.lightingHintBrightnessPercent
     }
 
-    private func swatch(_ sw: Color) -> some View {
-        Circle()
-            .fill(sw)
-            .frame(width: 18, height: 18)
-            .overlay(Circle().strokeBorder(Color.primary.opacity(0.15), lineWidth: 0.5))
-            .overlay(Circle().inset(by: -2.5).stroke(Color.primary, lineWidth: isSelected(sw) ? 1.5 : 0))
-            .onTapGesture { controller.setStaticColor(sw.rgb) }
+    /// A real button rather than a tap gesture on a circle, so it reaches VoiceOver and
+    /// keyboard navigation, and greys out with the rest of the card while disconnected.
+    private func swatch(_ sw: Color, name: String) -> some View {
+        Button { controller.setStaticColor(sw.rgb) } label: {
+            Circle()
+                .fill(sw)
+                .frame(width: 18, height: 18)
+                .overlay(Circle().strokeBorder(Color.primary.opacity(0.15), lineWidth: 0.5))
+                .overlay(Circle().inset(by: -2.5).stroke(Color.primary, lineWidth: isSelected(sw) ? 1.5 : 0))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .help(name)
+        .accessibilityLabel(name)
+        .accessibilityAddTraits(isSelected(sw) ? .isSelected : [])
     }
 
     /// Circular "custom colour" well — a rainbow ring that opens the system colour panel.
@@ -1166,6 +1264,8 @@ struct PopoverView: View {
             .overlay(Circle().strokeBorder(Color.primary.opacity(0.15), lineWidth: 0.5))
         }
         .buttonStyle(.plain)
+        .help("Pick any colour")
+        .accessibilityLabel("Custom colour")
     }
 
     private func isSelected(_ sw: Color) -> Bool {
@@ -1186,6 +1286,7 @@ struct PopoverView: View {
             .padding(12)
             .frame(maxWidth: .infinity)
             .background(Color.primary.opacity(0.10), in: RoundedRectangle(cornerRadius: 13))
+            .hoverHighlight(RoundedRectangle(cornerRadius: 13))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -1223,7 +1324,10 @@ struct PopoverView: View {
             }
             .buttonStyle(.plain)
             .onHover { gearHovered = $0 }
-            .help("MacRazer settings")
+            .help("MacRazer settings (⌘,)")
+            .accessibilityLabel("Settings")
+            // The same shortcut as the right-click menu's "Settings…", and every Mac app's.
+            .keyboardShortcut(",")
             .padding(.trailing, 6)
             Button("Quit") { NSApplication.shared.terminate(nil) }
                 .buttonStyle(.borderless)

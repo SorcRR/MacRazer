@@ -26,11 +26,9 @@ struct WhatsNewPage: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
-                Button(action: onBack) {
-                    Image(systemName: "chevron.left").font(.system(size: 12, weight: .semibold))
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(Color.razerGreen)
+                // The same back control as every other sub-page, so navigation looks and
+                // behaves (Esc included) the same wherever the popover is.
+                BackButton(action: onBack)
                 Text("What's new in \(version)").font(.system(size: 13, weight: .semibold))
                 Spacer(minLength: 0)
             }

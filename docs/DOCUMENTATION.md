@@ -244,6 +244,14 @@ page is a `ScrollView` (so long content scrolls without resizing the popover):
  - **Settings card**: a switch toggle for "Show battery % in menu bar".
  - Live mouse-config sections **grey out + disable when disconnected** (battery stays
  readable; refresh stays active).
+ - With **no mouse known at all** (none seen yet, or unplugged), the controls are replaced
+ by one card that says how to connect and offers "Look Again" (or the Input Monitoring
+ grant, when that's what is missing). A last battery reading is still shown if there is one.
+ - Keyboard: **⌘R** refreshes, **⌘,** opens Settings, and **Esc** on any sub-page goes back
+ one level instead of closing the popover (except while a key recording or a rename is in
+ progress, where Esc cancels that).
+ - Swatches, chips and the icon buttons carry VoiceOver labels and tooltips; chips and
+ rows get a hover highlight.
 - **Colour page**, `ColorPickerPage.swift`: an inline **hue/saturation colour wheel** +
  brightness slider + live preview, applied to the mouse live (throttled). Replaces the old
  system `NSColorPanel`.
