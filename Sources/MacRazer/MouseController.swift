@@ -715,15 +715,15 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// here to taste — e.g. "Bottle", "Tink", "Hero" for connect.)
     private static let connectSound = NSSound.Name("Pop")
     private static let disconnectSound = NSSound.Name("Submarine")
-    private func playSound(connected: Bool) {
-        Self.playConnectionSoundIfEnabled(connectionSoundsEnabled) {
-            NSSound(named: connected ? Self.connectSound : Self.disconnectSound)?.play()
-        }
+    /// Plays the connect (true) or disconnect (false) sound. Main thread. Swapped out by tests,
+    /// so they can check that the setting really gates `playSound`.
+    var playConnectionSound: (Bool) -> Void = { connected in
+        NSSound(named: connected ? MouseController.connectSound : MouseController.disconnectSound)?.play()
     }
 
-    static func playConnectionSoundIfEnabled(_ enabled: Bool, play: () -> Void) {
-        guard enabled else { return }
-        play()
+    func playSound(connected: Bool) {
+        guard connectionSoundsEnabled else { return }
+        playConnectionSound(connected)
     }
 
     /// Runs on `io`. Per-feature errors (failure/not-supported — e.g. no brightness on the

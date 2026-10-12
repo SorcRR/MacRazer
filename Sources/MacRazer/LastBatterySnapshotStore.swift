@@ -72,6 +72,9 @@ struct LastBatterySnapshot: Codable, Equatable {
 final class LastBatterySnapshotStore {
     static let storageKey = "lastBatterySnapshot.v1"
     static let saveInterval: TimeInterval = 5 * 60
+    /// Mice not seen for this long are dropped on the next save, so the store can't grow
+    /// with every mouse ever connected.
+    static let maxAge: TimeInterval = 30 * 24 * 3600
 
     private let defaults: UserDefaults
     private let encoder = JSONEncoder()
@@ -104,6 +107,8 @@ final class LastBatterySnapshotStore {
         guard force || stateChanged
                 || Date().timeIntervalSince(lastSaved?.observedAt ?? .distantPast) >= Self.saveInterval else { return }
         all[snapshot.deviceKey] = snapshot
+        let cutoff = snapshot.observedAt.addingTimeInterval(-Self.maxAge)
+        all = all.filter { $0.value.observedAt >= cutoff }
         snapshots = all
         guard let data = try? encoder.encode(all) else { return }
         defaults.set(data, forKey: Self.storageKey)
@@ -130,9 +135,7 @@ final class LastBatterySnapshotStore {
             snapshots = [:]
             return [:]
         }
-        let decoded = (try? decoder.decode([String: LastBatterySnapshot].self, from: data))
-            ?? (try? decoder.decode(LastBatterySnapshot.self, from: data)).map { [$0.deviceKey: $0] }
-            ?? [:]
+        let decoded = (try? decoder.decode([String: LastBatterySnapshot].self, from: data)) ?? [:]
         snapshots = decoded.filter { $0.key == $0.value.deviceKey && $0.value.isValid }
         return snapshots ?? [:]
     }
