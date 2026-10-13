@@ -112,7 +112,10 @@ struct RemapView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if let onBack { BackButton(action: onBack) }
+            // Esc belongs to the key recorder while it's up: it cancels the recording.
+            if let onBack {
+                BackButton(action: onBack, escapes: recordingButton == nil && !recordingDpiCycleShortcut)
+            }
             VStack(alignment: .leading, spacing: 2) {
                 Text("Configure Buttons").font(.system(size: 16, weight: .semibold))
                 Text("Remap your mouse's extra buttons.")

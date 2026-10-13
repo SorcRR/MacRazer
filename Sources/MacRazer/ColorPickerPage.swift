@@ -4,8 +4,14 @@
 import SwiftUI
 
 /// A clearly-labelled "‹ Back" button used by the popover sub-pages.
+///
+/// Esc triggers it, so a sub-page backs out one level the way a System Settings pane or a
+/// Control Center module does, rather than Esc dismissing the whole popover. `escapes` is for
+/// pages that own Esc for something narrower while it's in progress (cancelling a key
+/// recording or a rename): a navigation there would throw away what the user was doing.
 struct BackButton: View {
     var action: () -> Void
+    var escapes = true
     var body: some View {
         Button(action: action) {
             HStack(spacing: 3) {
@@ -17,6 +23,8 @@ struct BackButton: View {
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+        .keyboardShortcut(escapes ? KeyboardShortcut.cancelAction : nil)
+        .help(escapes ? "Back (Esc)" : "Back")
     }
 }
 

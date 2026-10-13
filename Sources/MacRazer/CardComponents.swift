@@ -43,6 +43,26 @@ func sectionNote(_ text: String, color: Color = .secondary) -> some View {
         .fixedSize(horizontal: false, vertical: true)
 }
 
+/// A faint wash over a clickable chip or row while the pointer is on it — the feedback
+/// Control Center's tiles and menu items give, which plain-styled SwiftUI buttons don't.
+/// Skipped while disabled, so a dimmed control doesn't look like it would respond.
+private struct HoverHighlight<S: Shape>: ViewModifier {
+    let shape: S
+    @State private var hovered = false
+    @Environment(\.isEnabled) private var isEnabled
+
+    func body(content: Content) -> some View {
+        content
+            .overlay(shape.fill(Color.primary.opacity(hovered && isEnabled ? 0.08 : 0)).allowsHitTesting(false))
+            .onHover { hovered = $0 }
+            .animation(.easeOut(duration: 0.12), value: hovered)
+    }
+}
+
+extension View {
+    func hoverHighlight<S: Shape>(_ shape: S) -> some View { modifier(HoverHighlight(shape: shape)) }
+}
+
 /// Small secondary-styled section heading used inside cards.
 func sectionLabel(_ text: String, _ symbol: String) -> some View {
     Label(text, systemImage: symbol)
