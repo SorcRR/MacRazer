@@ -7,8 +7,8 @@ expect rough edges until 1.0.
 ## [Unreleased]
 
 ### Changed
-- **The popover is shorter: settings below DPI collapse into one list.** Polling rate,
-  Lighting, Power Management, Buttons and Profiles are now rows in a single card, each showing
+- **The popover is shorter: settings below DPI collapse.** Polling rate, Lighting, Power
+  Management, Buttons and Profiles are now compact cards of one row each, each showing
   its current value ("1000 Hz", "Static · 80%", the active profile). Click a row to open its
   controls in place; open as many as you like, and the popover remembers which. Battery and DPI
   stay open at the top, since they're what you check most. The battery and lighting tips now

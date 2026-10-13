@@ -237,7 +237,7 @@ page is a `ScrollView` (so long content scrolls without resizing the popover):
  bar, the time estimate, and a spinner-animated refresh button. Dims when offline.
  - **DPI card**: green slider (100-26000) + preset chips (400/800/1600/3200/6400) + a
  persisted **custom chip** (drag the slider to any value to save it; green-outlined).
- - **Settings group**: one card listing the rest as rows, Control-Center style. Each row
+ - **Settings sections**: the rest, each a compact card of its own, Control-Center style. Each
  shows its current value ("1000 Hz", "Static · 80%", "5 min", the active profile) and the
  settings rows expand in place, each on its own; which are open is remembered
  (`popoverExpandedSections` in UserDefaults). Rows a mouse can't use are left out.

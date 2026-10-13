@@ -1284,8 +1284,8 @@ struct PopoverView: View {
 
     // MARK: Grouped settings
 
-    /// The settings below DPI, one row each in a single grouped card, the way Control Center
-    /// lists its modules. A row shows its current value; the settings rows expand in place to
+    /// The settings below DPI, each a compact card of its own, the way Control Center lists
+    /// its modules. A row shows its current value; the settings rows expand in place to
     /// their controls, each independently of the others, and Buttons opens its page. Which
     /// sections are open is remembered across showings.
     private enum DisclosureSection: String, CaseIterable { case polling, lighting, power, profiles }
@@ -1317,44 +1317,47 @@ struct PopoverView: View {
 
     private var settingsGroup: some View {
         let rows = groupRows
-        return VStack(spacing: 0) {
+        // Same 10 pt rhythm as the cards above, so each section reads as its own card.
+        return VStack(spacing: 10) {
             // Keyed by row, not position, so a row appearing or vanishing (another mouse, the
             // poll rate turning out to be supported) doesn't shift the others' identity.
             ForEach(rows, id: \.self) { row in
-                // Inset on both sides, like a macOS list separator.
-                if row != rows.first { Divider().padding(.leading, 42).padding(.trailing, 12) }
-                switch row {
-                case .section(.polling):
-                    disclosureRow(.polling, title: "Polling rate", symbol: "timer", tint: .blue,
-                                  value: "\(displayedPollRate) Hz") { pollContent }
-                case .section(.lighting):
-                    disclosureRow(.lighting, title: "Lighting", symbol: "light.max", tint: .orange,
-                                  value: lightingSummary) { lightingContent }
-                case .section(.power):
-                    disclosureRow(.power, title: "Power Management", symbol: "moon.zzz", tint: .indigo,
-                                  value: sleepTimeoutSummary,
-                                  valueColor: controller.sleepTimeoutError == nil ? .secondary : .batteryLow) {
-                        powerManagementContent
+                Group {
+                    switch row {
+                    case .section(.polling):
+                        disclosureRow(.polling, title: "Polling rate", symbol: "timer", tint: .blue,
+                                      value: "\(displayedPollRate) Hz") { pollContent }
+                    case .section(.lighting):
+                        disclosureRow(.lighting, title: "Lighting", symbol: "light.max", tint: .orange,
+                                      value: lightingSummary) { lightingContent }
+                    case .section(.power):
+                        disclosureRow(.power, title: "Power Management", symbol: "moon.zzz", tint: .indigo,
+                                      value: sleepTimeoutSummary,
+                                      valueColor: controller.sleepTimeoutError == nil ? .secondary : .batteryLow) {
+                            powerManagementContent
+                        }
+                    case .section(.profiles):
+                        disclosureRow(.profiles, title: "Profiles", symbol: "person.crop.square.on.square.angled",
+                                      tint: .purple, value: profilesSummary,
+                                      valueColor: controller.profileApplyFailed ? .batteryLow : .secondary) {
+                            profilesContent
+                        }
+                    case .buttons:
+                        Button { page = .buttons } label: {
+                            groupRowLabel(title: "Buttons", symbol: "keyboard", tint: .razerGreen,
+                                          value: buttonsSummary, valueColor: .secondary, expanded: false)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Configure Buttons")
+                        .accessibilityValue(buttonsSummary)
                     }
-                case .section(.profiles):
-                    disclosureRow(.profiles, title: "Profiles", symbol: "person.crop.square.on.square.angled",
-                                  tint: .purple, value: profilesSummary,
-                                  valueColor: controller.profileApplyFailed ? .batteryLow : .secondary) {
-                        profilesContent
-                    }
-                case .buttons:
-                    Button { page = .buttons } label: {
-                        groupRowLabel(title: "Buttons", symbol: "keyboard", tint: .razerGreen,
-                                      value: buttonsSummary, valueColor: .secondary, expanded: false)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Configure Buttons")
-                    .accessibilityValue(buttonsSummary)
                 }
+                // Each row is its own card, open or closed, rather than one card split by
+                // separators: an open section's controls stay clearly inside their row.
+                .frame(maxWidth: .infinity)
+                .background(Color.primary.opacity(0.10), in: RoundedRectangle(cornerRadius: 13))
             }
         }
-        .frame(maxWidth: .infinity)
-        .background(Color.primary.opacity(0.10), in: RoundedRectangle(cornerRadius: 13))
     }
 
     private func disclosureRow<Content: View>(_ section: DisclosureSection, title: String, symbol: String,
