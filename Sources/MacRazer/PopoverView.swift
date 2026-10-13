@@ -234,8 +234,8 @@ struct PopoverView: View {
             if let timeout = controller.sleepTimeout { sleepTimeoutValue = Double(timeout) }
         }
         // A half-typed profile name shouldn't survive its row closing and reappear later.
-        .onChange(of: expandedSectionRaw) { _, new in
-            if new != DisclosureSection.profiles.rawValue { isAddingProfile = false }
+        .onChange(of: expandedSections.contains(.profiles)) { _, open in
+            if !open { isAddingProfile = false }
         }
         .onChange(of: controller.deviceKey) { _, _ in loadCustomDPI() } // reload/clamp per mouse
         .onChange(of: controller.deviceMaxDPI) { _, _ in loadCustomDPI() }
@@ -1286,12 +1286,22 @@ struct PopoverView: View {
 
     /// The settings below DPI, one row each in a single grouped card, the way Control Center
     /// lists its modules. A row shows its current value; the settings rows expand in place to
-    /// their controls, one at a time so the popover never grows past one section's worth, and
-    /// Buttons opens its page. Which section was open is remembered across showings.
-    private enum DisclosureSection: String { case polling, lighting, power, profiles }
+    /// their controls, each independently of the others, and Buttons opens its page. Which
+    /// sections are open is remembered across showings.
+    private enum DisclosureSection: String, CaseIterable { case polling, lighting, power, profiles }
     private enum GroupRow: Hashable { case section(DisclosureSection), buttons }
-    @AppStorage("popoverExpandedSection") private var expandedSectionRaw = ""
-    private var expandedSection: DisclosureSection? { DisclosureSection(rawValue: expandedSectionRaw) }
+    /// The open sections, comma-separated: `@AppStorage` can't hold a set.
+    @AppStorage("popoverExpandedSections") private var expandedSectionsRaw = ""
+    private var expandedSections: Set<DisclosureSection> {
+        Set(expandedSectionsRaw.split(separator: ",").compactMap { DisclosureSection(rawValue: String($0)) })
+    }
+
+    private func toggle(_ section: DisclosureSection) {
+        var open = expandedSections
+        if open.contains(section) { open.remove(section) } else { open.insert(section) }
+        // Written in declaration order so the stored string is stable.
+        expandedSectionsRaw = DisclosureSection.allCases.filter { open.contains($0) }.map(\.rawValue).joined(separator: ",")
+    }
 
     /// Rows in display order, skipping what this mouse can't do. Profiles come last: they
     /// bundle the rows above them (plus remaps) into presets.
@@ -1311,7 +1321,8 @@ struct PopoverView: View {
             // Keyed by row, not position, so a row appearing or vanishing (another mouse, the
             // poll rate turning out to be supported) doesn't shift the others' identity.
             ForEach(rows, id: \.self) { row in
-                if row != rows.first { Divider().padding(.leading, 42) }
+                // Inset on both sides, like a macOS list separator.
+                if row != rows.first { Divider().padding(.leading, 42).padding(.trailing, 12) }
                 switch row {
                 case .section(.polling):
                     disclosureRow(.polling, title: "Polling rate", symbol: "timer", tint: .blue,
@@ -1344,19 +1355,15 @@ struct PopoverView: View {
         }
         .frame(maxWidth: .infinity)
         .background(Color.primary.opacity(0.10), in: RoundedRectangle(cornerRadius: 13))
-        // Keeps the rows' hover wash inside the card's rounded corners.
-        .clipShape(RoundedRectangle(cornerRadius: 13))
     }
 
     private func disclosureRow<Content: View>(_ section: DisclosureSection, title: String, symbol: String,
                                               tint: Color, value: String, valueColor: Color = .secondary,
                                               @ViewBuilder content: () -> Content) -> some View {
-        let expanded = expandedSection == section
+        let expanded = expandedSections.contains(section)
         return VStack(alignment: .leading, spacing: 0) {
             Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    expandedSectionRaw = expanded ? "" : section.rawValue
-                }
+                withAnimation(.easeInOut(duration: 0.2)) { toggle(section) }
             } label: {
                 groupRowLabel(title: title, symbol: symbol, tint: tint, value: value,
                               valueColor: valueColor, expanded: expanded)
@@ -1368,6 +1375,9 @@ struct PopoverView: View {
             if expanded {
                 content()
                     .padding(.horizontal, 12)
+                    // Clear of the header, so a still-highlighted header doesn't sit right on
+                    // top of the controls it opened.
+                    .padding(.top, 6)
                     .padding(.bottom, 12)
                     .transition(.opacity)
             }
@@ -1395,11 +1405,16 @@ struct PopoverView: View {
                 .foregroundStyle(.tertiary)
                 .rotationEffect(.degrees(expanded ? 90 : 0))
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
+        // The hover wash is an inset rounded shape, like a menu item's or a Control Center
+        // row's, rather than an edge-to-edge band: a full-width band ran past the inset
+        // separators and read as unfinished. Same 12 × 9 overall padding as before.
+        .padding(.horizontal, 8)
+        .padding(.vertical, 7)
         .frame(maxWidth: .infinity)
-        .contentShape(Rectangle())
-        .hoverHighlight(Rectangle())
+        .contentShape(RoundedRectangle(cornerRadius: 8))
+        .hoverHighlight(RoundedRectangle(cornerRadius: 8))
+        .padding(.horizontal, 4)
+        .padding(.vertical, 2)
     }
 
     private var buttonsSummary: String {

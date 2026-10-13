@@ -239,8 +239,8 @@ page is a `ScrollView` (so long content scrolls without resizing the popover):
  persisted **custom chip** (drag the slider to any value to save it; green-outlined).
  - **Settings group**: one card listing the rest as rows, Control-Center style. Each row
  shows its current value ("1000 Hz", "Static · 80%", "5 min", the active profile) and the
- settings rows expand in place, one at a time; the open one is remembered
- (`popoverExpandedSection` in UserDefaults). Rows a mouse can't use are left out.
+ settings rows expand in place, each on its own; which are open is remembered
+ (`popoverExpandedSections` in UserDefaults). Rows a mouse can't use are left out.
  - **Polling rate**: segmented 125/500/1000 Hz, plus what the rate is good for.
  - **Lighting**: brightness slider (☀︎) + effect segmented (Static/Spectrum/Wave/Off)
  + colour swatches (true red...pink) + a rainbow "custom" well that opens the colour wheel.
