@@ -275,8 +275,10 @@ page is a `ScrollView` (so long content scrolls without resizing the popover):
  NSPopover's frame view just under the content. That view clips to the popover's outline, so
  the fill covers the arrow too. A SwiftUI background would leave the arrow glass. The green
  edge is a SwiftUI overlay on the body (radius 10, measured on macOS 26).
- - Windows only follow light or dark (`AppearanceSettings.track`); the glass and the tint are
- the popover's.
+ - Windows get the same look (`AppearanceSettings.track`, `WindowBackdrop`): glass is an
+ `NSVisualEffectView` with the popover's material, plus the same tint view, both in the
+ window's frame view so the title bar matches; solid looks set the window's background colour.
+ The title bar is transparent in every look. Only the popover gets the green edge.
  - Colours: `razerGreen` is the fill (the same in both modes); text and icons use
  `razerGreenText` (#23891A on light). Anything on a green fill uses `onRazerGreen`, a dark green,
  because white on #44D62C is only about 1.9:1. `razerGreenBright` (logo) and `bluetoothBlue`
@@ -384,7 +386,7 @@ that path draws the content but needs an explicit size, since there is no window
 | `RazerDevices.swift` | PID to {name, supported, hasBattery} registry. |
 | `BatteryHistory.swift` | Sample log + learned discharge rate + time estimate. |
 | `PopoverView.swift` | Main popover UI + page navigation. |
-| `PopoverTheme.swift` | Settings › Appearance: theme, glass, the resolved look, the popover backdrop. |
+| `PopoverTheme.swift` | Settings › Appearance: theme, glass, the resolved look, the popover and window backdrops. |
 | `ColorPickerPage.swift` | Inline hue/sat colour wheel page + shared `BackButton`. |
 | `ButtonRemapper.swift` | CGEvent tap, action model, presets, persistence, Accessibility. |
 | `RemapView.swift` | Button-config UI (inline + window), key recorder. |

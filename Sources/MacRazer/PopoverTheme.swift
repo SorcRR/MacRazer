@@ -18,20 +18,10 @@ enum PopoverTheme: String, CaseIterable, Identifiable {
         case .razerGreen: return "Razer Green"
         }
     }
-
-    /// The appearance the app's windows use. Windows only follow light or dark: the glass and
-    /// the green tint are the popover's. Nil follows macOS.
-    var windowAppearanceName: NSAppearance.Name? {
-        switch self {
-        case .system: return nil
-        case .dark, .razerGreen: return .darkAqua
-        case .light: return .aqua
-        }
-    }
 }
 
-/// What the popover actually looks like once the theme, the glass switch and the system's
-/// light or dark mode are combined. One case per mockup.
+/// What the popover and the app's windows actually look like once the theme, the glass switch
+/// and the system's light or dark mode are combined. One case per mockup.
 enum PopoverLook: Equatable, CaseIterable {
     case lightGlass, darkGlass, greenGlass
     case solidLight, solidDark, solidGreen
@@ -119,23 +109,76 @@ final class AppearanceSettings: ObservableObject {
     // MARK: Windows
 
     private let windows = NSHashTable<NSWindow>.weakObjects()
+    /// The look last given to the windows, so a window opened later matches them.
+    private var windowLook: PopoverLook?
 
-    /// Gives a window the theme's light or dark appearance and keeps it updated when the
-    /// setting changes.
+    /// Gives a window the current look (glass or solid, light, dark or green) and keeps it
+    /// updated when the setting or the system's light or dark mode changes.
     func track(_ window: NSWindow) {
         windows.add(window)
-        Self.apply(theme, to: window)
+        let look = windowLook ?? look(systemIsDark: NSApplication.shared.effectiveAppearance.isDark)
+        WindowBackdrop.apply(look, to: window)
     }
 
-    /// Re-applies a theme to every tracked window. Takes the theme rather than reading
-    /// `theme`, because the owner calls this from a `$theme` subscriber, which runs before the
-    /// property itself has changed.
-    func applyToWindows(theme: PopoverTheme) {
-        for window in windows.allObjects { Self.apply(theme, to: window) }
+    /// Re-applies a look to every tracked window. Takes the look rather than working it out
+    /// from `theme`, because the owner calls this from a `$theme` subscriber, which runs before
+    /// the property itself has changed.
+    func applyToWindows(_ look: PopoverLook) {
+        windowLook = look
+        for window in windows.allObjects { WindowBackdrop.apply(look, to: window) }
+    }
+}
+
+/// Puts a `PopoverLook` on an ordinary window: the same glass, solid colour or green tint as
+/// the popover, so Settings and the other windows match it.
+///
+/// Like the popover's backdrop, the glass and the tint sit in the window's frame view, just
+/// under the content, so they also cover the title bar.
+@MainActor
+enum WindowBackdrop {
+    private static let glassID = NSUserInterfaceItemIdentifier("MacRazer.windowGlass")
+    private static let tintID = NSUserInterfaceItemIdentifier("MacRazer.windowTint")
+
+    static func apply(_ look: PopoverLook, to window: NSWindow) {
+        window.appearance = NSAppearance(named: look.appearanceName)
+        // The title bar shows whatever is behind it, so it matches the rest of the window
+        // instead of drawing its own grey strip.
+        window.titlebarAppearsTransparent = true
+        let (glass, tint) = layers(in: window)
+        if look.isGlass {
+            window.isOpaque = false
+            window.backgroundColor = .clear
+            glass?.isHidden = false
+            tint?.fill = look.backdropColor
+        } else {
+            window.isOpaque = true
+            window.backgroundColor = look.backdropColor
+            glass?.isHidden = true
+            tint?.fill = nil
+        }
     }
 
-    private static func apply(_ theme: PopoverTheme, to window: NSWindow) {
-        window.appearance = theme.windowAppearanceName.flatMap(NSAppearance.init(named:))
+    /// The window's glass and tint views, added the first time.
+    private static func layers(in window: NSWindow) -> (NSVisualEffectView?, PopoverBackdropView?) {
+        guard let content = window.contentView, let frameView = content.superview else { return (nil, nil) }
+        if let glass = frameView.subviews.first(where: { $0.identifier == glassID }) as? NSVisualEffectView,
+           let tint = frameView.subviews.first(where: { $0.identifier == tintID }) as? PopoverBackdropView {
+            return (glass, tint)
+        }
+        let glass = NSVisualEffectView(frame: frameView.bounds)
+        glass.identifier = glassID
+        // The popover's own material, so a window and the popover read as the same glass.
+        glass.material = .popover
+        glass.blendingMode = .behindWindow
+        // Stay glass when the window isn't key, rather than going flat grey.
+        glass.state = .active
+        glass.autoresizingMask = [.width, .height]
+        let tint = PopoverBackdropView(frame: frameView.bounds)
+        tint.identifier = tintID
+        tint.autoresizingMask = [.width, .height]
+        frameView.addSubview(glass, positioned: .below, relativeTo: content)
+        frameView.addSubview(tint, positioned: .below, relativeTo: content)
+        return (glass, tint)
     }
 }
 
@@ -143,7 +186,8 @@ extension NSAppearance {
     var isDark: Bool { bestMatch(from: [.aqua, .darkAqua]) == .darkAqua }
 }
 
-/// Paints the solid colour (or the green tint) behind the popover's content.
+/// Paints the solid colour (or the green tint) behind the popover's content. `WindowBackdrop`
+/// reuses it as the green tint on the app's windows.
 ///
 /// It sits in the popover's frame view rather than in SwiftUI, because the arrow is drawn by
 /// that frame view, outside the content. A SwiftUI background would leave the arrow glass

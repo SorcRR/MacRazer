@@ -60,7 +60,7 @@ final class CrashReportWindowController: NSObject, AppWindowPresenter, NSWindowD
             w.title = "MacRazer Crash Report"
             w.styleMask = [.titled, .closable]
             w.isReleasedWhenClosed = false
-            // Light or dark per Settings › Appearance, kept up to date when it changes.
+            // Themed like the popover per Settings › Appearance, kept up to date when it changes.
             AppearanceSettings.shared.track(w)
             w.delegate = self
             w.center()

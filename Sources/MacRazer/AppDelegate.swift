@@ -528,7 +528,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         let look = PopoverLook.resolve(theme: theme, glass: glass, systemIsDark: systemIsDark)
         popover.appearance = NSAppearance(named: look.appearanceName)
         popoverBackdrop.fill = look.backdropColor
-        appearance.applyToWindows(theme: theme)
+        appearance.applyToWindows(look)
     }
 
     /// Puts the backdrop into the popover's frame view, just under the content: above the

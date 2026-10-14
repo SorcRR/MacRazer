@@ -31,7 +31,7 @@ final class AboutWindowController: AppWindowPresenter {
             w.title = "About MacRazer"
             w.styleMask = [.titled, .closable]
             w.isReleasedWhenClosed = false
-            // Light or dark per Settings › Appearance, kept up to date when it changes.
+            // Themed like the popover per Settings › Appearance, kept up to date when it changes.
             AppearanceSettings.shared.track(w)
             w.center()
             hosting = controller
