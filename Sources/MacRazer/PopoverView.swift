@@ -1329,7 +1329,9 @@ struct PopoverView: View {
             // Keyed by row, not position, so a row appearing or vanishing (another mouse, the
             // poll rate turning out to be supported) doesn't shift the others' identity.
             ForEach(rows, id: \.self) { row in
-                Group {
+                // Each row is its own card, open or closed, rather than one card split by
+                // separators: an open section's controls stay clearly inside their row.
+                cardSurface(Group {
                     switch row {
                     case .section(.polling):
                         disclosureRow(.polling, title: "Polling rate", symbol: "timer", tint: .blue,
@@ -1362,10 +1364,7 @@ struct PopoverView: View {
                         .accessibilityValue(buttonsSummary)
                     }
                 }
-                // Each row is its own card, open or closed, rather than one card split by
-                // separators: an open section's controls stay clearly inside their row.
-                .frame(maxWidth: .infinity)
-                .cardSurface()
+                .frame(maxWidth: .infinity))
             }
         }
     }
