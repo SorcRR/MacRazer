@@ -192,9 +192,16 @@ struct PermissionsView: View {
                 }
             }
             Spacer()
-            Button(model.allRequiredGranted ? "Done" : "Close") { onDone?() }
-                .buttonStyle(RazerProminentButtonStyle(prominent: model.allRequiredGranted))
-                .font(.system(size: 12, weight: .medium))
+            // Green once there's nothing left to do; until then a plain button like its neighbour.
+            if model.allRequiredGranted {
+                Button("Done") { onDone?() }
+                    .buttonStyle(RazerProminentButtonStyle())
+                    .font(.system(size: 12, weight: .medium))
+            } else {
+                Button("Close") { onDone?() }
+                    .buttonStyle(.bordered)
+                    .font(.system(size: 12, weight: .medium))
+            }
         }
     }
 }
