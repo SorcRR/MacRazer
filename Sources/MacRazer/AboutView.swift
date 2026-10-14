@@ -181,6 +181,7 @@ struct AboutView: View {
             Spacer(minLength: 0)
             Button("Done") { onDone() }
                 .keyboardShortcut(.defaultAction)
+                .buttonStyle(RazerProminentButtonStyle())
         }
         .controlSize(.small)
         .font(.system(size: 11.5))

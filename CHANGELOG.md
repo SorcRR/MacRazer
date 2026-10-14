@@ -13,9 +13,10 @@ expect rough edges until 1.0.
   instead of white, which was hard to read. If you liked it dark, pick Dark in Settings ›
   Appearance.
 
-- **Green buttons have dark text.** Install Now, Send Report, Grant, Relaunch, Done and the
-  update buttons used white on the green, which was hard to read. They now use the same dark
-  text as the selected chips.
+- **Green buttons have dark text.** Install Now, Send Report, Grant, Relaunch and the update
+  buttons used white on the green, which was hard to read. They now use the same dark text as
+  the selected chips. The main button in Settings, About and the device test was system blue;
+  it is green now too.
 
 - **The popover is shorter: settings below DPI collapse.** Polling rate, Lighting, Power
   Management, Buttons and Profiles are now compact cards of one row each, each showing

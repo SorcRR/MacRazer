@@ -261,6 +261,7 @@ struct SettingsView: View {
             Spacer()
             Button("Done") { onDone() }
                 .keyboardShortcut(.defaultAction)
+                .buttonStyle(RazerProminentButtonStyle())
         }
     }
 }

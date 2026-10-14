@@ -107,6 +107,7 @@ struct CrashReportView: View {
             if model.state == .sent {
                 Button("Done", action: onDone)
                     .keyboardShortcut(.defaultAction)
+                    .buttonStyle(RazerProminentButtonStyle())
             } else {
                 Button("Don't Send", action: onDone)
                     .keyboardShortcut(.cancelAction)
