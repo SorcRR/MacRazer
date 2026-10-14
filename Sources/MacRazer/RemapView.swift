@@ -160,7 +160,7 @@ struct RemapView: View {
 
     private var detectionHint: some View {
         HStack(spacing: 8) {
-            Image(systemName: "cursorarrow.click.2").foregroundStyle(Color.razerGreen)
+            Image(systemName: "cursorarrow.click.2").foregroundStyle(Color.razerGreenText)
             if let b = remapper.lastDetectedButton {
                 Text("Detected: \(ButtonRemapper.label(for: b))")
                     .font(.system(size: 12, weight: .medium))

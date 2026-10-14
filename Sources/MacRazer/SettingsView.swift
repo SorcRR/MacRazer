@@ -23,6 +23,7 @@ struct SettingsView: View {
     var onAutoInstallChanged: (() -> Void)?
     /// The crash window's "Don't Ask Again" writes the same key, so this is how to undo it.
     @AppStorage(CrashLogScanner.offerKey) private var offerCrashReports = true
+    @ObservedObject var appearance: AppearanceSettings = .shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -35,6 +36,10 @@ struct SettingsView: View {
                 if controller.deviceHasBattery { batteryPercentRow }
                 // Hidden while there's nowhere to send a report; see `CrashReporting`.
                 if CrashReporting.isAvailable { crashReportsRow }
+            }
+            titledSection("Appearance") {
+                themeRow
+                glassRow
             }
             titledSection("Updates") {
                 autoInstallRow
@@ -88,7 +93,7 @@ struct SettingsView: View {
             } else if launchAtLogin.needsApproval {
                 Button("Approve MacRazer in Login Items…") { launchAtLogin.openLoginItemsSettings() }
                     .buttonStyle(.plain).font(.system(size: 11))
-                    .foregroundStyle(Color.razerGreen)
+                    .foregroundStyle(Color.razerGreenText)
             }
         }
     }
@@ -108,6 +113,32 @@ struct SettingsView: View {
             detail: "Off leaves just the mouse icon, which takes less room in a crowded menu bar.",
             isOn: Binding(get: { controller.showPercentInMenuBar },
                           set: { controller.showPercentInMenuBar = $0 })
+        )
+    }
+
+    private var themeRow: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("Theme").font(.system(size: 12.5, weight: .medium))
+                Spacer(minLength: 12)
+                Picker("Theme", selection: $appearance.theme) {
+                    ForEach(PopoverTheme.allCases) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .controlSize(.small)
+                .fixedSize()
+            }
+            sectionNote("System follows macOS. Razer Green is always dark.")
+        }
+    }
+
+    private var glassRow: some View {
+        settingRow(
+            title: "Glass effect",
+            detail: "The popover lets the desktop show through. Turn it off for a solid "
+                + "background, which is easier to read over busy windows.",
+            isOn: $appearance.glass
         )
     }
 

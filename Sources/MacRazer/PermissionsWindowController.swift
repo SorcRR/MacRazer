@@ -29,8 +29,8 @@ final class PermissionsWindowController: AppWindowPresenter {
             w.title = "MacRazer Setup"
             w.styleMask = [.titled, .closable]
             w.isReleasedWhenClosed = false
-            // Match the popover's forced-dark look so the green accent reads correctly.
-            w.appearance = NSAppearance(named: .darkAqua)
+            // Light or dark per Settings › Appearance, kept up to date when it changes.
+            AppearanceSettings.shared.track(w)
             w.center()
             window = w
         }

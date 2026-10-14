@@ -77,14 +77,14 @@ struct ReleaseNotesList: View {
                 if releases.count > 1 {
                     Text(release.version)
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(Color.razerGreen)
+                        .foregroundStyle(Color.razerGreenText)
                         .padding(.top, release.id == releases.first?.id ? 0 : 6)
                 }
                 notesBlock(release.notes)
             }
             Link("Full release notes", destination: ProjectLinks.latestRelease)
                 .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(Color.razerGreen)
+                .foregroundStyle(Color.razerGreenText)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

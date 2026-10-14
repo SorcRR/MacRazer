@@ -25,6 +25,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         model: DeviceTestModel(controller: controller, permissions: permissions))
     private let updateChecker = UpdateChecker()
     private let launchAtLogin = LaunchAtLogin()
+    private let appearance = AppearanceSettings.shared
+    /// The solid colour or green tint behind the popover; see `PopoverBackdropView`.
+    private let popoverBackdrop = PopoverBackdropView()
     private lazy var aboutWindow = AboutWindowController()
     /// Closing it re-asks the auto-install gate. This window opens unfocused after an
     /// automatic install and can sit unnoticed for days, and while it is open it holds back
@@ -103,13 +106,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         popover.behavior = .transient
         popover.delegate = self
         popover.animates = false // open immediately, no slide animation
-        // Force a dark popover regardless of system appearance — the Razer-green accent and
-        // logo have poor contrast on the light-mode grey material; dark is also the gaming
-        // aesthetic and makes the green pop.
-        popover.appearance = NSAppearance(named: .darkAqua)
+        // Light or dark, glass or solid, per Settings › Appearance. Re-applied whenever the
+        // setting changes or macOS switches between light and dark, including while the
+        // popover is open. The popover's appearance is always set explicitly, never left nil:
+        // a nil one would follow the menu bar, which macOS tints from the wallpaper rather
+        // than the system's light or dark mode.
+        Publishers.CombineLatest3(appearance.$theme, appearance.$glass,
+                                  NSApp.publisher(for: \.effectiveAppearance))
+            .sink { [weak self] theme, glass, system in
+                self?.applyAppearance(theme: theme, glass: glass, systemIsDark: system.isDark)
+            }
+            .store(in: &cancellables)
         let hosting = NSHostingController(rootView: PopoverView(
             controller: controller, remapper: remapper, updateChecker: updateChecker,
-            launchAtLogin: launchAtLogin,
+            launchAtLogin: launchAtLogin, appearance: appearance,
             onOpenSettings: { [weak self] in
                 // Close first: the popover is transient and would dismiss itself the moment
                 // the window takes focus, which looks like the click did two things.
@@ -367,6 +377,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
             windowsBeforePopover = Set(NSApp.windows.filter(\.isVisible).map(ObjectIdentifier.init))
             // Show first (instant), then kick off the refresh so the open never waits on IO.
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+            // The frame view the backdrop lives in only exists once the popover is shown.
+            installPopoverBackdrop()
             // Activate, not just make key. This app has no Dock icon, so clicking the menu bar
             // item does not make it the active application, and a control in an inactive app's
             // window does not respond to the first click the way it looks like it should. Every
@@ -509,6 +521,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     @objc private func openPermissions() { present(permissionsWindow) }
     @objc private func openDeviceTest() { present(deviceTestWindow) }
     @objc private func quit() { NSApplication.shared.terminate(nil) }
+
+    // MARK: - Appearance
+
+    private func applyAppearance(theme: PopoverTheme, glass: Bool, systemIsDark: Bool) {
+        let look = PopoverLook.resolve(theme: theme, glass: glass, systemIsDark: systemIsDark)
+        popover.appearance = NSAppearance(named: look.appearanceName)
+        popoverBackdrop.fill = look.backdropRGBA.map {
+            NSColor(srgbRed: $0.red, green: $0.green, blue: $0.blue, alpha: $0.alpha)
+        }
+        appearance.applyToWindows(theme: theme)
+    }
+
+    /// Puts the backdrop into the popover's frame view, just under the content: above the
+    /// native material, so a solid colour hides it, and filling the arrow too. NSPopover
+    /// keeps its frame view between shows, so this only does work the first time.
+    private func installPopoverBackdrop() {
+        guard let content = popover.contentViewController?.view,
+              let frameView = content.superview,
+              popoverBackdrop.superview !== frameView else { return }
+        popoverBackdrop.frame = frameView.bounds
+        popoverBackdrop.autoresizingMask = [.width, .height]
+        frameView.addSubview(popoverBackdrop, positioned: .below, relativeTo: content)
+    }
 
     // MARK: - NSPopoverDelegate
 
