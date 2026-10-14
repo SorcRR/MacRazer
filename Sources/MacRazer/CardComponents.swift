@@ -6,10 +6,18 @@ import SwiftUI
 /// Control-Center-style tile: a rounded, lightly-frosted card on the dark popover. Shared by
 /// every popover sub-page so the card style can't drift between them.
 func card<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
-    content()
+    cardSurface(content()
         .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.primary.opacity(0.10), in: RoundedRectangle(cornerRadius: 13))
+        .frame(maxWidth: .infinity, alignment: .leading))
+}
+
+/// The card's fill and shape without its padding, for cards that lay out their own insets (the
+/// popover's expandable section rows).
+///
+/// A free function like `card`, not a `View` extension: an extension method is main-actor
+/// isolated, and `card` (nonisolated) couldn't call it under Swift 6 concurrency checking.
+func cardSurface<Content: View>(_ content: Content) -> some View {
+    content.background(Color.primary.opacity(0.10), in: RoundedRectangle(cornerRadius: 13))
 }
 
 /// A card with a small uppercase heading — the window-sized counterpart to `card`, shared by

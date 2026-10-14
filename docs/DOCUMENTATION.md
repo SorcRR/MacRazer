@@ -237,10 +237,21 @@ page is a `ScrollView` (so long content scrolls without resizing the popover):
  bar, the time estimate, and a spinner-animated refresh button. Dims when offline.
  - **DPI card**: green slider (100-26000) + preset chips (400/800/1600/3200/6400) + a
  persisted **custom chip** (drag the slider to any value to save it; green-outlined).
- - **Polling card**: segmented 125/500/1000 Hz.
- - **Lighting card**: brightness slider (☀︎) + effect segmented (Static/Spectrum/Wave/Off)
+ - **Settings sections**: the rest, each a compact card of its own, Control-Center style. Each
+ shows its current value ("1000 Hz", "Static · 80%", "5 min", the active profile) and the
+ settings rows expand in place, each on its own; which are open is remembered
+ (`popoverExpandedSections` in UserDefaults). Rows a mouse can't use are left out.
+ - **Polling rate**: segmented 125/500/1000 Hz, plus what the rate is good for.
+ - **Lighting**: brightness slider (☀︎) + effect segmented (Static/Spectrum/Wave/Off)
  + colour swatches (true red...pink) + a rainbow "custom" well that opens the colour wheel.
- - **Configure Buttons** card-button to buttons page.
+ - **Power Management** (Basilisk V3 X over Bluetooth): the sleep timer.
+ - **Buttons**: opens the buttons page; shows how many buttons are remapped, or "Needs access"
+ when saved remaps can't fire without Accessibility permission.
+ - Offline, the section rows still open to show last-known settings; their controls and the
+ Buttons page are disabled. A failed write turns that row's value red.
+ - **Profiles**: quick-switch chips, "+" to save, "Manage Profiles…".
+ - Sub-pages that scroll are at least 560 pt tall, so a short (collapsed) main page doesn't squeeze
+ them; the colour page keeps the main page's height.
  - **Settings card**: a switch toggle for "Show battery % in menu bar".
  - Live mouse-config sections **grey out + disable when disconnected** (battery stays
  readable; refresh stays active).
