@@ -527,9 +527,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     private func applyAppearance(theme: PopoverTheme, glass: Bool, systemIsDark: Bool) {
         let look = PopoverLook.resolve(theme: theme, glass: glass, systemIsDark: systemIsDark)
         popover.appearance = NSAppearance(named: look.appearanceName)
-        popoverBackdrop.fill = look.backdropRGBA.map {
-            NSColor(srgbRed: $0.red, green: $0.green, blue: $0.blue, alpha: $0.alpha)
-        }
+        popoverBackdrop.fill = look.backdropColor
         appearance.applyToWindows(theme: theme)
     }
 

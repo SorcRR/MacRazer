@@ -39,9 +39,9 @@ final class PopoverThemeTests: XCTestCase {
             XCTAssertEqual(look.appearanceName, look.isDark ? .darkAqua : .aqua)
             // Plain glass keeps the native material; everything else paints over it.
             let plainGlass = look == .lightGlass || look == .darkGlass
-            XCTAssertEqual(look.backdropRGBA == nil, plainGlass, "\(look)")
+            XCTAssertEqual(look.backdropColor == nil, plainGlass, "\(look)")
             // A solid look must actually be solid, or the material shows through.
-            if !look.isGlass { XCTAssertEqual(look.backdropRGBA?.alpha, 1, "\(look)") }
+            if !look.isGlass { XCTAssertEqual(look.backdropColor?.alphaComponent, 1, "\(look)") }
         }
         XCTAssertEqual(PopoverLook.allCases.filter(\.hasGreenEdge), [.greenGlass])
         XCTAssertFalse(PopoverLook.lightGlass.isDark)

@@ -66,14 +66,19 @@ enum PopoverLook: Equatable, CaseIterable {
 
     /// What's painted over the popover's own material, arrow included. Nil leaves the native
     /// glass as it is. Solid looks are opaque; the green glass is a faint tint.
-    var backdropRGBA: (red: Double, green: Double, blue: Double, alpha: Double)? {
+    var backdropColor: NSColor? {
         switch self {
         case .lightGlass, .darkGlass: return nil
-        case .greenGlass: return (0x10 / 255, 0x3A / 255, 0x14 / 255, 0.35)
-        case .solidLight: return (0xF5 / 255, 0xF5 / 255, 0xF7 / 255, 1)
-        case .solidDark: return (0x1C / 255, 0x1C / 255, 0x1E / 255, 1)
-        case .solidGreen: return (0x0F / 255, 0x1A / 255, 0x11 / 255, 1)
+        case .greenGlass: return Self.srgb(0x103A14, alpha: 0.35)
+        case .solidLight: return Self.srgb(0xF5F5F7)
+        case .solidDark: return Self.srgb(0x1C1C1E)
+        case .solidGreen: return Self.srgb(0x0F1A11)
         }
+    }
+
+    private static func srgb(_ hex: UInt32, alpha: CGFloat = 1) -> NSColor {
+        NSColor(srgbRed: CGFloat((hex >> 16) & 0xFF) / 255, green: CGFloat((hex >> 8) & 0xFF) / 255,
+                blue: CGFloat(hex & 0xFF) / 255, alpha: alpha)
     }
 
     var appearanceName: NSAppearance.Name { isDark ? .darkAqua : .aqua }
