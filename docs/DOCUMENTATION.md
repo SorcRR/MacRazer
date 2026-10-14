@@ -245,7 +245,10 @@ page is a `ScrollView` (so long content scrolls without resizing the popover):
  - **Lighting**: brightness slider (☀︎) + effect segmented (Static/Spectrum/Wave/Off)
  + colour swatches (true red...pink) + a rainbow "custom" well that opens the colour wheel.
  - **Power Management** (Basilisk V3 X over Bluetooth): the sleep timer.
- - **Buttons**: opens the buttons page; shows how many buttons are remapped.
+ - **Buttons**: opens the buttons page; shows how many buttons are remapped, or "Needs access"
+ when saved remaps can't fire without Accessibility permission.
+ - Offline, the section rows still open to show last-known settings; their controls and the
+ Buttons page are disabled. A failed write turns that row's value red.
  - **Profiles**: quick-switch chips, "+" to save, "Manage Profiles…".
  - Sub-pages that scroll are at least 560 pt tall, so a short (collapsed) main page doesn't squeeze
  them; the colour page keeps the main page's height.

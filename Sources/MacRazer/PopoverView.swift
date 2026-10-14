@@ -200,15 +200,15 @@ struct PopoverView: View {
                 if controller.deviceHasBattery {
                     batteryCard.opacity(controller.connected ? 1 : 0.55)
                 }
-                // Live mouse-config sections: dim AND disable while disconnected. Every row of
-                // the group below needs the mouse too (the Buttons page included), so the whole
-                // group dims with DPI.
-                Group {
-                    dpiCard
-                    settingsGroup
-                }
-                .disabled(!controller.connected)
-                .opacity(controller.connected ? 1 : 0.45)
+                // Live mouse-config sections: dim AND disable while disconnected.
+                dpiCard
+                    .disabled(!controller.connected)
+                    .opacity(controller.connected ? 1 : 0.45)
+                // Dims with DPI, but its rows still open and close offline so the last-known
+                // settings stay readable; the controls inside them (and the Buttons page,
+                // which needs the mouse) are what's disabled.
+                settingsGroup
+                    .opacity(controller.connected ? 1 : 0.45)
             }
             footer
         }
@@ -236,6 +236,10 @@ struct PopoverView: View {
         // A half-typed profile name shouldn't survive its row closing and reappear later.
         .onChange(of: expandedSections.contains(.profiles)) { _, open in
             if !open { isAddingProfile = false }
+        }
+        // …or when the row disappears instead of closing (a mouse without profiles).
+        .onChange(of: controller.supportsProfiles) { _, supported in
+            if !supported { isAddingProfile = false }
         }
         .onChange(of: controller.deviceKey) { _, _ in loadCustomDPI() } // reload/clamp per mouse
         .onChange(of: controller.deviceMaxDPI) { _, _ in loadCustomDPI() }
@@ -1069,9 +1073,12 @@ struct PopoverView: View {
 
     /// Nothing to show until the mouse has reported its value: the slider's starting position
     /// is a placeholder, not the mouse's setting.
+    ///
+    /// A failed write turns the value red (see the row) rather than replacing it: the mouse's
+    /// last confirmed timeout is still the useful thing to show, and the error itself is in
+    /// the expanded controls.
     private var sleepTimeoutSummary: String {
-        if controller.sleepTimeoutError != nil { return "Not verified" }
-        return controller.sleepTimeout == nil ? "…" : formatSleepTimeout(Int(sleepTimeoutValue))
+        controller.sleepTimeout == nil ? "…" : formatSleepTimeout(Int(sleepTimeoutValue))
     }
 
     /// "5 min" or "4 min 45 s", the way System Settings words its sleep timers, instead of
@@ -1345,9 +1352,12 @@ struct PopoverView: View {
                     case .buttons:
                         Button { page = .buttons } label: {
                             groupRowLabel(title: "Buttons", symbol: "keyboard", tint: .razerGreen,
-                                          value: buttonsSummary, valueColor: .secondary, expanded: false)
+                                          value: buttonsSummary,
+                                          valueColor: buttonsNeedAccess ? .batteryMid : .secondary,
+                                          expanded: false)
                         }
                         .buttonStyle(.plain)
+                        .disabled(!controller.connected)
                         .accessibilityLabel("Configure Buttons")
                         .accessibilityValue(buttonsSummary)
                     }
@@ -1355,7 +1365,7 @@ struct PopoverView: View {
                 // Each row is its own card, open or closed, rather than one card split by
                 // separators: an open section's controls stay clearly inside their row.
                 .frame(maxWidth: .infinity)
-                .background(Color.primary.opacity(0.10), in: RoundedRectangle(cornerRadius: 13))
+                .cardSurface()
             }
         }
     }
@@ -1377,6 +1387,7 @@ struct PopoverView: View {
             .accessibilityHint(expanded ? "Collapses the \(title) settings" : "Shows the \(title) settings")
             if expanded {
                 content()
+                    .disabled(!controller.connected)
                     .padding(.horizontal, 12)
                     // Clear of the header, so a still-highlighted header doesn't sit right on
                     // top of the controls it opened.
@@ -1420,14 +1431,23 @@ struct PopoverView: View {
         .padding(.vertical, 2)
     }
 
+    /// Saved remaps do nothing without Accessibility access and the event tap, so the row
+    /// says so instead of counting them.
+    private var buttonsNeedAccess: Bool {
+        !remapper.remappingPermissionsGranted && !remapper.mappings.values.filter { $0 != .passthrough }.isEmpty
+    }
+
     private var buttonsSummary: String {
+        if buttonsNeedAccess { return "Needs access" }
         // Resetting a button to "None (default)" stores `.passthrough` rather than removing it.
         let count = remapper.mappings.values.filter { $0 != .passthrough }.count
         return count == 0 ? "" : "\(count) remapped"
     }
 
     private var profilesSummary: String {
-        if controller.profileApplyFailed { return "Couldn't apply" }
+        // A failed apply turns this red (see the row) rather than replacing it, so the row
+        // still says which profile is actually active; the error text is in the expanded
+        // section.
         if controller.profiles.isEmpty { return "None saved" }
         return controller.profiles.first { $0.id == controller.activeProfileID }?.name ?? "None active"
     }

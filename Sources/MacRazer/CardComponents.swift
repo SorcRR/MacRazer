@@ -9,7 +9,15 @@ func card<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
     content()
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.primary.opacity(0.10), in: RoundedRectangle(cornerRadius: 13))
+        .cardSurface()
+}
+
+extension View {
+    /// The card's fill and shape without its padding, for cards that lay out their own insets
+    /// (the popover's expandable section rows).
+    func cardSurface() -> some View {
+        background(Color.primary.opacity(0.10), in: RoundedRectangle(cornerRadius: 13))
+    }
 }
 
 /// A card with a small uppercase heading — the window-sized counterpart to `card`, shared by
