@@ -21,8 +21,8 @@ final class DeviceTestWindowController: NSObject, AppWindowPresenter, NSWindowDe
             let w = NSWindow(contentViewController: hosting)
             w.styleMask = [.titled, .closable]
             w.isReleasedWhenClosed = false
-            // Match the popover's forced-dark look, like the app's other windows.
-            w.appearance = NSAppearance(named: .darkAqua)
+            // Themed like the popover per Settings › Appearance, kept up to date when it changes.
+            AppearanceSettings.shared.track(w)
             w.delegate = self
             w.center()
             window = w

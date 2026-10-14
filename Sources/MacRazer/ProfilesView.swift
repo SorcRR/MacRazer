@@ -82,7 +82,7 @@ struct ProfilesView: View {
                 Circle().fill(active ? Color.razerGreen : Color.primary.opacity(0.10))
                 if active {
                     Image(systemName: "checkmark").font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(Color.onRazerGreen)
                 }
             }
             .frame(width: 20, height: 20)

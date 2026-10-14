@@ -10,14 +10,28 @@ private struct HeightKey: PreferenceKey {
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
 }
 
+/// A colour with one value for light surfaces and one for dark, picked by whatever the view is
+/// drawn in. The popover and windows can be either, depending on Settings › Appearance.
+private func adaptive(light: NSColor, dark: NSColor) -> Color {
+    Color(nsColor: NSColor(name: nil) { $0.isDark ? dark : light })
+}
+
 extension Color {
-    /// Razer brand green (#44D62C) — the single accent. Budget: logo, slider, active chip/segment.
-    static let razerGreen = Color(red: 0x44 / 255, green: 0xD6 / 255, blue: 0x2C / 255)
-    /// A brighter, more vivid green for the logo so it really pops on the dark background.
-    static let razerGreenBright = Color(red: 0.42, green: 1.0, blue: 0.25)
-    /// The Bluetooth chip's colour. System blue is too dark to read on the popover's dark
-    /// background.
-    static let bluetoothBlue = Color(red: 0.47, green: 0.72, blue: 1.0)
+    /// Razer brand green (#44D62C) — the single accent, as a fill: slider, active chip/segment,
+    /// switches. The same in light and dark. For green text or icons use `razerGreenText`.
+    static let razerGreen = Color(nsColor: NSColor(hex: 0x44D62C))
+    /// Green for text and icons. The brand green is too light to read on a light background,
+    /// so light surfaces get a darker green (#23891A).
+    static let razerGreenText = adaptive(light: NSColor(hex: 0x23891A), dark: NSColor(hex: 0x44D62C))
+    /// Text and icons drawn on a `razerGreen` fill. Dark in every theme: white on #44D62C is
+    /// only about 1.9:1 contrast.
+    static let onRazerGreen = Color(nsColor: NSColor(hex: 0x0D2B07))
+    /// The logo's green: brighter than the brand green so it pops on dark, and the darker
+    /// text green on light, where a bright green washes out.
+    static let razerGreenBright = adaptive(light: NSColor(hex: 0x23891A), dark: NSColor(hex: 0x6BFF40))
+    /// The Bluetooth chip's colour. System blue is too dark to read on a dark background,
+    /// and this lighter blue too pale on a light one.
+    static let bluetoothBlue = adaptive(light: NSColor(hex: 0x0A64D6), dark: NSColor(hex: 0x78B8FF))
     // Battery *state* uses Apple system colors (meaning), never the brand green.
     static let batteryFull = Color(red: 0x34 / 255, green: 0xC7 / 255, blue: 0x59 / 255)
     static let batteryMid = Color(red: 0xFF / 255, green: 0x9F / 255, blue: 0x0A / 255)
@@ -29,6 +43,10 @@ struct PopoverView: View {
     @ObservedObject var remapper: ButtonRemapper
     @ObservedObject var updateChecker: UpdateChecker
     @ObservedObject var launchAtLogin: LaunchAtLogin
+    /// Settings › Appearance; only the Razer Green glass edge is drawn here. The rest is the
+    /// popover's appearance and backdrop, which the app delegate sets.
+    @ObservedObject var appearance: AppearanceSettings
+    @Environment(\.colorScheme) private var colorScheme
     /// Opening a window is the owner's job — the popover doesn't know about window controllers.
     /// Deliberately not defaulted: a no-op default would let a future call site forget the
     /// handler and ship a gear button that depresses and does nothing, with no compiler error.
@@ -88,6 +106,9 @@ struct PopoverView: View {
     /// Not the colour page: it's a fixed-size picker, centred, and would only gain empty space.
     private let subPageMinHeight: CGFloat = 560
     @State private var mainHeight: CGFloat = 0
+    /// The corner radius NSPopover gives its body, so the green edge sits on the outline.
+    /// Measured from a capture on macOS 26; the content view is exactly the body.
+    static let popoverCornerRadius: CGFloat = 10
 
     var body: some View {
         ZStack {
@@ -107,6 +128,15 @@ struct PopoverView: View {
         // main page's height instead of resizing once the transition finishes.
         .onPreferenceChange(HeightKey.self) { if $0 > 0 { mainHeight = $0 } }
         .animation(.easeInOut(duration: 0.26), value: page)
+        .overlay {
+            if appearance.look(systemIsDark: colorScheme == .dark).hasGreenEdge {
+                // Follows the body's rounded outline; the arrow above it has no edge.
+                RoundedRectangle(cornerRadius: Self.popoverCornerRadius)
+                    .strokeBorder(Color.razerGreen.opacity(0.45), lineWidth: 1)
+                    .ignoresSafeArea()
+                    .allowsHitTesting(false)
+            }
+        }
         // Closing the popover resets navigation: reopening onto a stale sub-page (whose
         // gating card may have been disabled in the meantime — e.g. Profiles after a
         // disconnect) is disorienting.
@@ -278,7 +308,7 @@ struct PopoverView: View {
                             .font(.system(size: 11, weight: .medium))
                     }
                     .buttonStyle(.borderless)
-                    .foregroundStyle(Color.razerGreen)
+                    .foregroundStyle(Color.razerGreenText)
                 } else {
                     Button {
                         controller.refreshAll()
@@ -356,7 +386,7 @@ struct PopoverView: View {
                                 Image(systemName: "arrow.right").font(.system(size: 9, weight: .semibold))
                             }
                             .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(Color.razerGreen)
+                            .foregroundStyle(Color.razerGreenText)
                         }
                         .buttonStyle(.plain)
                     }
@@ -414,7 +444,7 @@ struct PopoverView: View {
     private struct ConnectionChip {
         let symbol: String
         let label: String
-        var tint: Color = .razerGreen
+        var tint: Color = .razerGreenText
         var fillOpacity: Double = 0.15
     }
 
@@ -493,7 +523,7 @@ struct PopoverView: View {
                 Button("Manage Profiles…") { page = .profiles }
                     .buttonStyle(.plain)
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(Color.razerGreen)
+                    .foregroundStyle(Color.razerGreenText)
             }
         }
     }
@@ -512,7 +542,7 @@ struct PopoverView: View {
         }
         .buttonStyle(.plain)
         .font(.system(size: 10.5, weight: active ? .semibold : .regular))
-        .foregroundStyle(active ? .white : .secondary)
+        .foregroundStyle(active ? Color.onRazerGreen : Color.secondary)
         .frame(height: 24)
         .background(active ? Color.razerGreen : Color.primary.opacity(0.08), in: Capsule())
         .hoverHighlight(Capsule())
@@ -537,7 +567,7 @@ struct PopoverView: View {
             Image(systemName: "plus").font(.system(size: 10.5, weight: .semibold))
         }
         .buttonStyle(.plain)
-        .foregroundStyle(Color.razerGreen)
+        .foregroundStyle(Color.razerGreenText)
         .frame(width: 24, height: 24)
         .background(Color.razerGreen.opacity(0.12), in: Circle())
         .overlay(Circle().stroke(Color.razerGreen.opacity(0.55), lineWidth: 1))
@@ -579,7 +609,7 @@ struct PopoverView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 8) {
                 Image(systemName: "arrow.down.circle.fill")
-                    .foregroundStyle(Color.razerGreen)
+                    .foregroundStyle(Color.razerGreenText)
                     .font(.system(size: 14, weight: .semibold))
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Update available").font(.system(size: 12, weight: .semibold))
@@ -616,7 +646,7 @@ struct PopoverView: View {
                         Spacer(minLength: 0)
                         Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold))
                     }
-                    .foregroundStyle(Color.razerGreen)
+                    .foregroundStyle(Color.razerGreenText)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -636,7 +666,7 @@ struct PopoverView: View {
                 }
                 .buttonStyle(.plain)
                 .font(.system(size: 11))
-                .foregroundStyle(Color.razerGreen)
+                .foregroundStyle(Color.razerGreenText)
             }
         }
         .padding(12)
@@ -701,7 +731,7 @@ struct PopoverView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 8) {
                 Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(Color.razerGreen)
+                    .foregroundStyle(Color.razerGreenText)
                     .font(.system(size: 14, weight: .semibold))
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Updated to \(appVersion)").font(.system(size: 12, weight: .semibold))
@@ -728,7 +758,7 @@ struct PopoverView: View {
                         Spacer(minLength: 0)
                         Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold))
                     }
-                    .foregroundStyle(Color.razerGreen)
+                    .foregroundStyle(Color.razerGreenText)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -826,7 +856,7 @@ struct PopoverView: View {
                         .font(.system(size: 11, weight: .medium))
                 }
                 .buttonStyle(.borderless)
-                .foregroundStyle(Color.razerGreen)
+                .foregroundStyle(Color.razerGreenText)
             }
         }
         }
@@ -992,7 +1022,7 @@ struct PopoverView: View {
         }
         .buttonStyle(.plain)
         .font(.system(size: 10.5, weight: active ? .semibold : .regular).monospacedDigit())
-        .foregroundStyle(active ? .white : .secondary)
+        .foregroundStyle(active ? Color.onRazerGreen : Color.secondary)
         .frame(maxWidth: .infinity)
         .frame(height: 24)
         .background(active ? Color.razerGreen : Color.primary.opacity(0.08),
@@ -1057,7 +1087,7 @@ struct PopoverView: View {
                     }
                     .buttonStyle(.plain)
                     .font(.system(size: 9.5, weight: Int(sleepTimeoutValue) == value ? .semibold : .regular).monospacedDigit())
-                    .foregroundStyle(Int(sleepTimeoutValue) == value ? .white : .secondary)
+                    .foregroundStyle(Int(sleepTimeoutValue) == value ? Color.onRazerGreen : Color.secondary)
                     .frame(maxWidth: .infinity).frame(height: 23)
                     .background(Int(sleepTimeoutValue) == value ? Color.razerGreen : Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
                     .hoverHighlight(RoundedRectangle(cornerRadius: 6))
@@ -1103,7 +1133,7 @@ struct PopoverView: View {
         }
         .buttonStyle(.plain)
         .font(.system(size: 10.5, weight: active ? .semibold : .regular).monospacedDigit())
-        .foregroundStyle(active ? .white : Color.razerGreen)
+        .foregroundStyle(active ? Color.onRazerGreen : Color.razerGreenText)
         .frame(maxWidth: .infinity)
         .frame(height: 24)
         .background(active ? Color.razerGreen : Color.razerGreen.opacity(0.12),
@@ -1353,7 +1383,7 @@ struct PopoverView: View {
                         }
                     case .buttons:
                         Button { page = .buttons } label: {
-                            groupRowLabel(title: "Buttons", symbol: "keyboard", tint: .razerGreen,
+                            groupRowLabel(title: "Buttons", symbol: "keyboard", tint: .razerGreenText,
                                           value: buttonsSummary,
                                           valueColor: buttonsNeedAccess ? .batteryMid : .secondary,
                                           expanded: false)
@@ -1463,7 +1493,7 @@ struct PopoverView: View {
                     // Nothing at rest marks it as a link — the footer should stay quiet — so
                     // hover has to carry the whole affordance: colour and underline together,
                     // since colour alone is easy to miss at 11pt in tertiary grey.
-                    .foregroundStyle(versionHovered ? AnyShapeStyle(Color.razerGreen) : AnyShapeStyle(.tertiary))
+                    .foregroundStyle(versionHovered ? AnyShapeStyle(Color.razerGreenText) : AnyShapeStyle(.tertiary))
                     .underline(versionHovered)
             }
             .buttonStyle(.plain)
@@ -1476,7 +1506,7 @@ struct PopoverView: View {
                     .font(.system(size: 12.5))
                     // Same hover treatment as the version link beside it — a footer this
                     // quiet needs the cue, and two different ones would be noise.
-                    .foregroundStyle(gearHovered ? AnyShapeStyle(Color.razerGreen) : AnyShapeStyle(.secondary))
+                    .foregroundStyle(gearHovered ? AnyShapeStyle(Color.razerGreenText) : AnyShapeStyle(.secondary))
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)

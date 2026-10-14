@@ -60,8 +60,8 @@ final class CrashReportWindowController: NSObject, AppWindowPresenter, NSWindowD
             w.title = "MacRazer Crash Report"
             w.styleMask = [.titled, .closable]
             w.isReleasedWhenClosed = false
-            // Match the other windows: the green accent needs a dark ground.
-            w.appearance = NSAppearance(named: .darkAqua)
+            // Themed like the popover per Settings › Appearance, kept up to date when it changes.
+            AppearanceSettings.shared.track(w)
             w.delegate = self
             w.center()
             window = w

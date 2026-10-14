@@ -49,7 +49,7 @@ struct ColorPickerPage: View {
                 Text("Colour").font(.system(size: 16, weight: .semibold))
                 Spacer()
                 Circle().fill(color).frame(width: 22, height: 22)
-                    .overlay(Circle().strokeBorder(.white.opacity(0.35), lineWidth: 1))
+                    .overlay(Circle().strokeBorder(Color.primary.opacity(0.25), lineWidth: 1))
             }
             wheel
             HStack(spacing: 8) {
@@ -76,7 +76,7 @@ struct ColorPickerPage: View {
                         gradient: Gradient(colors: [.white, .white.opacity(0)]),
                         center: .center, startRadius: 0, endRadius: r)))
                     .overlay(Circle().fill(.black.opacity(1 - bri)))
-                    .overlay(Circle().strokeBorder(.white.opacity(0.15), lineWidth: 1))
+                    .overlay(Circle().strokeBorder(Color.primary.opacity(0.15), lineWidth: 1))
                     .frame(width: side, height: side)
                 Circle().stroke(.white, lineWidth: 2)
                     .frame(width: 15, height: 15)

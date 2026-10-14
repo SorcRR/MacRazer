@@ -71,7 +71,7 @@ struct UpdatedView: View {
         } else {
             Link("Read the release notes on GitHub", destination: ProjectLinks.latestRelease)
                 .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(Color.razerGreen)
+                .foregroundStyle(Color.razerGreenText)
         }
     }
 }

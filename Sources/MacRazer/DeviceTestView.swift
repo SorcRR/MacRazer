@@ -53,7 +53,7 @@ struct DeviceTestView: View {
     private var intro: some View {
         VStack(alignment: .leading, spacing: 12) {
             if model.isKnownSupported {
-                tag("Fully supported", color: .razerGreen)
+                tag("Fully supported", color: .razerGreenText)
                 title("Your \(model.deviceName) is already supported")
                 note("The test checks it really works on your mouse and firmware. Reports like this keep the supported list honest, and catch it early if a firmware update breaks something.")
             } else {
@@ -165,7 +165,7 @@ struct DeviceTestView: View {
                     VStack(spacing: 4) {
                         row("Yours", record.data?.original.map(String.init) ?? "No answer")
                         row("Test, read back", "\(record.data?.test.map(String.init) ?? "–"), \(record.data?.readBack.map(String.init) ?? "–")")
-                        row("Put back", record.data?.restored == true ? "Yes" : "No", color: record.data?.restored == true ? .razerGreen : .batteryMid)
+                        row("Put back", record.data?.restored == true ? "Yes" : "No", color: record.data?.restored == true ? .razerGreenText : .batteryMid)
                         if let stages = record.data?.stages { row("Stages", stages.map(String.init).joined(separator: " · ")) }
                         if let max = record.data?.maxProbe { row("Highest it kept", String(max)) }
                     }
@@ -195,7 +195,7 @@ struct DeviceTestView: View {
                     VStack(spacing: 4) {
                         row("Yours", record.data?.original.map { "\($0) Hz" } ?? "No answer")
                         row("Test, read back", "\(record.data?.test.map { "\($0) Hz" } ?? "–"), \(record.data?.readBack.map { "\($0) Hz" } ?? "–")")
-                        row("Put back", record.data?.restored == true ? "Yes" : "No", color: record.data?.restored == true ? .razerGreen : .batteryMid)
+                        row("Put back", record.data?.restored == true ? "Yes" : "No", color: record.data?.restored == true ? .razerGreenText : .batteryMid)
                     }
                 }
                 outcomeRow("Polling rate", record.outcome)
@@ -257,7 +257,7 @@ struct DeviceTestView: View {
                 card {
                     VStack(spacing: 4) {
                         row(report.device.name, String(format: "0x%04X", report.device.productID) + (report.identify.data?.firmware.map { ", \($0)" } ?? ""))
-                        if !verdict.passed.isEmpty { row("Worked", verdict.passed.joined(separator: ", "), color: .razerGreen) }
+                        if !verdict.passed.isEmpty { row("Worked", verdict.passed.joined(separator: ", "), color: .razerGreenText) }
                         if !verdict.failed.isEmpty { row("Didn't work", verdict.failed.joined(separator: ", "), color: .batteryMid) }
                         if !verdict.notSupported.isEmpty { row("Not on this mouse", verdict.notSupported.joined(separator: ", ")) }
                         if !verdict.skipped.isEmpty { row("Skipped", verdict.skipped.joined(separator: ", ")) }
@@ -284,6 +284,10 @@ struct DeviceTestView: View {
                                          set: { model.comment = String($0.prefix(DeviceReportOutput.maxComment)) }))
                     .font(.system(size: 12))
                     .frame(height: 54)
+                    // The editor's own opaque background would sit as a flat box on a glass or tinted
+                    // window; a faint fill like the cards keeps it readable on all of them.
+                    .scrollContentBackground(.hidden)
+                    .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 6))
                     .overlay(alignment: .topLeading) {
                         if model.comment.isEmpty {
                             Text("Comments or feedback (optional)").font(.system(size: 12)).foregroundStyle(.tertiary)
@@ -366,7 +370,7 @@ struct DeviceTestView: View {
     private func stepTitle(_ text: String, changes: Bool) -> some View {
         HStack(spacing: 8) {
             title(text)
-            tag(changes ? "Changes, then puts back" : "Reads only", color: changes ? .batteryMid : .razerGreen)
+            tag(changes ? "Changes, then puts back" : "Reads only", color: changes ? .batteryMid : .razerGreenText)
         }
     }
 
@@ -403,7 +407,7 @@ struct DeviceTestView: View {
     private func outcomeRow(_ label: String, _ outcome: DeviceReport.Outcome) -> some View {
         let (text, color): (String, Color) = {
             switch outcome {
-            case .passed: return ("Works", .razerGreen)
+            case .passed: return ("Works", .razerGreenText)
             case .failed: return ("Didn't work", .batteryMid)
             case .notSupported: return ("Not on this mouse", .secondary)
             case .skipped: return ("Skipped", .secondary)

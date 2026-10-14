@@ -7,6 +7,12 @@ expect rough edges until 1.0.
 ## [Unreleased]
 
 ### Changed
+- **The popover follows your Mac's light or dark mode.** It used to be dark all the time. On a
+  light Mac it is now light glass, with a darker green for text so it stays readable. Settings,
+  About and the other windows follow too, with the same glass or solid background. Selected chips now use dark text on the green
+  instead of white, which was hard to read. If you liked it dark, pick Dark in Settings ›
+  Appearance.
+
 - **The popover is shorter: settings below DPI collapse.** Polling rate, Lighting, Power
   Management, Buttons and Profiles are now compact cards of one row each, each showing
   its current value ("1000 Hz", "Static · 80%", the active profile). Click a row to open its
@@ -39,6 +45,12 @@ expect rough edges until 1.0.
  it reads the answers, using a fake mouse instead of hardware.
 
 ### Added
+- **Settings › Appearance.** Choose the theme for the popover and the app's windows: System
+  (the default), Dark, Light or Razer Green, a dark look with a faint green tint. The popover
+  also gets a thin green edge. Turn off "Glass effect"
+  for a solid background instead of the see-through one. It's easier to read over busy windows.
+  Changes apply straight away, even with the popover open.
+
 - **The Cobra HyperSpeed works over Bluetooth.** Battery, DPI, brightness and lighting
  colour all work with the mouse in Bluetooth mode, so you no longer need the dongle or a
  cable. The battery history carries over too, because the mouse reports the same serial on
