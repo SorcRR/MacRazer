@@ -59,16 +59,11 @@ enum PopoverLook: Equatable, CaseIterable {
     var backdropColor: NSColor? {
         switch self {
         case .lightGlass, .darkGlass: return nil
-        case .greenGlass: return Self.srgb(0x103A14, alpha: 0.35)
-        case .solidLight: return Self.srgb(0xF5F5F7)
-        case .solidDark: return Self.srgb(0x1C1C1E)
-        case .solidGreen: return Self.srgb(0x0F1A11)
+        case .greenGlass: return NSColor(hex: 0x103A14, alpha: 0.35)
+        case .solidLight: return NSColor(hex: 0xF5F5F7)
+        case .solidDark: return NSColor(hex: 0x1C1C1E)
+        case .solidGreen: return NSColor(hex: 0x0F1A11)
         }
-    }
-
-    private static func srgb(_ hex: UInt32, alpha: CGFloat = 1) -> NSColor {
-        NSColor(srgbRed: CGFloat((hex >> 16) & 0xFF) / 255, green: CGFloat((hex >> 8) & 0xFF) / 255,
-                blue: CGFloat(hex & 0xFF) / 255, alpha: alpha)
     }
 
     var appearanceName: NSAppearance.Name { isDark ? .darkAqua : .aqua }
@@ -179,6 +174,14 @@ enum WindowBackdrop {
         frameView.addSubview(glass, positioned: .below, relativeTo: content)
         frameView.addSubview(tint, positioned: .below, relativeTo: content)
         return (glass, tint)
+    }
+}
+
+extension NSColor {
+    /// An sRGB colour from `0xRRGGBB`, the way the mockups and the docs write them.
+    convenience init(hex: UInt32, alpha: CGFloat = 1) {
+        self.init(srgbRed: CGFloat((hex >> 16) & 0xFF) / 255, green: CGFloat((hex >> 8) & 0xFF) / 255,
+                  blue: CGFloat(hex & 0xFF) / 255, alpha: alpha)
     }
 }
 

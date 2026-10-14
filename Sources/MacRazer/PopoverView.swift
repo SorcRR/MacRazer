@@ -16,27 +16,22 @@ private func adaptive(light: NSColor, dark: NSColor) -> Color {
     Color(nsColor: NSColor(name: nil) { $0.isDark ? dark : light })
 }
 
-private func srgbHex(_ hex: UInt32) -> NSColor {
-    NSColor(srgbRed: CGFloat((hex >> 16) & 0xFF) / 255, green: CGFloat((hex >> 8) & 0xFF) / 255,
-            blue: CGFloat(hex & 0xFF) / 255, alpha: 1)
-}
-
 extension Color {
     /// Razer brand green (#44D62C) — the single accent, as a fill: slider, active chip/segment,
     /// switches. The same in light and dark. For green text or icons use `razerGreenText`.
-    static let razerGreen = Color(nsColor: srgbHex(0x44D62C))
+    static let razerGreen = Color(nsColor: NSColor(hex: 0x44D62C))
     /// Green for text and icons. The brand green is too light to read on a light background,
     /// so light surfaces get a darker green (#23891A).
-    static let razerGreenText = adaptive(light: srgbHex(0x23891A), dark: srgbHex(0x44D62C))
+    static let razerGreenText = adaptive(light: NSColor(hex: 0x23891A), dark: NSColor(hex: 0x44D62C))
     /// Text and icons drawn on a `razerGreen` fill. Dark in every theme: white on #44D62C is
     /// only about 1.9:1 contrast.
-    static let onRazerGreen = Color(nsColor: srgbHex(0x0D2B07))
+    static let onRazerGreen = Color(nsColor: NSColor(hex: 0x0D2B07))
     /// The logo's green: brighter than the brand green so it pops on dark, and the darker
     /// text green on light, where a bright green washes out.
-    static let razerGreenBright = adaptive(light: srgbHex(0x23891A), dark: srgbHex(0x6BFF40))
+    static let razerGreenBright = adaptive(light: NSColor(hex: 0x23891A), dark: NSColor(hex: 0x6BFF40))
     /// The Bluetooth chip's colour. System blue is too dark to read on a dark background,
     /// and this lighter blue too pale on a light one.
-    static let bluetoothBlue = adaptive(light: srgbHex(0x0A64D6), dark: srgbHex(0x78B8FF))
+    static let bluetoothBlue = adaptive(light: NSColor(hex: 0x0A64D6), dark: NSColor(hex: 0x78B8FF))
     // Battery *state* uses Apple system colors (meaning), never the brand green.
     static let batteryFull = Color(red: 0x34 / 255, green: 0xC7 / 255, blue: 0x59 / 255)
     static let batteryMid = Color(red: 0xFF / 255, green: 0x9F / 255, blue: 0x0A / 255)
