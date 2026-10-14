@@ -284,6 +284,10 @@ struct DeviceTestView: View {
                                          set: { model.comment = String($0.prefix(DeviceReportOutput.maxComment)) }))
                     .font(.system(size: 12))
                     .frame(height: 54)
+                    // The editor's own opaque background would sit as a flat box on a glass or tinted
+                    // window; a faint fill like the cards keeps it readable on all of them.
+                    .scrollContentBackground(.hidden)
+                    .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 6))
                     .overlay(alignment: .topLeading) {
                         if model.comment.isEmpty {
                             Text("Comments or feedback (optional)").font(.system(size: 12)).foregroundStyle(.tertiary)

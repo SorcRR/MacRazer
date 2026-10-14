@@ -49,13 +49,6 @@ final class PopoverThemeTests: XCTestCase {
         XCTAssertTrue(PopoverLook.solidGreen.isDark)
     }
 
-    func testWindowsFollowOnlyLightOrDark() {
-        XCTAssertNil(PopoverTheme.system.windowAppearanceName)
-        XCTAssertEqual(PopoverTheme.dark.windowAppearanceName, .darkAqua)
-        XCTAssertEqual(PopoverTheme.light.windowAppearanceName, .aqua)
-        XCTAssertEqual(PopoverTheme.razerGreen.windowAppearanceName, .darkAqua)
-    }
-
     @MainActor
     func testSettingsDefaultAndPersist() throws {
         let suite = "PopoverThemeTests.\(UUID().uuidString)"
@@ -85,21 +78,38 @@ final class PopoverThemeTests: XCTestCase {
     }
 
     @MainActor
-    func testTrackedWindowsFollowTheTheme() throws {
+    func testTrackedWindowsGetTheFullLook() throws {
         let suite = "PopoverThemeTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
 
         let settings = AppearanceSettings(defaults: defaults)
-        settings.theme = .light
-        let window = NSWindow(contentRect: .zero, styleMask: [.titled], backing: .buffered, defer: true)
+        settings.applyToWindows(.solidLight)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 200, height: 100),
+                              styleMask: [.titled], backing: .buffered, defer: true)
         window.isReleasedWhenClosed = false
+        window.contentView = NSView()
+        // A window opened later takes the look the others already have.
         settings.track(window)
         XCTAssertEqual(window.appearance?.name, .aqua)
+        XCTAssertTrue(window.isOpaque)
+        XCTAssertEqual(window.backgroundColor, PopoverLook.solidLight.backdropColor)
 
-        settings.applyToWindows(theme: .razerGreen)
+        settings.applyToWindows(.greenGlass)
         XCTAssertEqual(window.appearance?.name, .darkAqua)
-        settings.applyToWindows(theme: .system)
-        XCTAssertNil(window.appearance)
+        XCTAssertFalse(window.isOpaque)
+        XCTAssertEqual(window.backgroundColor, .clear)
+        let frameView = try XCTUnwrap(window.contentView?.superview)
+        let glass = try XCTUnwrap(frameView.subviews.compactMap { $0 as? NSVisualEffectView }.first)
+        XCTAssertFalse(glass.isHidden)
+        let tint = try XCTUnwrap(frameView.subviews.compactMap { $0 as? PopoverBackdropView }.first)
+        XCTAssertEqual(tint.fill, PopoverLook.greenGlass.backdropColor)
+
+        // Applying again reuses the same views rather than stacking new ones.
+        settings.applyToWindows(.solidDark)
+        XCTAssertEqual(frameView.subviews.compactMap { $0 as? NSVisualEffectView }.count, 1)
+        XCTAssertTrue(glass.isHidden)
+        XCTAssertNil(tint.fill)
+        XCTAssertEqual(window.backgroundColor, PopoverLook.solidDark.backdropColor)
     }
 }

@@ -136,7 +136,7 @@ struct SettingsView: View {
     private var glassRow: some View {
         settingRow(
             title: "Glass effect",
-            detail: "The popover lets the desktop show through. Turn it off for a solid "
+            detail: "The popover and windows let the desktop show through. Turn it off for a solid "
                 + "background, which is easier to read over busy windows.",
             isOn: $appearance.glass
         )
