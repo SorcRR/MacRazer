@@ -112,8 +112,7 @@ struct CrashReportView: View {
                     if model.state == .sending { ProgressView().controlSize(.small) } else { Text("Send Report") }
                 }
                 .keyboardShortcut(.defaultAction)
-                .buttonStyle(.borderedProminent)
-                .tint(.razerGreen)
+                .buttonStyle(RazerProminentButtonStyle())
                 .disabled(!model.canSend)
             }
         }

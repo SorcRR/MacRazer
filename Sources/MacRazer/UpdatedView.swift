@@ -23,8 +23,7 @@ struct UpdatedView: View {
                 Spacer()
                 Button("Done", action: onDone)
                     .keyboardShortcut(.defaultAction)
-                    .buttonStyle(.borderedProminent)
-                    .tint(.razerGreen)
+                    .buttonStyle(RazerProminentButtonStyle())
             }
         }
         .padding(22)

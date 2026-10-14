@@ -590,8 +590,7 @@ struct PopoverView: View {
                 .padding(.horizontal, 8).padding(.vertical, 4)
                 .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
             Button("Save", action: saveNewProfile)
-                .buttonStyle(.borderedProminent)
-                .tint(.razerGreen)
+                .buttonStyle(RazerProminentButtonStyle())
                 .controlSize(.small)
                 .disabled(newProfileName.trimmingCharacters(in: .whitespaces).isEmpty)
             Button("Cancel") { isAddingProfile = false }
@@ -694,8 +693,7 @@ struct PopoverView: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 5)
         }
-        .buttonStyle(.borderedProminent)
-        .tint(.razerGreen)
+        .buttonStyle(RazerProminentButtonStyle())
         .controlSize(.small)
     }
 
@@ -792,8 +790,7 @@ struct PopoverView: View {
                 .font(.system(size: 11)).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             Button("Quit MacRazer") { NSApplication.shared.terminate(nil) }
-                .buttonStyle(.borderedProminent)
-                .tint(.razerGreen)
+                .buttonStyle(RazerProminentButtonStyle())
                 .controlSize(.small)
                 .font(.system(size: 11.5, weight: .medium))
         }

@@ -54,8 +54,7 @@ struct WhatsNewPage: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 5)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.razerGreen)
+                .buttonStyle(RazerProminentButtonStyle())
                 .controlSize(.small)
                 .padding(12)
             }

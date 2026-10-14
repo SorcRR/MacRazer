@@ -190,8 +190,7 @@ struct SettingsView: View {
                     Task { await updateChecker.downloadAndInstall() }
                 }
                 .controlSize(.small)
-                .buttonStyle(.borderedProminent)
-                .tint(.razerGreen)
+                .buttonStyle(RazerProminentButtonStyle())
             }
             Button {
                 Task { await updateChecker.checkForUpdatesNow(userRequested: true) }

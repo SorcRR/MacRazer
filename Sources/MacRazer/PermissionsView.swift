@@ -89,7 +89,7 @@ struct PermissionsView: View {
                         Text("Grant…").font(.system(size: 12, weight: .medium))
                             .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.borderedProminent).tint(.razerGreen)
+                    .buttonStyle(RazerProminentButtonStyle())
                     Button("Open Settings", action: openSettings)
                         .buttonStyle(.bordered)
                         .font(.system(size: 12))
@@ -129,7 +129,7 @@ struct PermissionsView: View {
             Spacer(minLength: 6)
             VStack(alignment: .trailing, spacing: 4) {
                 Button("Relaunch") { model.relaunch() }
-                    .buttonStyle(.borderedProminent).tint(.razerGreen)
+                    .buttonStyle(RazerProminentButtonStyle())
                     .font(.system(size: 12, weight: .medium))
                 if model.relaunchFailed {
                     Text("Couldn't relaunch. Quit and reopen MacRazer yourself.")
@@ -193,8 +193,7 @@ struct PermissionsView: View {
             }
             Spacer()
             Button(model.allRequiredGranted ? "Done" : "Close") { onDone?() }
-                .buttonStyle(.borderedProminent)
-                .tint(model.allRequiredGranted ? .razerGreen : .gray)
+                .buttonStyle(RazerProminentButtonStyle(prominent: model.allRequiredGranted))
                 .font(.system(size: 12, weight: .medium))
         }
     }

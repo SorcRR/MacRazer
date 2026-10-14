@@ -71,6 +71,47 @@ extension View {
     func hoverHighlight<S: Shape>(_ shape: S) -> some View { modifier(HoverHighlight(shape: shape)) }
 }
 
+/// The app's primary-action button: a Razer-green rounded rect with dark text, in place of
+/// `.borderedProminent.tint(.razerGreen)`. That draws the system's white label on the green,
+/// about 1.9:1 contrast, and macOS gives no way to recolour it; this matches the selected
+/// chips' `onRazerGreen` instead. Sized off the control size (regular or small), dimmed when
+/// disabled, darkened while pressed. `keyboardShortcut(.defaultAction)` still works on it.
+///
+/// `prominent: false` is the same shape in a neutral fill, for a button that is only the
+/// default action some of the time (the Permissions window's Close / Done).
+struct RazerProminentButtonStyle: ButtonStyle {
+    var prominent = true
+
+    func makeBody(configuration: Configuration) -> some View {
+        StyledButton(configuration: configuration, prominent: prominent)
+    }
+
+    // A view rather than inline in `makeBody`, so it can read the control size, enabled state
+    // and font from the environment. A font the caller set wins; otherwise the system's
+    // button size for the control size.
+    private struct StyledButton: View {
+        let configuration: Configuration
+        let prominent: Bool
+        @Environment(\.controlSize) private var controlSize
+        @Environment(\.isEnabled) private var isEnabled
+        @Environment(\.font) private var font
+
+        var body: some View {
+            let small = controlSize == .small || controlSize == .mini
+            let shape = RoundedRectangle(cornerRadius: small ? 5 : 6, style: .continuous)
+            configuration.label
+                .font(font ?? .system(size: small ? 11 : 13))
+                .foregroundStyle(prominent ? Color.onRazerGreen : Color.primary)
+                .padding(.horizontal, small ? 8 : 10)
+                .padding(.vertical, small ? 2 : 3)
+                .background(prominent ? Color.razerGreen : Color.primary.opacity(0.12), in: shape)
+                .overlay(shape.fill(Color.black.opacity(configuration.isPressed ? 0.18 : 0)))
+                .opacity(isEnabled ? 1 : 0.45)
+                .contentShape(shape)
+        }
+    }
+}
+
 /// Small secondary-styled section heading used inside cards.
 func sectionLabel(_ text: String, _ symbol: String) -> some View {
     Label(text, systemImage: symbol)
