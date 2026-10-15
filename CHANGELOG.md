@@ -103,6 +103,10 @@ expect rough edges until 1.0.
  news isn't repeated. After an automatic install it comes to the front without taking your
  keyboard focus.
 
+### Fixed
+- **The add-profile plus button works anywhere in its circle.** Only the plus sign itself took
+  the click. The rest of the circle did nothing.
+
 ## [0.5.0] — 2026-09-23
 
 ### Changed
