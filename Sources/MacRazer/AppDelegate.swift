@@ -16,14 +16,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     private let controller = MouseController()
     private var cancellables = Set<AnyCancellable>()
     private var monitor: HIDMonitor?
+    private var bluetoothMonitor: HIDMonitor?
     private let remapper = ButtonRemapper()
-    private lazy var remapWindow = RemapWindowController(remapper: remapper)
+    private lazy var remapWindow = RemapWindowController(remapper: remapper, controller: controller)
     private lazy var permissions = PermissionsModel(remapper: remapper, controller: controller)
     private lazy var permissionsWindow = PermissionsWindowController(model: permissions, controller: controller)
     private lazy var deviceTestWindow = DeviceTestWindowController(
         model: DeviceTestModel(controller: controller, permissions: permissions))
     private let updateChecker = UpdateChecker()
     private let launchAtLogin = LaunchAtLogin()
+    private let appearance = AppearanceSettings.shared
+    /// The solid colour or green tint behind the popover; see `PopoverBackdropView`.
+    private let popoverBackdrop = PopoverBackdropView()
     private lazy var aboutWindow = AboutWindowController()
     /// Closing it re-asks the auto-install gate. This window opens unfocused after an
     /// automatic install and can sit unnoticed for days, and while it is open it holds back
@@ -31,6 +35,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     /// the popover next opened and closed.
     private lazy var updatedWindow = UpdatedWindowController(
         updateChecker: updateChecker,
+        onClosed: { [weak self] in self?.autoInstallIfEnabled() })
+    /// Closing it re-asks the auto-install gate, for the same reason as `updatedWindow`.
+    private lazy var crashReportWindow = CrashReportWindowController(
         onClosed: { [weak self] in self?.autoInstallIfEnabled() })
     private lazy var settingsWindow = SettingsWindowController(
         controller: controller, launchAtLogin: launchAtLogin, updateChecker: updateChecker,
@@ -99,13 +106,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         popover.behavior = .transient
         popover.delegate = self
         popover.animates = false // open immediately, no slide animation
-        // Force a dark popover regardless of system appearance — the Razer-green accent and
-        // logo have poor contrast on the light-mode grey material; dark is also the gaming
-        // aesthetic and makes the green pop.
-        popover.appearance = NSAppearance(named: .darkAqua)
+        // Light or dark, glass or solid, per Settings › Appearance. Re-applied whenever the
+        // setting changes or macOS switches between light and dark, including while the
+        // popover is open. The popover's appearance is always set explicitly, never left nil:
+        // a nil one would follow the menu bar, which macOS tints from the wallpaper rather
+        // than the system's light or dark mode.
+        Publishers.CombineLatest3(appearance.$theme, appearance.$glass,
+                                  NSApp.publisher(for: \.effectiveAppearance))
+            .sink { [weak self] theme, glass, system in
+                self?.applyAppearance(theme: theme, glass: glass, systemIsDark: system.isDark)
+            }
+            .store(in: &cancellables)
         let hosting = NSHostingController(rootView: PopoverView(
             controller: controller, remapper: remapper, updateChecker: updateChecker,
-            launchAtLogin: launchAtLogin,
+            launchAtLogin: launchAtLogin, appearance: appearance,
             onOpenSettings: { [weak self] in
                 // Close first: the popover is transient and would dismiss itself the moment
                 // the window takes focus, which looks like the click did two things.
@@ -189,7 +203,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
             }
         )
 
+        // A Basilisk on Bluetooth enumerates under Razer's BLE vendor id (0x068E), not the
+        // USB id above. An appearance starts recovery but keeps a healthy GATT session;
+        // only an observed removal invalidates it before the next probe.
+        bluetoothMonitor = HIDMonitor(
+            vendorId: BLEProtocol.vendorId,
+            onAppear: { pids in
+                guard pids.isEmpty || pids.contains(where: RazerDevices.bluetoothPIDs.contains) else { return }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                    ctrl.beginBluetoothWakeRecovery()
+                }
+            },
+            onRemove: { pids in
+                guard pids.contains(where: RazerDevices.bluetoothPIDs.contains) else { return }
+                DispatchQueue.main.async { ctrl.beginBluetoothWakeRecovery(discardBluetoothSession: true) }
+            }
+        )
+
         remapper.start()
+        remapper.observeDpiCycle(controller: controller)
 
         // Load the connected mouse's own button mappings when the device changes (per-unit key).
         controller.$deviceKey
@@ -235,6 +267,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         // they are doing something else.
         if updateChecker.justUpdatedTo != nil {
             updatedWindow.show(activating: !updateChecker.autoInstallEnabled)
+        }
+        // A crash since the last launch, offered once. Looked for again a little later
+        // because the crash most likely to be waiting is the one in the instance that just
+        // handed over to this one, during a relaunch: macOS writes its report a few seconds
+        // after this instance has already started.
+        crashReportWindow.offerNewCrash()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in
+            self?.crashReportWindow.offerNewCrash()
         }
         // Unthrottled: a launch is rare, and it is when someone who just installed or reopened
         // the app most expects it to know about the latest release.
@@ -337,6 +377,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
             windowsBeforePopover = Set(NSApp.windows.filter(\.isVisible).map(ObjectIdentifier.init))
             // Show first (instant), then kick off the refresh so the open never waits on IO.
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+            // The frame view the backdrop lives in only exists once the popover is shown.
+            installPopoverBackdrop()
             // Activate, not just make key. This app has no Dock icon, so clicking the menu bar
             // item does not make it the active application, and a control in an inactive app's
             // window does not respond to the first click the way it looks like it should. Every
@@ -468,7 +510,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         // The device test in particular: an install ends in a relaunch, and that must never
         // happen while a step has a test value on someone's mouse.
         let windows: [AppWindowPresenter] = [remapWindow, permissionsWindow, aboutWindow, settingsWindow,
-                                             updatedWindow, deviceTestWindow]
+                                             updatedWindow, deviceTestWindow, crashReportWindow]
         return windows.contains { $0.isVisible }
     }
 
@@ -479,6 +521,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     @objc private func openPermissions() { present(permissionsWindow) }
     @objc private func openDeviceTest() { present(deviceTestWindow) }
     @objc private func quit() { NSApplication.shared.terminate(nil) }
+
+    // MARK: - Appearance
+
+    private func applyAppearance(theme: PopoverTheme, glass: Bool, systemIsDark: Bool) {
+        let look = PopoverLook.resolve(theme: theme, glass: glass, systemIsDark: systemIsDark)
+        popover.appearance = NSAppearance(named: look.appearanceName)
+        popoverBackdrop.fill = look.backdropColor
+        appearance.applyToWindows(look)
+    }
+
+    /// Puts the backdrop into the popover's frame view, just under the content: above the
+    /// native material, so a solid colour hides it, and filling the arrow too. NSPopover
+    /// keeps its frame view between shows, so this only does work the first time.
+    private func installPopoverBackdrop() {
+        guard let content = popover.contentViewController?.view,
+              let frameView = content.superview,
+              popoverBackdrop.superview !== frameView else { return }
+        popoverBackdrop.frame = frameView.bounds
+        popoverBackdrop.autoresizingMask = [.width, .height]
+        frameView.addSubview(popoverBackdrop, positioned: .below, relativeTo: content)
+    }
 
     // MARK: - NSPopoverDelegate
 

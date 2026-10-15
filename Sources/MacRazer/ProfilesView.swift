@@ -51,7 +51,8 @@ struct ProfilesView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if let onBack { BackButton(action: onBack) }
+            // Esc cancels an in-progress rename (the field's onExitCommand), not the page.
+            if let onBack { BackButton(action: onBack, escapes: renamingID == nil) }
             VStack(alignment: .leading, spacing: 2) {
                 Text("Profiles").font(.system(size: 16, weight: .semibold))
                 Text("Saved DPI, lighting and button setups you can switch between.")
@@ -81,7 +82,7 @@ struct ProfilesView: View {
                 Circle().fill(active ? Color.razerGreen : Color.primary.opacity(0.10))
                 if active {
                     Image(systemName: "checkmark").font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(Color.onRazerGreen)
                 }
             }
             .frame(width: 20, height: 20)

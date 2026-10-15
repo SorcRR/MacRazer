@@ -53,7 +53,7 @@ struct DeviceTestView: View {
     private var intro: some View {
         VStack(alignment: .leading, spacing: 12) {
             if model.isKnownSupported {
-                tag("Fully supported", color: .razerGreen)
+                tag("Fully supported", color: .razerGreenText)
                 title("Your \(model.deviceName) is already supported")
                 note("The test checks it really works on your mouse and firmware. Reports like this keep the supported list honest, and catch it early if a firmware update breaks something.")
             } else {
@@ -165,7 +165,7 @@ struct DeviceTestView: View {
                     VStack(spacing: 4) {
                         row("Yours", record.data?.original.map(String.init) ?? "No answer")
                         row("Test, read back", "\(record.data?.test.map(String.init) ?? "–"), \(record.data?.readBack.map(String.init) ?? "–")")
-                        row("Put back", record.data?.restored == true ? "Yes" : "No", color: record.data?.restored == true ? .razerGreen : .batteryMid)
+                        row("Put back", record.data?.restored == true ? "Yes" : "No", color: record.data?.restored == true ? .razerGreenText : .batteryMid)
                         if let stages = record.data?.stages { row("Stages", stages.map(String.init).joined(separator: " · ")) }
                         if let max = record.data?.maxProbe { row("Highest it kept", String(max)) }
                     }
@@ -195,7 +195,7 @@ struct DeviceTestView: View {
                     VStack(spacing: 4) {
                         row("Yours", record.data?.original.map { "\($0) Hz" } ?? "No answer")
                         row("Test, read back", "\(record.data?.test.map { "\($0) Hz" } ?? "–"), \(record.data?.readBack.map { "\($0) Hz" } ?? "–")")
-                        row("Put back", record.data?.restored == true ? "Yes" : "No", color: record.data?.restored == true ? .razerGreen : .batteryMid)
+                        row("Put back", record.data?.restored == true ? "Yes" : "No", color: record.data?.restored == true ? .razerGreenText : .batteryMid)
                     }
                 }
                 outcomeRow("Polling rate", record.outcome)
@@ -277,7 +277,7 @@ struct DeviceTestView: View {
                 card {
                     VStack(spacing: 4) {
                         row(report.device.name, String(format: "0x%04X", report.device.productID) + (report.identify.data?.firmware.map { ", \($0)" } ?? ""))
-                        if !verdict.passed.isEmpty { row("Worked", verdict.passed.joined(separator: ", "), color: .razerGreen) }
+                        if !verdict.passed.isEmpty { row("Worked", verdict.passed.joined(separator: ", "), color: .razerGreenText) }
                         if !verdict.failed.isEmpty { row("Didn't work", verdict.failed.joined(separator: ", "), color: .batteryMid) }
                         if !verdict.notSupported.isEmpty { row("Not on this mouse", verdict.notSupported.joined(separator: ", ")) }
                         if !verdict.skipped.isEmpty { row("Skipped", verdict.skipped.joined(separator: ", ")) }
@@ -312,6 +312,10 @@ struct DeviceTestView: View {
                                          set: { model.comment = String($0.prefix(DeviceReportOutput.maxComment)) }))
                     .font(.system(size: 12))
                     .frame(height: 54)
+                    // The editor's own opaque background would sit as a flat box on a glass or tinted
+                    // window; a faint fill like the cards keeps it readable on all of them.
+                    .scrollContentBackground(.hidden)
+                    .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 6))
                     .overlay(alignment: .topLeading) {
                         if model.comment.isEmpty {
                             Text("Comments or feedback (optional)").font(.system(size: 12)).foregroundStyle(.tertiary)
@@ -349,26 +353,28 @@ struct DeviceTestView: View {
             case .intro:
                 Button("Cancel", action: onClose)
                 Spacer()
-                Button("Start") { model.start() }.keyboardShortcut(.defaultAction)
+                Button("Start") { model.start() }.keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
             case .permission:
                 Button("Continue without it") { model.continueWithoutAccess() }
                 Spacer()
                 if model.needsRelaunch {
-                    Button("Quit and reopen") { model.relaunchAndResume() }.keyboardShortcut(.defaultAction)
+                    Button("Quit and reopen") { model.relaunchAndResume() }.keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
                 } else {
-                    Button("Grant access") { model.grantAccess() }.keyboardShortcut(.defaultAction)
+                    Button("Grant access") { model.grantAccess() }.keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
                 }
             case .review where model.sendState == .sent:
                 Spacer()
-                Button("Done", action: onClose).keyboardShortcut(.defaultAction)
+                Button("Done", action: onClose).keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
             case .review:
                 Button("Copy") { model.copyReport() }
                 Button("Open GitHub issue") { model.openGitHubIssue() }
                 Spacer()
                 Button("Done", action: onClose)
-                // No default action on this screen: Return in the email or credit field would
-                // send the report before the comment is written, and it can't be sent twice.
+                // Green as the screen's main action, but no default shortcut: Return in the email
+                // or credit field would send the report before the comment is written, and it
+                // can't be sent twice.
                 Button("Send") { model.send() }
+                    .buttonStyle(RazerProminentButtonStyle())
                     .disabled(model.sendState == .sending || model.emailProblem != nil)
             default:
                 Button("Back") { model.back() }.disabled(model.running || model.stage == .identify)
@@ -389,19 +395,19 @@ struct DeviceTestView: View {
         switch model.stage {
         case .dpi where model.report?.dpi.data == nil && model.report?.dpi.error == nil:
             Button("Skip") { model.next() }.disabled(model.running)
-            Button("Run") { Task { await model.runDPI() } }.disabled(model.running).keyboardShortcut(.defaultAction)
+            Button("Run") { Task { await model.runDPI() } }.disabled(model.running).keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
         case .polling where model.report?.polling.data == nil && model.report?.polling.error == nil:
             Button("Skip") { model.next() }.disabled(model.running)
-            Button("Run") { Task { await model.runPolling() } }.disabled(model.running).keyboardShortcut(.defaultAction)
+            Button("Run") { Task { await model.runPolling() } }.disabled(model.running).keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
         case .lighting where model.report?.lighting.data == nil:
             Button("Skip") { model.next() }.disabled(model.running)
-            Button("Run") { Task { await model.runLighting() } }.disabled(model.running).keyboardShortcut(.defaultAction)
+            Button("Run") { Task { await model.runLighting() } }.disabled(model.running).keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
         case .buttons:
-            Button(model.buttonsSeen.isEmpty ? "Skip" : "Next") { model.next() }.keyboardShortcut(.defaultAction)
+            Button(model.buttonsSeen.isEmpty ? "Skip" : "Next") { model.next() }.keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
         default:
             Button("Next") { model.next() }
                 .disabled(model.running || model.report == nil || (model.stage == .lighting && !model.lightingAnswered))
-                .keyboardShortcut(.defaultAction)
+                .keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
         }
     }
 
@@ -414,7 +420,7 @@ struct DeviceTestView: View {
     private func stepTitle(_ text: String, changes: Bool) -> some View {
         HStack(spacing: 8) {
             title(text)
-            tag(changes ? "Changes, then puts back" : "Reads only", color: changes ? .batteryMid : .razerGreen)
+            tag(changes ? "Changes, then puts back" : "Reads only", color: changes ? .batteryMid : .razerGreenText)
         }
     }
 
@@ -451,7 +457,7 @@ struct DeviceTestView: View {
     private func outcomeRow(_ label: String, _ outcome: DeviceReport.Outcome) -> some View {
         let (text, color): (String, Color) = {
             switch outcome {
-            case .passed: return ("Works", .razerGreen)
+            case .passed: return ("Works", .razerGreenText)
             case .failed: return ("Didn't work", .batteryMid)
             case .notSupported: return ("Not on this mouse", .secondary)
             case .skipped: return ("Skipped", .secondary)

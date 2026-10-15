@@ -72,11 +72,10 @@ func openDevice() -> HIDDevice? {
 /// Shared by the render-* commands: draw a SwiftUI view at 2x on the app's dark backdrop
 /// and write it to a PNG.
 @MainActor func writeViewPNG<V: View>(_ view: V, to path: String) {
-    // Force dark, because every surface these previews stand in for does: the popover sets
-    // `.darkAqua`, and so do the Settings, Permissions and About windows. Without it
-    // `.secondary`/`.tertiary` resolve for light mode and render as near-black text on the
-    // dark backdrop below — which made every preview look like it had a contrast bug it
-    // doesn't have.
+    // Rendered in the Dark theme, to match the dark backdrop below. The app itself follows
+    // Settings › Appearance; without this `.secondary`/`.tertiary` resolve for light mode and
+    // render as near-black text on that backdrop, which made every preview look like it had
+    // a contrast bug it doesn't have.
     let renderer = ImageRenderer(
         content: view.environment(\.colorScheme, .dark).padding(1).background(Color(white: 0.13)))
     renderer.scale = 2
@@ -229,7 +228,8 @@ case "render-ui":
         : args.contains("profiles")
         ? AnyView(ProfilesView(controller: controller, remapper: ButtonRemapper(), onBack: {}))
         : AnyView(PopoverView(controller: controller, remapper: ButtonRemapper(), updateChecker: updateChecker,
-                              launchAtLogin: launchAtLogin, onOpenSettings: {},
+                              launchAtLogin: launchAtLogin, appearance: AppearanceSettings.shared,
+                              onOpenSettings: {},
                               onOpenDeviceTest: {})) // no windows in a render
     writeViewPNG(rootView, to: path)
 
@@ -297,6 +297,14 @@ case "render-device-test":
     if args.contains("sent") { model.previewSendState(.sent) }
     if args.contains("failed") { model.previewSendState(.failed(.tooMany)) }
     writeViewPNG(DeviceTestView(model: model, onClose: {}), to: path)
+
+case "render-crash-report":
+    // The window shown on the launch after a crash. `sent` shows the thank-you.
+    _ = NSApplication.shared
+    let crashPath = outputPath(args.dropFirst(), default: "crash-report-preview.png")
+    let crashModel = CrashReportModel.preview()
+    if args.contains("sent") { crashModel.loadPreviewSent() }
+    writeHostedPNG(CrashReportView(model: crashModel, onDone: {}, onDontAskAgain: {}), to: crashPath)
 
 case "render-remap":
     _ = NSApplication.shared

@@ -26,11 +26,9 @@ struct WhatsNewPage: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
-                Button(action: onBack) {
-                    Image(systemName: "chevron.left").font(.system(size: 12, weight: .semibold))
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(Color.razerGreen)
+                // The same back control as every other sub-page, so navigation looks and
+                // behaves (Esc included) the same wherever the popover is.
+                BackButton(action: onBack)
                 Text("What's new in \(version)").font(.system(size: 13, weight: .semibold))
                 Spacer(minLength: 0)
             }
@@ -56,8 +54,7 @@ struct WhatsNewPage: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 5)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.razerGreen)
+                .buttonStyle(RazerProminentButtonStyle())
                 .controlSize(.small)
                 .padding(12)
             }
@@ -79,14 +76,14 @@ struct ReleaseNotesList: View {
                 if releases.count > 1 {
                     Text(release.version)
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(Color.razerGreen)
+                        .foregroundStyle(Color.razerGreenText)
                         .padding(.top, release.id == releases.first?.id ? 0 : 6)
                 }
                 notesBlock(release.notes)
             }
             Link("Full release notes", destination: ProjectLinks.latestRelease)
                 .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(Color.razerGreen)
+                .foregroundStyle(Color.razerGreenText)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

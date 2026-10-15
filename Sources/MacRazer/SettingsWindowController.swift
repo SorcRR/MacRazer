@@ -41,8 +41,8 @@ final class SettingsWindowController: AppWindowPresenter {
             w.title = "MacRazer Settings"
             w.styleMask = [.titled, .closable]
             w.isReleasedWhenClosed = false
-            // Match the popover's forced-dark look so the green accent reads correctly.
-            w.appearance = NSAppearance(named: .darkAqua)
+            // Themed like the popover per Settings › Appearance, kept up to date when it changes.
+            AppearanceSettings.shared.track(w)
             w.center()
             window = w
         }

@@ -108,6 +108,42 @@ final class BLEProtocolTests: XCTestCase {
         XCTAssertEqual(try BLEProtocol.DPIStageTable(decoding: table.encoded()), table)
     }
 
+    func testDpiButtonBindingsRoundTrip() throws {
+        for binding in BLEProtocol.DPIButtonBinding.allCases + [.softwareBridge] {
+            let payload = BLEProtocol.dpiButtonPayload(for: binding)
+            XCTAssertEqual(try BLEProtocol.parseDpiButtonBinding(payload), binding)
+        }
+    }
+
+    func testDpiButtonPayloadUsesF20ForSoftwareBridge() throws {
+        XCTAssertEqual(BLEProtocol.dpiButtonPayload(for: .softwareBridge),
+                       Data([0x01, 0x60, 0x00, 0x02, 0x02, 0x00, 0x6F, 0, 0, 0]))
+        XCTAssertEqual(try BLEProtocol.parseDpiButtonBinding(
+            Data([0x01, 0x60, 0x00, 0x02, 0x02, 0x00, 0x6F, 0, 0, 0])),
+                       .softwareBridge)
+    }
+
+    func testSleepTimeoutUsesLittleEndianSeconds() throws {
+        XCTAssertEqual(BLEProtocol.Key.powerTimeoutGet.bytes, [0x05, 0x84, 0x00, 0x00])
+        XCTAssertEqual(BLEProtocol.Key.powerTimeoutSet.bytes, [0x05, 0x04, 0x00, 0x00])
+        XCTAssertEqual(BLEProtocol.sleepTimeoutPayload(seconds: 300), Data([0x2C, 0x01]))
+        XCTAssertEqual(try BLEProtocol.parseSleepTimeout(Data([0x2C, 0x01])), 300)
+        XCTAssertNil(BLEProtocol.sleepTimeoutPayload(seconds: 59))
+        XCTAssertNil(BLEProtocol.sleepTimeoutPayload(seconds: 61))
+        XCTAssertNil(BLEProtocol.sleepTimeoutPayload(seconds: 901))
+        XCTAssertThrowsError(try BLEProtocol.parseSleepTimeout(Data([0x2D, 0x01])))
+    }
+
+    func testDpiStageEditPreservesActiveStageAndOtherValues() throws {
+        let original = BLEProtocol.DPIStageTable(active: 2, values: [400, 800, 1600, 3200, 6400])
+        var edited = original.values
+        edited[1] = 1200
+        let table = BLEProtocol.DPIStageTable(active: original.active, values: edited)
+        XCTAssertEqual(table.active, 2)
+        XCTAssertEqual(try BLEProtocol.DPIStageTable(decoding: table.encoded()), table)
+        XCTAssertEqual(table.values, [400, 1200, 1600, 3200, 6400])
+    }
+
     func testStageTableRejectsAnActiveIDItDoesNotList() {
         XCTAssertThrowsError(try BLEProtocol.DPIStageTable(decoding: [0x09, 0x01, 0x01, 0x90, 0x01, 0x90, 0x01]))
     }

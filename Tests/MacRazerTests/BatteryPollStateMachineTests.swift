@@ -158,10 +158,12 @@ final class BatteryPollStateMachineTests: XCTestCase {
     }
 
     func testNothingPluggedInPollsRarely() {
-        // HIDMonitor reports the dongle or cable coming back, so polling here is a safety net.
+        // HIDMonitor reports supported USB and Bluetooth devices coming back; this is only
+        // a safety net if its registration failed.
         var m = BatteryPollStateMachine()
         _ = m.handle(.failure(deviceGone: true), immediateOffline: true)
         XCTAssertEqual(m.nextPollInterval(pointerActive: false), Cadence.unplugged)
+        XCTAssertEqual(Cadence.unplugged, 120)
     }
 
     func testAReplugAfterALongAbsenceGetsFastPollsAgain() {

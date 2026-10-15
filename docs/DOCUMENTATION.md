@@ -230,20 +230,59 @@ A fixed **320*620** navigable container with three pages and a push/pop slide an
 page is a `ScrollView` (so long content scrolls without resizing the popover):
 
 - **Main page**, Control-Center-style frosted cards, each section its own tile:
- - **Header card**: Razer logo (bright green) in a tinted tile + detected device name +
+ - **Header card**: Razer logo (green) in a tinted tile + detected device name +
  connection state + status dot. Shows "No mouse connected" when none.
  - **Battery card**: a custom proportional **battery gauge** (fill tracks the exact %,
  colored green >=40% / orange <40% / red <15%), the big % number, a state-colored level
  bar, the time estimate, and a spinner-animated refresh button. Dims when offline.
  - **DPI card**: green slider (100-26000) + preset chips (400/800/1600/3200/6400) + a
  persisted **custom chip** (drag the slider to any value to save it; green-outlined).
- - **Polling card**: segmented 125/500/1000 Hz.
- - **Lighting card**: brightness slider (☀︎) + effect segmented (Static/Spectrum/Wave/Off)
+ - **Settings sections**: the rest, each a compact card of its own, Control-Center style. Each
+ shows its current value ("1000 Hz", "Static · 80%", "5 min", the active profile) and the
+ settings rows expand in place, each on its own; which are open is remembered
+ (`popoverExpandedSections` in UserDefaults). Rows a mouse can't use are left out.
+ - **Polling rate**: segmented 125/500/1000 Hz, plus what the rate is good for.
+ - **Lighting**: brightness slider (☀︎) + effect segmented (Static/Spectrum/Wave/Off)
  + colour swatches (true red...pink) + a rainbow "custom" well that opens the colour wheel.
- - **Configure Buttons** card-button to buttons page.
+ - **Power Management** (Basilisk V3 X over Bluetooth): the sleep timer.
+ - **Buttons**: opens the buttons page; shows how many buttons are remapped, or "Needs access"
+ when saved remaps can't fire without Accessibility permission.
+ - Offline, the section rows still open to show last-known settings; their controls and the
+ Buttons page are disabled. A failed write turns that row's value red.
+ - **Profiles**: quick-switch chips, "+" to save, "Manage Profiles…".
+ - Sub-pages that scroll are at least 560 pt tall, so a short (collapsed) main page doesn't squeeze
+ them; the colour page keeps the main page's height.
  - **Settings card**: a switch toggle for "Show battery % in menu bar".
  - Live mouse-config sections **grey out + disable when disconnected** (battery stays
  readable; refresh stays active).
+ - With **no mouse known at all** (none seen yet, or unplugged), the controls are replaced
+ by one card that says how to connect and offers "Look Again" (or the Input Monitoring
+ grant, when that's what is missing). A last battery reading is still shown if there is one.
+ - Keyboard: **⌘R** refreshes, **⌘,** opens Settings, and **Esc** on any sub-page goes back
+ one level instead of closing the popover (except while a key recording or a rename is in
+ progress, where Esc cancels that).
+ - Swatches, chips and the icon buttons carry VoiceOver labels and tooltips; chips and
+ rows get a hover highlight.
+- **Appearance**, `PopoverTheme.swift`: Settings › Appearance has a **Theme** (System, Dark,
+ Light, Razer Green) and a **Glass effect** switch, stored as `appearance.theme` and
+ `appearance.glass` in UserDefaults. `PopoverLook.resolve` turns theme, glass and the system's
+ light or dark mode into one of six looks (light, dark or green glass; solid light #F5F5F7,
+ dark #1C1C1E or green #0F1A11). Razer Green is always dark.
+ - `AppDelegate` re-applies the look when the setting changes or macOS switches mode, including
+ while the popover is open. The popover's appearance is always set explicitly: a nil one would
+ follow the menu bar, which macOS tints from the wallpaper.
+ - Solid colours and the green tint are painted by `PopoverBackdropView`, which sits in
+ NSPopover's frame view just under the content. That view clips to the popover's outline, so
+ the fill covers the arrow too. A SwiftUI background would leave the arrow glass. The green
+ edge is a SwiftUI overlay on the body (radius 10, measured on macOS 26).
+ - Windows get the same look (`AppearanceSettings.track`, `WindowBackdrop`): glass is an
+ `NSVisualEffectView` with the popover's material, plus the same tint view, both in the
+ window's frame view so the title bar matches; solid looks set the window's background colour.
+ The title bar is transparent in every look. Only the popover gets the green edge.
+ - Colours: `razerGreen` is the fill (the same in both modes); text and icons use
+ `razerGreenText` (#23891A on light). Anything on a green fill uses `onRazerGreen`, a dark green,
+ because white on #44D62C is only about 1.9:1. `razerGreenBright` (logo) and `bluetoothBlue`
+ also adapt.
 - **Colour page**, `ColorPickerPage.swift`: an inline **hue/saturation colour wheel** +
  brightness slider + live preview, applied to the mouse live (throttled). Replaces the old
  system `NSColorPanel`.
@@ -368,6 +407,7 @@ that path draws the content but needs an explicit size, since there is no window
 | `RazerDevices.swift` | PID to {name, supported, hasBattery} registry. |
 | `BatteryHistory.swift` | Sample log + learned discharge rate + time estimate. |
 | `PopoverView.swift` | Main popover UI + page navigation. |
+| `PopoverTheme.swift` | Settings › Appearance: theme, glass, the resolved look, the popover and window backdrops. |
 | `ColorPickerPage.swift` | Inline hue/sat colour wheel page + shared `BackButton`. |
 | `ButtonRemapper.swift` | CGEvent tap, action model, presets, persistence, Accessibility. |
 | `RemapView.swift` | Button-config UI (inline + window), key recorder. |

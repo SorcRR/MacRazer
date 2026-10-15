@@ -7,6 +7,34 @@ expect rough edges until 1.0.
 ## [Unreleased]
 
 ### Changed
+- **The popover follows your Mac's light or dark mode.** It used to be dark all the time. On a
+  light Mac it is now light glass, with a darker green for text so it stays readable. Settings,
+  About and the other windows follow too, with the same glass or solid background. Selected chips now use dark text on the green
+  instead of white, which was hard to read. If you liked it dark, pick Dark in Settings ›
+  Appearance.
+
+- **Green buttons have dark text.** Install Now, Send Report, Grant, Relaunch and the update
+  buttons used white on the green, which was hard to read. They now use the same dark text as
+  the selected chips. The main button in Settings, About and the device test was system blue;
+  it is green now too.
+
+- **The popover is shorter: settings below DPI collapse.** Polling rate, Lighting, Power
+  Management, Buttons and Profiles are now compact cards of one row each, each showing
+  its current value ("1000 Hz", "Static · 80%", the active profile). Click a row to open its
+  controls in place; open as many as you like, and the popover remembers which. Battery and DPI
+  stay open at the top, since they're what you check most. The battery and lighting tips now
+  appear only inside their open section, not on the main page all the time.
+
+- **The popover behaves more like a native Mac panel.** Esc on a sub-page (Colour, Buttons,
+  Battery Usage, Profiles, What's New) now goes back one level instead of closing the whole
+  popover, and every sub-page uses the same Back button, What's New included. ⌘R refreshes and
+  ⌘, opens Settings, matching the right-click menu. Chips and rows highlight on hover, the
+  colour swatches are real buttons with names, and the icon-only buttons have VoiceOver labels
+  and tooltips. A DPI chip that can be edited says so in its tooltip, since the editor is only
+  reachable by right-click. The sleep timer reads "5 min" instead of "5m 00s".
+  With no mouse plugged in, the popover shows one card explaining how to connect and a
+  "Look Again" button, instead of a column of greyed-out controls for a mouse that isn't there.
+
 - **Updates are found within hours, not a day.** The app used to ask GitHub once a day. Now
  it asks every time it starts, and again whenever its last answer is more than three hours
  old. A Mac that slept longer than that asks as soon as it wakes. If the network isn't back
@@ -22,6 +50,12 @@ expect rough edges until 1.0.
  it reads the answers, using a fake mouse instead of hardware.
 
 ### Added
+- **Settings › Appearance.** Choose the theme for the popover and the app's windows: System
+  (the default), Dark, Light or Razer Green, a dark look with a faint green tint. The popover
+  also gets a thin green edge. Turn off "Glass effect"
+  for a solid background instead of the see-through one. It's easier to read over busy windows.
+  Changes apply straight away, even with the popover open.
+
 - **The Cobra HyperSpeed works over Bluetooth.** Battery, DPI, brightness and lighting
  colour all work with the mouse in Bluetooth mode, so you no longer need the dongle or a
  cable. The battery history carries over too, because the mouse reports the same serial on
@@ -31,6 +65,22 @@ expect rough edges until 1.0.
  plugged in while the mouse is on Bluetooth, the app uses Bluetooth. A cable still wins,
  since it can do more. The Bluetooth protocol was worked out by
  [@ungrav](https://github.com/ungrav) in #32.
+
+- **The Basilisk V3 X HyperSpeed works over Bluetooth too.** Battery, DPI stages, brightness
+ and a static lighting colour work in Bluetooth mode. You can also edit each DPI stage
+ (right-click a DPI chip), set how long the mouse waits before it sleeps, and reassign its
+ DPI button to a mouse button, a keyboard shortcut or a media key. Media keys and other
+ actions only the app can perform need MacRazer running, and they use F20 as the signal,
+ so F20 from a keyboard is taken over while one is set. Choose "DPI Cycle (default)" to
+ give the button back. Contributed by [@ungrav](https://github.com/ungrav) in #32.
+
+- **The last battery reading stays visible while the mouse is away.** When the mouse is
+ asleep, switched off or out of range, the popover keeps showing its last percentage and
+ estimate, with how long ago it was read, for example "~1d 15h left · 2 min ago". Each mouse
+ keeps its own. Contributed by [@ungrav](https://github.com/ungrav) in #42.
+
+- **The connect and disconnect sounds can be turned off.** Settings → General → Connection
+ sounds. Contributed by [@ungrav](https://github.com/ungrav) in #43.
 
 - **Test your mouse from the app.** Right-click the menu bar icon and choose "Help Support
  This Mouse…". A mouse that's already verified shows "Test This Mouse…" instead. The test
@@ -59,6 +109,10 @@ expect rough edges until 1.0.
  everything you gained. Closing it clears the "Updated to …" card in the popover too, so the
  news isn't repeated. After an automatic install it comes to the front without taking your
  keyboard focus.
+
+### Fixed
+- **The add-profile plus button works anywhere in its circle.** Only the plus sign itself took
+  the click. The rest of the circle did nothing.
 
 ## [0.5.0] — 2026-09-23
 

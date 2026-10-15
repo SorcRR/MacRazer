@@ -6,10 +6,18 @@ import SwiftUI
 /// Control-Center-style tile: a rounded, lightly-frosted card on the dark popover. Shared by
 /// every popover sub-page so the card style can't drift between them.
 func card<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
-    content()
+    cardSurface(content()
         .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.primary.opacity(0.10), in: RoundedRectangle(cornerRadius: 13))
+        .frame(maxWidth: .infinity, alignment: .leading))
+}
+
+/// The card's fill and shape without its padding, for cards that lay out their own insets (the
+/// popover's expandable section rows).
+///
+/// A free function like `card`, not a `View` extension: an extension method is main-actor
+/// isolated, and `card` (nonisolated) couldn't call it under Swift 6 concurrency checking.
+func cardSurface<Content: View>(_ content: Content) -> some View {
+    content.background(Color.primary.opacity(0.10), in: RoundedRectangle(cornerRadius: 13))
 }
 
 /// A card with a small uppercase heading — the window-sized counterpart to `card`, shared by
@@ -41,6 +49,66 @@ func sectionNote(_ text: String, color: Color = .secondary) -> some View {
         .font(.system(size: 11.5))
         .foregroundStyle(color)
         .fixedSize(horizontal: false, vertical: true)
+}
+
+/// A faint wash over a clickable chip or row while the pointer is on it — the feedback
+/// Control Center's tiles and menu items give, which plain-styled SwiftUI buttons don't.
+/// Skipped while disabled, so a dimmed control doesn't look like it would respond.
+private struct HoverHighlight<S: Shape>: ViewModifier {
+    let shape: S
+    @State private var hovered = false
+    @Environment(\.isEnabled) private var isEnabled
+
+    func body(content: Content) -> some View {
+        content
+            .overlay(shape.fill(Color.primary.opacity(hovered && isEnabled ? 0.08 : 0)).allowsHitTesting(false))
+            .onHover { hovered = $0 }
+            .animation(.easeOut(duration: 0.12), value: hovered)
+    }
+}
+
+extension View {
+    func hoverHighlight<S: Shape>(_ shape: S) -> some View { modifier(HoverHighlight(shape: shape)) }
+}
+
+/// The app's primary-action button: a Razer-green rounded rect with dark text, in place of
+/// `.borderedProminent.tint(.razerGreen)`. That draws the system's white label on the green,
+/// about 1.9:1 contrast, and macOS gives no way to recolour it; this matches the selected
+/// chips' `onRazerGreen` instead. Sized off the control size (regular or small), dimmed when
+/// disabled, darkened while pressed, with a hover wash and a focus ring.
+/// `keyboardShortcut(.defaultAction)` still works on it.
+struct RazerProminentButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        StyledButton(configuration: configuration)
+    }
+
+    // A view rather than inline in `makeBody`, so it can read the control size, enabled state
+    // and font from the environment. A font the caller set wins; otherwise the system's
+    // button size for the control size.
+    private struct StyledButton: View {
+        let configuration: Configuration
+        @Environment(\.controlSize) private var controlSize
+        @Environment(\.isEnabled) private var isEnabled
+        @Environment(\.font) private var font
+        @Environment(\.isFocused) private var isFocused
+
+        var body: some View {
+            let small = controlSize == .small || controlSize == .mini
+            let shape = RoundedRectangle(cornerRadius: small ? 5 : 6, style: .continuous)
+            configuration.label
+                .font(font ?? .system(size: small ? 11 : 13))
+                .foregroundStyle(Color.onRazerGreen)
+                .padding(.horizontal, small ? 8 : 10)
+                .padding(.vertical, small ? 2 : 3)
+                .background(Color.razerGreen, in: shape)
+                .overlay(shape.fill(Color.black.opacity(configuration.isPressed ? 0.18 : 0)))
+                .hoverHighlight(shape)
+                .opacity(isEnabled ? 1 : 0.45)
+                // A custom style loses the system focus ring; draw one for keyboard navigation.
+                .overlay(shape.inset(by: -2).stroke(Color.accentColor.opacity(isFocused ? 0.8 : 0), lineWidth: 2.5))
+                .contentShape(shape)
+        }
+    }
 }
 
 /// Small secondary-styled section heading used inside cards.

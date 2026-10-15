@@ -23,8 +23,7 @@ struct UpdatedView: View {
                 Spacer()
                 Button("Done", action: onDone)
                     .keyboardShortcut(.defaultAction)
-                    .buttonStyle(.borderedProminent)
-                    .tint(.razerGreen)
+                    .buttonStyle(RazerProminentButtonStyle())
             }
         }
         .padding(22)
@@ -71,7 +70,7 @@ struct UpdatedView: View {
         } else {
             Link("Read the release notes on GitHub", destination: ProjectLinks.latestRelease)
                 .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(Color.razerGreen)
+                .foregroundStyle(Color.razerGreenText)
         }
     }
 }

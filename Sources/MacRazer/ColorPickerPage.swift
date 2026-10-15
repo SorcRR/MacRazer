@@ -4,8 +4,14 @@
 import SwiftUI
 
 /// A clearly-labelled "‹ Back" button used by the popover sub-pages.
+///
+/// Esc triggers it, so a sub-page backs out one level the way a System Settings pane or a
+/// Control Center module does, rather than Esc dismissing the whole popover. `escapes` is for
+/// pages that own Esc for something narrower while it's in progress (cancelling a key
+/// recording or a rename): a navigation there would throw away what the user was doing.
 struct BackButton: View {
     var action: () -> Void
+    var escapes = true
     var body: some View {
         Button(action: action) {
             HStack(spacing: 3) {
@@ -17,6 +23,8 @@ struct BackButton: View {
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+        .keyboardShortcut(escapes ? KeyboardShortcut.cancelAction : nil)
+        .help(escapes ? "Back (Esc)" : "Back")
     }
 }
 
@@ -41,7 +49,7 @@ struct ColorPickerPage: View {
                 Text("Colour").font(.system(size: 16, weight: .semibold))
                 Spacer()
                 Circle().fill(color).frame(width: 22, height: 22)
-                    .overlay(Circle().strokeBorder(.white.opacity(0.35), lineWidth: 1))
+                    .overlay(Circle().strokeBorder(Color.primary.opacity(0.25), lineWidth: 1))
             }
             wheel
             HStack(spacing: 8) {
@@ -68,7 +76,7 @@ struct ColorPickerPage: View {
                         gradient: Gradient(colors: [.white, .white.opacity(0)]),
                         center: .center, startRadius: 0, endRadius: r)))
                     .overlay(Circle().fill(.black.opacity(1 - bri)))
-                    .overlay(Circle().strokeBorder(.white.opacity(0.15), lineWidth: 1))
+                    .overlay(Circle().strokeBorder(Color.primary.opacity(0.15), lineWidth: 1))
                     .frame(width: side, height: side)
                 Circle().stroke(.white, lineWidth: 2)
                     .frame(width: 15, height: 15)

@@ -21,15 +21,25 @@ struct SettingsView: View {
     /// is *already* known — the one moment the user is watching for the setting to do
     /// something, and the moment none of the other triggers fire.
     var onAutoInstallChanged: (() -> Void)?
+    /// The crash window's "Don't Ask Again" writes the same key, so this is how to undo it.
+    @AppStorage(CrashLogScanner.offerKey) private var offerCrashReports = true
+    @ObservedObject var appearance: AppearanceSettings = .shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             header
             titledSection("General") {
                 launchAtLoginRow
+                connectionSoundsRow
                 // Hidden rather than disabled for a mouse with no battery: there is no
                 // percentage to show, so the switch would be a promise about nothing.
                 if controller.deviceHasBattery { batteryPercentRow }
+                // Hidden while there's nowhere to send a report; see `CrashReporting`.
+                if CrashReporting.isAvailable { crashReportsRow }
+            }
+            titledSection("Appearance") {
+                themeRow
+                glassRow
             }
             titledSection("Updates") {
                 autoInstallRow
@@ -83,9 +93,18 @@ struct SettingsView: View {
             } else if launchAtLogin.needsApproval {
                 Button("Approve MacRazer in Login Items…") { launchAtLogin.openLoginItemsSettings() }
                     .buttonStyle(.plain).font(.system(size: 11))
-                    .foregroundStyle(Color.razerGreen)
+                    .foregroundStyle(Color.razerGreenText)
             }
         }
+    }
+
+    private var connectionSoundsRow: some View {
+        settingRow(
+            title: "Connection sounds",
+            detail: "Play a sound when the mouse connects or disconnects.",
+            isOn: Binding(get: { controller.connectionSoundsEnabled },
+                          set: { controller.connectionSoundsEnabled = $0 })
+        )
     }
 
     private var batteryPercentRow: some View {
@@ -94,6 +113,41 @@ struct SettingsView: View {
             detail: "Off leaves just the mouse icon, which takes less room in a crowded menu bar.",
             isOn: Binding(get: { controller.showPercentInMenuBar },
                           set: { controller.showPercentInMenuBar = $0 })
+        )
+    }
+
+    private var themeRow: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("Theme").font(.system(size: 12.5, weight: .medium))
+                Spacer(minLength: 12)
+                Picker("Theme", selection: $appearance.theme) {
+                    ForEach(PopoverTheme.allCases) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .controlSize(.small)
+                .fixedSize()
+            }
+            sectionNote("System follows macOS. Razer Green is always dark.")
+        }
+    }
+
+    private var glassRow: some View {
+        settingRow(
+            title: "Glass effect",
+            detail: "The popover and windows let the desktop show through. Turn it off for a solid "
+                + "background, which is easier to read over busy windows.",
+            isOn: $appearance.glass
+        )
+    }
+
+    private var crashReportsRow: some View {
+        settingRow(
+            title: "Offer to send crash reports",
+            detail: "If MacRazer quits unexpectedly, ask next time whether to send a report. "
+                + "You see exactly what's in it first.",
+            isOn: $offerCrashReports
         )
     }
 
@@ -136,8 +190,7 @@ struct SettingsView: View {
                     Task { await updateChecker.downloadAndInstall() }
                 }
                 .controlSize(.small)
-                .buttonStyle(.borderedProminent)
-                .tint(.razerGreen)
+                .buttonStyle(RazerProminentButtonStyle())
             }
             Button {
                 Task { await updateChecker.checkForUpdatesNow(userRequested: true) }
@@ -208,6 +261,7 @@ struct SettingsView: View {
             Spacer()
             Button("Done") { onDone() }
                 .keyboardShortcut(.defaultAction)
+                .buttonStyle(RazerProminentButtonStyle())
         }
     }
 }
