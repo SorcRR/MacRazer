@@ -564,13 +564,16 @@ struct PopoverView: View {
             newProfileName = suggestedProfileName
             isAddingProfile = true
         } label: {
+            // The circle is part of the label, so the whole of it takes the click, not just
+            // the glyph a plain button would otherwise hit-test.
             Image(systemName: "plus").font(.system(size: 10.5, weight: .semibold))
+                .foregroundStyle(Color.razerGreenText)
+                .frame(width: 24, height: 24)
+                .background(Color.razerGreen.opacity(0.12), in: Circle())
+                .overlay(Circle().stroke(Color.razerGreen.opacity(0.55), lineWidth: 1))
+                .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        .foregroundStyle(Color.razerGreenText)
-        .frame(width: 24, height: 24)
-        .background(Color.razerGreen.opacity(0.12), in: Circle())
-        .overlay(Circle().stroke(Color.razerGreen.opacity(0.55), lineWidth: 1))
         // dpi == 0 = the first settings read hasn't landed yet; a snapshot taken now
         // would save a profile that later applies as 100 DPI.
         .disabled(controller.dpi == 0)
@@ -585,8 +588,7 @@ struct PopoverView: View {
                 .padding(.horizontal, 8).padding(.vertical, 4)
                 .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
             Button("Save", action: saveNewProfile)
-                .buttonStyle(.borderedProminent)
-                .tint(.razerGreen)
+                .buttonStyle(RazerProminentButtonStyle())
                 .controlSize(.small)
                 .disabled(newProfileName.trimmingCharacters(in: .whitespaces).isEmpty)
             Button("Cancel") { isAddingProfile = false }
@@ -689,8 +691,7 @@ struct PopoverView: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 5)
         }
-        .buttonStyle(.borderedProminent)
-        .tint(.razerGreen)
+        .buttonStyle(RazerProminentButtonStyle())
         .controlSize(.small)
     }
 
@@ -787,8 +788,7 @@ struct PopoverView: View {
                 .font(.system(size: 11)).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             Button("Quit MacRazer") { NSApplication.shared.terminate(nil) }
-                .buttonStyle(.borderedProminent)
-                .tint(.razerGreen)
+                .buttonStyle(RazerProminentButtonStyle())
                 .controlSize(.small)
                 .font(.system(size: 11.5, weight: .medium))
         }

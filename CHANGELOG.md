@@ -13,6 +13,11 @@ expect rough edges until 1.0.
   instead of white, which was hard to read. If you liked it dark, pick Dark in Settings ›
   Appearance.
 
+- **Green buttons have dark text.** Install Now, Send Report, Grant, Relaunch and the update
+  buttons used white on the green, which was hard to read. They now use the same dark text as
+  the selected chips. The main button in Settings, About and the device test was system blue;
+  it is green now too.
+
 - **The popover is shorter: settings below DPI collapse.** Polling rate, Lighting, Power
   Management, Buttons and Profiles are now compact cards of one row each, each showing
   its current value ("1000 Hz", "Static · 80%", the active profile). Click a row to open its
@@ -97,6 +102,10 @@ expect rough edges until 1.0.
  everything you gained. Closing it clears the "Updated to …" card in the popover too, so the
  news isn't repeated. After an automatic install it comes to the front without taking your
  keyboard focus.
+
+### Fixed
+- **The add-profile plus button works anywhere in its circle.** Only the plus sign itself took
+  the click. The rest of the circle did nothing.
 
 ## [0.5.0] — 2026-09-23
 

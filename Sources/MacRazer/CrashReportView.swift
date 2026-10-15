@@ -107,17 +107,20 @@ struct CrashReportView: View {
             if model.state == .sent {
                 Button("Done", action: onDone)
                     .keyboardShortcut(.defaultAction)
+                    .buttonStyle(RazerProminentButtonStyle())
             } else {
                 Button("Don't Send", action: onDone)
                     .keyboardShortcut(.cancelAction)
                 Button {
                     Task { await model.send() }
                 } label: {
-                    if model.state == .sending { ProgressView().controlSize(.small) } else { Text("Send Report") }
+                    if model.state == .sending {
+                        // The light scheme draws the spinner dark, so it reads on the green.
+                        ProgressView().controlSize(.small).environment(\.colorScheme, .light)
+                    } else { Text("Send Report") }
                 }
                 .keyboardShortcut(.defaultAction)
-                .buttonStyle(.borderedProminent)
-                .tint(.razerGreen)
+                .buttonStyle(RazerProminentButtonStyle())
                 .disabled(!model.canSend)
             }
         }

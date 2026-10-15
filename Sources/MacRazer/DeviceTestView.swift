@@ -312,20 +312,20 @@ struct DeviceTestView: View {
             case .intro:
                 Button("Cancel", action: onClose)
                 Spacer()
-                Button("Start") { model.start() }.keyboardShortcut(.defaultAction)
+                Button("Start") { model.start() }.keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
             case .permission:
                 Button("Continue without it") { model.continueWithoutAccess() }
                 Spacer()
                 if model.needsRelaunch {
-                    Button("Quit and reopen") { model.relaunchAndResume() }.keyboardShortcut(.defaultAction)
+                    Button("Quit and reopen") { model.relaunchAndResume() }.keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
                 } else {
-                    Button("Grant access") { model.grantAccess() }.keyboardShortcut(.defaultAction)
+                    Button("Grant access") { model.grantAccess() }.keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
                 }
             case .review:
                 Button("Copy") { model.copyReport() }
                 Button("Open GitHub issue") { model.openGitHubIssue() }
                 Spacer()
-                Button("Done", action: onClose).keyboardShortcut(.defaultAction)
+                Button("Done", action: onClose).keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
             default:
                 Button("Back") { model.back() }.disabled(model.running || model.stage == .identify)
                 Spacer()
@@ -345,19 +345,19 @@ struct DeviceTestView: View {
         switch model.stage {
         case .dpi where model.report?.dpi.data == nil && model.report?.dpi.error == nil:
             Button("Skip") { model.next() }.disabled(model.running)
-            Button("Run") { Task { await model.runDPI() } }.disabled(model.running).keyboardShortcut(.defaultAction)
+            Button("Run") { Task { await model.runDPI() } }.disabled(model.running).keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
         case .polling where model.report?.polling.data == nil && model.report?.polling.error == nil:
             Button("Skip") { model.next() }.disabled(model.running)
-            Button("Run") { Task { await model.runPolling() } }.disabled(model.running).keyboardShortcut(.defaultAction)
+            Button("Run") { Task { await model.runPolling() } }.disabled(model.running).keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
         case .lighting where model.report?.lighting.data == nil:
             Button("Skip") { model.next() }.disabled(model.running)
-            Button("Run") { Task { await model.runLighting() } }.disabled(model.running).keyboardShortcut(.defaultAction)
+            Button("Run") { Task { await model.runLighting() } }.disabled(model.running).keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
         case .buttons:
-            Button(model.buttonsSeen.isEmpty ? "Skip" : "Next") { model.next() }.keyboardShortcut(.defaultAction)
+            Button(model.buttonsSeen.isEmpty ? "Skip" : "Next") { model.next() }.keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
         default:
             Button("Next") { model.next() }
                 .disabled(model.running || model.report == nil || (model.stage == .lighting && !model.lightingAnswered))
-                .keyboardShortcut(.defaultAction)
+                .keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
         }
     }
 
