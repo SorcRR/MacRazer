@@ -8,9 +8,12 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "check": "wrangler deploy --dry-run --outdir .wrangler/dry-run",
-    "deploy": "wrangler deploy --config wrangler.local.toml",
-    "migrate": "wrangler d1 migrations apply macrazer-reports --remote --config wrangler.local.toml",
-    "tail": "wrangler tail --config wrangler.local.toml"
+    "config": "node scripts/local-config.mjs",
+    "check:local": "npm run config && wrangler deploy --dry-run --config wrangler.local.toml --outdir .wrangler/dry-run",
+    "migrate": "npm run config && wrangler d1 migrations apply macrazer-reports --remote --config wrangler.local.toml",
+    "deploy": "npm run config && wrangler deploy --config wrangler.local.toml",
+    "salt": "npm run config && openssl rand -hex 32 | wrangler secret put IP_SALT --config wrangler.local.toml",
+    "tail": "npm run config && wrangler tail --config wrangler.local.toml"
   },
   "devDependencies": {
     "typescript": "^7.0.2",

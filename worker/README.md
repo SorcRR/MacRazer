@@ -38,15 +38,17 @@ You need a Cloudflare account with a domain on it. Sending to your own verified 
 free on every plan.
 
 Your addresses never go in the repository. [wrangler.toml](wrangler.toml) is a public
-template with placeholders. Your real settings live in `wrangler.local.toml`, which git
-ignores, and every `npm run` command below uses it.
+template with placeholders. Your three private values live in a settings file outside the
+repository, `~/.config/macrazer-reports/settings.env`, so every checkout and worktree uses the
+same one and it can't be committed. Each `npm run` command below first builds the real config,
+`wrangler.local.toml`, from the template plus that file. Git ignores the result, and it's
+rebuilt every time, so a change to the template is never left out of a deploy.
 
-1. Install the tools, make your copy of the config, and log in:
+1. Install the tools and log in:
 
    ```sh
    cd worker
    npm install
-   cp wrangler.toml wrangler.local.toml
    npx wrangler login
    ```
 
@@ -55,24 +57,30 @@ ignores, and every `npm run` command below uses it.
    email. Enabling it replaces the domain's MX records, so use a domain that doesn't already
    receive email elsewhere.
 
-3. In `wrangler.local.toml`, set:
-   - `destination_address` and `DESTINATION_ADDRESS`: the address you just verified, in both
-     places. The first locks the binding to it, the second is what the Worker sends to, and
-     `npm test` fails if they differ.
-   - `SENDER_ADDRESS`: any address on the Email Routing domain, such as
-     `macrazer-reports@yourdomain.com`. It doesn't need a mailbox.
-
-4. Create the database. If Wrangler offers to add it to your config, say no: put the
-   `database_id` it prints into `wrangler.local.toml` yourself. Then create the table:
+3. Create the database. It prints a `database_id`. If Wrangler offers to add the database to
+   your config, say no: the id goes in your settings file instead.
 
    ```sh
    npx wrangler d1 create macrazer-reports
-   npm run migrate
    ```
 
-5. Deploy:
+4. Create `~/.config/macrazer-reports/settings.env` with your three values:
 
    ```sh
+   DESTINATION=you@yourdomain.com
+   SENDER=macrazer-reports@yourdomain.com
+   DATABASE_ID=the-id-from-step-3
+   ```
+
+   - `DESTINATION`: the address you verified in step 2. It goes in both `destination_address`,
+     which locks the binding to it, and `DESTINATION_ADDRESS`, which the Worker sends to.
+   - `SENDER`: any address on the Email Routing domain. It doesn't need a mailbox.
+   - To keep the file somewhere else, set `MACRAZER_REPORTS_SETTINGS` to its path.
+
+5. Create the table, then deploy:
+
+   ```sh
+   npm run migrate
    npm run deploy
    ```
 
@@ -81,12 +89,16 @@ ignores, and every `npm run` command below uses it.
    `ProjectLinks.deviceReports` in `Sources/MacRazer/AppInfo.swift` must point at it, with
    `/v1/device-report` on the end.
 
-6. Set the salt for the IP hashes. Any long random string works; you never need it again.
-   Until it's set, the Worker answers every report with a 503 and sends nothing.
+   Always deploy with `npm run deploy`. A plain `npx wrangler deploy` reads the template, with
+   its placeholder addresses.
+
+6. Set the salt for the IP hashes, a random secret you never need to see:
 
    ```sh
-   openssl rand -hex 32 | npx wrangler secret put IP_SALT --config wrangler.local.toml
+   npm run salt
    ```
+
+   Until it's set, the Worker answers every report with a 503 and sends nothing.
 
 7. Send a test report. A 200 here should arrive as an email, maybe in spam the first time:
 
@@ -100,15 +112,14 @@ ignores, and every `npm run` command below uses it.
 
 ## Changing where reports go
 
-Verify the new address in Email Routing first. Then change `destination_address` and
-`DESTINATION_ADDRESS` in `wrangler.local.toml`, run `npm test` to check they match, and run
-`npm run deploy`. The binding can't send anywhere but `destination_address`, whatever a request
+Verify the new address in Email Routing first. Then change `DESTINATION` in your settings file
+and run `npm run deploy`. The binding can't send anywhere but that address, whatever a request
 says. The Worker never takes an address from the request.
 
 ## Changing the caps
 
-- Per day: `DAILY_PER_IP` and `DAILY_TOTAL` in `wrangler.local.toml`. Change the template
-  too if the new numbers should be everyone's default.
+- Per day: `DAILY_PER_IP` and `DAILY_TOTAL` in `wrangler.toml`. They aren't private, so they
+  live in the template.
 - Per minute: `limit` under `[[ratelimits]]`. Cloudflare only allows a `period` of 10 or 60
   seconds, and counts per location, so treat it as a burst guard, not an exact count.
 
@@ -119,7 +130,8 @@ Deploy after changing either.
 ```sh
 npm test            # the Worker against fake bindings, with the real SQL on SQLite
 npm run typecheck
-npm run check       # builds it and checks wrangler.toml, without deploying
+npm run check       # builds it and checks the template, without deploying
+npm run check:local # the same with your real config, before a deploy
 ```
 
 `test/fixtures/full-report.json` is written by the app's own tests, with every field set. If

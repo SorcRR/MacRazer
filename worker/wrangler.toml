@@ -1,17 +1,17 @@
 # The Worker behind the device test's Send button. Setup steps are in README.md.
 #
-# This is the template, with placeholder addresses, and it is public. Copy it to
-# wrangler.local.toml (git ignores that file), put your real addresses and database id in
-# the copy, and deploy with `npm run deploy`, which uses it. A test fails if a real address
-# lands in this file.
+# This is the public template: the addresses and database id are placeholders, and a test
+# fails if a real address lands here. Your values live in a settings file outside the
+# repository, and `npm run deploy` builds the real config, wrangler.local.toml (git ignores
+# it), from this file plus those. Deploy with `npm run deploy`, never plain `wrangler
+# deploy`, which would use these placeholders.
 name = "macrazer-reports"
 main = "src/index.ts"
 compatibility_date = "2026-10-01"
 
 # Reports go to this one address and nowhere else: the binding can't send anywhere else,
 # whatever a request says. It must be a verified destination address in Email Routing.
-# To change it, verify the new address, change it here AND in DESTINATION_ADDRESS below
-# (`npm test` fails if they differ, in either file), and run `npm run deploy`.
+# Your address goes in both lines through DESTINATION in your settings file; see README.md.
 [[send_email]]
 name = "EMAIL"
 destination_address = "you@example.com"
