@@ -37,68 +37,78 @@ results, not from anything the request claims.
 You need a Cloudflare account with a domain on it. Sending to your own verified address is
 free on every plan.
 
-1. Install the tools and log in:
+Your addresses never go in the repository. [wrangler.toml](wrangler.toml) is a public
+template with placeholders. Your real settings live in `wrangler.local.toml`, which git
+ignores, and every `npm run` command below uses it.
+
+1. Install the tools, make your copy of the config, and log in:
 
    ```sh
    cd worker
    npm install
+   cp wrangler.toml wrangler.local.toml
    npx wrangler login
    ```
 
 2. In the Cloudflare dashboard, enable **Email Routing** on your domain. Under destination
    addresses, add the address reports should go to, then click the link in the verification
-   email.
+   email. Enabling it replaces the domain's MX records, so use a domain that doesn't already
+   receive email elsewhere.
 
-3. In [wrangler.toml](wrangler.toml), set:
+3. In `wrangler.local.toml`, set:
    - `destination_address` and `DESTINATION_ADDRESS`: the address you just verified, in both
      places. The first locks the binding to it, the second is what the Worker sends to, and
      `npm test` fails if they differ.
    - `SENDER_ADDRESS`: any address on the Email Routing domain, such as
      `macrazer-reports@yourdomain.com`. It doesn't need a mailbox.
 
-4. Create the database, put its id in `wrangler.toml` as `database_id`, and create the table:
+4. Create the database. If Wrangler offers to add it to your config, say no: put the
+   `database_id` it prints into `wrangler.local.toml` yourself. Then create the table:
 
    ```sh
    npx wrangler d1 create macrazer-reports
-   npx wrangler d1 migrations apply macrazer-reports --remote
+   npm run migrate
    ```
 
-5. Set the salt for the IP hashes. Any long random string works; you never need it again.
-
-   ```sh
-   openssl rand -hex 32 | npx wrangler secret put IP_SALT
-   ```
-
-6. Deploy:
+5. Deploy:
 
    ```sh
    npm run deploy
    ```
 
-   Wrangler prints the Worker's address, like `https://macrazer-reports.<subdomain>.workers.dev`.
+   On an account's first Worker, Wrangler asks you to pick a `workers.dev` subdomain. It then
+   prints the Worker's address, like `https://macrazer-reports.<subdomain>.workers.dev`.
    `ProjectLinks.deviceReports` in `Sources/MacRazer/AppInfo.swift` must point at it, with
    `/v1/device-report` on the end.
 
-7. Send a test report. A 200 here should arrive as an email:
+6. Set the salt for the IP hashes. Any long random string works; you never need it again.
+   Until it's set, the Worker answers every report with a 503 and sends nothing.
+
+   ```sh
+   openssl rand -hex 32 | npx wrangler secret put IP_SALT --config wrangler.local.toml
+   ```
+
+7. Send a test report. A 200 here should arrive as an email, maybe in spam the first time:
 
    ```sh
    curl -i https://macrazer-reports.<subdomain>.workers.dev/v1/device-report \
      -H 'content-type: application/json' --data @test/fixtures/full-report.json
    ```
 
-   A 503 means a step above is missing. `npx wrangler tail` shows why, for example
+   A 503 means a step above is missing. `npm run tail` shows why, for example
    `E_SENDER_NOT_VERIFIED` when the sender's domain doesn't have Email Routing.
 
 ## Changing where reports go
 
 Verify the new address in Email Routing first. Then change `destination_address` and
-`DESTINATION_ADDRESS` in `wrangler.toml`, run `npm test` to check they match, and run
+`DESTINATION_ADDRESS` in `wrangler.local.toml`, run `npm test` to check they match, and run
 `npm run deploy`. The binding can't send anywhere but `destination_address`, whatever a request
 says. The Worker never takes an address from the request.
 
 ## Changing the caps
 
-- Per day: `DAILY_PER_IP` and `DAILY_TOTAL` in `wrangler.toml`.
+- Per day: `DAILY_PER_IP` and `DAILY_TOTAL` in `wrangler.local.toml`. Change the template
+  too if the new numbers should be everyone's default.
 - Per minute: `limit` under `[[ratelimits]]`. Cloudflare only allows a `period` of 10 or 60
   seconds, and counts per location, so treat it as a burst guard, not an exact count.
 

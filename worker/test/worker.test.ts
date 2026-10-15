@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Part of MacRazer, a control app for Razer mice on macOS. See LICENSE and NOTICE.md.
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
 import * as main from "../src/index";
@@ -74,13 +74,28 @@ async function status(env: Env, request: Request) {
   return { status: response.status, body: (await response.json()) as { ok: boolean; error?: string; detail?: string } };
 }
 
-describe("wrangler.toml", () => {
-  it("sends to the address the binding is locked to", () => {
-    const toml = readFileSync(new URL("../wrangler.toml", import.meta.url), "utf8");
-    const locked = toml.match(/^destination_address = "([^"]+)"$/m)?.[1];
-    const to = toml.match(/^DESTINATION_ADDRESS = "([^"]+)"$/m)?.[1];
-    expect(locked).toBeTruthy();
-    expect(to, "change both lines together").toBe(locked);
+describe("wrangler config", () => {
+  const read = (name: string) => readFileSync(new URL(`../${name}`, import.meta.url), "utf8");
+  const setting = (toml: string, key: string) => toml.match(new RegExp(`^${key} = "([^"]+)"$`, "m"))?.[1];
+
+  // The template always; the maintainer's own copy too, when it's on this machine.
+  for (const name of ["wrangler.toml", "wrangler.local.toml"]) {
+    it.skipIf(!existsSync(new URL(`../${name}`, import.meta.url)))(`${name} sends to the address its binding is locked to`, () => {
+      const toml = read(name);
+      expect(setting(toml, "destination_address")).toBeTruthy();
+      expect(setting(toml, "DESTINATION_ADDRESS"), "change both lines together").toBe(setting(toml, "destination_address"));
+    });
+  }
+
+  it("keeps real addresses out of the public template", () => {
+    const toml = read("wrangler.toml");
+    for (const key of ["destination_address", "DESTINATION_ADDRESS", "SENDER_ADDRESS"]) {
+      expect(setting(toml, key), `${key} belongs in wrangler.local.toml`).toMatch(/@example\.com$/);
+    }
+  });
+
+  it("is never committed with the maintainer's copy", () => {
+    expect(read(".gitignore")).toMatch(/^wrangler\.local\.toml$/m);
   });
 });
 

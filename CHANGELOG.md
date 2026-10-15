@@ -99,7 +99,7 @@ expect rough edges until 1.0.
 - **A small Cloudflare Worker receives sent reports** (`worker/`). It checks each report
  against the app's exact format, emails it, and keeps nothing but daily counters. It caps
  reports at 3 a minute and 10 a day per sender, and 200 a day in total. The address reports
- go to is one line in its config.
+ go to lives in a local config file that git ignores, so it never reaches the public repo.
 
 - **Two new CLI commands for contributors.** `discover` shows which transaction ids a mouse
  answers to, and `devicetest` runs the whole test without the window and prints the report.

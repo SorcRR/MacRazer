@@ -1,3 +1,5 @@
 node_modules/
 .wrangler/
 .dev.vars
+# Your real addresses and database id. wrangler.toml is the template.
+wrangler.local.toml
