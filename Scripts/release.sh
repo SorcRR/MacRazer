@@ -204,6 +204,13 @@ BUILT="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' MacRazer
 [ "${BUILT}" = "${VERSION}" ] \
     || fail "built app reports ${BUILT}, not ${VERSION} — do not tag this"
 
+# A release without the Worker would ship with Send and the usage stats hidden, which only
+# shows once people have it. Say so here instead, unless that's what was meant.
+WORKER="$(/usr/libexec/PlistBuddy -c 'Print :MacRazerWorkerURL' MacRazer.app/Contents/Info.plist 2>/dev/null || true)"
+if [ -z "${WORKER}" ] && [ "${MACRAZER_RELEASE_WITHOUT_WORKER:-0}" != "1" ]; then
+    fail "the built app has no Worker address (DOMAIN in your settings file), so Send and usage stats would be hidden. Set it up per worker/README.md, or re-run with MACRAZER_RELEASE_WITHOUT_WORKER=1"
+fi
+
 for asset in "dist/MacRazer.dmg" "dist/MacRazer-${VERSION}.dmg"; do
     [ -f "${asset}" ] || fail "expected ${asset} — make-dmg.sh did not produce it"
 done

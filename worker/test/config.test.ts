@@ -11,6 +11,7 @@ const settings = {
   DESTINATION: "me@mydomain.test",
   SENDER: "reports@mydomain.test",
   DATABASE_ID: "0123abcd-4567-89ef-0123-456789abcdef",
+  DOMAIN: "reports.mydomain.test",
 };
 const line = (toml: string, key: string) => toml.match(new RegExp(`^${key} = "([^"]*)"$`, "m"))?.[1];
 
@@ -21,9 +22,10 @@ describe("the deploy config", () => {
     expect(line(out, "DESTINATION_ADDRESS")).toBe("me@mydomain.test");
     expect(line(out, "SENDER_ADDRESS")).toBe("reports@mydomain.test");
     expect(line(out, "database_id")).toBe(settings.DATABASE_ID);
+    expect(line(out, "pattern")).toBe("reports.mydomain.test");
     expect(out).not.toContain("example.com");
     // Everything else, comments included, is the template's.
-    const strip = (t: string) => t.split("\n").filter((l) => !/^(destination_address|DESTINATION_ADDRESS|SENDER_ADDRESS|database_id) =/.test(l));
+    const strip = (t: string) => t.split("\n").filter((l) => !/^(destination_address|DESTINATION_ADDRESS|SENDER_ADDRESS|database_id|pattern) =/.test(l));
     expect(strip(out).slice(2), "after the two-line header").toEqual(strip(template));
   });
 
@@ -32,6 +34,9 @@ describe("the deploy config", () => {
     expect(() => render(template, without(settings), "s")).toThrow("SENDER is missing");
     expect(() => render(template, { ...settings, DESTINATION: 'a@b.test"\nx = "' }, "s")).toThrow("DESTINATION");
     expect(() => render(template, { ...settings, DATABASE_ID: "not-an-id" }, "s")).toThrow("DATABASE_ID");
+    for (const bad of ["https://reports.mydomain.test", "reports.mydomain.test/v1", "reports", 'x.test"\nworkers_dev = true']) {
+      expect(() => render(template, { ...settings, DOMAIN: bad }, "s")).toThrow("DOMAIN");
+    }
     expect(() => render(template, { ...settings, DESTINATON: "typo@x.test" }, "s")).toThrow("Unknown setting DESTINATON");
   });
 

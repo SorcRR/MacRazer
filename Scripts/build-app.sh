@@ -38,6 +38,26 @@ cp "${BIN}" "${APP}/Contents/MacOS/${EXEC_NAME}"
 cp Packaging/Info.plist "${APP}/Contents/Info.plist"
 [ -f Packaging/AppIcon.icns ] && cp Packaging/AppIcon.icns "${APP}/Contents/Resources/AppIcon.icns"
 
+# The Worker behind Send and the usage stats. Its address comes from DOMAIN in the private
+# settings file worker/README.md sets up, never from the repository, so a build from anyone
+# else's checkout has no Worker: those features are hidden and nothing is sent anywhere.
+# See `WorkerEndpoint` in Sources/MacRazer/AppInfo.swift.
+SETTINGS="${MACRAZER_REPORTS_SETTINGS:-${HOME}/.config/macrazer-reports/settings.env}"
+WORKER_DOMAIN=""
+if [ -f "${SETTINGS}" ]; then
+    WORKER_DOMAIN="$(sed -n -E 's/^[[:space:]]*DOMAIN[[:space:]]*=[[:space:]]*"?([^"[:space:]]*)"?[[:space:]]*$/\1/p' "${SETTINGS}" | tail -n 1)"
+fi
+if [ -n "${WORKER_DOMAIN}" ]; then
+    if ! printf '%s' "${WORKER_DOMAIN}" | grep -Eq '^([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}$'; then
+        echo "✗ DOMAIN in ${SETTINGS} isn't a hostname: ${WORKER_DOMAIN}" >&2
+        exit 1
+    fi
+    /usr/libexec/PlistBuddy -c "Add :MacRazerWorkerURL string https://${WORKER_DOMAIN}" "${APP}/Contents/Info.plist"
+    echo "▸ Worker: https://${WORKER_DOMAIN} (Send and usage stats on)"
+else
+    echo "▸ No Worker configured, so Send and usage stats are hidden in this build."
+fi
+
 # Prefer a stable self-signed identity (created by Scripts/setup-signing.sh) so the
 # Input Monitoring grant persists across rebuilds. Fall back to ad-hoc otherwise.
 SIGN_ID="MacRazer Self-Signed"

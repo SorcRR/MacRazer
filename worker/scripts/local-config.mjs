@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Part of MacRazer, a control app for Razer mice on macOS. See LICENSE and NOTICE.md.
 
-// Builds wrangler.local.toml from the public template (wrangler.toml) and the three values
+// Builds wrangler.local.toml from the public template (wrangler.toml) and the four values
 // only the maintainer has, kept in a settings file outside the repository. Every npm script
 // that talks to Cloudflare runs this first, so the deployed config is always the current
 // template plus those values, and a change to the template can't be missed.
@@ -32,12 +32,15 @@ export function parseSettings(text) {
 
 const EMAIL = /^[^@\s"]+@[^@\s".]+(\.[^@\s".]+)+$/;
 const DATABASE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/// A hostname on your Cloudflare zone, like reports.example.org. No scheme, path or port.
+const HOSTNAME = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i;
 
 /// Each private value: where it goes in the template, and what it must look like.
 const FIELDS = [
   { key: "DESTINATION", lines: ["destination_address", "DESTINATION_ADDRESS"], format: EMAIL },
   { key: "SENDER", lines: ["SENDER_ADDRESS"], format: EMAIL },
   { key: "DATABASE_ID", lines: ["database_id"], format: DATABASE_ID },
+  { key: "DOMAIN", lines: ["pattern"], format: HOSTNAME },
 ];
 
 export function render(template, settings, source = settingsPath()) {

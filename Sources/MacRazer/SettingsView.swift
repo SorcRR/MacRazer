@@ -39,9 +39,12 @@ struct SettingsView: View {
                 // Hidden while there's nowhere to send a report; see `CrashReporting`.
                 if CrashReporting.isAvailable { crashReportsRow }
             }
-            titledSection("Privacy") {
-                usageStatsRow
-                deleteDataRow
+            // Only in a build that can send stats: see `WorkerEndpoint`.
+            if usageStats.isAvailable {
+                titledSection("Privacy") {
+                    usageStatsRow
+                    deleteDataRow
+                }
             }
             titledSection("Appearance") {
                 themeRow

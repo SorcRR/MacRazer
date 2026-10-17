@@ -285,3 +285,43 @@ final class UsageStatsTests: XCTestCase {
         XCTAssertTrue(preview.json(pretty: true).contains("\"Razer Cobra Pro (Wireless)\""))
     }
 }
+
+/// A build without the Worker: what someone else's clone or fork gets.
+@MainActor
+final class WorkerEndpointTests: XCTestCase {
+    func testOnlyAnHTTPSOriginCounts() {
+        XCTAssertEqual(WorkerEndpoint.parse("https://reports.example.org")?.absoluteString, "https://reports.example.org")
+        XCTAssertEqual(WorkerEndpoint.parse("https://reports.example.org/")?.absoluteString, "https://reports.example.org")
+        XCTAssertEqual(WorkerEndpoint.parse("http://127.0.0.1:8787")?.absoluteString, "http://127.0.0.1:8787",
+                       "plain http only for wrangler dev on this Mac")
+        for bad in [nil, "", "reports.example.org", "http://reports.example.org", "https://", "ftp://x.org",
+                    "https://x.org/v1", "https://x.org?a=1", "https://u:p@x.org", "https://x.org#f"] {
+            XCTAssertNil(WorkerEndpoint.parse(bad), bad ?? "nil")
+        }
+    }
+
+    func testTheRoutesHangOffTheOrigin() throws {
+        let base = try XCTUnwrap(WorkerEndpoint.parse("https://reports.example.org"))
+        XCTAssertEqual(base.appendingPathComponent("v1/stats").absoluteString, "https://reports.example.org/v1/stats")
+    }
+
+    func testStatsWithoutAWorkerNeverAskOrSend() async {
+        let server = UsageStatsTests.FakeServer()
+        let name = "MacRazerTests.NoWorker.\(UUID().uuidString)"
+        addTeardownBlock { UserDefaults(suiteName: name)?.removePersistentDomain(forName: name) }
+        let s = UsageStats(defaults: UserDefaults(suiteName: name)!, endpoint: nil, version: "0.6.0",
+                           hardwareUUID: { "X" }, sendsOnChange: false, transport: { try server.handle($0) })
+        XCTAssertFalse(s.isAvailable)
+        s.setConsent(true)
+        await s.sendIfDue()
+        await s.deleteMyData()
+        XCTAssertTrue(server.requests.isEmpty)
+    }
+
+    func testTheDeviceTestHasNoSendWithoutAWorker() {
+        let model = DeviceTestModel(controller: MouseController(), permissions: PermissionsModel(), reportEndpoint: nil)
+        XCTAssertFalse(model.canSend)
+        XCTAssertTrue(DeviceTestModel(controller: MouseController(), permissions: PermissionsModel(),
+                                      reportEndpoint: URL(string: "https://reports.example.org/v1/device-report")).canSend)
+    }
+}

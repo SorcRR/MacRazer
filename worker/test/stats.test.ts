@@ -171,6 +171,31 @@ describe("a ping", () => {
     expect(db.rows("installs")).toHaveLength(3);
   });
 
+  it("stops all pings for the day at the total cap, without writing anything more", async () => {
+    const { env, db } = setup({ DAILY_STATS_TOTAL: "2" });
+    const id = (n: number) => n.toString(16).padStart(32, "0");
+    expect((await post(env, ping({ id: id(1) }))).status).toBe(200);
+    expect((await post(env, ping({ id: id(1), event: "update" }))).status).toBe(200);
+    const before = JSON.stringify([db.rows(), db.rows("installs"), db.rows("install_mice")]);
+    for (let i = 0; i < 5; i++) {
+      expect((await post(env, ping({ id: id(1), event: "update", app: "9.9.9" }))).status, "known Mac too").toBe(429);
+      expect((await post(env, ping({ id: id(10 + i) }))).status).toBe(429);
+    }
+    expect(JSON.stringify([db.rows(), db.rows("installs"), db.rows("install_mice")]), "no writes past the cap").toBe(before);
+    expect((await del(env, id(1))).status, "deleting is never capped").toBe(200);
+    expect(db.rows("installs")).toHaveLength(0);
+  });
+
+  it("writes nothing for a new Mac over the per-sender cap", async () => {
+    const { env, db } = setup({ DAILY_NEW_PER_IP: "1" });
+    await post(env, ping({ id: "1".repeat(32) }));
+    const counters = JSON.stringify(db.rows());
+    for (let i = 0; i < 3; i++) expect((await post(env, ping({ id: String(i + 2).repeat(32) }))).status).toBe(429);
+    // The total ping count moves (it's checked first), the per-sender one doesn't.
+    expect(db.rows().find((r) => String(r.key).startsWith("new:stats:"))?.count).toBe(1);
+    expect(counters).toContain("new:stats:");
+  });
+
   it("is turned away in a burst before anything is read", async () => {
     const { env, db } = setup({}, false);
     expect((await post(env, ping())).status).toBe(429);

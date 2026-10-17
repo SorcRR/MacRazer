@@ -106,7 +106,7 @@ struct UsageStatsCard: View {
     @State private var showDetails = false
 
     var body: some View {
-        if stats.consent == .undecided || answered {
+        if stats.isAvailable, stats.consent == .undecided || answered {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 8) {
                     Image(systemName: "chart.bar.fill")

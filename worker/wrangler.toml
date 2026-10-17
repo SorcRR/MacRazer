@@ -10,6 +10,16 @@ name = "macrazer-reports"
 main = "src/index.ts"
 compatibility_date = "2026-10-01"
 
+# Served only from your own domain. The workers.dev address is off: on your domain a WAF
+# rate-limiting rule can turn a flood away before the Worker runs (see README.md), and a
+# workers.dev address would be a way round it. The hostname is yours, so it lives in your
+# settings file as DOMAIN, like the addresses below.
+workers_dev = false
+
+[[routes]]
+pattern = "macrazer.example.com"
+custom_domain = true
+
 # Reports go to this one address and nowhere else: the binding can't send anywhere else,
 # whatever a request says. It must be a verified destination address in Email Routing.
 # Your address goes in both lines through DESTINATION in your settings file; see README.md.
@@ -24,11 +34,14 @@ DESTINATION_ADDRESS = "you@example.com"
 SENDER_ADDRESS = "macrazer-reports@example.com"
 # Reports accepted per day, per sender and in total. A sender is a salted hash of the IP.
 DAILY_PER_IP = "10"
-DAILY_TOTAL = "200"
+DAILY_TOTAL = "50"
 # Usage stats: new Macs accepted per day, per sender and in total. Pings from a Mac already
 # known aren't capped by these, only by STATS_BURST below.
 DAILY_NEW_PER_IP = "20"
 DAILY_NEW_TOTAL = "2000"
+# Pings accepted per day from everyone, known Macs included, so stats can never use up the
+# D1 writes the device reports need too. Deletions aren't capped.
+DAILY_STATS_TOTAL = "10000"
 
 # Bursts: at most 3 reports a minute from one IP, per Cloudflare location. The id is any
 # number unique among this account's rate limiters.
