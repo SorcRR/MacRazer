@@ -333,13 +333,14 @@ Opt-in only. Nothing is sent until the person clicks Share.
  new Mac.
 - **When.** `UsageStatsPolicy`: a `first` ping when nothing was reported yet, `update` when the
  version changed, `mouse` when a mouse connects that this Mac hasn't reported. Launch waits 15 s
- for a mouse, then sends anyway. A failed ping is simply due again. `swift run` builds never send.
+ for a mouse, then sends anyway. A failed ping is simply due again, at the next launch or mouse. `swift run` builds never
+ send.
 - **What.** `UsagePing`: the ID, the event, app and macOS versions, the chip (from
  `hw.optional.arm64`, so Rosetta still counts as Apple Silicon), and the connected mouse with its
  product ID, link and whether it's supported. Settings › Privacy shows this exact JSON.
 - **Delete My Data.** Turns sharing off and sends `DELETE /v1/stats/<id>`. The Worker moves the
  row to tables without the ID. If the server can't be reached, the delete is kept and retried at
- every launch, and no ping goes before it succeeds.
+ every launch and whenever a mouse connects, and no ping goes before it succeeds.
 - **Seeing the numbers.** `npm run stats` in `worker/` prints a summary.
 
 ---

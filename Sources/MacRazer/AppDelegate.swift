@@ -34,13 +34,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     /// any release found in the meantime. Without the re-ask, that release stayed held until
     /// the popover next opened and closed.
     private lazy var updatedWindow = UpdatedWindowController(
-        updateChecker: updateChecker,
+        updateChecker: updateChecker, usageStats: usageStats,
         onClosed: { [weak self] in self?.autoInstallIfEnabled() })
     /// Closing it re-asks the auto-install gate, for the same reason as `updatedWindow`.
     private lazy var crashReportWindow = CrashReportWindowController(
         onClosed: { [weak self] in self?.autoInstallIfEnabled() })
     private let usageStats = UsageStats.shared
-    private lazy var usageStatsWindow = UsageStatsWindowController(stats: usageStats)
+    /// Closing it re-asks the auto-install gate, for the same reason as `updatedWindow`.
+    private lazy var usageStatsWindow = UsageStatsWindowController(
+        stats: usageStats, onClosed: { [weak self] in self?.autoInstallIfEnabled() })
     /// Waits for a clear moment to ask about usage stats; see `askAboutUsageStats`.
     private var usageStatsAskTimer: Timer?
     private lazy var settingsWindow = SettingsWindowController(

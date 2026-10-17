@@ -29,7 +29,8 @@ CREATE TABLE install_mice (
 );
 
 -- What's left after Delete My Data: the same details without the ID, so nothing here can be
--- linked back to a Mac. The mice go in their own table, not tied to these rows.
+-- linked back to a Mac. The mice go in their own table, not tied to these rows, and dated
+-- only to the month: on a quiet day, matching days would tie them back together.
 CREATE TABLE deleted_installs (
   deleted_on TEXT NOT NULL,
   app TEXT NOT NULL,
@@ -39,7 +40,7 @@ CREATE TABLE deleted_installs (
 );
 
 CREATE TABLE deleted_mice (
-  deleted_on TEXT NOT NULL,
+  deleted_month TEXT NOT NULL,
   pid INTEGER NOT NULL,
   link TEXT NOT NULL,
   name TEXT NOT NULL,

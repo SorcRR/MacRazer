@@ -204,7 +204,7 @@ describe("Delete My Data", () => {
       { deleted_on: "2026-10-29", app: "0.6.0", os: "26.1", arch: "arm64", days_used: 12 },
     ]);
     expect(db.rows("deleted_mice")).toEqual([
-      { deleted_on: "2026-10-29", pid: 0xb0, link: "dongle", name: "Razer Cobra Pro (Wireless)", supported: 1 },
+      { deleted_month: "2026-10", pid: 0xb0, link: "dongle", name: "Razer Cobra Pro (Wireless)", supported: 1 },
     ]);
     expect(JSON.stringify([db.rows("deleted_installs"), db.rows("deleted_mice")])).not.toContain(ID);
   });

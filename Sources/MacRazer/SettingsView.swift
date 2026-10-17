@@ -211,7 +211,7 @@ struct SettingsView: View {
         switch usageStats.deletion {
         case .deleting: return "Deleting…"
         case .deleted: return "Done. This Mac's ID is gone from the server."
-        case .willRetry: return "Couldn't reach the server. MacRazer will keep trying each time it starts."
+        case .willRetry: return "Couldn't reach the server. MacRazer will keep trying, at each launch and when a mouse connects."
         case .idle: return "Removes this Mac's ID from the server and turns sharing off. "
             + "The anonymous counts stay, with nothing that links them to you."
         }

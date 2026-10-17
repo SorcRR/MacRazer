@@ -155,10 +155,13 @@ struct UsageStatsCard: View {
 @MainActor
 final class UsageStatsWindowController: NSObject, AppWindowPresenter, NSWindowDelegate {
     private let stats: UsageStats
+    /// Called a turn after the window closes, once it no longer counts as open.
+    private let onClosed: () -> Void
     private var window: NSWindow?
 
-    init(stats: UsageStats) {
+    init(stats: UsageStats, onClosed: @escaping () -> Void) {
         self.stats = stats
+        self.onClosed = onClosed
     }
 
     var isVisible: Bool { window?.isVisible ?? false }
@@ -183,5 +186,7 @@ final class UsageStatsWindowController: NSObject, AppWindowPresenter, NSWindowDe
 
     func windowWillClose(_ notification: Notification) {
         stats.dismissUnanswered()
+        // Deferred like the Updated window's: it still counts as visible during this call.
+        DispatchQueue.main.async { [weak self] in self?.onClosed() }
     }
 }

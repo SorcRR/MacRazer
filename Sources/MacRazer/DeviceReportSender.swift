@@ -41,7 +41,7 @@ enum DeviceReportSender {
     typealias Transport = @Sendable (URLRequest) async throws -> (Data, URLResponse)
 
     static func send(_ report: DeviceReport, to endpoint: URL = ProjectLinks.deviceReports,
-                     transport: Transport = { try await session.data(for: $0) }) async -> Outcome {
+                     transport: Transport = { try await WorkerSession.shared.data(for: $0) }) async -> Outcome {
         do {
             let (_, response) = try await transport(request(report, to: endpoint))
             return outcome(status: (response as? HTTPURLResponse)?.statusCode ?? 0)
@@ -49,10 +49,13 @@ enum DeviceReportSender {
             return .unavailable
         }
     }
+}
 
-    /// Ephemeral, so sending leaves no cookies or cache behind, and quick to give up: the
-    /// person is watching a spinner, and Copy and the GitHub issue are right there.
-    private static let session: URLSession = {
+/// How the app talks to the Worker in `worker/`, for device reports and usage stats alike.
+/// Ephemeral, so nothing leaves cookies or cache behind, and quick to give up: someone may be
+/// watching a spinner, and a ping that fails is simply due again later.
+enum WorkerSession {
+    static let shared: URLSession = {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 10
         configuration.timeoutIntervalForResource = 20

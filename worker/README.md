@@ -52,6 +52,7 @@ Only from people who clicked Share in the app ([src/stats.ts](src/stats.ts)).
   Bluetooth), with its name and whether MacRazer supports it. At most 16 per Mac.
 - `deleted_installs` and `deleted_mice`: what Delete My Data leaves. The same details without
   the ID, in two tables that aren't linked to each other, so nothing there leads back to a Mac.
+  The mice are dated only to the month, so a quiet day's deletion can't be matched up by date.
 - Days only, never times. No IP addresses. Nothing is logged about a ping.
 
 **Limits.** 10 requests a minute from one IP (`STATS_BURST`). New Macs are capped per day, at

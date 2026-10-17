@@ -251,6 +251,28 @@ final class UsageStatsTests: XCTestCase {
         XCTAssertEqual(server.pings.last?.event, .first, "a new start, as the server sees it")
     }
 
+    func testADeleteMadeDuringAFailingPingStillGoesOut() async {
+        final class Box: @unchecked Sendable { var stats: UsageStats? }
+        let server = FakeServer([0])
+        let box = Box()
+        // The first request, the ping, is still waiting for an answer when Delete is clicked.
+        let s = UsageStats(defaults: defaults(), endpoint: endpoint, version: "0.6.0",
+                       hardwareUUID: { "5C0FFEE0-0000-4000-8000-000000000000" }, sendsOnChange: false,
+                       transport: { [server, box] request in
+                           if request.httpMethod == "POST" { await box.stats?.deleteMyData() }
+                           return try server.handle(request)
+                       })
+        box.stats = s
+        s.setConsent(true)
+        XCTAssertEqual(s.deletion, .idle)
+        await s.sendIfDue()
+        XCTAssertEqual(server.requests.map { $0.httpMethod ?? "" }, ["POST", "DELETE"],
+                       "the delete didn't wait for the next launch")
+        XCTAssertEqual(s.deletion, .deleted)
+        XCTAssertEqual(s.consent, .declined)
+        XCTAssertNil(s.lastSentAt)
+    }
+
     func testThePreviewIsWhatWouldGo() {
         let s = stats(FakeServer())
         s.setConnectedMice([cobra])

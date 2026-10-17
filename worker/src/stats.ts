@@ -163,9 +163,9 @@ export async function forget(db: Database, id: string, now: Date): Promise<void>
         "FROM installs WHERE id = ?1",
     ).bind(id, day),
     db.prepare(
-      "INSERT INTO deleted_mice (deleted_on, pid, link, name, supported) " +
+      "INSERT INTO deleted_mice (deleted_month, pid, link, name, supported) " +
         "SELECT ?2, pid, link, name, supported FROM install_mice WHERE id = ?1",
-    ).bind(id, day),
+    ).bind(id, day.slice(0, 7)),
     db.prepare("DELETE FROM install_mice WHERE id = ?1").bind(id),
     db.prepare("DELETE FROM installs WHERE id = ?1").bind(id),
   ]);

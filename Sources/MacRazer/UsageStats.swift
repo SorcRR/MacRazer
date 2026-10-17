@@ -158,7 +158,7 @@ final class UsageStats: ObservableObject {
          version: String? = AppInfo.version,
          hardwareUUID: @escaping () -> String? = UsageMachineID.hardwareUUID,
          sendsOnChange: Bool = true,
-         transport: @escaping Transport = { try await UsageStats.session.data(for: $0) }) {
+         transport: @escaping Transport = { try await WorkerSession.shared.data(for: $0) }) {
         self.sendsOnChange = sendsOnChange
         self.defaults = defaults
         self.endpoint = endpoint
@@ -238,14 +238,17 @@ final class UsageStats: ObservableObject {
             again = false
             // A ping before an owed delete reached the server would be deleted along with it.
             if defaults.string(forKey: Self.pendingDeletionKey) != nil {
-                guard await finishDeletion() else { return }
+                // A failure ends the pass, unless something asked for another meanwhile.
+                guard await finishDeletion() else { continue }
             }
             guard let event = UsageStatsPolicy.event(
                 consent: consent, version: version,
                 lastReportedVersion: defaults.string(forKey: Self.lastReportedVersionKey),
                 reportedMice: reportedMice, connected: connectedMice) else { continue }
             let sent = ping(event)
-            guard await post(sent) else { return }
+            // On failure, go round again only if something changed during the request: a
+            // Delete My Data made then must not wait for the next launch.
+            guard await post(sent) else { continue }
             // Recorded only on success, so a failed ping is simply due again next time.
             // And only if nothing changed meanwhile: a delete during the request wins.
             guard consent == .granted else { continue }
@@ -273,6 +276,8 @@ final class UsageStats: ObservableObject {
     /// If it can't be reached, the request is kept and tried again until it is.
     func deleteMyData() async {
         defaults.set(machineID, forKey: Self.pendingDeletionKey)
+        // Shown straight away, even when a ping in flight makes the delete wait for it.
+        deletion = .deleting
         consent = .declined
         defaults.set(consent.rawValue, forKey: Self.consentKey)
         // Forget what was reported, so opting in again starts over as a new Mac, the way the
@@ -324,15 +329,4 @@ final class UsageStats: ObservableObject {
         }
         return stats
     }
-
-    /// Ephemeral, like the device report's: no cookies, no cache, and quick to give up. A ping
-    /// that fails is simply due again at the next launch or mouse.
-    nonisolated private static let session: URLSession = {
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.timeoutIntervalForRequest = 10
-        configuration.timeoutIntervalForResource = 20
-        configuration.waitsForConnectivity = false
-        configuration.httpShouldSetCookies = false
-        return URLSession(configuration: configuration)
-    }()
 }
