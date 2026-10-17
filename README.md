@@ -110,7 +110,7 @@ a serial).
 
 ## Requirements
 
-macOS 14 or later (Apple Silicon).
+macOS 14 or later, on Apple Silicon or Intel.
 
 **Connect over the 2.4 GHz dongle or a USB-C cable.** That's where Razer exposes its full
 control protocol. The **Cobra HyperSpeed also works over Bluetooth**: battery, DPI stages,

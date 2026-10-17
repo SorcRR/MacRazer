@@ -14,9 +14,13 @@ cd "$(dirname "$0")/.."
 APP="MacRazer.app"
 EXEC_NAME="MacRazer"
 
-echo "▸ Building release binary…"
-swift build -c release
-BIN="$(swift build -c release --show-bin-path)/${EXEC_NAME}"
+# Universal: one binary for Apple Silicon and Intel. Nothing in the app is tied to either, and
+# macOS 14 still runs on Intel Macs. The two-arch build lands in .build/apple/, not the usual
+# .build/release/, so the bin path has to be asked with the same flags.
+ARCHS=(--arch arm64 --arch x86_64)
+echo "▸ Building universal release binary (arm64 + x86_64)…"
+swift build -c release "${ARCHS[@]}"
+BIN="$(swift build -c release "${ARCHS[@]}" --show-bin-path)/${EXEC_NAME}"
 
 echo "▸ Assembling ${APP}…"
 rm -rf "${APP}"
