@@ -13,12 +13,15 @@ struct UpdatedView: View {
     @ObservedObject var updateChecker: UpdateChecker
     /// Not optional, for the same reason as `AboutView.onDone`.
     var onDone: () -> Void
+    /// Asks about usage stats, once, for someone who updated from a version that never did.
+    @ObservedObject var usageStats: UsageStats = .shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             header
             Divider()
             notes
+            UsageStatsCard(stats: usageStats)
             HStack {
                 Spacer()
                 Button("Done", action: onDone)

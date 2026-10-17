@@ -4,6 +4,8 @@ The device test's **Send** button posts its report here. This Cloudflare Worker 
 report, emails it to the maintainer, and keeps nothing. The only stored data is a count of
 reports per day, used for the caps below.
 
+It also takes the app's opt-in usage stats. See [Usage stats](#usage-stats) below.
+
 ## What it accepts
 
 `POST /v1/device-report` with `Content-Type: application/json`, at most 16 KB. The report must
@@ -31,6 +33,34 @@ results, not from anything the request claims.
 - **No report content.** The report exists in memory long enough to build the email.
 - On success the Worker logs the mouse's product ID. On failure it logs the email service's
   error code. Nothing else is logged.
+
+## Usage stats
+
+Only from people who clicked Share in the app ([src/stats.ts](src/stats.ts)).
+
+| Request | What it does |
+|---|---|
+| `POST /v1/stats` | A ping: the Mac's ID, app and macOS versions, chip, and up to 4 connected mice. At most 4 KB. |
+| `DELETE /v1/stats/<id>` | Delete My Data. Answers 200 whether or not the ID was known. |
+
+**What's kept**, in D1 ([migrations/0002_usage_stats.sql](migrations/0002_usage_stats.sql)):
+
+- `installs`: one row per Mac. The ID, first and last day seen, the latest versions and chip,
+  and how many times it was reinstalled. The ID is the app's keyed hash of the hardware UUID.
+  It can't be turned back into the UUID or the serial number.
+- `install_mice`: each mouse a Mac reported, by product ID and link (wired, 2.4 GHz,
+  Bluetooth), with its name and whether MacRazer supports it. At most 16 per Mac.
+- `deleted_installs` and `deleted_mice`: what Delete My Data leaves. The same details without
+  the ID, in two tables that aren't linked to each other, so nothing there leads back to a Mac.
+- Days only, never times. No IP addresses. Nothing is logged about a ping.
+
+**Limits.** 10 requests a minute from one IP (`STATS_BURST`). New Macs are capped per day, at
+20 per IP and 2000 in total (`DAILY_NEW_PER_IP`, `DAILY_NEW_TOTAL`), so junk can't grow the
+tables fast. A Mac already known is never turned away by those.
+
+**Reading it.** `npm run stats` prints a summary: Macs, versions, mice (unsupported ones are
+the ones to add next), macOS, chip, and deletions. `npm run stats:local` reads the local
+database `wrangler dev` uses.
 
 ## Setup
 
@@ -77,12 +107,15 @@ rebuilt every time, so a change to the template is never left out of a deploy.
    - `SENDER`: any address on the Email Routing domain. It doesn't need a mailbox.
    - To keep the file somewhere else, set `MACRAZER_REPORTS_SETTINGS` to its path.
 
-5. Create the table, then deploy:
+5. Create the tables, then deploy:
 
    ```sh
    npm run migrate
    npm run deploy
    ```
+
+   Already set up from before the usage stats? `npm run migrate` again adds their tables. It
+   only applies the migrations the database doesn't have yet.
 
    On an account's first Worker, Wrangler asks you to pick a `workers.dev` subdomain. It then
    prints the Worker's address, like `https://macrazer-reports.<subdomain>.workers.dev`.

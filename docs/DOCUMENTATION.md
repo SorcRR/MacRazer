@@ -320,6 +320,28 @@ model) runs a guided test and builds a report a maintainer can turn into a regis
 - `worker/`: a Cloudflare Worker that checks a report against the app's exact format, emails it
  to the maintainer, and keeps only daily counters. Setup is in `worker/README.md`.
 
+### 6.5 Usage stats, `UsageStats.swift` + `worker/src/stats.ts`
+Opt-in only. Nothing is sent until the person clicks Share.
+
+- **Asking.** A new install gets `UsageStatsConsentView` in its own window, once nothing else is
+ on screen (the setup window comes first). Someone updating gets `UsageStatsCard` in the
+ Updated window instead. Closing either without answering counts as no, and it isn't asked again.
+- **The ID.** An HMAC-SHA256 of the hardware UUID (`IOPlatformUUID`) with a fixed app key,
+ cut to 16 bytes of hex. The same Mac gets the same ID after a reinstall, the UUID never leaves
+ it, and the result can't be matched with what another app gets from the same UUID. It's saved
+ in the preferences once worked out, so a UUID that changes in a macOS upgrade doesn't make a
+ new Mac.
+- **When.** `UsageStatsPolicy`: a `first` ping when nothing was reported yet, `update` when the
+ version changed, `mouse` when a mouse connects that this Mac hasn't reported. Launch waits 15 s
+ for a mouse, then sends anyway. A failed ping is simply due again. `swift run` builds never send.
+- **What.** `UsagePing`: the ID, the event, app and macOS versions, the chip (from
+ `hw.optional.arm64`, so Rosetta still counts as Apple Silicon), and the connected mouse with its
+ product ID, link and whether it's supported. Settings › Privacy shows this exact JSON.
+- **Delete My Data.** Turns sharing off and sends `DELETE /v1/stats/<id>`. The Worker moves the
+ row to tables without the ID. If the server can't be reached, the delete is kept and retried at
+ every launch, and no ping goes before it succeeds.
+- **Seeing the numbers.** `npm run stats` in `worker/` prints a summary.
+
 ---
 
 ## 7. Permissions & code signing
@@ -419,11 +441,13 @@ that path draws the content but needs an explicit size, since there is no window
 | `DeviceTestWindowController.swift` | Window host for the device test. |
 | `DeviceReportOutput.swift` | Copy, GitHub issue, size fitting and text limits for reports. |
 | `DeviceReportSender.swift` | Send: posts a report to the Worker. |
+| `UsageStats.swift` | Opt-in usage stats: the ID, when to ping, Delete My Data. |
+| `UsageStatsView.swift` | The consent window, the Updated window's card, the shared summary. |
 | `ButtonCapture.swift` | Listens to the Razer device's buttons during the test. |
 | `MenuBarIcon.swift` | Vector-drawn menu bar mouse icon (+ triskelion). |
 | `RazerLogo.swift` | Embedded official Razer logo (vector PDF, base64) for the header. |
 
-`worker/` holds the Cloudflare Worker behind Send (TypeScript, tested with vitest).
+`worker/` holds the Cloudflare Worker behind Send and the usage stats (TypeScript, tested with vitest).
 
 External: `reference/openrazer/` (cloned driver source, the protocol reference, gitignored)
 and `reference/openrazer-pr-2583.diff` (the Cobra HyperSpeed PR).

@@ -2,7 +2,8 @@
 // Part of MacRazer, a control app for Razer mice on macOS. See LICENSE and NOTICE.md.
 
 // Receives a device test report from the app's Send button and emails it to the maintainer.
-// Nothing is stored: the report goes into one email and is gone. See README.md for setup.
+// Nothing of a report is stored: it goes into one email and is gone. Also takes the usage
+// stats pings of people who opted in (src/stats.ts). See README.md for setup.
 //
 // Only the default export lives here: the runtime takes any named export of this module for
 // an entry point (test/worker.test.ts checks).

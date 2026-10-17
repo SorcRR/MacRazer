@@ -8,10 +8,13 @@
 /// The slice of D1's API this uses, so tests can run the same SQL on SQLite.
 export interface Database {
   prepare(sql: string): Statement;
+  /// Runs the statements in one transaction: all of them or none.
+  batch(statements: Statement[]): Promise<unknown>;
 }
 export interface Statement {
   bind(...values: unknown[]): Statement;
   first<T = Record<string, unknown>>(): Promise<T | null>;
+  all<T = Record<string, unknown>>(): Promise<{ results: T[] }>;
   run(): Promise<unknown>;
 }
 
@@ -31,7 +34,7 @@ export async function ipKey(ip: string, salt: string, day: string): Promise<stri
   return "ip:" + [...new Uint8Array(digest).slice(0, 16)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-async function hit(db: Database, day: string, key: string): Promise<number> {
+export async function hit(db: Database, day: string, key: string): Promise<number> {
   const row = await db.prepare(HIT).bind(day, key).first<{ count: number }>();
   return Number(row?.count ?? Infinity);
 }

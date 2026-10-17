@@ -244,7 +244,8 @@ case "render-settings":
     // `update` shows the Updates section in its available state, which is the only way to see
     // the Install Now button without waiting for a real release.
     if args.contains("update") { su.loadPreviewState() }
-    writeViewPNG(SettingsView(controller: sc, launchAtLogin: sl, updateChecker: su, onDone: {}),
+    writeViewPNG(SettingsView(controller: sc, launchAtLogin: sl, updateChecker: su, onDone: {},
+                              usageStats: .preview(consent: args.contains("notsharing") ? .declined : .granted)),
                  to: settingsPath)
 
 case "render-updated":
@@ -261,7 +262,16 @@ case "render-updated":
             RemoteRelease(version: "0.4.0", body: PreviewNotes.releaseBody),
         ])
     }
-    writeHostedPNG(UpdatedView(updateChecker: uc, onDone: {}), to: updatedPath)
+    // `asked` leaves out the usage stats card, as for someone who already answered.
+    writeHostedPNG(UpdatedView(updateChecker: uc, onDone: {},
+                               usageStats: .preview(consent: args.contains("asked") ? .granted : .undecided)),
+                   to: updatedPath)
+
+case "render-usage-consent":
+    // The one-time usage stats question a new install gets.
+    _ = NSApplication.shared
+    writeHostedPNG(UsageStatsConsentView(stats: .preview(consent: .undecided), onDone: {}),
+                   to: outputPath(args.dropFirst(), default: "usage-consent-preview.png"))
 
 case "render-about":
     _ = NSApplication.shared

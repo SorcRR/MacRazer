@@ -24,6 +24,8 @@ struct SettingsView: View {
     /// The crash window's "Don't Ask Again" writes the same key, so this is how to undo it.
     @AppStorage(CrashLogScanner.offerKey) private var offerCrashReports = true
     @ObservedObject var appearance: AppearanceSettings = .shared
+    @ObservedObject var usageStats: UsageStats = .shared
+    @State private var confirmingDelete = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -36,6 +38,10 @@ struct SettingsView: View {
                 if controller.deviceHasBattery { batteryPercentRow }
                 // Hidden while there's nowhere to send a report; see `CrashReporting`.
                 if CrashReporting.isAvailable { crashReportsRow }
+            }
+            titledSection("Privacy") {
+                usageStatsRow
+                deleteDataRow
             }
             titledSection("Appearance") {
                 themeRow
@@ -149,6 +155,66 @@ struct SettingsView: View {
                 + "You see exactly what's in it first.",
             isOn: $offerCrashReports
         )
+    }
+
+    private var usageStatsRow: some View {
+        settingRow(
+            title: "Share anonymous usage stats",
+            detail: "Your mouse model, app version and macOS version, sent when you install, update or "
+                + "plug in a new mouse. It helps me decide which mice to support next.",
+            isOn: Binding(get: { usageStats.consent == .granted }, set: { usageStats.setConsent($0) })
+        ) {
+            DisclosureGroup("What's sent") {
+                UsageStatsJSON(ping: usageStats.preview)
+                    .padding(.top, 4)
+            }
+            .font(.system(size: 11.5, weight: .medium))
+            if let status = usageStatsStatus {
+                sectionNote(status)
+            }
+        }
+    }
+
+    private var usageStatsStatus: String? {
+        guard usageStats.consent == .granted else { return nil }
+        guard let sent = usageStats.lastSentAt else { return "Nothing sent yet. It goes with the next launch or mouse." }
+        // The formatter says "in 0 seconds" for a moment ago.
+        let when = Date().timeIntervalSince(sent) < 60
+            ? "just now" : Self.relativeDate.localizedString(for: sent, relativeTo: Date())
+        return "Last sent \(when)" + (usageStats.lastSentVersion.map { ", for version \($0)." } ?? ".")
+    }
+
+    /// Always offered, even with nothing sent from this install: a reinstall keeps the same ID,
+    /// so the server may still have this Mac from before.
+    private var deleteDataRow: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Delete what's stored").font(.system(size: 12.5, weight: .medium))
+                sectionNote(deletionNote)
+            }
+            Spacer(minLength: 0)
+            Button("Delete My Data…") { confirmingDelete = true }
+                .controlSize(.small)
+                .disabled(usageStats.deletion == .deleting)
+        }
+        .confirmationDialog("Delete this Mac's usage stats?", isPresented: $confirmingDelete,
+                            titleVisibility: .visible) {
+            Button("Delete", role: .destructive) { Task { await usageStats.deleteMyData() } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This Mac's ID is removed from the server and sharing turns off. "
+                + "The anonymous counts stay, with nothing that links them to you.")
+        }
+    }
+
+    private var deletionNote: String {
+        switch usageStats.deletion {
+        case .deleting: return "Deleting…"
+        case .deleted: return "Done. This Mac's ID is gone from the server."
+        case .willRetry: return "Couldn't reach the server. MacRazer will keep trying each time it starts."
+        case .idle: return "Removes this Mac's ID from the server and turns sharing off. "
+            + "The anonymous counts stay, with nothing that links them to you."
+        }
     }
 
     private var autoInstallRow: some View {
