@@ -4,6 +4,9 @@
 #   ./Scripts/build-app.sh           # release build → ./MacRazer.app
 #   open "MacRazer.app"           # launch it
 #
+# Needs Xcode, not just the Command Line Tools: a build for two architectures goes through
+# Xcode's build system. (`swift build` / `swift run` for development work with either.)
+#
 # The bundle is ad-hoc codesigned so it has a stable identity — important so macOS
 # remembers the Input Monitoring grant across launches (unsigned binaries get a fresh,
 # unstable TCC identity and re-prompt every time).
@@ -21,6 +24,12 @@ ARCHS=(--arch arm64 --arch x86_64)
 echo "▸ Building universal release binary (arm64 + x86_64)…"
 swift build -c release "${ARCHS[@]}"
 BIN="$(swift build -c release "${ARCHS[@]}" --show-bin-path)/${EXEC_NAME}"
+# Fail here rather than ship a release that quietly lost Intel (or Apple Silicon) support,
+# say after a toolchain change.
+if ! lipo "${BIN}" -verify_arch arm64 x86_64; then
+    echo "✗ ${BIN} is not universal: $(lipo -archs "${BIN}")" >&2
+    exit 1
+fi
 
 echo "▸ Assembling ${APP}…"
 rm -rf "${APP}"
