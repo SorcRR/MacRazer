@@ -29,7 +29,8 @@ struct CrashReport: Codable, Equatable {
     /// "Mac14,6": a model, not a machine.
     var model: String?
     var cpu: String?
-    /// Running under Rosetta, which is worth knowing for an arm64-only crash.
+    /// Running under Rosetta. The app is universal, so on an Intel Mac this is false; true
+    /// means an Apple Silicon Mac was set to open it with Rosetta.
     var translated: Bool?
     /// When it crashed, as macOS wrote it, with the UTC offset.
     var time: String?

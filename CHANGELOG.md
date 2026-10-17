@@ -50,6 +50,9 @@ expect rough edges until 1.0.
  it reads the answers, using a fake mouse instead of hardware.
 
 ### Added
+- **Runs on Intel Macs.** The app is now a universal build, native on both Apple Silicon and
+ Intel. It still needs macOS 14 or later.
+
 - **Optional usage stats, off until you say yes.** MacRazer asks once whether you'd like to
   share your mouse model, the app and macOS versions, and a scrambled ID so each Mac counts
   once. New installs get a small window after setup. If you're updating, it's a card in the

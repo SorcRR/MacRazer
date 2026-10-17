@@ -51,6 +51,12 @@ jobs:
         run: ./Tests/Scripts/changelog-test.sh
       - name: Build
         run: swift build
+      # Releases ship one universal binary. Building the Intel half here catches anything that
+      # only compiles for Apple Silicon before release day does.
+      - name: Build universal release
+        run: |
+          swift build -c release --arch arm64 --arch x86_64
+          lipo "$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)/MacRazer" -verify_arch arm64 x86_64
       - name: Test
         run: swift test
 
