@@ -78,7 +78,20 @@ enum UsageStatsPolicy {
             }
         }
         let name = RazerDevices.info(pid: pid)?.name ?? productName ?? "Unknown mouse"
-        return UsagePing.Mouse(pid: pid, name: String(name.prefix(64)), link: link, supported: supported)
+        return UsagePing.Mouse(pid: pid, name: fitted(name, utf16: 64), link: link, supported: supported)
+    }
+
+    /// Whole characters, up to `utf16` UTF-16 units: the Worker counts in those, and a cut of
+    /// its own could split an emoji in half.
+    static func fitted(_ text: String, utf16 limit: Int) -> String {
+        var out = ""
+        var used = 0
+        for character in text {
+            used += character.utf16.count
+            if used > limit { break }
+            out.append(character)
+        }
+        return out
     }
 }
 

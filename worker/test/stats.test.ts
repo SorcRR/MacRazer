@@ -125,7 +125,8 @@ describe("a ping", () => {
     const { env, db } = setup();
     await post(env, ping({ mice: [{ pid: 1, name: "Razer\u0000 Thing\n", link: "unknown", supported: false }] }));
     await post(env, ping({ id: "0".repeat(32), mice: [{ pid: 2, name: " \u0007 ", link: "unknown", supported: false }] }));
-    expect(db.rows("install_mice").map((m) => m.name)).toEqual(["Razer Thing", "Unknown mouse"]);
+    await post(env, ping({ id: "1".repeat(32), mice: [{ pid: 3, name: "a".repeat(63) + "\u{1F5B1}", link: "unknown", supported: false }] }));
+    expect(db.rows("install_mice").map((m) => m.name)).toEqual(["Razer Thing", "Unknown mouse", "a".repeat(63)]);
   });
 
   it("refuses anything that isn't exactly a ping", async () => {

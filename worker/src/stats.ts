@@ -73,7 +73,8 @@ const ping = obj({
 
 export function validatePing(value: unknown): Ping {
   const p = ping(value, "ping") as Ping;
-  for (const m of p.mice) m.name = m.name.trim() || "Unknown mouse";
+  // text() cuts at 64 UTF-16 units, which can leave half of an emoji at the end.
+  for (const m of p.mice) m.name = m.name.replace(/[\uD800-\uDBFF]$/, "").trim() || "Unknown mouse";
   if (new Set(p.mice.map((m) => `${m.pid}/${m.link}`)).size !== p.mice.length) fail("ping.mice", "duplicate mouse");
   return p;
 }
@@ -107,12 +108,17 @@ export async function handleStats(request: Request, env: StatsEnv, now: Date): P
   if (Number(request.headers.get("content-length") ?? 0) > MAX_PING_BYTES) return reply(413, "too_large");
   const body = await readCapped(request, MAX_PING_BYTES);
   if (body === null) return reply(413, "too_large");
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(body));
+  } catch {
+    return reply(400, "bad_json");
+  }
   let p: Ping;
   try {
-    p = validatePing(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(body)));
+    p = validatePing(parsed);
   } catch (error) {
     if (error instanceof ValidationError) return reply(400, "invalid", {}, error.message);
-    if (error instanceof SyntaxError || error instanceof TypeError) return reply(400, "bad_json");
     throw error;
   }
 

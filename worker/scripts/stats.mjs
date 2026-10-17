@@ -56,8 +56,12 @@ export function format(results) {
     ...results.mice.map((m) => {
       const pid = "0x" + Number(m.pid).toString(16).toUpperCase().padStart(4, "0");
       const link = LINK[m.link] ?? m.link;
-      const label = `${m.name}  ${pid}${link ? `  ${link}` : ""}`;
-      return `  ${label.slice(0, 44).padEnd(44)}${String(m.n).padStart(6)}  ${m.supported ? "yes" : "no"}`;
+      // The name gives way, never the ID and link: they tell a model's wired and Bluetooth rows apart.
+      const tail = `  ${pid}${link ? `  ${link}` : ""}`;
+      const name = String(m.name);
+      const room = 44 - tail.length;
+      const label = (name.length > room ? name.slice(0, room - 1) + "…" : name) + tail;
+      return `  ${label.padEnd(44)}${String(m.n).padStart(6)}  ${m.supported ? "yes" : "no"}`;
     }),
     "",
     "macOS",

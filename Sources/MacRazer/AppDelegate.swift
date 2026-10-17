@@ -571,7 +571,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         guard usageStats.consent == .undecided else { return stopAskingAboutUsageStats() }
         guard !isShowingAWindow, !popover.isShown, !appMenuOpen else { return }
         stopAskingAboutUsageStats()
-        usageStatsWindow.show()
+        usageStatsWindow.show(activating: false)
     }
 
     private func stopAskingAboutUsageStats() {

@@ -125,7 +125,7 @@ struct UsageStatsCard: View {
                         UsageStatsSummary(ping: stats.preview)
                     }
                     HStack(spacing: 10) {
-                        Button(showDetails ? "Hide details" : "See exactly what's sent") { showDetails.toggle() }
+                        Button(showDetails ? "Hide details" : "See what's sent") { showDetails.toggle() }
                             .buttonStyle(.plain)
                             .font(.system(size: 11.5, weight: .medium))
                             .foregroundStyle(Color.razerGreenText)
@@ -166,7 +166,12 @@ final class UsageStatsWindowController: NSObject, AppWindowPresenter, NSWindowDe
 
     var isVisible: Bool { window?.isVisible ?? false }
 
-    func show() {
+    func show() { show(activating: true) }
+
+    /// - Parameter activating: whether to take focus. False when the app opens it on its own:
+    ///   someone typing elsewhere could otherwise press Esc into it and decline unread. It
+    ///   still comes to the front, where it will be seen.
+    func show(activating: Bool) {
         if window == nil {
             let controller = NSHostingController(rootView: UsageStatsConsentView(
                 stats: stats, onDone: { [weak self] in self?.window?.close() }))
@@ -180,8 +185,12 @@ final class UsageStatsWindowController: NSObject, AppWindowPresenter, NSWindowDe
             w.center()
             window = w
         }
-        NSApp.activate(ignoringOtherApps: true)
-        window?.makeKeyAndOrderFront(nil)
+        if activating {
+            NSApp.activate(ignoringOtherApps: true)
+            window?.makeKeyAndOrderFront(nil)
+        } else {
+            window?.orderFrontRegardless()
+        }
     }
 
     func windowWillClose(_ notification: Notification) {

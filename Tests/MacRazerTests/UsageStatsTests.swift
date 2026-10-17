@@ -112,6 +112,8 @@ final class UsageStatsTests: XCTestCase {
         XCTAssertEqual(UsageStatsPolicy.mouse(pid: 0x7777, productName: nil, isBluetooth: false, supported: false).name, "Unknown mouse")
         let long = UsageStatsPolicy.mouse(pid: 0x7777, productName: String(repeating: "x", count: 100), isBluetooth: false, supported: false)
         XCTAssertEqual(long.name.count, 64, "the Worker's limit")
+        let emoji = UsageStatsPolicy.fitted(String(repeating: "a", count: 63) + "🖱️x", utf16: 64)
+        XCTAssertEqual(emoji, String(repeating: "a", count: 63), "an emoji isn't cut in half")
     }
 
     // MARK: The ID
