@@ -105,10 +105,18 @@ final class DeviceTestModel: ObservableObject {
     private var lightSweep: [DeviceProbe.LEDAnswer]?
     private var sessionOpen = false
 
-    init(controller: MouseController, permissions: PermissionsModel) {
+    /// Where Send goes, or nil in a build without the Worker, which hides Send and the reply
+    /// address that only Send would carry. Copy and the GitHub issue work either way.
+    let reportEndpoint: URL?
+
+    init(controller: MouseController, permissions: PermissionsModel,
+         reportEndpoint: URL? = WorkerEndpoint.deviceReports) {
         self.controller = controller
         self.permissions = permissions
+        self.reportEndpoint = reportEndpoint
     }
+
+    var canSend: Bool { reportEndpoint != nil }
 
     static var inputMonitoringGranted: Bool {
         IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) == kIOHIDAccessTypeGranted
@@ -393,11 +401,12 @@ final class DeviceTestModel: ObservableObject {
 
     /// Emails the report, with the reply address, to the maintainer through the Worker.
     func send() {
-        guard sendState != .sending, sendState != .sent, emailProblem == nil, let report = finalReport() else { return }
+        guard let endpoint = reportEndpoint, sendState != .sending, sendState != .sent, emailProblem == nil,
+              let report = finalReport() else { return }
         sendState = .sending
         let started = generation
         Task {
-            let outcome = await DeviceReportSender.send(report)
+            let outcome = await DeviceReportSender.send(report, to: endpoint)
             guard generation == started else { return }
             sendState = outcome == .sent ? .sent : .failed(outcome)
         }

@@ -548,8 +548,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
             Task { await self.usageStats.sendIfDue() }
         }
         // Someone who just updated is asked in the Updated window instead. A `swift run`
-        // build has no version and would never send, so it doesn't ask either.
-        if usageStats.consent == .undecided, updateChecker.justUpdatedTo == nil, AppInfo.version != nil {
+        // build has no version and a build without the Worker has nowhere to send, so
+        // neither of them asks.
+        if usageStats.isAvailable, usageStats.consent == .undecided, updateChecker.justUpdatedTo == nil,
+           AppInfo.version != nil {
             askAboutUsageStats()
         }
     }

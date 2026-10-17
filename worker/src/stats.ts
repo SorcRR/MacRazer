@@ -12,7 +12,7 @@
 // the request beyond the checked fields, and any log line with the ID in it.
 
 import { readCapped, reply, positive } from "./http";
-import { dayOf, hit, ipKey, type Database } from "./limits";
+import { count, dayOf, ipKey, withinCap, type Database } from "./limits";
 import { bool, fail, int, list, obj, oneOf, str, text, ValidationError } from "./validate";
 
 export interface StatsEnv {
@@ -21,9 +21,13 @@ export interface StatsEnv {
   STATS_BURST: { limit(options: { key: string }): Promise<{ success: boolean }> };
   IP_SALT?: string;
   /// New Macs accepted per day, per sender and in total. Pings from a Mac already known
-  /// aren't counted: only new rows grow the database.
+  /// aren't counted here: only new rows grow the database.
   DAILY_NEW_PER_IP?: string;
   DAILY_NEW_TOTAL?: string;
+  /// Pings accepted per day from everyone, known Macs included. Each costs a few D1 writes,
+  /// and the device reports' counters need some of the same daily allowance, so stats stop
+  /// for the day well before it runs out. Deletions are never capped.
+  DAILY_STATS_TOTAL?: string;
 }
 
 export const STATS_PATH = "/v1/stats";
@@ -122,12 +126,19 @@ export async function handleStats(request: Request, env: StatsEnv, now: Date): P
     throw error;
   }
 
+  const day = dayOf(now);
+  // Every limit is read before anything is counted, so a ping refused by any of them writes
+  // nothing, and the day's total only counts pings that are recorded.
+  const statsTotal = positive(env.DAILY_STATS_TOTAL, 10000);
+  if ((await count(env.DB, day, "stats:total")) >= statsTotal) return reply(429, "daily_limit");
   const known = await env.DB.prepare("SELECT 1 AS known FROM installs WHERE id = ?1").bind(p.id).first();
   if (!known) {
-    const day = dayOf(now);
-    if ((await hit(env.DB, day, `new:${sender}`)) > positive(env.DAILY_NEW_PER_IP, 20)) return reply(429, "daily_limit");
-    if ((await hit(env.DB, day, "new:total")) > positive(env.DAILY_NEW_TOTAL, 2000)) return reply(429, "daily_limit");
+    const newTotal = positive(env.DAILY_NEW_TOTAL, 2000);
+    if ((await count(env.DB, day, "new:total")) >= newTotal) return reply(429, "daily_limit");
+    if (!(await withinCap(env.DB, day, `new:${sender}`, positive(env.DAILY_NEW_PER_IP, 20)))) return reply(429, "daily_limit");
+    if (!(await withinCap(env.DB, day, "new:total", newTotal))) return reply(429, "daily_limit");
   }
+  if (!(await withinCap(env.DB, day, "stats:total", statsTotal))) return reply(429, "daily_limit");
   await record(env.DB, p, now);
   return reply(200, "recorded");
 }

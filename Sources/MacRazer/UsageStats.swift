@@ -157,7 +157,8 @@ final class UsageStats: ObservableObject {
 
     private let defaults: UserDefaults
     private let transport: Transport
-    private let endpoint: URL
+    /// Nil in a build without the Worker: then nothing is asked, shown or sent.
+    private let endpoint: URL?
     private let version: String?
     private let hardwareUUID: () -> String?
     /// Whether a yes or a new mouse sends straight away. Off in tests, which call
@@ -167,7 +168,7 @@ final class UsageStats: ObservableObject {
     private var again = false
 
     init(defaults: UserDefaults = .standard,
-         endpoint: URL = ProjectLinks.usageStats,
+         endpoint: URL? = WorkerEndpoint.usageStats,
          version: String? = AppInfo.version,
          hardwareUUID: @escaping () -> String? = UsageMachineID.hardwareUUID,
          sendsOnChange: Bool = true,
@@ -183,6 +184,10 @@ final class UsageStats: ObservableObject {
         lastSentVersion = defaults.string(forKey: Self.lastReportedVersionKey)
         if defaults.string(forKey: Self.pendingDeletionKey) != nil { deletion = .willRetry }
     }
+
+    /// Whether this build has somewhere to send stats. When it doesn't, the app never asks,
+    /// Settings has no Privacy section, and the Updated window has no card.
+    var isAvailable: Bool { endpoint != nil }
 
     /// Worked out once and kept: if macOS ever reported a different UUID (some have seen it
     /// change across a major upgrade) the Mac would otherwise turn into a new one. Recomputed
@@ -244,6 +249,7 @@ final class UsageStats: ObservableObject {
     /// a new mouse, and on saying yes. A call while one is running makes it go round once more,
     /// so nothing that changed meanwhile is missed.
     func sendIfDue() async {
+        guard endpoint != nil else { return }
         if busy { again = true; return }
         busy = true
         defer { busy = false }
@@ -275,6 +281,7 @@ final class UsageStats: ObservableObject {
     }
 
     private func post(_ ping: UsagePing) async -> Bool {
+        guard let endpoint else { return false }
         var request = URLRequest(url: endpoint, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 10)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -288,6 +295,8 @@ final class UsageStats: ObservableObject {
     /// Delete My Data: sharing goes off at once, and the server is asked to drop this Mac's ID.
     /// If it can't be reached, the request is kept and tried again until it is.
     func deleteMyData() async {
+        // A build without the Worker never sent anything, and has nowhere to ask.
+        guard endpoint != nil else { return }
         defaults.set(machineID, forKey: Self.pendingDeletionKey)
         // Shown straight away, even when a ping in flight makes the delete wait for it.
         deletion = .deleting
@@ -306,6 +315,7 @@ final class UsageStats: ObservableObject {
     /// True once the server has it, or there was nothing to delete.
     private func finishDeletion() async -> Bool {
         guard let id = defaults.string(forKey: Self.pendingDeletionKey) else { return true }
+        guard let endpoint else { return false }
         deletion = .deleting
         var request = URLRequest(url: endpoint.appendingPathComponent(id),
                                  cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 10)
@@ -331,7 +341,7 @@ final class UsageStats: ObservableObject {
         let name = "MacRazer.preview.usageStats"
         let defaults = UserDefaults(suiteName: name)!
         defaults.removePersistentDomain(forName: name)
-        let stats = UsageStats(defaults: defaults, version: "0.6.0",
+        let stats = UsageStats(defaults: defaults, endpoint: URL(string: "https://reports.example/v1/stats"), version: "0.6.0",
                                hardwareUUID: { "5C0FFEE0-0000-4000-8000-000000000000" },
                                sendsOnChange: false, transport: { _ in throw URLError(.notConnectedToInternet) })
         stats.consent = consent

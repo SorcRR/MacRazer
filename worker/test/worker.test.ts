@@ -70,6 +70,12 @@ describe("wrangler config", () => {
     }
   });
 
+  it("keeps the real domain out of the template, and the workers.dev address off", () => {
+    const toml = read("wrangler.toml");
+    expect(setting(toml, "pattern")).toMatch(/\.example\.com$/);
+    expect(toml).toMatch(/^workers_dev = false$/m);
+  });
+
   it("is never committed with the maintainer's copy", () => {
     expect(read(".gitignore")).toMatch(/^wrangler\.local\.toml$/m);
   });
@@ -304,6 +310,16 @@ describe("daily caps", () => {
     expect(db.rows().find((r) => r.key === "total")?.count).toBe(3);
     expect((await status(env, post(cobra(), { ip: "198.51.100.2" }))).body.error).toBe("daily_limit");
     expect(sent).toHaveLength(3);
+  });
+
+  it("write nothing once a sender or the day is over its cap", async () => {
+    const { env, db } = setup({ DAILY_PER_IP: "1", DAILY_TOTAL: "2" });
+    await status(env, post(cobra()));
+    await status(env, post(cobra(), { ip: "198.51.100.1" }));
+    const counters = JSON.stringify(db.rows());
+    for (let i = 0; i < 5; i++) await status(env, post(cobra()));
+    for (let i = 0; i < 5; i++) await status(env, post(cobra(), { ip: `198.51.100.${10 + i}` }));
+    expect(JSON.stringify(db.rows()), "not even new senders' counts").toBe(counters);
   });
 
   it("start again the next day", async () => {

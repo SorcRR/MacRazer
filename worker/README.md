@@ -20,7 +20,7 @@ results, not from anything the request claims.
 |---|---|---|
 | 200 | Emailed | Thank you, plus what the report means for this mouse |
 | 400, 404, 405, 413, 415 | Refused | Open a GitHub issue instead |
-| 429 | Too many: 3 a minute or 10 a day from one IP, or 200 a day in total | Try again tomorrow |
+| 429 | Too many: 3 a minute or 10 a day from one IP, or 50 a day in total | Try again tomorrow |
 | 503 | Not set up right, or the email didn't go | Try again later |
 
 ## What it keeps
@@ -57,7 +57,9 @@ Only from people who clicked Share in the app ([src/stats.ts](src/stats.ts)).
 
 **Limits.** 10 requests a minute from one IP (`STATS_BURST`). New Macs are capped per day, at
 20 per IP and 2000 in total (`DAILY_NEW_PER_IP`, `DAILY_NEW_TOTAL`), so junk can't grow the
-tables fast. A Mac already known is never turned away by those.
+tables fast. A Mac already known is never turned away by those. All pings together stop at
+10,000 a day (`DAILY_STATS_TOTAL`), so stats can't use up the D1 writes the device reports
+need too. Deletions are never capped.
 
 **Reading it.** `npm run stats` prints a summary: Macs, versions, mice (unsupported ones are
 the ones to add next), macOS, chip, and deletions. `npm run stats:local` reads the local
@@ -66,10 +68,11 @@ database `wrangler dev` uses.
 ## Setup
 
 You need a Cloudflare account with a domain on it. Sending to your own verified address is
-free on every plan.
+free on every plan. An account you use for other projects is fine: this is one more Worker and
+one more database, with names of their own.
 
-Your addresses never go in the repository. [wrangler.toml](wrangler.toml) is a public
-template with placeholders. Your three private values live in a settings file outside the
+Nothing private goes in the repository. [wrangler.toml](wrangler.toml) is a public
+template with placeholders. Your four private values live in a settings file outside the
 repository, `~/.config/macrazer-reports/settings.env`, so every checkout and worktree uses the
 same one and it can't be committed. Each `npm run` command below first builds the real config,
 `wrangler.local.toml`, from the template plus that file. Git ignores the result, and it's
@@ -95,17 +98,25 @@ rebuilt every time, so a change to the template is never left out of a deploy.
    npx wrangler d1 create macrazer-reports
    ```
 
-4. Create `~/.config/macrazer-reports/settings.env` with your three values:
+4. Create `~/.config/macrazer-reports/settings.env` with your four values:
 
    ```sh
    DESTINATION=you@yourdomain.com
    SENDER=macrazer-reports@yourdomain.com
    DATABASE_ID=the-id-from-step-3
+   DOMAIN=macrazer.yourdomain.com
    ```
 
    - `DESTINATION`: the address you verified in step 2. It goes in both `destination_address`,
      which locks the binding to it, and `DESTINATION_ADDRESS`, which the Worker sends to.
    - `SENDER`: any address on the Email Routing domain. It doesn't need a mailbox.
+   - `DOMAIN`: the hostname the Worker answers on, on a domain in this Cloudflare account.
+     Deploying creates its DNS record and certificate. It doesn't need to be the Email Routing
+     domain, and no other site may already use that exact name. There is no `workers.dev`
+     address: see [Protecting it](#protecting-it).
+   - `Scripts/build-app.sh` reads `DOMAIN` from this file too, and writes
+     `https://<DOMAIN>` into the app it builds. A build without this file has no Worker, and
+     hides Send and the usage stats.
    - To keep the file somewhere else, set `MACRAZER_REPORTS_SETTINGS` to its path.
 
 5. Create the tables, then deploy:
@@ -117,11 +128,6 @@ rebuilt every time, so a change to the template is never left out of a deploy.
 
    Already set up from before the usage stats? `npm run migrate` again adds their tables. It
    only applies the migrations the database doesn't have yet.
-
-   On an account's first Worker, Wrangler asks you to pick a `workers.dev` subdomain. It then
-   prints the Worker's address, like `https://macrazer-reports.<subdomain>.workers.dev`.
-   `ProjectLinks.deviceReports` in `Sources/MacRazer/AppInfo.swift` must point at it, with
-   `/v1/device-report` on the end.
 
    Always deploy with `npm run deploy`. A plain `npx wrangler deploy` reads the template, with
    its placeholder addresses.
@@ -137,12 +143,53 @@ rebuilt every time, so a change to the template is never left out of a deploy.
 7. Send a test report. A 200 here should arrive as an email, maybe in spam the first time:
 
    ```sh
-   curl -i https://macrazer-reports.<subdomain>.workers.dev/v1/device-report \
+   curl -i https://macrazer.yourdomain.com/v1/device-report \
      -H 'content-type: application/json' --data @test/fixtures/full-report.json
    ```
 
    A 503 means a step above is missing. `npm run tail` shows why, for example
    `E_SENDER_NOT_VERIFIED` when the sender's domain doesn't have Email Routing.
+
+   Then a test ping, and take it out again (it's not a real Mac):
+
+   ```sh
+   curl -i https://macrazer.yourdomain.com/v1/stats \
+     -H 'content-type: application/json' --data @test/fixtures/usage-ping.json
+   npm run stats
+   curl -i -X DELETE https://macrazer.yourdomain.com/v1/stats/3f9a0c71e2b84d6a9c15e0b7d4a2f816
+   ```
+
+8. Add the rate-limiting rule in [Protecting it](#protecting-it).
+
+9. Build the app with `./Scripts/build-app.sh`. It should print `Worker: https://…`.
+   `Scripts/release.sh` refuses to finish a release whose app has no Worker address.
+
+## Protecting it
+
+Cloudflare drops network floods for every plan on its own. What's left is someone sending
+lots of real-looking requests from many addresses. Three layers deal with that:
+
+- **A WAF rate-limiting rule, in front of the Worker.** It turns a flood away before the
+  Worker runs, so the requests don't count toward the account's daily Worker allowance, which
+  every Worker on the account shares. The Free plan includes one rule. In the dashboard, on
+  the domain: **Security › WAF › Rate limiting rules › Create rule**:
+  - If incoming requests match: Hostname equals your `DOMAIN`, and URI Path starts with `/v1/`
+  - With the same characteristics: IP
+  - When rate exceeds: 20 requests per 10 seconds
+  - Then: Block, for 10 seconds
+
+  The app sends one or two requests at launch, so no real person gets near that.
+  This only works because the Worker has no `workers.dev` address (`workers_dev = false`),
+  which would be a way round the rule.
+- **The Worker's own limits:** the per-IP burst limiters and the daily caps above. A request
+  over a daily cap is answered after a read, with nothing written, so a flood can't use up
+  D1's daily writes either.
+- **The Free plan.** Going over a limit there makes requests fail until the next UTC day.
+  You're never billed for it. On the Paid plan there's no such ceiling, so set a budget alert
+  before you move.
+
+Nothing here can stop made-up stats: the app is open source, so it holds no secret to prove a
+ping is real. The caps keep that small, and `npm run stats` should be read with it in mind.
 
 ## Changing where reports go
 
@@ -152,8 +199,8 @@ says. The Worker never takes an address from the request.
 
 ## Changing the caps
 
-- Per day: `DAILY_PER_IP` and `DAILY_TOTAL` in `wrangler.toml`. They aren't private, so they
-  live in the template.
+- Per day: `DAILY_PER_IP`, `DAILY_TOTAL`, `DAILY_NEW_PER_IP`, `DAILY_NEW_TOTAL` and
+  `DAILY_STATS_TOTAL` in `wrangler.toml`. They aren't private, so they live in the template.
 - Per minute: `limit` under `[[ratelimits]]`. Cloudflare only allows a `period` of 10 or 60
   seconds, and counts per location, so treat it as a burst guard, not an exact count.
 
