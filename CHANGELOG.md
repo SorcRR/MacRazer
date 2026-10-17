@@ -50,6 +50,9 @@ expect rough edges until 1.0.
  it reads the answers, using a fake mouse instead of hardware.
 
 ### Added
+- **Runs on Intel Macs.** The app is now a universal build, native on both Apple Silicon and
+ Intel. It still needs macOS 14 or later.
+
 - **Settings › Appearance.** Choose the theme for the popover and the app's windows: System
   (the default), Dark, Light or Razer Green, a dark look with a faint green tint. The popover
   also gets a thin green edge. Turn off "Glass effect"
