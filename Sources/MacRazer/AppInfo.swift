@@ -43,11 +43,15 @@ enum ProjectLinks {
     static let site = URL(string: "https://sorcrr.github.io/MacRazer/")!
     static let tip = URL(string: "https://ko-fi.com/sorcrr")!
     static let developer = URL(string: "https://github.com/SorcRR")!
+    /// The homepage's section on usage stats: what's sent, and how to delete it.
+    static let privacy = URL(string: "https://sorcrr.github.io/MacRazer/#privacy")!
 
     static let issues = repo.appendingPathComponent("issues")
     /// The device test's Send: the Worker in `worker/`, which emails the report to the
     /// maintainer. Its name and route are set in `worker/wrangler.toml`.
     static let deviceReports = URL(string: "https://macrazer-reports.sorcrr.workers.dev/v1/device-report")!
+    /// Usage stats, for people who said yes: the same Worker, `worker/src/stats.ts`.
+    static let usageStats = URL(string: "https://macrazer-reports.sorcrr.workers.dev/v1/stats")!
     /// Where "Full release notes" goes: the popover shows a parsed summary, this is the
     /// unabridged original.
     static let latestRelease = repo.appendingPathComponent("releases/latest")

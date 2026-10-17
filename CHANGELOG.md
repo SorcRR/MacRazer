@@ -53,6 +53,14 @@ expect rough edges until 1.0.
 - **Runs on Intel Macs.** The app is now a universal build, native on both Apple Silicon and
  Intel. It still needs macOS 14 or later.
 
+- **Optional usage stats, off until you say yes.** MacRazer asks once whether you'd like to
+  share your mouse model, the app and macOS versions, and a scrambled ID so each Mac counts
+  once. New installs get a small window after setup. If you're updating, it's a card in the
+  Updated window. Say no, or just close it, and it never asks again. Nothing is sent before
+  you agree. It tells me which mice people use, so I know what to support next.
+  Settings › Privacy turns it off, shows the exact data that's sent, and has Delete My Data.
+  That removes your Mac's ID from the server straight away. The anonymous counts stay.
+
 - **Settings › Appearance.** Choose the theme for the popover and the app's windows: System
   (the default), Dark, Light or Razer Green, a dark look with a faint green tint. The popover
   also gets a thin green edge. Turn off "Glass effect"

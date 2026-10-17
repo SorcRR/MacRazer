@@ -13,9 +13,9 @@ export class ValidationError extends Error {
   }
 }
 
-type Check = (value: unknown, path: string) => unknown;
+export type Check = (value: unknown, path: string) => unknown;
 
-const fail = (path: string, reason: string): never => {
+export const fail = (path: string, reason: string): never => {
   throw new ValidationError(path, reason);
 };
 
@@ -23,7 +23,7 @@ const fail = (path: string, reason: string): never => {
 const CONTROL_MULTILINE = /[\u0000-\u0008\u000B-\u001F\u007F-\u009F\u2028\u2029]/;
 const CONTROL_ANY = /[\u0000-\u001F\u007F-\u009F\u2028\u2029]/;
 
-function int(min: number, max: number): Check {
+export function int(min: number, max: number): Check {
   return (v, path) => {
     if (typeof v !== "number" || !Number.isInteger(v)) fail(path, "not an integer");
     if ((v as number) < min || (v as number) > max) fail(path, `outside ${min}...${max}`);
@@ -32,10 +32,10 @@ function int(min: number, max: number): Check {
 }
 
 const byte = int(0, 255);
-const bool: Check = (v, path) => (typeof v === "boolean" ? v : fail(path, "not a boolean"));
+export const bool: Check = (v, path) => (typeof v === "boolean" ? v : fail(path, "not a boolean"));
 
 /// `max` counts UTF-16 code units, which is what a JS string's length is.
-function str(max: number, opts: { multiline?: boolean; pattern?: RegExp } = {}): Check {
+export function str(max: number, opts: { multiline?: boolean; pattern?: RegExp } = {}): Check {
   return (v, path) => {
     if (typeof v !== "string") fail(path, "not a string");
     const s = v as string;
@@ -50,18 +50,18 @@ function str(max: number, opts: { multiline?: boolean; pattern?: RegExp } = {}):
 /// version numbers. Cleaned rather than refused, so one odd byte from a mouse doesn't lose
 /// the whole report. Control characters go (so a name can't carry a line break into the
 /// subject), and the rest is cut to `max`.
-function text(max: number): Check {
+export function text(max: number): Check {
   return (v, path) => {
     if (typeof v !== "string") fail(path, "not a string");
     return (v as string).replace(new RegExp(CONTROL_ANY.source, "g"), "").slice(0, max);
   };
 }
 
-function oneOf(...allowed: string[]): Check {
+export function oneOf(...allowed: string[]): Check {
   return (v, path) => (typeof v === "string" && allowed.includes(v) ? v : fail(path, `not one of ${allowed.join(", ")}`));
 }
 
-function list(item: Check, max: number): Check {
+export function list(item: Check, max: number): Check {
   return (v, path) => {
     if (!Array.isArray(v)) fail(path, "not a list");
     const a = v as unknown[];
@@ -72,7 +72,7 @@ function list(item: Check, max: number): Check {
 
 /// A JSON object with only these keys. `optional` keys may be missing or null: Swift's
 /// encoder leaves a nil optional out, and null means the same.
-function obj(required: Record<string, Check>, optional: Record<string, Check> = {}): Check {
+export function obj(required: Record<string, Check>, optional: Record<string, Check> = {}): Check {
   return (v, path) => {
     if (typeof v !== "object" || v === null || Array.isArray(v)) fail(path, "not an object");
     const o = v as Record<string, unknown>;

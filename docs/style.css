@@ -403,6 +403,35 @@ tbody tr:hover { background: var(--bg-raised); }
 }
 .mice-note a { color: var(--accent); }
 
+/* ---------- privacy ---------- */
+.privacy {
+  max-width: 1040px;
+  margin: 0 auto;
+  padding: 0 32px 110px;
+}
+
+.privacy h2 {
+  font-size: clamp(28px, 3.6vw, 38px);
+  line-height: 1.2;
+  max-width: 620px;
+  margin-bottom: 18px;
+}
+
+.privacy-lead {
+  max-width: 620px;
+  color: var(--text-dim);
+  margin: 0 0 40px;
+}
+
+.privacy-grid { grid-template-columns: repeat(3, 1fr); }
+
+.privacy-note {
+  margin: 20px 0 0;
+  font-size: 13px;
+  color: var(--text-faint);
+}
+.privacy-note a { color: var(--accent); }
+
 /* ---------- install ---------- */
 .install {
   max-width: 1040px;
@@ -537,6 +566,7 @@ tbody tr:hover { background: var(--bg-raised); }
 @media (max-width: 880px) {
   .wireframe { display: none; }
   .feature-grid { grid-template-columns: repeat(2, 1fr); }
+  .privacy-grid { grid-template-columns: 1fr; }
   .shots { grid-template-columns: 1fr; }
   .topbar-links { gap: 16px; font-size: 12px; }
 }

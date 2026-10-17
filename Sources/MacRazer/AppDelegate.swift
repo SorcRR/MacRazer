@@ -34,11 +34,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     /// any release found in the meantime. Without the re-ask, that release stayed held until
     /// the popover next opened and closed.
     private lazy var updatedWindow = UpdatedWindowController(
-        updateChecker: updateChecker,
+        updateChecker: updateChecker, usageStats: usageStats,
         onClosed: { [weak self] in self?.autoInstallIfEnabled() })
     /// Closing it re-asks the auto-install gate, for the same reason as `updatedWindow`.
     private lazy var crashReportWindow = CrashReportWindowController(
         onClosed: { [weak self] in self?.autoInstallIfEnabled() })
+    private let usageStats = UsageStats.shared
+    /// Closing it re-asks the auto-install gate, for the same reason as `updatedWindow`.
+    private lazy var usageStatsWindow = UsageStatsWindowController(
+        stats: usageStats, onClosed: { [weak self] in self?.autoInstallIfEnabled() })
+    /// Waits for a clear moment to ask about usage stats; see `askAboutUsageStats`.
+    private var usageStatsAskTimer: Timer?
     private lazy var settingsWindow = SettingsWindowController(
         controller: controller, launchAtLogin: launchAtLogin, updateChecker: updateChecker,
         onAutoInstallChanged: { [weak self] in self?.autoInstallSettingChanged() })
@@ -268,6 +274,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         if updateChecker.justUpdatedTo != nil {
             updatedWindow.show(activating: !updateChecker.autoInstallEnabled)
         }
+        startUsageStats()
         // A crash since the last launch, offered once. Looked for again a little later
         // because the crash most likely to be waiting is the one in the instance that just
         // handed over to this one, during a relaunch: macOS writes its report a few seconds
@@ -510,8 +517,66 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         // The device test in particular: an install ends in a relaunch, and that must never
         // happen while a step has a test value on someone's mouse.
         let windows: [AppWindowPresenter] = [remapWindow, permissionsWindow, aboutWindow, settingsWindow,
-                                             updatedWindow, deviceTestWindow, crashReportWindow]
+                                             updatedWindow, deviceTestWindow, crashReportWindow,
+                                             usageStatsWindow]
         return windows.contains { $0.isVisible }
+    }
+
+    // MARK: - Usage stats
+
+    /// Feeds the connected mouse to `UsageStats`, sends whatever is due, and asks once if
+    /// nobody has been asked yet. Nothing goes anywhere without a yes; see `UsageStats`.
+    private func startUsageStats() {
+        // Debounced: the controller publishes a new mouse's fields one at a time, and the
+        // ping should see them all.
+        Publishers.CombineLatest4(controller.$connected, controller.$deviceID,
+                                  controller.$deviceName, controller.$deviceIsBluetooth)
+            .combineLatest(controller.$deviceSupported)
+            .debounce(for: .seconds(2), scheduler: RunLoop.main)
+            .sink { [weak self] device, supported in
+                let (connected, pid, name, bluetooth) = device
+                let mice = connected ? pid.map {
+                    [UsageStatsPolicy.mouse(pid: $0, productName: name, isBluetooth: bluetooth, supported: supported)]
+                } ?? [] : []
+                self?.usageStats.setConnectedMice(mice)
+            }
+            .store(in: &cancellables)
+        // A mouse usually connects within a few seconds of launch and goes with the first
+        // ping. Without one, the ping goes anyway after this, and the mouse follows later.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak self] in
+            guard let self else { return }
+            Task { await self.usageStats.sendIfDue() }
+        }
+        // Someone who just updated is asked in the Updated window instead. A `swift run`
+        // build has no version and would never send, so it doesn't ask either.
+        if usageStats.consent == .undecided, updateChecker.justUpdatedTo == nil, AppInfo.version != nil {
+            askAboutUsageStats()
+        }
+    }
+
+    /// The consent window, once nothing else is in the way: not over the setup window, the
+    /// device test, a crash report or the popover. A new install opens onto the setup window,
+    /// and stats are the last thing anyone wants to be asked before the app even works.
+    private func askAboutUsageStats() {
+        let timer = Timer(timeInterval: 3, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.askAboutUsageStatsIfClear() }
+        }
+        // Not straight away even when clear: the menu bar item has only just appeared.
+        timer.fireDate = Date().addingTimeInterval(5)
+        RunLoop.main.add(timer, forMode: .common)
+        usageStatsAskTimer = timer
+    }
+
+    private func askAboutUsageStatsIfClear() {
+        guard usageStats.consent == .undecided else { return stopAskingAboutUsageStats() }
+        guard !isShowingAWindow, !popover.isShown, !appMenuOpen else { return }
+        stopAskingAboutUsageStats()
+        usageStatsWindow.show(activating: false)
+    }
+
+    private func stopAskingAboutUsageStats() {
+        usageStatsAskTimer?.invalidate()
+        usageStatsAskTimer = nil
     }
 
     /// Turning the setting on with an update already found is the one moment a user is

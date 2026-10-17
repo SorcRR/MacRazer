@@ -1,4 +1,5 @@
-# The Worker behind the device test's Send button. Setup steps are in README.md.
+# The Worker behind the device test's Send button and the app's usage stats. Setup steps
+# are in README.md.
 #
 # This is the public template: the addresses and database id are placeholders, and a test
 # fails if a real address lands here. Your values live in a settings file outside the
@@ -24,6 +25,10 @@ SENDER_ADDRESS = "macrazer-reports@example.com"
 # Reports accepted per day, per sender and in total. A sender is a salted hash of the IP.
 DAILY_PER_IP = "10"
 DAILY_TOTAL = "200"
+# Usage stats: new Macs accepted per day, per sender and in total. Pings from a Mac already
+# known aren't capped by these, only by STATS_BURST below.
+DAILY_NEW_PER_IP = "20"
+DAILY_NEW_TOTAL = "2000"
 
 # Bursts: at most 3 reports a minute from one IP, per Cloudflare location. The id is any
 # number unique among this account's rate limiters.
@@ -32,7 +37,14 @@ name = "BURST"
 namespace_id = "7401"
 simple = { limit = 3, period = 60 }
 
-# Counters for the daily caps. Replace database_id with the id `wrangler d1 create` prints.
+# Usage stats pings and deletions: 10 a minute from one IP, per Cloudflare location. A Mac
+# sends one or two at launch; this is for a network of Macs behind one address.
+[[ratelimits]]
+name = "STATS_BURST"
+namespace_id = "7402"
+simple = { limit = 10, period = 60 }
+
+# Counters for the daily caps, and the usage stats tables. Replace database_id with the id `wrangler d1 create` prints.
 [[d1_databases]]
 binding = "DB"
 database_name = "macrazer-reports"

@@ -2,43 +2,18 @@
 // Part of MacRazer, a control app for Razer mice on macOS. See LICENSE and NOTICE.md.
 
 import { existsSync, readFileSync } from "node:fs";
-import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
 import * as main from "../src/index";
 import { handle, MAX_BYTES, PATH, type Env } from "../src/handler";
 import { verdictOf, type OutgoingEmail } from "../src/email";
 import { validateReport } from "../src/validate";
 import { cleanUp, dayOf, ipKey, type Database } from "../src/limits";
+import { sqlite } from "./sqlite";
 
 const fixture = (name: string) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), "utf8");
 /// A real report: `devicetest` on a Cobra HyperSpeed over the dongle.
 const cobra = () => JSON.parse(fixture("cobra-hyperspeed.json"));
 const NOW = new Date("2026-10-03T12:00:00Z");
-
-/// D1's API over an in-memory SQLite, running the real migration and the real SQL.
-function sqlite(): Database & { rows(): Record<string, unknown>[] } {
-  const db = new DatabaseSync(":memory:");
-  db.exec(readFileSync(new URL("../migrations/0001_counters.sql", import.meta.url), "utf8"));
-  return {
-    prepare(sql: string) {
-      let args: unknown[] = [];
-      const statement = {
-        bind(...values: unknown[]) {
-          args = values;
-          return statement;
-        },
-        async first<T>() {
-          return (db.prepare(sql).get(...(args as never[])) ?? null) as T | null;
-        },
-        async run() {
-          return db.prepare(sql).run(...(args as never[]));
-        },
-      };
-      return statement;
-    },
-    rows: () => db.prepare("SELECT * FROM counters ORDER BY key").all() as Record<string, unknown>[],
-  };
-}
 
 function setup(overrides: Partial<Env> = {}, burstAllows = true) {
   const sent: OutgoingEmail[] = [];
@@ -52,6 +27,7 @@ function setup(overrides: Partial<Env> = {}, burstAllows = true) {
         return { success: burstAllows };
       },
     },
+    STATS_BURST: { limit: async () => ({ success: true }) },
     DB: db,
     SENDER_ADDRESS: "reports@example.org",
     DESTINATION_ADDRESS: "maintainer@example.org",

@@ -1,14 +1,19 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Part of MacRazer, a control app for Razer mice on macOS. See LICENSE and NOTICE.md.
 
-// Checks a report and emails it. Kept apart from index.ts because the Workers runtime treats
-// every named export of the main module as an entry point, and refuses to start on a constant.
+// Routes a request: usage stats go to stats.ts, and a device report is checked here and
+// emailed. Kept apart from index.ts because the Workers runtime treats every named export of
+// the main module as an entry point, and refuses to start on a constant.
 
 import { emailFor, type OutgoingEmail } from "./email";
 import { admit, dayOf, ipKey, refund, type Database } from "./limits";
+import { positive, readCapped, reply } from "./http";
+import { handleStats, STATS_PATH, type StatsEnv } from "./stats";
 import { validateReport, ValidationError } from "./validate";
 
-export interface Env {
+export { reply };
+
+export interface Env extends StatsEnv {
   /// `send_email` binding. Its `destination_address` is the only address it can send to.
   EMAIL: { send(message: OutgoingEmail): Promise<unknown> };
   /// `ratelimits` binding, for bursts.
@@ -32,7 +37,9 @@ export const MAX_BYTES = 16 * 1024;
 /// The app maps each status to a message: 200 sent, 400 refused, 413 too big, 429 try
 /// later, anything else unavailable.
 export async function handle(request: Request, env: Env, now: Date): Promise<Response> {
-  if (new URL(request.url).pathname !== PATH) return reply(404, "not_found");
+  const path = new URL(request.url).pathname;
+  if (path === STATS_PATH || path.startsWith(`${STATS_PATH}/`)) return handleStats(request, env, now);
+  if (path !== PATH) return reply(404, "not_found");
   if (request.method !== "POST") return reply(405, "method_not_allowed", { Allow: "POST" });
   if (!(request.headers.get("content-type") ?? "").toLowerCase().startsWith("application/json")) {
     return reply(415, "not_json");
@@ -81,42 +88,4 @@ export async function handle(request: Request, env: Env, now: Date): Promise<Res
   }
   console.log("sent", report.device.productID);
   return reply(200, "sent");
-}
-
-/// The body, or null once it passes `max` bytes. Stops reading there.
-async function readCapped(request: Request, max: number): Promise<Uint8Array | null> {
-  if (!request.body) return new Uint8Array();
-  const reader = request.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    size += value.byteLength;
-    if (size > max) {
-      await reader.cancel();
-      return null;
-    }
-    chunks.push(value);
-  }
-  const out = new Uint8Array(size);
-  let offset = 0;
-  for (const chunk of chunks) {
-    out.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return out;
-}
-
-function positive(value: string | undefined, fallback: number): number {
-  const n = Number(value);
-  return Number.isInteger(n) && n > 0 ? n : fallback;
-}
-
-export function reply(status: number, code: string, headers: Record<string, string> = {}, detail?: string): Response {
-  const body = status === 200 ? { ok: true } : { ok: false, error: code, ...(detail ? { detail } : {}) };
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "content-type": "application/json", ...headers },
-  });
 }
