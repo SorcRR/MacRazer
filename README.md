@@ -73,10 +73,30 @@ column is about who has actually seen it happen.
 
 **Have a mouse that isn't verified?** The quickest way to help is in the app. Right-click the
 menu bar icon and choose **Help Support This Mouse…**. It runs the same probes as the
-commands below, puts every setting back, and builds the report for you to copy or open as a
-GitHub issue. On a verified mouse the item reads **Test This Mouse…**, and a report confirms
-it still works on your firmware. The test needs the dongle or a cable, even on a mouse that
-also works over Bluetooth.
+commands below, puts every setting back, and builds the report for you. **Send** emails it to
+the maintainer, or you can copy it or open a GitHub issue with it. On a verified mouse the item
+reads **Test This Mouse…**, and a report confirms it still works on your firmware. The test
+needs the dongle or a cable, even on a mouse that also works over Bluetooth.
+
+### What a device report contains
+
+You can read the whole report on the last screen before it goes anywhere.
+
+- The mouse's name, product ID and firmware version, and whether it's on a cable or the dongle.
+- Its USB interfaces: product IDs, usage pages and report sizes.
+- What each step found: which transaction ids the mouse answered to, the battery level, the
+  DPI and polling rate it read and wrote back, and the lighting brightness. Every command the
+  test sent is listed, with the first 8 bytes of each answer.
+- Which extra buttons you pressed during the button step, not when.
+- The app and macOS versions.
+- Only if you fill them in: a comment, a name to credit, and an email address for a reply.
+
+Never in it: the mouse's serial number, or anything else about your Mac.
+
+Where it goes depends on the button. **Copy** puts it on your clipboard. **Open GitHub issue**
+makes it public, so it leaves out your email address. **Send** emails it to the maintainer
+through a small Cloudflare Worker ([worker/](worker/)), which keeps nothing but a count of
+reports per day.
 
 Adding a model is a small change to a registry plus on-hardware verification. See
 [CONTRIBUTING.md](CONTRIBUTING.md).

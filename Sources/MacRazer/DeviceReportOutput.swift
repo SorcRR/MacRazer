@@ -6,9 +6,14 @@ import Foundation
 /// The ways a device report leaves the test window, and the checks on what the person typed.
 /// Pure, so the rules (what goes where, what's refused) are tested without a window.
 enum DeviceReportOutput {
-    /// Limits on the free-text fields, the same ones the Worker will enforce on Send.
+    /// Limits on the free-text fields. Characters are what the person sees and the counter
+    /// shows. UTF-16 code units are what the Worker counts (a JavaScript string's length),
+    /// and one character can be many of them, so `cleaned` keeps each field within both and
+    /// a real report is never refused for its length.
     static let maxComment = 2000
+    static let maxCommentUnits = 8000
     static let maxCredit = 64
+    static let maxCreditUnits = 256
     static let maxEmail = 254
 
     /// The report as JSON. `forPublic` drops the reply email: a GitHub issue is public, and
@@ -108,19 +113,42 @@ enum DeviceReportOutput {
     static func emailProblem(_ email: String) -> String? {
         let trimmed = email.trimmingCharacters(in: .whitespaces)
         if trimmed.isEmpty { return nil }
-        if trimmed.contains(where: { $0.isNewline }) || trimmed.count > maxEmail { return "That doesn't look like an email address." }
+        let problem = "That doesn't look like an email address."
+        // No whitespace or control character of any kind: the Worker refuses them, and a
+        // line break is how a header gets injected. U+FEFF counts as space to JavaScript.
+        if trimmed.utf16.count > maxEmail || trimmed.unicodeScalars.contains(where: {
+            $0.properties.isWhitespace || $0.properties.generalCategory == .control || $0 == "\u{FEFF}"
+        }) { return problem }
         let parts = trimmed.split(separator: "@", omittingEmptySubsequences: false)
         guard parts.count == 2, !parts[0].isEmpty, parts[1].contains("."),
-              !parts[1].hasPrefix("."), !parts[1].hasSuffix("."), !trimmed.contains(" ")
-        else { return "That doesn't look like an email address." }
+              !parts[1].hasPrefix("."), !parts[1].hasSuffix(".")
+        else { return problem }
         return nil
     }
 
-    /// The free-text fields as they go into a report: trimmed, capped, empty as nil.
-    static func cleaned(_ text: String, max: Int, singleLine: Bool) -> String? {
-        var value = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if singleLine { value = value.components(separatedBy: .newlines).joined(separator: " ") }
+    /// The free-text fields as they go into a report: trimmed, capped at `max` characters and
+    /// `units` UTF-16 code units, empty as nil. Control characters go, since the Worker
+    /// refuses them. Line breaks become plain "\n", or spaces when `singleLine`.
+    static func cleaned(_ text: String, max: Int, units: Int, singleLine: Bool) -> String? {
+        var scalars = String.UnicodeScalarView()
+        for scalar in text.replacingOccurrences(of: "\r\n", with: "\n").unicodeScalars {
+            switch scalar {
+            case "\n", "\r", "\u{85}", "\u{2028}", "\u{2029}": scalars.append(singleLine ? " " : "\n")
+            case "\t": scalars.append(singleLine ? " " : "\t")
+            default: if scalar.properties.generalCategory != .control { scalars.append(scalar) }
+            }
+        }
+        var value = String(scalars).trimmingCharacters(in: .whitespacesAndNewlines)
         if value.count > max { value = String(value.prefix(max)) }
+        if value.utf16.count > units {
+            var kept = "", used = 0
+            for character in value {
+                used += character.utf16.count
+                if used > units { break }
+                kept.append(character)
+            }
+            value = kept
+        }
         return value.isEmpty ? nil : value
     }
 }

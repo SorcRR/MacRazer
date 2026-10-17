@@ -37,9 +37,12 @@ final class CrashReportModel: ObservableObject {
     /// The report as it would go now: with what the person typed, and cut to fit.
     func finalReport() -> CrashReport {
         var r = report
-        r.comment = DeviceReportOutput.cleaned(comment, max: DeviceReportOutput.maxComment, singleLine: false)
+        // The device test's limits: the same Worker will take both reports.
+        r.comment = DeviceReportOutput.cleaned(comment, max: DeviceReportOutput.maxComment,
+                                               units: DeviceReportOutput.maxCommentUnits, singleLine: false)
         r.replyEmail = emailProblem == nil
-            ? DeviceReportOutput.cleaned(replyEmail, max: DeviceReportOutput.maxEmail, singleLine: true) : nil
+            ? DeviceReportOutput.cleaned(replyEmail, max: DeviceReportOutput.maxEmail,
+                                         units: DeviceReportOutput.maxEmail, singleLine: true) : nil
         return CrashReportOutput.fitted(r)
     }
 

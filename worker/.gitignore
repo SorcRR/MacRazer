@@ -1,0 +1,5 @@
+node_modules/
+.wrangler/
+.dev.vars
+# Built by `npm run config` from wrangler.toml and your settings file. Has your addresses.
+wrangler.local.toml
