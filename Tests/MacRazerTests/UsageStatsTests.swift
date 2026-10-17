@@ -300,6 +300,14 @@ final class WorkerEndpointTests: XCTestCase {
         }
     }
 
+    func testOnlyADevelopmentBuildTakesTheEnvironmentOverride() {
+        let local = "http://127.0.0.1:8787", bundled = "https://reports.example.org"
+        XCTAssertEqual(WorkerEndpoint.resolve(environment: local, bundled: bundled, isPackaged: true)?.absoluteString, bundled)
+        XCTAssertNil(WorkerEndpoint.resolve(environment: local, bundled: nil, isPackaged: true))
+        XCTAssertEqual(WorkerEndpoint.resolve(environment: local, bundled: nil, isPackaged: false)?.absoluteString, local)
+        XCTAssertNil(WorkerEndpoint.resolve(environment: nil, bundled: nil, isPackaged: false))
+    }
+
     func testTheRoutesHangOffTheOrigin() throws {
         let base = try XCTUnwrap(WorkerEndpoint.parse("https://reports.example.org"))
         XCTAssertEqual(base.appendingPathComponent("v1/stats").absoluteString, "https://reports.example.org/v1/stats")

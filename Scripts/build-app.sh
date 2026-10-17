@@ -42,16 +42,10 @@ cp Packaging/Info.plist "${APP}/Contents/Info.plist"
 # settings file worker/README.md sets up, never from the repository, so a build from anyone
 # else's checkout has no Worker: those features are hidden and nothing is sent anywhere.
 # See `WorkerEndpoint` in Sources/MacRazer/AppInfo.swift.
-SETTINGS="${MACRAZER_REPORTS_SETTINGS:-${HOME}/.config/macrazer-reports/settings.env}"
-WORKER_DOMAIN=""
-if [ -f "${SETTINGS}" ]; then
-    WORKER_DOMAIN="$(sed -n -E 's/^[[:space:]]*DOMAIN[[:space:]]*=[[:space:]]*"?([^"[:space:]]*)"?[[:space:]]*$/\1/p' "${SETTINGS}" | tail -n 1)"
-fi
+WORKER_DOMAIN="$(./Scripts/worker-domain.sh)"
 if [ -n "${WORKER_DOMAIN}" ]; then
-    if ! printf '%s' "${WORKER_DOMAIN}" | grep -Eq '^([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}$'; then
-        echo "✗ DOMAIN in ${SETTINGS} isn't a hostname: ${WORKER_DOMAIN}" >&2
-        exit 1
-    fi
+    # Delete first: Add refuses a key that's already there.
+    /usr/libexec/PlistBuddy -c "Delete :MacRazerWorkerURL" "${APP}/Contents/Info.plist" 2>/dev/null || true
     /usr/libexec/PlistBuddy -c "Add :MacRazerWorkerURL string https://${WORKER_DOMAIN}" "${APP}/Contents/Info.plist"
     echo "▸ Worker: https://${WORKER_DOMAIN} (Send and usage stats on)"
 else

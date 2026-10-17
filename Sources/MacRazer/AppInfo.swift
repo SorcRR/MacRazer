@@ -92,10 +92,17 @@ enum ProjectLinks {
 enum WorkerEndpoint {
     static let infoKey = "MacRazerWorkerURL"
     /// For pointing a development build at `wrangler dev`: `MACRAZER_WORKER_URL=http://127.0.0.1:8787`.
+    /// Only a `swift run` build reads it. A packaged app ignores it, so nothing in its launch
+    /// environment can send reports, reply addresses included, somewhere else.
     static let environmentKey = "MACRAZER_WORKER_URL"
 
-    static let base: URL? = parse(ProcessInfo.processInfo.environment[environmentKey])
-        ?? parse(Bundle.main.object(forInfoDictionaryKey: infoKey) as? String)
+    static let base: URL? = resolve(environment: ProcessInfo.processInfo.environment[environmentKey],
+                                    bundled: Bundle.main.object(forInfoDictionaryKey: infoKey) as? String,
+                                    isPackaged: AppInfo.version != nil)
+
+    static func resolve(environment: String?, bundled: String?, isPackaged: Bool) -> URL? {
+        isPackaged ? parse(bundled) : parse(environment) ?? parse(bundled)
+    }
 
     static var deviceReports: URL? { base?.appendingPathComponent("v1/device-report") }
     static var usageStats: URL? { base?.appendingPathComponent("v1/stats") }

@@ -127,10 +127,10 @@ export async function handleStats(request: Request, env: StatsEnv, now: Date): P
   }
 
   const day = dayOf(now);
-  // Checked before anything is counted, so a flood past it writes nothing.
-  if (!(await withinCap(env.DB, day, "stats:total", positive(env.DAILY_STATS_TOTAL, 10000)))) {
-    return reply(429, "daily_limit");
-  }
+  // Every limit is read before anything is counted, so a ping refused by any of them writes
+  // nothing, and the day's total only counts pings that are recorded.
+  const statsTotal = positive(env.DAILY_STATS_TOTAL, 10000);
+  if ((await count(env.DB, day, "stats:total")) >= statsTotal) return reply(429, "daily_limit");
   const known = await env.DB.prepare("SELECT 1 AS known FROM installs WHERE id = ?1").bind(p.id).first();
   if (!known) {
     const newTotal = positive(env.DAILY_NEW_TOTAL, 2000);
@@ -138,6 +138,7 @@ export async function handleStats(request: Request, env: StatsEnv, now: Date): P
     if (!(await withinCap(env.DB, day, `new:${sender}`, positive(env.DAILY_NEW_PER_IP, 20)))) return reply(429, "daily_limit");
     if (!(await withinCap(env.DB, day, "new:total", newTotal))) return reply(429, "daily_limit");
   }
+  if (!(await withinCap(env.DB, day, "stats:total", statsTotal))) return reply(429, "daily_limit");
   await record(env.DB, p, now);
   return reply(200, "recorded");
 }

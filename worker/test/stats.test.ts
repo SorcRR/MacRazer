@@ -194,6 +194,7 @@ describe("a ping", () => {
     // The total ping count moves (it's checked first), the per-sender one doesn't.
     expect(db.rows().find((r) => String(r.key).startsWith("new:stats:"))?.count).toBe(1);
     expect(counters).toContain("new:stats:");
+    expect(db.rows().find((r) => r.key === "stats:total")?.count, "refused pings don't use up the day").toBe(1);
   });
 
   it("is turned away in a burst before anything is read", async () => {
