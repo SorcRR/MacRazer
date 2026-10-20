@@ -996,7 +996,11 @@ struct PopoverView: View {
 
     /// A fixed-preset DPI chip.
     private func dpiChip(_ value: Int, index: Int) -> some View {
-        let active = Int(dpiValue) == value
+        let activeStageIndex = controller.activeDpiStage.flatMap { stage in
+            displayedStages.indices.contains(stage) && displayedStages[stage] == Int(dpiValue) ? stage : nil
+        }
+        let active = activeStageIndex.map { $0 == index } ?? (Int(dpiValue) == value)
+        let accent = DPIStageAccent.forStage(at: index)
         let editing = editingDpiStage == index
         return Group {
             if editing {
@@ -1022,11 +1026,15 @@ struct PopoverView: View {
         }
         .buttonStyle(.plain)
         .font(.system(size: 10.5, weight: active ? .semibold : .regular).monospacedDigit())
-        .foregroundStyle(active ? Color.onRazerGreen : Color.secondary)
+        .foregroundStyle(accent.color)
         .frame(maxWidth: .infinity)
         .frame(height: 24)
-        .background(active ? Color.razerGreen : Color.primary.opacity(0.08),
+        .background(accent.color.opacity(active ? 0.22 : 0.08),
                     in: RoundedRectangle(cornerRadius: 6))
+        .overlay {
+            RoundedRectangle(cornerRadius: 6)
+                .strokeBorder(accent.color.opacity(active ? 0.95 : 0.25), lineWidth: active ? 1.2 : 0.6)
+        }
         .hoverHighlight(RoundedRectangle(cornerRadius: 6))
         .contextMenu {
             if supportsBasiliskBluetooth {
@@ -1035,7 +1043,8 @@ struct PopoverView: View {
         }
         // The stage editor lives in a context menu, which nothing on the chip hints at.
         .help(supportsBasiliskBluetooth ? "Stage \(index + 1) · Right-click to edit" : "Stage \(index + 1)")
-        .accessibilityLabel(editing ? "Stage \(index + 1) DPI" : "\(value) DPI, stage \(index + 1)")
+        .accessibilityLabel(editing ? "Stage \(index + 1) DPI" : DPIStageAccent.accessibilityLabel(
+            value: value, stageIndex: index, active: active))
         .accessibilityAddTraits(active ? .isSelected : [])
         .disabled(controller.isUpdatingDpiStages || (editingDpiStage != nil && !editing))
     }
