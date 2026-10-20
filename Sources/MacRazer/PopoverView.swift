@@ -923,6 +923,10 @@ struct PopoverView: View {
         }
         if controller.charging { return "Charging" }
         if let est = controller.timeEstimate { return est }
+        if controller.batteryPercent != nil,
+           controller.deviceID.map(RazerDevices.requiresTrustedDischargeCurve(pid:)) == true {
+            return "Learning battery usage for a reliable estimate…"
+        }
         if controller.batteryPercent != nil { return "Estimating time remaining…" }
         return "Reading battery…"
     }

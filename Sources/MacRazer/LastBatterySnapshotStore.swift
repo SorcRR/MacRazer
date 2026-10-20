@@ -19,6 +19,11 @@ enum SnapshotDeviceTransition: Equatable {
 
 /// The last trusted battery reading, kept separately from the bounded discharge history so
 /// the popover can still show a useful, explicitly stale reference while the mouse is away.
+enum BatteryEstimateBasis: String, Codable {
+    case genericRate
+    case learnedCurve
+}
+
 struct LastBatterySnapshot: Codable, Equatable {
     let deviceKey: String
     let productID: Int
@@ -27,14 +32,25 @@ struct LastBatterySnapshot: Codable, Equatable {
     let observedAt: Date
     let estimatedHoursRemaining: Double?
     let wasCharging: Bool
+    /// Old snapshots have no basis. Keep them readable, but only show a Basilisk estimate
+    /// when it came from the model-specific curve rather than the known-misleading rate fit.
+    var estimateBasis: BatteryEstimateBasis? = nil
+
+    private var hasPresentableEstimate: Bool {
+        guard estimatedHoursRemaining != nil else { return false }
+        guard RazerDevices.requiresTrustedDischargeCurve(pid: productID) else { return true }
+        return estimateBasis == .learnedCurve
+    }
 
     var estimateText: String? {
-        guard let hours = estimatedHoursRemaining, hours.isFinite, hours >= 0 else { return nil }
+        guard hasPresentableEstimate, let hours = estimatedHoursRemaining,
+              hours.isFinite, hours >= 0 else { return nil }
         return BatteryHistory.formatEstimate(hours: hours)
     }
 
     var shortEstimateText: String? {
-        guard let hours = estimatedHoursRemaining, hours.isFinite, hours >= 0 else { return nil }
+        guard hasPresentableEstimate, let hours = estimatedHoursRemaining,
+              hours.isFinite, hours >= 0 else { return nil }
         return "~\(BatteryHistory.formatDuration(hours: hours)) left"
     }
 
@@ -102,6 +118,7 @@ final class LastBatterySnapshotStore {
         let stateChanged = comparedWith.map {
             $0.productID != snapshot.productID || $0.deviceName != snapshot.deviceName || $0.percent != snapshot.percent
                 || $0.wasCharging != snapshot.wasCharging
+                || $0.estimateBasis != snapshot.estimateBasis
                 || estimateChanged($0.estimatedHoursRemaining, snapshot.estimatedHoursRemaining)
         } ?? true
         guard force || stateChanged

@@ -69,8 +69,13 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertFalse(RazerDevices.hasLighting(pid: 0x0083), "the plain X HyperSpeed has no RGB at all")
         XCTAssertEqual(RazerDevices.maxDPI(pid: 0x0083), 16000)
 
-        // Both are AA-cell mice, so neither shares the Cobra's learned discharge curve.
-        XCTAssertNil(RazerDevices.dischargeCurveModelKey(pid: 0x00B9))
+        // Both link PIDs represent the same AA-cell model and share its own learned curve;
+        // neither borrows the Cobra's curve or generic scalar rate for an ETA.
+        XCTAssertEqual(RazerDevices.dischargeCurveModelKey(pid: 0x00B9), "basilisk-v3-x-hyperspeed")
+        XCTAssertEqual(RazerDevices.dischargeCurveModelKey(pid: 0x00BA), "basilisk-v3-x-hyperspeed")
+        XCTAssertTrue(RazerDevices.requiresTrustedDischargeCurve(pid: 0x00B9))
+        XCTAssertTrue(RazerDevices.requiresTrustedDischargeCurve(pid: 0x00BA))
+        XCTAssertFalse(RazerDevices.requiresTrustedDischargeCurve(pid: 0x00DB))
         XCTAssertNil(RazerDevices.dischargeCurveModelKey(pid: 0x0083))
     }
 

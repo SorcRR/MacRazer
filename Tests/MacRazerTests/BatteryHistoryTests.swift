@@ -59,6 +59,18 @@ final class BatteryHistoryTests: XCTestCase {
         XCTAssertNil(h.estimateHoursRemaining(currentPercent: 100), "two flat samples are not a trend")
     }
 
+    func testTrustedCurvePolicyIgnoresMisleadingSavedScalarRate() {
+        defaults.set(9.1455, forKey: "learnedDischargeRate-test")
+        let h = makeHistory()
+        XCTAssertNil(h.estimateHoursRemaining(currentPercent: 80, requireTrustedCurve: true),
+                     "a saved generic rate must not produce an ETA for a curve-only model")
+
+        let model = DischargeCurveModel(modelKey: "basilisk", directory: dir)
+        XCTAssertNil(h.estimateHoursRemaining(currentPercent: 80, curveModel: model,
+                                              requireTrustedCurve: true),
+                     "missing model data must remain in the learning state")
+    }
+
     /// The "~19d left after a weekend away" bug: an idle gap's wall-clock time must not
     /// flatten the fitted slope...
     func testIdleGapTimeIsSplicedOutOfFit() {

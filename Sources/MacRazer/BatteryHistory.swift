@@ -201,12 +201,18 @@ final class BatteryHistory {
     /// otherwise falls back to the persisted learned rate. If `curveModel` is given (only for
     /// models with a learned per-percent discharge curve — see `DischargeCurveModel`) and it
     /// can produce an estimate, that wins over the plain `currentPercent / rate` projection,
-    /// since a single rate can't represent a non-linear discharge curve. The rate is still
-    /// computed/persisted exactly as before either way — it's also the curve model's own
-    /// per-bucket fallback for percents it doesn't have data for yet.
-    func estimateHoursRemaining(currentPercent: Int, curveModel: DischargeCurveModel? = nil) -> Double? {
+    /// since a single rate can't represent a non-linear discharge curve. Models marked
+    /// `requireTrustedCurve` neither learn nor fall back to the generic rate; an incomplete
+    /// model curve therefore has no ETA yet.
+    func estimateHoursRemaining(currentPercent: Int, curveModel: DischargeCurveModel? = nil,
+                                requireTrustedCurve: Bool = false) -> Double? {
         var rate: Double?
-        if let session = sessionRatePerHour() {
+        if requireTrustedCurve {
+            // This model's generic percent-per-hour history has produced visibly misleading
+            // estimates. Keep its historical data intact, but do not train or consult that
+            // scalar while a model-specific curve is required.
+            rate = nil
+        } else if let session = sessionRatePerHour() {
             // Blend the observed rate into the long-term learned rate (EMA), then use it.
             let blended = learnedRatePerHour.map { 0.8 * $0 + 0.2 * session } ?? session
             learnedRatePerHour = min(max(blended, 0.05), 60)
@@ -214,8 +220,13 @@ final class BatteryHistory {
         } else if let learned = learnedRatePerHour, learned > 0 {
             rate = learned
         }
-        if let curveModel, let estimate = curveModel.estimateHoursRemaining(currentPercent: currentPercent, fallbackRatePerHour: rate) {
-            return estimate
+        if let curveModel {
+            let estimate = curveModel.estimateHoursRemaining(
+                currentPercent: currentPercent,
+                fallbackRatePerHour: requireTrustedCurve ? nil : rate
+            )
+            if requireTrustedCurve { return estimate }
+            if let estimate { return estimate }
         }
         guard let rate else { return nil }
         return Double(currentPercent) / rate

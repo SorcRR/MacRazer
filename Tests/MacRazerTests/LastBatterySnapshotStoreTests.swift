@@ -15,7 +15,8 @@ final class LastBatterySnapshotStoreTests: XCTestCase {
                           hours: Double? = 39, at date: Date = Date()) -> LastBatterySnapshot {
         LastBatterySnapshot(deviceKey: key, productID: 0x00BA,
                             deviceName: "Razer Basilisk V3 X HyperSpeed", percent: percent,
-                            observedAt: date, estimatedHoursRemaining: hours, wasCharging: false)
+                            observedAt: date, estimatedHoursRemaining: hours, wasCharging: false,
+                            estimateBasis: hours == nil ? nil : .learnedCurve)
     }
 
     func testPersistsOneSnapshotPerDeviceAndCanClearThem() throws {
@@ -67,6 +68,26 @@ final class LastBatterySnapshotStoreTests: XCTestCase {
         XCTAssertEqual(saved.estimateText, "~1d 15h left (est.)")
         XCTAssertEqual(saved.shortEstimateText, "~1d 15h left")
         XCTAssertEqual(saved.observedAt, observedAt)
+    }
+
+    func testLegacyBasiliskSnapshotHidesUnvalidatedRateEstimate() {
+        let legacy = LastBatterySnapshot(
+            deviceKey: "legacy", productID: 0x00BA, deviceName: "Razer Basilisk V3 X HyperSpeed",
+            percent: 80, observedAt: Date(), estimatedHoursRemaining: 9,
+            wasCharging: false, estimateBasis: nil
+        )
+
+        XCTAssertNil(legacy.estimateText)
+        XCTAssertNil(legacy.shortEstimateText)
+        XCTAssertTrue(legacy.isValid, "legacy percentage remains useful even when its ETA is hidden")
+    }
+
+    func testSnapshotWithoutEstimateBasisStillDecodes() throws {
+        let legacyJSON = Data(#"{"deviceKey":"legacy","productID":186,"deviceName":"Basilisk","percent":80,"observedAt":0,"estimatedHoursRemaining":9,"wasCharging":false}"#.utf8)
+        let legacy = try JSONDecoder().decode(LastBatterySnapshot.self, from: legacyJSON)
+
+        XCTAssertNil(legacy.estimateBasis)
+        XCTAssertNil(legacy.estimateText, "an old Basilisk rate estimate has unknown provenance")
     }
 
     func testDeviceTransitionKeepsSameMouseAndDistinguishesUpgradeFromSwap() {
