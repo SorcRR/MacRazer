@@ -192,6 +192,13 @@ case "render-ui":
     if args.contains("offline") { controller.setPreviewOffline() }
     if args.contains("bluetooth") { controller.setPreviewBluetooth() }
     if args.contains("bluetooth-connected") { controller.setPreviewBluetoothConnected() }
+    if args.contains("dpi-stages") { controller.setPreviewDpiModes(single: false) }
+    if args.contains("dpi-single") { controller.setPreviewDpiModes(single: true) }
+    if args.contains("zones") {
+        // The Basilisk V4 Pro's lighting zones, with the Lighting row open.
+        controller.setPreviewZonedLighting()
+        UserDefaults.standard.set("lighting", forKey: "popoverExpandedSections")
+    }
     let updateChecker = UpdateChecker()
     if args.contains("update") { updateChecker.loadPreviewState(notes: PreviewNotes.releaseBody) }
     if args.contains("updated") { updateChecker.loadPreviewUpdated(notes: PreviewNotes.releaseBody) }
@@ -231,7 +238,8 @@ case "render-ui":
                               launchAtLogin: launchAtLogin, appearance: AppearanceSettings.shared,
                               onOpenSettings: {},
                               onOpenDeviceTest: {})) // no windows in a render
-    writeViewPNG(rootView, to: path)
+    // Segmented controls only draw when hosted in a view hierarchy.
+    if args.contains("zones") || args.contains("dpi-stages") || args.contains("dpi-single") { writeHostedPNG(rootView, to: path) } else { writeViewPNG(rootView, to: path) }
 
 case "render-settings":
     _ = NSApplication.shared
@@ -320,7 +328,8 @@ case "render-remap":
     _ = NSApplication.shared
     let path = outputPath(args.dropFirst(), default: "remap-preview.png")
     let r = ButtonRemapper()
-    r.loadPreviewState()
+    // `--v4pro` previews the Basilisk V4 Pro's list, saved in the mouse.
+    r.loadPreviewState(pid: args.contains("--v4pro") ? 0x00E3 : nil)
     writeViewPNG(RemapView(remapper: r), to: path)
 
 case "render-permissions":

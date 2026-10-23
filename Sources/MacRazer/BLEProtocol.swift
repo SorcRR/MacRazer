@@ -41,14 +41,71 @@ enum BLEProtocol {
         static let dpiStagesSet = Key(0x0B, 0x04, 0x01, 0x00)
         static let powerTimeoutGet = Key(0x05, 0x84, 0x00, 0x00)
         static let powerTimeoutSet = Key(0x05, 0x04, 0x00, 0x00)
-        static func brightnessGet(led: UInt8) -> Key { Key(0x10, 0x85, 0x01, led) }
-        static func brightnessSet(led: UInt8) -> Key { Key(0x10, 0x05, 0x01, led) }
+        static func brightnessGet(led: UInt8, slot: UInt8 = 0x01) -> Key { Key(0x10, 0x85, slot, led) }
+        static func brightnessSet(led: UInt8, slot: UInt8 = 0x01) -> Key { Key(0x10, 0x05, slot, led) }
+        /// The stage table of one onboard slot (`OnboardSlots`); `dpiStagesGet`/`Set` are slot 1.
+        static func stagesGet(slot: UInt8) -> Key { Key(0x0B, 0x84, slot, 0x00) }
+        static func stagesSet(slot: UInt8) -> Key { Key(0x0B, 0x04, slot, 0x00) }
         static let staticColor = Key(0x10, 0x04, 0x00, 0x00)
         // The Basilisk DPI Cycle assignment lives in the mouse's function table. Reads
         // target the active bank; writes use the projection bank and are read back by the
         // BluetoothDevice helper before the UI reports success.
         static let dpiButtonGet = Key(0x08, 0x84, 0x00, 0x60)
         static let dpiButtonSet = Key(0x08, 0x04, 0x01, 0x60)
+        /// Any entry of that function table, by its id (the DPI Cycle entry is 0x60).
+        static func buttonFunctionGet(_ id: UInt8) -> Key { Key(0x08, 0x84, 0x00, id) }
+        static func buttonFunctionSet(_ id: UInt8, slot: UInt8 = 0x01) -> Key { Key(0x08, 0x04, slot, id) }
+
+        // Basilisk V4 Pro onboard profiles and power, read from the mouse over Bluetooth
+        // (2026-10-19). Class 0x03 is USB's 0x05 (`OnboardSlots`), class 0x05 USB's 0x07.
+        // The third key byte of a settings command is the slot, like USB's storage byte.
+        static let slotsGet = Key(0x03, 0x80, 0x00, 0x00)        // -> [ids...]
+        static let activeSlotGet = Key(0x03, 0x82, 0x00, 0x00)   // -> [id]
+        static let activeSlotSet = Key(0x03, 0x02, 0x00, 0x00)   // payload [id]
+        static func slotCreate(_ id: UInt8) -> Key { Key(0x03, 0x05, id, 0x00) }
+        static func slotRemove(_ id: UInt8) -> Key { Key(0x03, 0x06, id, 0x00) }
+        static let lowBatteryGet = Key(0x05, 0x82, 0x00, 0x00)   // -> [raw]
+        static let lowBatterySet = Key(0x05, 0x02, 0x00, 0x00)   // payload [raw]
+        /// One lighting zone's effect (`ZonedLighting`): the body after the LED id.
+        static func zoneEffectGet(led: UInt8, slot: UInt8) -> Key { Key(0x10, 0x83, slot, led) }
+        static func zoneEffectSet(led: UInt8, slot: UInt8) -> Key { Key(0x10, 0x03, slot, led) }
+    }
+
+    /// One entry of the mouse's function table: what the button does now, and its factory
+    /// default. A read answers `id, flag`, then the two 7-byte blocks interleaved byte by byte,
+    /// current first (the DPI Cycle parser below reads only the current one). On the
+    /// Basilisk V4 Pro a flag of 01 means the entry's HyperShift layer is set, and the second
+    /// block is then that layer instead (`parseShiftedButtonFunction`; bthstest, 2026-10-19).
+    struct ButtonFunction: Equatable {
+        let current: [UInt8]
+        let factory: [UInt8]
+    }
+
+    static func parseButtonFunction(id: UInt8, _ payload: Data) throws -> ButtonFunction {
+        let bytes = Array(payload)
+        guard bytes.count >= 16, bytes[0] == id else { throw HIDDevice.HIDError.badResponse }
+        let packed = Array(bytes[2..<16])
+        return ButtonFunction(current: stride(from: 0, to: 14, by: 2).map { packed[$0] },
+                              factory: stride(from: 1, to: 14, by: 2).map { packed[$0] })
+    }
+
+    /// The entry's HyperShift layer from a read: its block when the flag says it is set, nil
+    /// when nothing was written there.
+    static func parseShiftedButtonFunction(id: UInt8, _ payload: Data) throws -> [UInt8]? {
+        let function = try parseButtonFunction(id: id, payload)
+        return Array(payload)[1] == 0x01 ? function.factory : nil
+    }
+
+    /// `layer` 01 writes the HyperShift layer, as 02/0C's third argument does over USB. The
+    /// first byte is the slot it goes to, as 02/0C's first argument is: sent as 01 while slot 2
+    /// was active, a remap landed in slot 1; sent as 02 it stayed in slot 2 (2026-10-22).
+    static func buttonFunctionPayload(id: UInt8, block: [UInt8], layer: UInt8 = 0, slot: UInt8 = 0x01) -> [UInt8] {
+        [slot, id, layer] + block
+    }
+
+    /// A plain key press as a function block (the same layout `keyboardPayload` writes).
+    static func keyboardBlock(hidUsage: UInt8, modifiers: UInt8 = 0) -> [UInt8] {
+        [0x02, 0x02, modifiers, hidUsage, 0, 0, 0]
     }
 
     /// Assignments supported by the Basilisk V3 X HyperSpeed's DPI Cycle control. Media
@@ -121,6 +178,10 @@ enum BLEProtocol {
         case dpiStages
         case dpi
         case brightness
+        case slots
+        case activeSlot
+        case lowBattery
+        case zoneEffect
     }
 
     /// A request ready for the wire: the key, an optional payload, and how to read the reply.
@@ -221,6 +282,14 @@ enum BLEProtocol {
         return map[keyCode]
     }
 
+    /// The HID modifier-byte bit of a Mac modifier key, left and right apart (01 left ⌃,
+    /// 02 left ⇧, 04 left ⌥, 08 left ⌘, then 10 to 80 the right-hand ones). Nil for any other key.
+    static func hidModifierBit(forMacKeyCode keyCode: UInt16) -> UInt8? {
+        let map: [UInt16: UInt8] = [59: 0x01, 56: 0x02, 58: 0x04, 55: 0x08,
+                                    62: 0x10, 60: 0x20, 61: 0x40, 54: 0x80]
+        return map[keyCode]
+    }
+
     static func shortcutLabel(hidUsage: UInt8, modifiers: UInt8) -> String {
         var label = ""
         if modifiers & 0x01 != 0 { label += "⌃" }
@@ -293,24 +362,34 @@ enum BLEProtocol {
     /// The BLE request for a USB-style report, or nil when there is no known BLE
     /// equivalent. `stages` is the mouse's current stage table, which a DPI change needs
     /// because BLE only switches DPI by rewriting that table.
-    static func request(for report: RazerReport, stages: DPIStageTable?) -> Request? {
+    ///
+    /// `slot` is the onboard slot settings go to on a mouse that has them (`OnboardSlots`), and
+    /// 1 on every other mouse, which is the byte these keys always carried.
+    /// `zoned` says the mouse sets its lighting zone by zone (`ZonedLighting`).
+    static func request(for report: RazerReport, stages: DPIStageTable?, slot: UInt8 = 0x01,
+                        zoned: Bool = false) -> Request? {
         let args = report.arguments
         switch (report.commandClass, report.commandId) {
+        case (0x0F, 0x02) where zoned:
+            return Request(key: .zoneEffectSet(led: args[1], slot: slot),
+                           payload: Array(args[2..<(2 + ZonedLighting.bodySize)]), reply: .ack)
+        case (0x0F, 0x82) where zoned:
+            return Request(key: .zoneEffectGet(led: args[1], slot: slot), payload: [], reply: .zoneEffect)
         case (0x07, 0x80):
             return Request(key: .battery, payload: [], reply: .battery)
         case (0x00, 0x82):
             return Request(key: .serial, payload: [], reply: .serial)
         case (0x04, 0x86):
-            return Request(key: .dpiStagesGet, payload: [], reply: .dpiStages)
+            return Request(key: .stagesGet(slot: slot), payload: [], reply: .dpiStages)
         case (0x04, 0x85):
-            return Request(key: .dpiStagesGet, payload: [], reply: .dpi)
+            return Request(key: .stagesGet(slot: slot), payload: [], reply: .dpi)
         case (0x04, 0x06):
             // USB numbers stages from 0; the table carries them from 1.
             let count = min(Int(args[2]), RazerCommands.maxDPIStages)
             guard count > 0 else { return nil }
             let values = (0..<count).map { i in (Int(args[4 + i * 7]) << 8) | Int(args[5 + i * 7]) }
             let table = DPIStageTable(active: min(Int(args[1]), count - 1), values: values)
-            return Request(key: .dpiStagesSet, payload: table.encoded(), reply: .ack)
+            return Request(key: .stagesSet(slot: slot), payload: table.encoded(), reply: .ack)
         case (0x04, 0x05):
             // No direct "set DPI" over BLE. Selecting one of the existing stages is the
             // equivalent the DPI button does; an arbitrary value would mean rewriting the
@@ -318,11 +397,25 @@ enum BLEProtocol {
             let dpi = (Int(args[1]) << 8) | Int(args[2])
             guard let stages, let index = stages.values.firstIndex(of: dpi) else { return nil }
             let table = DPIStageTable(active: index, values: stages.values)
-            return Request(key: .dpiStagesSet, payload: table.encoded(), reply: .ack)
+            return Request(key: .stagesSet(slot: slot), payload: table.encoded(), reply: .ack)
         case (0x0F, 0x84):
-            return Request(key: .brightnessGet(led: args[1]), payload: [], reply: .brightness)
+            return Request(key: .brightnessGet(led: args[1], slot: slot), payload: [], reply: .brightness)
         case (0x0F, 0x04):
-            return Request(key: .brightnessSet(led: args[1]), payload: [args[2]], reply: .ack)
+            return Request(key: .brightnessSet(led: args[1], slot: slot), payload: [args[2]], reply: .ack)
+        case (0x05, 0x81):
+            return Request(key: .slotsGet, payload: [], reply: .slots)
+        case (0x05, 0x84):
+            return Request(key: .activeSlotGet, payload: [], reply: .activeSlot)
+        case (0x05, 0x02):
+            return Request(key: .slotCreate(args[0]), payload: [], reply: .ack)
+        case (0x05, 0x03):
+            return Request(key: .slotRemove(args[0]), payload: [], reply: .ack)
+        case (0x05, 0x04):
+            return Request(key: .activeSlotSet, payload: [args[0]], reply: .ack)
+        case (0x07, 0x82):
+            return Request(key: .lowBatteryGet, payload: [], reply: .lowBattery)
+        case (0x07, 0x02):
+            return Request(key: .lowBatterySet, payload: [args[0]], reply: .ack)
         case (0x0F, 0x02) where args[2] == 0x01:
             // Static colour only. Layout from #32: [0x04, 0, 0, 0, 0, r, g, b].
             return Request(key: .staticColor, payload: [0x04, 0, 0, 0, 0, args[6], args[7], args[8]],
@@ -372,6 +465,17 @@ enum BLEProtocol {
         case .brightness:
             guard let raw = bytes.first else { throw HIDDevice.HIDError.badResponse }
             out.arguments[2] = raw
+        case .slots:
+            // USB answers [max, ids...]; Bluetooth the ids alone.
+            guard !bytes.isEmpty, bytes.count < out.arguments.count else { throw HIDDevice.HIDError.badResponse }
+            out.arguments[0] = UInt8(OnboardSlots.maxSlots)
+            for (i, id) in bytes.enumerated() { out.arguments[1 + i] = id }
+            out.dataSize = UInt8(1 + bytes.count)
+        case .zoneEffect:
+            for (i, b) in bytes.prefix(ZonedLighting.bodySize).enumerated() { out.arguments[2 + i] = b }
+        case .activeSlot, .lowBattery:
+            guard let value = bytes.first else { throw HIDDevice.HIDError.badResponse }
+            out.arguments[0] = value
         }
         return out
     }
@@ -411,7 +515,7 @@ enum BLEProtocol {
         func encoded() -> [UInt8] {
             var bytes: [UInt8] = [UInt8(active + 1), UInt8(values.count)]
             for (i, value) in values.enumerated() {
-                let v = UInt16(max(100, min(value, 45000)))
+                let v = UInt16(max(100, min(value, RazerCommands.dpiCeiling)))
                 bytes += [UInt8(i + 1), UInt8(v & 0xFF), UInt8(v >> 8), UInt8(v & 0xFF), UInt8(v >> 8), 0, 0]
             }
             return bytes

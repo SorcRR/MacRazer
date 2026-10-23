@@ -26,7 +26,10 @@ swift build -c release "${ARCHS[@]}"
 BIN="$(swift build -c release "${ARCHS[@]}" --show-bin-path)/${EXEC_NAME}"
 # Fail here rather than ship a release that quietly lost Intel (or Apple Silicon) support,
 # say after a toolchain change.
-if ! lipo "${BIN}" -verify_arch arm64 x86_64; then
+# `lipo -verify_arch` with several archs fails on some Xcode versions ("requires exactly one
+# input file"), so check the reported arch list instead.
+BIN_ARCHS=" $(lipo -archs "${BIN}") "
+if [[ "${BIN_ARCHS}" != *" arm64 "* || "${BIN_ARCHS}" != *" x86_64 "* ]]; then
     echo "✗ ${BIN} is not universal: $(lipo -archs "${BIN}")" >&2
     exit 1
 fi
@@ -38,11 +41,21 @@ cp "${BIN}" "${APP}/Contents/MacOS/${EXEC_NAME}"
 cp Packaging/Info.plist "${APP}/Contents/Info.plist"
 [ -f Packaging/AppIcon.icns ] && cp Packaging/AppIcon.icns "${APP}/Contents/Resources/AppIcon.icns"
 
-# Prefer a stable self-signed identity (created by Scripts/setup-signing.sh) so the
-# Input Monitoring grant persists across rebuilds. Fall back to ad-hoc otherwise.
-SIGN_ID="MacRazer Self-Signed"
-if security find-identity -p codesigning 2>/dev/null | grep -q "${SIGN_ID}"; then
-    echo "▸ Codesigning with stable identity '${SIGN_ID}'…"
+# Prefer a stable identity so the Input Monitoring and Accessibility grants persist across
+# rebuilds: the "Apple Development" certificate Xcode creates for a signed-in Apple ID (the free
+# Personal Team is enough), else the self-signed one from Scripts/setup-signing.sh. Fall back to
+# ad-hoc otherwise. Signing by SHA-1 rather than name, as several Apple Development
+# certificates (one per Mac or team) make the name ambiguous.
+SIGN_ID="$(security find-identity -v -p codesigning 2>/dev/null \
+    | awk '/"Apple Development: / { print $2; exit }')"
+SIGN_NAME="Apple Development"
+if [ -z "${SIGN_ID}" ]; then
+    SIGN_ID="$(security find-identity -p codesigning 2>/dev/null \
+        | awk '/"MacRazer Self-Signed"/ { print $2; exit }')"
+    SIGN_NAME="MacRazer Self-Signed"
+fi
+if [ -n "${SIGN_ID}" ]; then
+    echo "▸ Codesigning with stable identity '${SIGN_NAME}'…"
     # Signing normally takes well under a second. When it doesn't, it is because macOS has
     # put up a GUI keychain prompt for the private key that a background or CI build has
     # nobody to click — and from the outside that is indistinguishable from a hang. So say so,

@@ -137,7 +137,9 @@ Partial verification is welcome. "DPI works, could not test the rest" is a perfe
 
 The model probably uses a different command dialect (transaction id, command variant, LED id).
 Check OpenRazer for that PID and open an issue or PR; we may need to parameterize
-`RazerCommands` further, as we did for `brightnessLed`.
+`RazerCommands` further, as we did for `brightnessLed`. Per-model behaviour goes in a
+capability field on the registry row, never a PID check in the code; the fields there are
+listed in [DOCUMENTATION.md §8.1](docs/DOCUMENTATION.md#81-capability-fields).
 
 Include the model, PID, and the probe output in your PR. Add a test to
 `RazerDevicesTests.swift` for anything model-specific you introduce.

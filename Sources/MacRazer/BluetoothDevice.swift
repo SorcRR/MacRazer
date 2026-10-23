@@ -39,6 +39,9 @@ final class BluetoothDevice: NSObject, RazerTransport, @unchecked Sendable {
 
     // `io` only (the caller's queue).
     private var nextID: UInt8 = 0x30
+    /// The onboard slot settings go to on a mouse that has them (`OnboardSlots`); set by
+    /// `OnboardSlotTransport`. Slot 1 on every other mouse.
+    var slot: UInt8 = OnboardSlots.first
 
     /// One request in flight: the frames still to write and the reply being assembled.
     private final class Exchange: @unchecked Sendable {
@@ -134,11 +137,12 @@ final class BluetoothDevice: NSObject, RazerTransport, @unchecked Sendable {
         // and writing it back would quietly revert that.
         let isDPISelect = report.commandClass == 0x04 && report.commandId == 0x05
         let current = isDPISelect ? try readStages() : nil
-        guard let request = BLEProtocol.request(for: report, stages: current) else {
+        guard let request = BLEProtocol.request(for: report, stages: current, slot: slot,
+                                                   zoned: !ZonedLighting.zones(pid: productID).isEmpty) else {
             throw HIDDevice.HIDError.notSupported
         }
         let payload = try exchange(request)
-        if request.key == .dpiStagesSet {
+        if request.key == .stagesSet(slot: slot) {
             // A write acknowledgement only says the frames arrived. Read the table back
             // and compare, the way the CLI confirms a DPI write over USB.
             let written = try BLEProtocol.DPIStageTable(decoding: request.payload)
@@ -148,7 +152,7 @@ final class BluetoothDevice: NSObject, RazerTransport, @unchecked Sendable {
     }
 
     private func readStages() throws -> BLEProtocol.DPIStageTable {
-        let request = BLEProtocol.Request(key: .dpiStagesGet, payload: [], reply: .dpiStages)
+        let request = BLEProtocol.Request(key: .stagesGet(slot: slot), payload: [], reply: .dpiStages)
         return try BLEProtocol.DPIStageTable(decoding: Array(exchange(request)))
     }
 
@@ -157,7 +161,7 @@ final class BluetoothDevice: NSObject, RazerTransport, @unchecked Sendable {
     }
 
     func setDpiStages(_ stages: BLEProtocol.DPIStageTable) throws {
-        let request = BLEProtocol.Request(key: .dpiStagesSet, payload: stages.encoded(), reply: .ack)
+        let request = BLEProtocol.Request(key: .stagesSet(slot: slot), payload: stages.encoded(), reply: .ack)
         try RazerRetry.run(attempts: HIDDevice.defaultAttempts) {
             _ = try exchange(request)
             guard try readStages() == stages else { throw HIDDevice.HIDError.commandFailed }
@@ -203,6 +207,38 @@ final class BluetoothDevice: NSObject, RazerTransport, @unchecked Sendable {
         guard try readDpiCycleBinding() == binding else {
             throw HIDDevice.HIDError.badResponse
         }
+    }
+
+    /// One entry of the mouse's function table (`BLEProtocol.ButtonFunction`).
+    func readButtonFunction(_ id: UInt8) throws -> BLEProtocol.ButtonFunction {
+        let request = BLEProtocol.Request(key: .buttonFunctionGet(id), payload: [], reply: .ack)
+        let payload = try RazerRetry.run(attempts: HIDDevice.defaultAttempts) { try exchange(request) }
+        return try BLEProtocol.parseButtonFunction(id: id, payload)
+    }
+
+    /// Writes one entry and checks the mouse reads it back before returning.
+    func setButtonFunction(_ id: UInt8, block: [UInt8]) throws {
+        let request = BLEProtocol.Request(key: .buttonFunctionSet(id, slot: slot),
+                                          payload: BLEProtocol.buttonFunctionPayload(id: id, block: block, slot: slot),
+                                          reply: .ack)
+        _ = try exchange(request)
+        guard try readButtonFunction(id).current == block else { throw HIDDevice.HIDError.badResponse }
+    }
+
+    /// One entry's HyperShift layer; nil when nothing was written there.
+    func readShiftedButtonFunction(_ id: UInt8) throws -> [UInt8]? {
+        let request = BLEProtocol.Request(key: .buttonFunctionGet(id), payload: [], reply: .ack)
+        let payload = try RazerRetry.run(attempts: HIDDevice.defaultAttempts) { try exchange(request) }
+        return try BLEProtocol.parseShiftedButtonFunction(id: id, payload)
+    }
+
+    /// Writes one entry's HyperShift layer and checks the mouse reads it back.
+    func setShiftedButtonFunction(_ id: UInt8, block: [UInt8]) throws {
+        let request = BLEProtocol.Request(key: .buttonFunctionSet(id, slot: slot),
+                                          payload: BLEProtocol.buttonFunctionPayload(id: id, block: block, layer: 0x01, slot: slot),
+                                          reply: .ack)
+        _ = try exchange(request)
+        guard try readShiftedButtonFunction(id) == block else { throw HIDDevice.HIDError.badResponse }
     }
 
     private func exchange(_ request: BLEProtocol.Request) throws -> Data {

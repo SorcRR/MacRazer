@@ -195,7 +195,7 @@ final class DeviceTestTests: XCTestCase {
         // 0 would read as the mouse's real ceiling.
         let mouse = FakeMouse()
         mouse.holds(RazerCommands.setDPI(x: 3200, y: 3200))
-        mouse.refuse = { $0.commandClass == 0x04 && $0.commandId == 0x05 && $0.arguments[1] == UInt8(45000 >> 8) }
+        mouse.refuse = { $0.commandClass == 0x04 && $0.commandId == 0x05 && $0.arguments[1] == UInt8(RazerCommands.dpiCeiling >> 8) }
         let record = DeviceTestSteps.dpi(mouse, maxProbe: true)
         XCTAssertNil(record.data?.maxProbe)
         XCTAssertEqual(record.outcome, .passed)

@@ -248,6 +248,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         // rather than at the next poll, so its mappings come back straight away.
         remapper.onPressWhilePaused = { [weak controller] in controller?.checkIfOffline() }
 
+        // Remaps saved in the mouse (`OnboardButtons`): each change of the remap table, or of
+        // the connected mouse, is written into the mouse. Debounced, and read at the time it
+        // fires, so the brief empty table of a mouse switch is never written.
+        // The mouse switched profiles by itself: its remaps come along.
+        controller.onSlotProfileFollowed = { [weak self] profile in self?.remapper.setMappings(profile.buttonMappings) }
+        // The remaps read from the mouse on connecting (set on another computer, or before
+        // this install) replace the ones shown, when they are still that mouse's.
+        controller.onOnboardMappingsRead = { [weak self] deviceKey, mappings in
+            guard let self, self.remapper.activeDeviceKey == deviceKey else { return }
+            self.remapper.setMappings(mappings)
+        }
+        remapper.$mappings
+            .combineLatest(controller.$deviceID)
+            .debounce(for: .milliseconds(300), scheduler: RunLoop.main)
+            .sink { [weak self] _, _ in
+                guard let self else { return }
+                self.controller.setOnboardMappings(self.remapper.mappings, deviceKey: self.remapper.activeDeviceKey)
+            }
+            .store(in: &cancellables)
+
         // Update check: straight away on launch, then whenever the last answer is more than
         // `UpdateChecker.checkInterval` old. See `startUpdateTriggers()` for what asks.
         updateChecker.$latestVersion

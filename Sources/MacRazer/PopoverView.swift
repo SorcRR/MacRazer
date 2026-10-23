@@ -72,13 +72,17 @@ struct PopoverView: View {
     /// Recallable custom DPI — persisted per-mouse, and never above the mouse's max.
     @State private var customDPI: Int = 8000
     @State private var editingDpiStage: Int?
+    @State private var editingDpiValue = false
     @State private var dpiStageDraft = ""
     @State private var dpiStageError: String?
     @FocusState private var dpiStageFieldFocused: Bool
     @State private var versionHovered = false
     @State private var gearHovered = false
 
-    private let pollRates = RazerCommands.supportedPollingRates
+    private var pollRates: [Int] {
+        controller.deviceIsBluetooth ? RazerCommands.supportedPollingRates
+            : RazerCommands.supportedPollingRates(pid: controller.deviceID)
+    }
     private let defaultStages = [400, 800, 1600, 3200, 6400]
     /// The connected mouse's actual configured DPI stages, or sensible defaults.
     private var displayedStages: [Int] {
@@ -250,6 +254,7 @@ struct PopoverView: View {
             if controller.dpi != 0 { dpiValue = Double(controller.dpi) }
             brightnessValue = Double(controller.brightness)
             if let timeout = controller.sleepTimeout { sleepTimeoutValue = Double(timeout) }
+            if let threshold = controller.lowBatteryThreshold { lowBatteryValue = Double(threshold) }
             loadCustomDPI()
             color = controller.lightingColor.swiftUIColor
         }
@@ -262,6 +267,7 @@ struct PopoverView: View {
             if controller.dpi != 0 { dpiValue = Double(controller.dpi) }
             brightnessValue = Double(controller.brightness)
             if let timeout = controller.sleepTimeout { sleepTimeoutValue = Double(timeout) }
+            if let threshold = controller.lowBatteryThreshold { lowBatteryValue = Double(threshold) }
         }
         // A half-typed profile name shouldn't survive its row closing and reappear later.
         .onChange(of: expandedSections.contains(.profiles)) { _, open in
@@ -274,6 +280,7 @@ struct PopoverView: View {
         .onChange(of: controller.deviceKey) { _, _ in loadCustomDPI() } // reload/clamp per mouse
         .onChange(of: controller.deviceMaxDPI) { _, _ in loadCustomDPI() }
         .onChange(of: controller.sleepTimeout) { _, new in if let new { sleepTimeoutValue = Double(new) } }
+        .onChange(of: controller.lowBatteryThreshold) { _, new in if let new { lowBatteryValue = Double(new) } }
     }
 
     /// No mouse is known at all: never seen this session, or unplugged (which forgets its
@@ -491,15 +498,33 @@ struct PopoverView: View {
         .background(Color.batteryMid.opacity(0.12), in: RoundedRectangle(cornerRadius: 13))
     }
 
+    /// A slider's value, rounded to `step` counted from `lower`. `Slider(step:)` rounds the
+    /// same way, but on macOS it also draws a tick mark per step and rebuilds them each time
+    /// the main page appears: 999 on the Basilisk V4 Pro's DPI slider, which held up the way
+    /// back from Configure Buttons.
+    private func snapped(_ value: Binding<Double>, to step: Double, from lower: Double = 0) -> Binding<Double> {
+        Binding(get: { value.wrappedValue },
+                set: { value.wrappedValue = lower + (($0 - lower) / step).rounded() * step })
+    }
+
     // MARK: Profiles
 
     /// Quick-switch chips, shown when the Profiles row is expanded: a chip per saved profile
     /// (filled green when active) plus a "+" chip to save the current setup. Switching never
     /// needs a page navigation; only the rarely-needed rename/delete flow lives behind
-    /// "Manage Profiles…".
+    /// "Manage Profiles…". A mouse whose slots are its profiles lists and manages them right
+    /// here instead (`SlotProfilesList`).
     private var profilesContent: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if controller.profiles.isEmpty && !isAddingProfile {
+            if controller.usesSlotProfiles {
+                // The mouse's slots are its profiles, listed and managed right here.
+                SlotProfilesList(controller: controller)
+            } else if controller.onboardSlotsUnread {
+                // Its profiles live in the mouse; never offer app-side snapshots instead.
+                Text("Couldn't read the profiles from the mouse. If they don't appear in a moment, reconnect the mouse.")
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if controller.profiles.isEmpty && !isAddingProfile {
                 HStack(spacing: 8) {
                     Text("Save your current setup as a profile")
                         .font(.system(size: 11)).foregroundStyle(.secondary)
@@ -514,12 +539,12 @@ struct PopoverView: View {
                     if !isAddingProfile { addProfileChip }
                 }
             }
-            if isAddingProfile { addProfileField }
-            if controller.profileApplyFailed {
+            if isAddingProfile, !controller.onboardSlotsUnread { addProfileField }
+            if controller.profileApplyFailed, !controller.usesSlotProfiles, !controller.onboardSlotsUnread {
                 Text("Couldn't apply that. The mouse isn't responding.")
                     .font(.system(size: 10.5)).foregroundStyle(Color.batteryLow)
             }
-            if !controller.profiles.isEmpty {
+            if !controller.profiles.isEmpty, !controller.usesSlotProfiles, !controller.onboardSlotsUnread {
                 Button("Manage Profiles…") { page = .profiles }
                     .buttonStyle(.plain)
                     .font(.system(size: 11, weight: .medium))
@@ -960,6 +985,201 @@ struct PopoverView: View {
     }
 
     private var dpiCard: some View {
+        Group {
+            if controller.supportsDpiModes { dpiModesCard } else { presetDpiCard }
+        }
+    }
+
+    // MARK: DPI modes (Single / Stages)
+
+    /// The DPI card of a mouse with DPI modes: one value, or five stages with one active,
+    /// held in the mouse's stage table so it looks and works the same on every link. The
+    /// slider and the number edit the DPI in use: the single value, or the active stage.
+    private var dpiModesCard: some View {
+        let single = controller.dpiStages.count == 1
+        return card {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                sectionLabel("DPI", "scope")
+                Spacer()
+                dpiValueField
+            }
+            Picker("", selection: Binding(
+                get: { single },
+                set: { setDpiMode(single: $0) }
+            )) {
+                Text("Single").tag(true)
+                Text("Stages").tag(false)
+            }
+            .pickerStyle(.segmented)
+            .controlSize(.small)
+            .labelsHidden()
+            .frame(maxWidth: .infinity)
+            .disabled(controller.dpiStages.isEmpty || controller.isUpdatingDpiStages)
+            Slider(value: snapped($dpiValue, to: 50, from: 100), in: 100...Double(controller.deviceMaxDPI)) { editing in
+                if !editing { setCurrentDPI(Int(dpiValue)) }
+            }
+            .tint(.razerGreen)
+            .controlSize(.small)
+            .disabled(controller.dpiStages.isEmpty)
+            if !single && !controller.dpiStages.isEmpty {
+                HStack(spacing: 6) {
+                    ForEach(Array(controller.dpiStages.enumerated()), id: \.offset) { index, value in
+                        stageChip(value, index: index)
+                    }
+                }
+            }
+            if let dpiStageError {
+                Text(dpiStageError).font(.system(size: 10.5)).foregroundStyle(Color.batteryLow)
+            } else if let error = controller.dpiStagesError {
+                Text(error).font(.system(size: 10.5)).foregroundStyle(Color.batteryLow)
+            }
+        }
+        }
+    }
+
+    /// The DPI in use, which a click turns into a field for typing an exact value.
+    private var dpiValueField: some View {
+        Group {
+            if editingDpiValue {
+                TextField("DPI", text: $dpiStageDraft)
+                    .textFieldStyle(.plain)
+                    .multilineTextAlignment(.trailing)
+                    .frame(width: 60)
+                    .focused($dpiStageFieldFocused)
+                    .onSubmit { commitDpiValue() }
+                    .onExitCommand { editingDpiValue = false }
+                    .onAppear { dpiStageFieldFocused = true }
+            } else {
+                Button {
+                    guard !controller.dpiStages.isEmpty else { return }
+                    dpiStageError = nil
+                    dpiStageDraft = String(Int(dpiValue))
+                    editingDpiStage = nil
+                    editingDpiValue = true
+                } label: { Text(verbatim: "\(Int(dpiValue))") }
+                .buttonStyle(.plain)
+                .help("Click to type an exact DPI")
+            }
+        }
+        .font(.system(size: 12, weight: .medium)).monospacedDigit()
+        .onChange(of: dpiStageFieldFocused) { _, focused in if !focused { editingDpiValue = false } }
+    }
+
+    /// One stage: a click makes it active, Edit DPI in its menu changes its value.
+    private func stageChip(_ value: Int, index: Int) -> some View {
+        let active = controller.activeDpiStage == index
+        let editing = editingDpiStage == index
+        return Group {
+            if editing {
+                TextField("DPI", text: $dpiStageDraft)
+                    .textFieldStyle(.plain)
+                    .multilineTextAlignment(.center)
+                    .monospacedDigit()
+                    .focused($dpiStageFieldFocused)
+                    .onSubmit { commitStageValue(index: index) }
+                    .onExitCommand { editingDpiStage = nil }
+                    .onAppear { dpiStageFieldFocused = true }
+            } else {
+                Button {
+                    guard !active else { return }
+                    dpiValue = Double(value)
+                    controller.setDPITable(controller.dpiStages, active: index)
+                } label: {
+                    Text(verbatim: "\(value)")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .font(.system(size: 10.5, weight: active ? .semibold : .regular).monospacedDigit())
+        .foregroundStyle(active ? Color.onRazerGreen : Color.secondary)
+        .frame(maxWidth: .infinity)
+        .frame(height: 24)
+        .background(active ? Color.razerGreen : Color.primary.opacity(0.08),
+                    in: RoundedRectangle(cornerRadius: 6))
+        .hoverHighlight(RoundedRectangle(cornerRadius: 6))
+        .contextMenu {
+            Button("Edit DPI") {
+                dpiStageError = nil
+                dpiStageDraft = String(value)
+                editingDpiValue = false
+                editingDpiStage = index
+                dpiStageFieldFocused = true
+            }
+        }
+        .help("Stage \(index + 1) · Right-click to edit")
+        .accessibilityLabel(editing ? "Stage \(index + 1) DPI" : "\(value) DPI, stage \(index + 1)")
+        .accessibilityAddTraits(active ? .isSelected : [])
+        .disabled(controller.isUpdatingDpiStages || (editingDpiStage != nil && !editing))
+    }
+
+    /// A typed DPI, or nil with the reason shown under the card.
+    private func typedDPI() -> Int? {
+        guard let value = Int(dpiStageDraft.trimmingCharacters(in: .whitespaces)),
+              (100...controller.deviceMaxDPI).contains(value) else {
+            dpiStageError = "DPI must be between 100 and \(controller.deviceMaxDPI)."
+            return nil
+        }
+        dpiStageError = nil
+        return value
+    }
+
+    private func commitDpiValue() {
+        defer { editingDpiValue = false; dpiStageFieldFocused = false }
+        guard let value = typedDPI() else { return }
+        dpiValue = Double(value)
+        setCurrentDPI(value)
+    }
+
+    private func commitStageValue(index: Int) {
+        guard editingDpiStage == index else { return }
+        defer { editingDpiStage = nil; dpiStageFieldFocused = false }
+        guard let value = typedDPI(), controller.dpiStages.indices.contains(index),
+              controller.dpiStages[index] != value else { return }
+        var stages = controller.dpiStages
+        stages[index] = value
+        if index == controller.activeDpiStage { dpiValue = Double(value) }
+        controller.setDPITable(stages, active: controller.activeDpiStage ?? 0)
+    }
+
+    /// The DPI in use becomes `value`: the single value, or the active stage's.
+    private func setCurrentDPI(_ value: Int) {
+        var stages = controller.dpiStages
+        guard !stages.isEmpty else { return }
+        let active = min(controller.activeDpiStage ?? 0, stages.count - 1)
+        guard stages[active] != value else { return }
+        stages[active] = value
+        controller.setDPITable(stages, active: active)
+    }
+
+    /// Single keeps the DPI in use; Stages brings back the five stages this slot had,
+    /// with the one nearest the current DPI active.
+    private func setDpiMode(single: Bool) {
+        let stages = controller.dpiStages
+        guard !stages.isEmpty, single != (stages.count == 1) else { return }
+        let current = stages[min(controller.activeDpiStage ?? 0, stages.count - 1)]
+        if single {
+            if let key = rememberedStagesKey { UserDefaults.standard.set(stages, forKey: key) }
+            controller.setDPITable([current], active: 0)
+        } else {
+            let remembered = rememberedStagesKey.flatMap { UserDefaults.standard.array(forKey: $0) as? [Int] }
+            let restored = (remembered?.count == RazerCommands.maxDPIStages ? remembered! : defaultStages)
+                .map { min($0, controller.deviceMaxDPI) }
+            let nearest = restored.indices.min { abs(restored[$0] - current) < abs(restored[$1] - current) } ?? 0
+            dpiValue = Double(restored[nearest])
+            controller.setDPITable(restored, active: nearest)
+        }
+    }
+
+    /// Where the five stages wait while a slot is in Single mode, which holds only one.
+    private var rememberedStagesKey: String? {
+        guard let key = controller.deviceKey else { return nil }
+        return "dpiStages-\(key)-slot\(controller.activeOnboardSlot ?? 1)"
+    }
+
+    private var presetDpiCard: some View {
         card {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -969,7 +1189,7 @@ struct PopoverView: View {
                     .font(.system(size: 12, weight: .medium)).monospacedDigit()
             }
             if controller.supportsFreeDPI {
-                Slider(value: $dpiValue, in: 100...Double(controller.deviceMaxDPI), step: 50) { editing in
+                Slider(value: snapped($dpiValue, to: 50, from: 100), in: 100...Double(controller.deviceMaxDPI)) { editing in
                     if !editing {
                         let v = Int(dpiValue)
                         controller.setDPI(v)
@@ -1062,13 +1282,64 @@ struct PopoverView: View {
     }
 
     @State private var sleepTimeoutValue: Double = 300
+    @State private var lowBatteryValue: Double = 33
 
-    /// The Power Management row's expanded content; the row itself shows the sleep timer.
+    /// The Power Management row's expanded content: the sleep timer, then the
+    /// mouse's low-battery threshold. The row shows the first of the two.
     private var powerManagementContent: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if controller.supportsSleepTimeout { sleepTimeoutControls }
+            if controller.lowBatteryThreshold != nil { lowBatteryControls }
+        }
+    }
+
+    /// Where the mouse goes into its own low-battery mode, 5% to 50%; the factory 33% is in
+    /// the presets.
+    private var lowBatteryControls: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: "battery.25").font(.system(size: 10)).foregroundStyle(.secondary)
+                Text("Low battery at").font(.system(size: 11)).foregroundStyle(.secondary)
+                Spacer()
+                Text("\(Int(lowBatteryValue))%").font(.system(size: 11).monospacedDigit()).foregroundStyle(.secondary)
+            }
+            Slider(value: snapped($lowBatteryValue, to: 1, from: 5), in: 5...50) { editing in
+                if !editing { controller.setLowBatteryThreshold(Int(lowBatteryValue)) }
+            }
+            .tint(.razerGreen)
+            .controlSize(.small)
+            HStack(spacing: 5) {
+                ForEach([5, 10, 20, 33, 50], id: \.self) { value in
+                    Button {
+                        lowBatteryValue = Double(value)
+                        controller.setLowBatteryThreshold(value)
+                    } label: {
+                        Text("\(value)%")
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 9.5, weight: Int(lowBatteryValue) == value ? .semibold : .regular).monospacedDigit())
+                    .foregroundStyle(Int(lowBatteryValue) == value ? Color.onRazerGreen : Color.secondary)
+                    .frame(maxWidth: .infinity).frame(height: 23)
+                    .background(Int(lowBatteryValue) == value ? Color.razerGreen : Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+                    .hoverHighlight(RoundedRectangle(cornerRadius: 6))
+                    .accessibilityLabel("Low battery at \(value)%")
+                }
+            }
+        }
+        .help("The battery level at which the mouse goes into its own low-battery mode. Saved in the mouse.")
+    }
+
+    private var lowBatterySummary: String {
+        controller.lowBatteryThreshold == nil ? "…" : "Low at \(Int(lowBatteryValue))%"
+    }
+
+    private var sleepTimeoutControls: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 6) {
                 Image(systemName: "moon.fill").font(.system(size: 10)).foregroundStyle(.secondary)
-                Slider(value: $sleepTimeoutValue, in: 60...900, step: 15) { editing in
+                Slider(value: snapped($sleepTimeoutValue, to: 15, from: 60), in: 60...900) { editing in
                     if !editing { controller.setSleepTimeout(Int(sleepTimeoutValue)) }
                 }
                 .tint(.razerGreen)
@@ -1186,7 +1457,13 @@ struct PopoverView: View {
     private func pollRateTip(_ hz: Int) -> String? {
         let battery = controller.deviceHasBattery
         switch hz {
+        case 2000, 4000, 8000:
+            return battery ? "HyperPolling: the quickest response, best on a high refresh rate display. "
+                             + "Uses the battery much faster and more CPU."
+                           : "HyperPolling: the quickest response, best on a high refresh rate display. Uses more CPU."
         case 1000: return "Smoothest and quickest to respond. Best for gaming."
+        case 250: return battery ? "Easy on the battery, still smooth for everyday work."
+                                 : "Smooth enough for everyday work."
         case 500: return battery ? "Smooth for everyday work, and easier on the battery."
                                  : "Smooth for everyday work."
         case 125: return battery ? "Lasts longest on a charge. The pointer can feel less smooth, "
@@ -1201,16 +1478,27 @@ struct PopoverView: View {
     /// `controller.pollRate`, not `displayedPollRate`: 0 means the rate hasn't been read yet,
     /// and advising a switch to 500 Hz on a mouse that may already be there reads as broken.
     private var showsPollRateBatteryHint: Bool {
-        controller.deviceHasBattery && !controller.charging && controller.pollRate >= 1000
+        controller.deviceHasBattery && !controller.charging && controller.pollRate == 1000
     }
 
     /// The Lighting row's expanded content; the row itself shows the effect and brightness.
     private var lightingContent: some View {
         VStack(alignment: .leading, spacing: 8) {
+            // Which part of the mouse the controls below change, on mice lit zone by zone.
+            if !controller.lightingZones.isEmpty {
+                Picker("", selection: Binding(get: { controller.selectedLightingZone },
+                                              set: { controller.selectLightingZone($0) })) {
+                    Text("All").tag(LightingZone?.none)
+                    ForEach(controller.lightingZones) { Text($0.name).tag(LightingZone?.some($0)) }
+                }
+                .pickerStyle(.segmented)
+                .controlSize(.small)
+                .labelsHidden()
+            }
             // Brightness.
             HStack(spacing: 6) {
                 Image(systemName: "sun.min.fill").font(.system(size: 10)).foregroundStyle(.secondary)
-                Slider(value: $brightnessValue, in: 0...100, step: 1) { editing in
+                Slider(value: snapped($brightnessValue, to: 1), in: 0...100) { editing in
                     if !editing { controller.setBrightness(Int(brightnessValue)) }
                 }
                 .tint(.razerGreen)
@@ -1223,14 +1511,14 @@ struct PopoverView: View {
             if controller.supportsLightingEffects {
                 Picker("", selection: Binding(get: { controller.effect },
                                               set: { controller.setEffect($0) })) {
-                    ForEach(LightingEffect.allCases) { Text($0.rawValue).tag($0) }
+                    ForEach(controller.lightingEffects) { Text($0.rawValue).tag($0) }
                 }
                 .pickerStyle(.segmented)
                 .controlSize(.small)
                 .labelsHidden()
             }
 
-            if controller.effect == .staticColor || !controller.supportsLightingEffects {
+            if controller.effect.usesColor || !controller.supportsLightingEffects {
                 HStack(spacing: 7) {
                     ForEach(swatches.indices, id: \.self) { i in
                         swatch(swatches[i].color, name: swatches[i].name)
@@ -1258,6 +1546,8 @@ struct PopoverView: View {
         // 0% draws nothing whatever the effect, the same rule `showsLightingBatteryHint` uses.
         if Int(brightnessValue) == 0 { return "Off" }
         if !controller.supportsLightingEffects { return "\(Int(brightnessValue))%" }
+        // All zones selected but lit differently: no one effect describes them.
+        if controller.selectedLightingZone == nil, !controller.zonesMatch { return "Per zone" }
         if controller.effect == .off { return "Off" }
         return "\(controller.effect.rawValue) · \(Int(brightnessValue))%"
     }
@@ -1346,7 +1636,7 @@ struct PopoverView: View {
         var rows: [GroupRow] = []
         if controller.supportsPollRate { rows.append(.section(.polling)) }
         if controller.deviceHasLighting { rows.append(.section(.lighting)) } // none on e.g. the Atheris
-        if supportsBasiliskBluetooth { rows.append(.section(.power)) }
+        if controller.supportsSleepTimeout || controller.lowBatteryThreshold != nil { rows.append(.section(.power)) }
         rows.append(.buttons)
         if controller.supportsProfiles { rows.append(.section(.profiles)) }
         return rows
@@ -1371,7 +1661,7 @@ struct PopoverView: View {
                                       value: lightingSummary) { lightingContent }
                     case .section(.power):
                         disclosureRow(.power, title: "Power Management", symbol: "moon.zzz", tint: .indigo,
-                                      value: sleepTimeoutSummary,
+                                      value: controller.supportsSleepTimeout ? sleepTimeoutSummary : lowBatterySummary,
                                       valueColor: controller.sleepTimeoutError == nil ? .secondary : .batteryLow) {
                             powerManagementContent
                         }
@@ -1468,7 +1758,7 @@ struct PopoverView: View {
 
     private var buttonsSummary: String {
         if buttonsNeedAccess { return "Needs access" }
-        // Resetting a button to "None (default)" stores `.passthrough` rather than removing it.
+        // Resetting a button to "Default" stores `.passthrough` rather than removing it.
         let count = remapper.mappings.values.filter { $0 != .passthrough }.count
         return count == 0 ? "" : "\(count) remapped"
     }
