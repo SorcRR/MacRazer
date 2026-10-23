@@ -93,6 +93,7 @@ final class HIDDevice {
     private static let razerMouseKeywords = [
         "razer", "cobra", "basilisk", "deathadder", "naga", "viper", "mamba",
         "lancehead", "orochi", "atheris", "hyperspeed",
+        "bsk", // the Basilisk V4 Pro advertises as "BSK V4 PRO"
     ]
 
     /// A Razer mouse macOS has connected over Bluetooth.

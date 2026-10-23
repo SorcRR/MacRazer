@@ -90,7 +90,7 @@ Built in [`RazerCommands.swift`](../Sources/MacRazer/RazerCommands.swift). VID `
 |---|---|---|---|
 | Get battery | `0x07` / `0x80` | `0x02` | response `args[1]` is 0-255; `* 100 / 255` gives the %. |
 | Get charging | `0x07` / `0x84` | `0x02` | response `args[1]` != 0 = charging. |
-| Get / Set DPI | `0x04` / `0x85` / `0x05` | `0x07` | VARSTORE + big-endian x/y; clamp **100-45000** (arbitrary DPI). |
+| Get / Set DPI | `0x04` / `0x85` / `0x05` | `0x07` | VARSTORE + big-endian x/y; clamp **100-50000** (arbitrary DPI). |
 | Get / Set poll | `0x00` / `0x85` / `0x05` | `0x01` | 1000->`0x01`, 500->`0x02`, 125->`0x08` (basic set only). |
 | Lighting effect | `0x0F` / `0x02` | varies | extended-matrix on **ZERO_LED (0x00)**; effect ids: none `0x00`, static `0x01`, spectrum `0x03`, wave `0x04`. |
 | Get / Set brightness | `0x0F` / `0x84` / `0x04` | `0x03` | value 0-255. LED group is **per model** (`RazerDevices.brightnessLed`), never ZERO_LED — see quirk below. |
@@ -205,7 +205,8 @@ the popover is open, `setPopoverVisible(true)` polls DPI/poll every 2 s so on-mo
 - The estimate is always labelled "(est.)".
 
 ### `RazerDevices.swift`, device registry
-Maps PID to `{ name, fullySupported, hasBattery }`. The connected device's **name comes from
+Maps PID to a `RazerDeviceInfo` row: name, support flags, protocol quirks and capabilities
+(§8). The connected device's **name comes from
 its own USB product string** (works for any Razer mouse); the registry only adds the
 "controls verified" flag (Cobra family) and the battery flag. Unknown mice show their name +
 "limited support". This is the extension point for universal support (see §8).
@@ -289,8 +290,20 @@ page is a `ScrollView` (so long content scrolls without resizing the popover):
 - **Buttons page**, `RemapView.swift` embedded (see §6.3).
 
 ### 6.3 Button remapping, `ButtonRemapper.swift` + `RemapView.swift`
-**Software** remapping via a `CGEvent` tap (the onboard-remap protocol isn't in OpenRazer and
-Razer's EULA forbids reverse-engineering it, see CHANGELOG / chat). The tap watches
+On a mouse whose button function table is known (`RazerDeviceInfo.buttonTable`, today the
+Basilisk V4 Pro), remaps are **written into the mouse** (`OnboardButtons.swift`): each remap
+the mouse can do itself goes in its table and is read back, the HyperShift layer too, and
+clearing a remap puts back the factory function. MacRazer only ever restores entries it wrote
+itself (`OnboardOwnership`). The mouse also does Double Click (`0B`), turbo clicks and keys
+(`0E`, `0D`), a DPI clutch (`06 05 05`) and Cycle Scroll Mode (`12`), so these are offered on
+that mouse only. Actions it can't do (a key with no HID usage) stay with the tap.
+The mouse is where remaps live: on each new connection, and when the mouse switches slot by
+itself, both layers are read and replace the remap table shown (`OnboardButtons.adopt`), so a
+fresh install or another Mac shows what the mouse holds. Every switch to another slot, from
+the app or the mouse, reads that slot's remaps the same way, from an empty table, so nothing
+of the previous slot's carries over (`MouseController.followSlotSync`).
+
+On every other mouse it is **software** remapping via a `CGEvent` tap. The tap watches
 `otherMouseDown/Up`; for a mapped button it **suppresses the original event and posts the
 mapped action** (events the app itself posts are tagged and skipped to avoid loops). Only the
 side buttons (Back/Forward = buttons 4/5) emit OS-level events and are remappable; DPI/profile
@@ -379,8 +392,33 @@ in one run. To make the **controls** verified for another model:
  OpenRazer's `razermouse_driver.c` switch statements / `daemon/.../mouse.py` METHODS.
 3. Test each control on hardware (use the CLI diagnostics, §9).
 
-If a model uses a different dialect, generalize `RazerCommands` / add a per-device command
-table keyed by PID.
+If a model uses a different dialect, add a capability field to `RazerDeviceInfo` and read
+it through a `RazerDevices` lookup rather than checking PIDs in the code.
+
+### 8.1 Capability fields
+
+Every capability is off by default, so a row that doesn't set one behaves as before. A mouse
+that shares a capability with one already supported is one row; set only what was confirmed
+on the mouse.
+
+| Field | What it turns on |
+|---|---|
+| `supportsSleepTimeout` | The sleep timer: `BLEProtocol.Key.powerTimeoutGet` on a Bluetooth row, `0x07/0x83` and `0x07/0x03` on a cable or dongle row. |
+| `supportsStageEditing` | Editing one DPI stage over Bluetooth. |
+| `supportsDpiButtonBinding` | Reassigning the DPI Cycle button over Bluetooth. |
+| `usesPollingRate2` | Polling through `0x00/0xC0` and `0x00/0x40` (up to 8000 Hz) instead of `0x00/0x85`; through a dongle it is sent to the mouse and then the dongle. USB only. |
+| `hasWheelControls` | Wheel mode (`0x02/0xB0`, `0x02/0x30`) and Smart-Reel (`0x02/0x97`, `0x02/0x17`). USB only. |
+| `hasSmartReelSensitivity` | Smart-Reel sensitivity (`0x02/0xA3`, `0x02/0x23`, levels 0-4), shown as Low, Medium and High while Smart-Reel is on. USB only. |
+| `hasScrollAcceleration` | Scroll acceleration on/off (`0x02/0x96`, `0x02/0x16`) and its level (`0x02/0xA2`, `0x02/0x22`, 0-4), shown as Low, Medium and High while it is on. USB only. |
+| `supportsLowBatteryThreshold` | The battery level the mouse goes into low-battery mode at (`0x07/0x82`, `0x07/0x02`). |
+| `hasOnboardSlots` | Onboard profile slots (`OnboardSlots.swift`): the slots are the profiles. Settings go to the active slot, names are kept in the app (`SlotNames`), and a new or reset slot gets the factory bytes (`OnboardSlots.factorySettings`). |
+| `supportsDpiModes` | The popover's Single and Stages DPI modes, set through the stage table on every link. |
+| `lightingZones` | Lighting set zone by zone (`ZonedLighting`), with the extra effects. |
+| `buttonTable` | Remaps saved in the mouse, from a table in `OnboardButtons.Table`. |
+| `dpiStagesCountFromOne` | The stage table's active stage and stage numbers count from 1, as OpenRazer writes them. USB only; Bluetooth always counts from 1. |
+
+`RazerDevicesTests.testOnboardCapabilitiesAreOffUnlessARowSetsThem` checks that only the rows
+that set them get them.
 
 ---
 

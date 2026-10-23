@@ -197,4 +197,40 @@ final class BLEProtocolTests: XCTestCase {
         XCTAssertNil(BLEProtocol.request(for: RazerCommands.getChargingStatus(), stages: nil),
                      "unknown over BLE: the poll treats it as 'charging unknown'")
     }
+
+    // Basilisk V4 Pro onboard slots over Bluetooth, as the mouse answered them (2026-10-19).
+    func testOnboardSlotCommands() throws {
+        let list = BLEProtocol.request(for: OnboardSlots.listSlots(), stages: nil)!
+        XCTAssertEqual(list.key.bytes, [0x03, 0x80, 0x00, 0x00])
+        let slots = try BLEProtocol.response(to: OnboardSlots.listSlots(), reply: list.reply, payload: Data([1, 2]))
+        XCTAssertEqual(OnboardSlots.parseSlots(slots), [1, 2])
+
+        let active = BLEProtocol.request(for: OnboardSlots.getActive(), stages: nil)!
+        XCTAssertEqual(active.key.bytes, [0x03, 0x82, 0x00, 0x00])
+        let reply = try BLEProtocol.response(to: OnboardSlots.getActive(), reply: active.reply, payload: Data([3]))
+        XCTAssertEqual(OnboardSlots.parseActive(reply), 3)
+
+        XCTAssertEqual(BLEProtocol.request(for: OnboardSlots.create(3), stages: nil)?.key.bytes, [0x03, 0x05, 0x03, 0x00])
+        XCTAssertEqual(BLEProtocol.request(for: OnboardSlots.remove(3), stages: nil)?.key.bytes, [0x03, 0x06, 0x03, 0x00])
+        let activate = BLEProtocol.request(for: OnboardSlots.activate(3), stages: nil)!
+        XCTAssertEqual(activate.key.bytes, [0x03, 0x02, 0x00, 0x00])
+        XCTAssertEqual(activate.payload, [3])
+    }
+
+    func testSettingsKeysCarryTheSlot() {
+        XCTAssertEqual(BLEProtocol.request(for: RazerCommands.getDPIStages(), stages: nil, slot: 3)?.key.bytes,
+                       [0x0B, 0x84, 0x03, 0x00])
+        XCTAssertEqual(BLEProtocol.request(for: RazerCommands.getBrightness(led: Razer.logoLed), stages: nil, slot: 2)?.key.bytes,
+                       [0x10, 0x85, 0x02, 0x04])
+    }
+
+    func testLowBatteryThreshold() throws {
+        let get = BLEProtocol.request(for: RazerCommands.getLowBatteryThreshold(), stages: nil)!
+        XCTAssertEqual(get.key.bytes, [0x05, 0x82, 0x00, 0x00])
+        let reply = try BLEProtocol.response(to: RazerCommands.getLowBatteryThreshold(), reply: get.reply, payload: Data([0x4D]))
+        XCTAssertEqual(RazerCommands.parseLowBatteryThreshold(reply), 30)
+        let set = BLEProtocol.request(for: RazerCommands.setLowBatteryThreshold(percent: 33), stages: nil)!
+        XCTAssertEqual(set.key.bytes, [0x05, 0x02, 0x00, 0x00])
+        XCTAssertEqual(set.payload, [0x54])
+    }
 }

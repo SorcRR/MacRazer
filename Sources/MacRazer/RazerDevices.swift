@@ -73,14 +73,51 @@ struct RazerDeviceInfo {
     /// per-PID table would.
     let dischargeCurveModelKey: String?
     var supportsDpiButtonBinding = false
+    /// The mouse's own sleep timer: `BLEProtocol.Key.powerTimeoutGet` on a Bluetooth row,
+    /// `RazerCommands.getIdleTime` (0x07/0x83) on a cable or dongle row.
     var supportsSleepTimeout = false
     var supportsStageEditing = false
     /// Read brightness back after setting it, and treat a mismatch as a failed write.
     var verifiesBrightnessWrite = false
+
+    // Capabilities of mice that keep their settings in the mouse (the Basilisk V4 Pro is the
+    // first). Each one is off by default, so a row that doesn't set it behaves as before.
+
+    /// Polling through OpenRazer's polling_rate2 pair (0x00/0xC0, 0x00/0x40, up to 8000 Hz)
+    /// instead of 0x00/0x85 and 0x00/0x05 (`RazerCommands.setPollingRateReports`). USB only.
+    var usesPollingRate2 = false
+    /// Wheel mode (0x02/0xB0, 0x02/0x30) and Smart-Reel (0x02/0x97, 0x02/0x17). USB only.
+    var hasWheelControls = false
+    /// How readily Smart-Reel drops into free spin, five levels (0x02/0xA3, 0x02/0x23). USB only.
+    var hasSmartReelSensitivity = false
+    /// Scroll acceleration on/off (0x02/0x96, 0x02/0x16) and its level, five steps
+    /// (0x02/0xA2, 0x02/0x22). USB only.
+    var hasScrollAcceleration = false
+    /// The battery level the mouse goes into low-battery mode at (0x07/0x82, 0x07/0x02;
+    /// `BLEProtocol.Key.lowBatteryGet` over Bluetooth).
+    var supportsLowBatteryThreshold = false
+    /// Onboard profile slots (`OnboardSlots`): every settings command goes to the active slot.
+    var hasOnboardSlots = false
+    /// The popover's Single and Stages DPI modes: DPI is set through the stage table on
+    /// every link (`MouseController.setDPITable`), so it is kept in the active slot.
+    var supportsDpiModes = false
+    /// Lighting set zone by zone (`ZonedLighting`), in the picker's order; empty when the
+    /// mouse is lit as one.
+    var lightingZones: [LightingZone] = []
+    /// The mouse's button function table (`OnboardButtons.layout`), when it is known; nil
+    /// leaves remaps to the event tap alone.
+    var buttonTable: OnboardButtons.Table?
+    /// The stage table's active stage and stage numbers count from 1, as OpenRazer writes
+    /// them, instead of from 0 (`RazerCommands.setDPIStages`). USB only: the Bluetooth table
+    /// always counts from 1 and `BLEProtocol` converts it.
+    var dpiStagesCountFromOne = false
 }
 
 enum RazerDevices {
     static let vendorID = 0x1532
+
+    /// The Basilisk V4 Pro's lighting zones, the same on every link.
+    static let basiliskV4ProZones: [LightingZone] = [.logo, .scrollWheel, .underglow]
 
     static let known: [RazerDeviceInfo] = [
         // 0x1f throughout: hardware-verified on the HyperSpeed (both PIDs), and what
@@ -114,6 +151,23 @@ enum RazerDevices {
         // vendor spec — the reporter exercised DPI at 6400, so the top of the range is the
         // one field here not demonstrated on a device.
         .init(pid: 0x00B9, name: "Razer Basilisk V3 X HyperSpeed", fullySupported: true, hasBattery: true, hasLighting: true, maxDPI: 18000, transactionId: 0x1f, matrixTransactionId: 0x1f, brightnessLed: Razer.scrollLed, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
+        // Basilisk V4 Pro: rechargeable, cable or HyperSpeed dongle. Probed on hardware with
+        // this app on both PIDs (firmware v1.1): 0x1f answers every command and is the only
+        // usable id over the dongle (0x3f/0xff/0x80 time out there). Battery and charging, DPI
+        // and the 5-stage table, brightness on LOGO and SCROLL, polling (`usesPollingRate2`),
+        // the wheel controls, the low-battery threshold and every remap saved in the mouse
+        // (`OnboardButtons`) were confirmed on the mouse (2026-10-19), so fullySupported.
+        // 50000 DPI, the vendor spec: the mouse kept 50000 for the DPI and a stage over the
+        // dongle, and for a stage over Bluetooth.
+        .init(pid: 0x00E2, name: "Razer Basilisk V4 Pro (Wired)", fullySupported: true, hasBattery: true, hasLighting: true, maxDPI: 50000, transactionId: 0x1f, matrixTransactionId: 0x1f, brightnessLed: Razer.logoLed, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, supportsSleepTimeout: true, usesPollingRate2: true, hasWheelControls: true, hasSmartReelSensitivity: true, hasScrollAcceleration: true, supportsLowBatteryThreshold: true, hasOnboardSlots: true, supportsDpiModes: true, lightingZones: basiliskV4ProZones, buttonTable: .basiliskV4Pro, dpiStagesCountFromOne: true),
+        .init(pid: 0x00E3, name: "Razer Basilisk V4 Pro (Wireless)", fullySupported: true, hasBattery: true, hasLighting: true, maxDPI: 50000, transactionId: 0x1f, matrixTransactionId: 0x1f, brightnessLed: Razer.logoLed, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, supportsSleepTimeout: true, usesPollingRate2: true, hasWheelControls: true, hasSmartReelSensitivity: true, hasScrollAcceleration: true, supportsLowBatteryThreshold: true, hasOnboardSlots: true, supportsDpiModes: true, lightingZones: basiliskV4ProZones, buttonTable: .basiliskV4Pro, dpiStagesCountFromOne: true),
+        // Over Bluetooth it names itself "BSK V4 PRO" (vendor 0x068E). Read on the mouse through
+        // the shared BLE layer: battery, serial, DPI stages, LOGO brightness and the sleep
+        // timer all answered, and DPI and brightness changes from the app worked. Remaps are
+        // saved in its button table (`OnboardButtons`), the same table as over the dongle and
+        // cable; the side trigger has no entry there, and the wheel settings and low-battery
+        // threshold are USB-only so far.
+        .init(pid: 0x00E4, name: "Razer Basilisk V4 Pro (Bluetooth)", fullySupported: true, hasBattery: true, hasLighting: true, maxDPI: 50000, transactionId: 0x1f, matrixTransactionId: 0x1f, brightnessLed: Razer.logoLed, connection: .bluetooth, silhouette: .cobra, dischargeCurveModelKey: nil, supportsSleepTimeout: true, supportsStageEditing: true, supportsLowBatteryThreshold: true, hasOnboardSlots: true, supportsDpiModes: true, lightingZones: basiliskV4ProZones, buttonTable: .basiliskV4Pro),
         // Basilisk X HyperSpeed: the older AA-cell sibling — no lighting at all, and
         // razermouse_driver.c gives it 0xFF for every command it supports. Not verified
         // on hardware by us.
@@ -147,6 +201,18 @@ enum RazerDevices {
     static func supportsDpiButtonBinding(pid: Int) -> Bool { info(pid: pid)?.supportsDpiButtonBinding ?? false }
     static func supportsSleepTimeout(pid: Int) -> Bool { info(pid: pid)?.supportsSleepTimeout ?? false }
     static func supportsStageEditing(pid: Int) -> Bool { info(pid: pid)?.supportsStageEditing ?? false }
+    /// Mice whose stage table holds their DPI in the active onboard slot on every link, so
+    /// the popover offers Single and Stages modes there instead of the slider and presets.
+    static func supportsDpiModes(pid: Int) -> Bool { info(pid: pid)?.supportsDpiModes ?? false }
+    static func usesPollingRate2(pid: Int) -> Bool { info(pid: pid)?.usesPollingRate2 ?? false }
+    static func hasWheelControls(pid: Int) -> Bool { info(pid: pid)?.hasWheelControls ?? false }
+    static func hasSmartReelSensitivity(pid: Int) -> Bool { info(pid: pid)?.hasSmartReelSensitivity ?? false }
+    static func hasScrollAcceleration(pid: Int) -> Bool { info(pid: pid)?.hasScrollAcceleration ?? false }
+    static func supportsLowBatteryThreshold(pid: Int) -> Bool { info(pid: pid)?.supportsLowBatteryThreshold ?? false }
+    static func hasOnboardSlots(pid: Int) -> Bool { info(pid: pid)?.hasOnboardSlots ?? false }
+    static func lightingZones(pid: Int?) -> [LightingZone] { pid.flatMap { info(pid: $0)?.lightingZones } ?? [] }
+    static func buttonTable(pid: Int) -> OnboardButtons.Table? { info(pid: pid)?.buttonTable }
+    static func dpiStagesCountFromOne(pid: Int) -> Bool { info(pid: pid)?.dpiStagesCountFromOne ?? false }
     static func verifiesBrightnessWrite(pid: Int) -> Bool { info(pid: pid)?.verifiesBrightnessWrite ?? false }
     /// Per-command transaction id: explicit per-command override, else the class split
     /// (see `RazerDeviceInfo.matrixTransactionId`). 0x1f default for unknown models — the

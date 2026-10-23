@@ -50,6 +50,39 @@ expect rough edges until 1.0.
  it reads the answers, using a fake mouse instead of hardware.
 
 ### Added
+- **Razer Basilisk V4 Pro, on the cable, the HyperSpeed dongle and Bluetooth.** Battery,
+  charging, DPI up to 50000, DPI stages with Single and Stages modes, polling up to 8000 Hz,
+  lighting per zone (logo, wheel, underglow) with static, breathing, spectrum and reactive,
+  brightness, the sleep timer, the low-battery level, and the wheel mode, Smart-Reel and its sensitivity, and scroll acceleration. Over
+  Bluetooth everything but polling and the wheel settings.
+
+- **Basilisk V4 Pro profiles are the mouse's own onboard slots.** The mouse keeps up to 5,
+  each with its DPI, DPI stages, lighting, wheel settings and button remaps, so they work with
+  MacRazer closed. One is always active, and whatever you change goes into it, with no saving
+  step. The Profiles dropdown lists the slots the mouse has, by name, and is where you add one
+  (it starts as the mouse came from the factory), switch to one, rename one, reset one to
+  factory, or delete one (slot 1 always stays). The button beside the left click cycles
+  through them, as from the factory, and Configure Buttons can put Cycle Up Profile or Cycle
+  Down Profile on any button. MacRazer follows a switch made on the mouse, remaps included.
+
+- **Basilisk V4 Pro remaps are saved in the mouse, like Synapse does it.** Configure Buttons
+  writes each remap into the mouse and reads it back to check it. Remaps keep working with
+  MacRazer closed, over the dongle, the cable or Bluetooth, and on other computers. When the
+  mouse connects, MacRazer reads its remaps back, so another Mac shows the same ones. That
+  covers key combos, mouse buttons and media keys, on Right Click, Scroll Click, Scroll Up,
+  Scroll Down, Scroll Left, Scroll Right, DPI, Scroll Mode, Left Index, the side buttons and
+  the side trigger. The HyperShift layer is saved in the mouse too, for every one of those
+  buttons: hold the side trigger (or any button set to HyperShift) to use it. The menu follows
+  Synapse's: Keyboard (a recorded keybind, or a Turbo Keybind at 5, 10 or 20 a second), Mouse
+  (every click, Double Click, Scroll Up/Down/Left/Right, Repeat Scroll Up/Down, Turbo Left or
+  Right Click), Sensitivity (Stage Up, Stage Down, and a Clutch at any DPI while held),
+  Multimedia, Profile, Cycle Scroll Mode, HyperShift and Disable. The mouse does all of them
+  itself, on any button and either layer. Scroll Up and Down offer keys, mouse actions,
+  multimedia and Disable, as in Synapse. MacRazer only changes buttons it remapped itself, and
+  clearing a remap puts back the button's factory function. Until remapped, Scroll Mode cycles
+  the wheel's modes and the side trigger is the mouse's HyperShift key, as Synapse sets them.
+  The buttons are listed in the order they sit on the mouse.
+
 - **Runs on Intel Macs.** The app is now a universal build, native on both Apple Silicon and
  Intel. It still needs macOS 14 or later.
 

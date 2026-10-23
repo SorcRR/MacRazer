@@ -72,7 +72,7 @@ final class RazerCommandsTests: XCTestCase {
 
     func testSetDPIClampsRange() {
         XCTAssertEqual(RazerCommands.parseDPI(RazerCommands.setDPI(x: 50, y: 50)).x, 100)
-        XCTAssertEqual(RazerCommands.parseDPI(RazerCommands.setDPI(x: 46000, y: 46000)).x, 45000)
+        XCTAssertEqual(RazerCommands.parseDPI(RazerCommands.setDPI(x: 51000, y: 51000)).x, 50000)
     }
 
     func testParseDPIStages() {
@@ -106,10 +106,38 @@ final class RazerCommandsTests: XCTestCase {
         XCTAssertEqual(Array(r.arguments[10...16]), [1, 0x03, 0x20, 0x03, 0x20, 0, 0]) // stage 1: 800
     }
 
+    func testSetDPIStagesCountingFromOne() {
+        // The layout OpenRazer writes, on a mouse whose row has dpiStagesCountFromOne.
+        let r = RazerCommands.setDPIStages([400, 800], activeStage: 1, countFromOne: true)
+        XCTAssertEqual(Array(r.arguments[0...2]), [0x01, 2, 2]) // varstore, active (2nd), count
+        XCTAssertEqual(Array(r.arguments[3...9]), [1, 0x01, 0x90, 0x01, 0x90, 0, 0])  // stage 1: 400
+        XCTAssertEqual(Array(r.arguments[10...16]), [2, 0x03, 0x20, 0x03, 0x20, 0, 0]) // stage 2: 800
+        XCTAssertEqual(RazerCommands.parseActiveDPIStage(r, countFromOne: true), 1)
+        XCTAssertEqual(RazerCommands.parseActiveDPIStage(r), 2, "read from 0 it would be the stage after")
+    }
+
+    func testTheV4ProsStageTableReadsWithItsActiveStage() {
+        // The V4 Pro's own answer over the dongle (2026-10-19): 4th stage (3200) active.
+        var r = RazerReport(commandClass: 0x04, commandId: 0x86, dataSize: 0x26)
+        let bytes: [UInt8] = [0x01, 0x04, 0x05,
+                              0x01, 0x01, 0x90, 0x01, 0x90, 0, 0, 0x02, 0x03, 0x20, 0x03, 0x20, 0, 0,
+                              0x03, 0x06, 0x40, 0x06, 0x40, 0, 0, 0x04, 0x0C, 0x80, 0x0C, 0x80, 0, 0,
+                              0x05, 0x19, 0x00, 0x19, 0x00, 0, 0]
+        r.arguments.replaceSubrange(0..<bytes.count, with: bytes)
+        let fromOne = RazerDevices.dpiStagesCountFromOne(pid: 0x00E3)
+        XCTAssertTrue(fromOne)
+        let stages = RazerCommands.parseDPIStages(r)
+        XCTAssertEqual(stages, [400, 800, 1600, 3200, 6400])
+        XCTAssertEqual(stages[RazerCommands.parseActiveDPIStage(r, countFromOne: fromOne)], 3200)
+        // Writing the same table back with 3200 active gives the same bytes.
+        let set = RazerCommands.setDPIStages(stages, activeStage: 3, countFromOne: fromOne)
+        XCTAssertEqual(Array(set.arguments[1..<bytes.count]), Array(bytes[1...]))
+    }
+
     func testSetDPIStagesClampsAndRoundTrips() {
         // Set layout matches the get-response layout, so parseDPIStages round-trips it.
-        let r = RazerCommands.setDPIStages([50, 800, 46000, 1600, 3200, 6400, 9999], activeStage: 9)
-        XCTAssertEqual(RazerCommands.parseDPIStages(r), [100, 800, 45000, 1600, 3200],
+        let r = RazerCommands.setDPIStages([50, 800, 51000, 1600, 3200, 6400, 9999], activeStage: 9)
+        XCTAssertEqual(RazerCommands.parseDPIStages(r), [100, 800, 50000, 1600, 3200],
                        "values clamp to the protocol range; the table caps at 5 stages")
         XCTAssertEqual(RazerCommands.parseActiveDPIStage(r), 4, "active index clamps to the last stage")
     }

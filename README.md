@@ -59,6 +59,7 @@ says so.
 | Razer Cobra HyperSpeed (wired + wireless) | Everything, continuously — the development mouse | maintainer |
 | Razer Atheris | Battery, DPI, polling | maintainer |
 | Razer Basilisk V3 X HyperSpeed | Battery, DPI, DPI stages, polling, lighting, brightness | [@joelday](https://github.com/joelday) |
+| Razer Basilisk V4 Pro (wired, wireless + Bluetooth) | Battery, DPI, DPI stages, polling up to 8000 Hz, lighting per zone, brightness, sleep timer, low-battery level, wheel mode, Smart-Reel and its sensitivity, scroll acceleration, onboard profiles and button remaps. Over Bluetooth everything but polling and the wheel settings | contributor |
 | Razer Viper Ultimate (Wireless) | Battery, DPI, polling, brightness | [@raphaelchenouard](https://github.com/raphaelchenouard) |
 | Razer Orochi 2013 | DPI only | [@raphaelchenouard](https://github.com/raphaelchenouard) |
 | Razer Basilisk V3 | Nothing; reported working by a user | — |
@@ -116,8 +117,13 @@ watching every HID interface the mouse exposes while it was pressed.
 To make it remappable, reassign it from Hypershift to a normal key or mouse button in
 Razer Synapse (Windows only — Razer dropped macOS support). The assignment is stored in the
 mouse's onboard memory, so it persists on the Mac afterwards and MacRazer will then see the
-button like any other. MacRazer deliberately does not reprogram onboard assignments itself;
-that would mean reverse-engineering Synapse, which Razer's EULA forbids.
+button like any other.
+
+The exception is a mouse whose button table MacRazer knows, today the **Basilisk V4 Pro**.
+There MacRazer writes each remap into the mouse's onboard memory itself, the way Synapse
+does, and the remaps keep working with MacRazer closed, on any link and on other computers.
+The side trigger is the HyperShift key until you remap it (any other button can take that
+job), and the HyperShift layer is saved in the mouse too. The table was learned from the mouse's own replies, not from Synapse.
 
 ### Known limitation: two identical mice without a hardware serial
 

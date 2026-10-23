@@ -24,6 +24,53 @@ extension HIDDevice: RazerTransport {
     }
 }
 
+/// The mouse's button function table (`OnboardButtons`), over either link.
+protocol ButtonFunctionTable {
+    func readButtonBlock(_ id: UInt8) throws -> [UInt8]
+    /// Writes one entry and reads it back; throws when the mouse doesn't hold it afterwards.
+    func writeButtonBlock(_ id: UInt8, block: [UInt8]) throws
+    /// One entry of the HyperShift layer; nil when nothing was ever written there, so the
+    /// standard layer's function applies.
+    func readShiftedBlock(_ id: UInt8) throws -> [UInt8]?
+    /// Writes one HyperShift-layer entry and reads it back; throws when the mouse doesn't
+    /// hold it afterwards.
+    func writeShiftedBlock(_ id: UInt8, block: [UInt8]) throws
+}
+
+extension HIDDevice: ButtonFunctionTable {
+    func readButtonBlock(_ id: UInt8) throws -> [UInt8] {
+        guard let block = RazerCommands.parseButtonFunction(try sendWithRetry(RazerCommands.getButtonFunction(id)), id: id)
+        else { throw HIDError.badResponse }
+        return block
+    }
+
+    func writeButtonBlock(_ id: UInt8, block: [UInt8]) throws {
+        _ = try sendWithRetry(RazerCommands.setButtonFunction(id, block: block))
+        guard try readButtonBlock(id) == block else { throw HIDError.badResponse }
+    }
+
+    func readShiftedBlock(_ id: UInt8) throws -> [UInt8]? {
+        let resp = try sendWithRetry(RazerCommands.getButtonFunction(id, layer: 0x01))
+        switch RazerCommands.parseShiftedButtonFunction(resp, id: id) {
+        case .set(let block): return block
+        case .unset: return nil
+        case nil: throw HIDError.badResponse
+        }
+    }
+
+    func writeShiftedBlock(_ id: UInt8, block: [UInt8]) throws {
+        _ = try sendWithRetry(RazerCommands.setButtonFunction(id, block: block, layer: 0x01))
+        guard try readShiftedBlock(id) == block else { throw HIDError.badResponse }
+    }
+}
+
+extension BluetoothDevice: ButtonFunctionTable {
+    func readButtonBlock(_ id: UInt8) throws -> [UInt8] { try readButtonFunction(id).current }
+    func writeButtonBlock(_ id: UInt8, block: [UInt8]) throws { try setButtonFunction(id, block: block) }
+    func readShiftedBlock(_ id: UInt8) throws -> [UInt8]? { try readShiftedButtonFunction(id) }
+    func writeShiftedBlock(_ id: UInt8, block: [UInt8]) throws { try setShiftedButtonFunction(id, block: block) }
+}
+
 /// The retry ladder both transports share, so a policy change can't drift between them.
 /// Falls through to the last error.
 enum RazerRetry {

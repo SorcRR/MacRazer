@@ -8,10 +8,18 @@ import Foundation
 /// effect (it decodes as a plain string and falls back to `.off`), so treat them as frozen.
 enum LightingEffect: String, CaseIterable, Identifiable {
     case staticColor = "Static"
+    case breathing = "Breathing"
     case spectrum = "Spectrum"
+    case reactive = "Reactive"
     case wave = "Wave"
     case off = "Off"
     var id: Self { self }
+
+    /// The effects with a colour of their own.
+    var usesColor: Bool { [.staticColor, .breathing, .reactive].contains(self) }
+
+    /// What mice without lighting zones offer (`ZonedLighting.effects` for the others).
+    static let classic: [LightingEffect] = [.staticColor, .spectrum, .wave, .off]
 }
 
 /// A named, switchable snapshot of everything the popover lets you configure: DPI, polling rate,
@@ -36,6 +44,13 @@ struct MouseProfile: Codable, Identifiable, Equatable {
     /// profiles saved before this existed keep decoding (they apply without touching the
     /// stage table, exactly as they always did).
     var dpiStages: [Int]?
+    /// The onboard slot (`OnboardSlots`) this profile is kept in, on mice that have them.
+    /// Given on first apply; nil for profiles not kept in the mouse.
+    var onboardSlot: Int?
+    /// Each zone's lighting, keyed by `LightingZone.storageKey`, on mice whose zones are set
+    /// one by one (`ZonedLighting`). Nil for every other profile, which applies `effect`,
+    /// `color` and `brightness` to the whole mouse.
+    var zones: [String: ZoneLighting]?
 
     init(name: String, dpi: Int, pollRate: Int, brightness: Int, effect: String, color: RGB,
          buttonMappings: [Int: RemapAction], dpiStages: [Int]? = nil) {
@@ -54,6 +69,30 @@ struct MouseProfile: Codable, Identifiable, Equatable {
     /// for profiles saved on mice without lighting — don't show a lighting mode they can't have.
     var summary: String {
         effect.isEmpty ? "\(dpi) DPI · \(pollRate) Hz" : "\(dpi) DPI · \(pollRate) Hz · \(effect)"
+    }
+}
+
+/// The names of a mouse's onboard slots (`OnboardSlots`), which are its profiles: the mouse
+/// keeps no names, so they live here, by device key and slot. An unnamed slot is "Profile N".
+struct SlotNames {
+    private static func key(forDevice deviceKey: String) -> String { "slotNames-\(deviceKey)" }
+
+    static func defaultName(_ slot: Int) -> String { "Profile \(slot)" }
+
+    /// The saved names, plus those of snapshot profiles that were kept in a slot before
+    /// slots became the profiles, for slots not named yet.
+    static func names(forDevice deviceKey: String, carrying profiles: [MouseProfile] = []) -> [Int: String] {
+        let saved = UserDefaults.standard.dictionary(forKey: key(forDevice: deviceKey)) as? [String: String] ?? [:]
+        var names = Dictionary(uniqueKeysWithValues: saved.compactMap { k, v in Int(k).map { ($0, v) } })
+        for profile in profiles {
+            if let slot = profile.onboardSlot, names[slot] == nil { names[slot] = profile.name }
+        }
+        return names
+    }
+
+    static func save(_ names: [Int: String], forDevice deviceKey: String) {
+        UserDefaults.standard.set(Dictionary(uniqueKeysWithValues: names.map { (String($0.key), $0.value) }),
+                                  forKey: key(forDevice: deviceKey))
     }
 }
 
