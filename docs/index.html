@@ -33,7 +33,7 @@
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
   "name": "MacRazer",
-  "operatingSystem": "macOS 14+",
+  "operatingSystem": "macOS 14+ (Apple Silicon and Intel)",
   "applicationCategory": "UtilitiesApplication",
   "description": "A native menu bar app to control Razer mice on macOS: battery, DPI, RGB lighting, polling rate, and button remapping over USB HID, without Razer Synapse. Starts at login and installs its own updates.",
   "url": "https://macrazer.com/",
@@ -70,13 +70,13 @@
       <a href="razer-mouse-battery-mac.html">Battery on Mac</a>
       <a href="#install">Install</a>
       <a href="releases.html">Releases</a>
-      <a href="https://ko-fi.com/sorcrr">Tips</a>
       <a href="https://github.com/SorcRR/MacRazer" class="topbar-gh">GitHub →</a>
+      <a href="https://ko-fi.com/sorcrr" class="topbar-tip"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 14.2C8 14.2 1.8 10.6 1.8 6.2C1.8 4 3.5 2.4 5.6 2.4C6.7 2.4 7.5 2.9 8 3.6C8.5 2.9 9.3 2.4 10.4 2.4C12.5 2.4 14.2 4 14.2 6.2C14.2 10.6 8 14.2 8 14.2Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>Leave a tip</a>
     </div>
   </nav>
 
   <div class="hero-content">
-    <p class="kicker">menu&nbsp;bar app · macOS 14+ · Apple Silicon</p>
+    <p class="kicker">menu&nbsp;bar app · macOS 14+ · Apple Silicon &amp; Intel</p>
     <h1>Razer Synapse for Mac<br><em>still doesn't</em> cover<br>this mouse. This does.</h1>
     <p class="hero-sub">
       MacRazer talks to your Razer mouse directly over USB HID: battery, DPI,
@@ -109,7 +109,8 @@
 
   <section class="strip">
     <p><strong>Connect over the 2.4&nbsp;GHz dongle or USB‑C</strong> for every control. The Cobra
-    HyperSpeed also works over Bluetooth for battery, DPI, brightness and colour.</p>
+    HyperSpeed and the Basilisk V3 X HyperSpeed also work over Bluetooth for battery, DPI,
+    brightness and colour.</p>
   </section>
 
   <section id="features" class="features">
@@ -142,14 +143,15 @@
       <article class="feature">
         <span class="feature-tag">04 · polling</span>
         <h3>Polling rate</h3>
-        <p>125 / 500 / 1000&nbsp;Hz, switchable from the menu bar without touching Windows.</p>
+        <p>125 / 500 / 1000&nbsp;Hz, switchable from the menu bar without touching Windows.
+        Needs the dongle or a cable.</p>
       </article>
 
       <article class="feature">
         <span class="feature-tag">05 · rgb</span>
         <h3>RGB lighting</h3>
         <p>Static colour via an inline hue/saturation wheel, plus spectrum, wave, off, and a
-        brightness slider.</p>
+        brightness slider. Over Bluetooth, static colour and brightness.</p>
       </article>
 
       <article class="feature">
@@ -172,8 +174,15 @@
         <p>Controls a model lacks are hidden automatically: no lighting on the Atheris,
         no battery UI on wired‑only mice.</p>
       </article>
+      <article class="feature">
+        <span class="feature-tag">09 · test</span>
+        <h3>Test your mouse, send the result</h3>
+        <p>Right‑click the menu bar icon and choose <strong>Help Support This Mouse…</strong>. A
+        couple of minutes of safe checks (battery, DPI, polling, lighting, side buttons), and
+        everything it changes goes back. Send the report to me in one click, or copy it.</p>
+      </article>
       <article class="feature feature-wide">
-        <span class="feature-tag">09 · updates</span>
+        <span class="feature-tag">10 · updates</span>
         <h3>You see what you're installing</h3>
         <p>When a new version is out, the popover shows what changed before you take it, and
         keeps the notes afterwards. <a href="releases.html">Every release is on the site</a>
@@ -209,12 +218,20 @@
           <td><span class="badge badge-good">Everything, continuously</span> <span class="muted">the development mouse</span></td>
         </tr>
         <tr>
+          <td>Razer Cobra HyperSpeed <span class="muted">(Bluetooth)</span></td>
+          <td><span class="badge badge-good">Battery, DPI, brightness, colour</span> <span class="muted">the development mouse</span></td>
+        </tr>
+        <tr>
           <td>Razer Atheris</td>
           <td><span class="badge badge-good">Battery, DPI, polling</span> <span class="muted">maintainer</span></td>
         </tr>
         <tr>
           <td>Razer Basilisk V3 X HyperSpeed</td>
           <td><span class="badge badge-good">Battery, DPI, stages, polling, lighting, brightness</span> <span class="muted">@joelday</span></td>
+        </tr>
+        <tr>
+          <td>Razer Basilisk V3 X HyperSpeed <span class="muted">(Bluetooth)</span></td>
+          <td><span class="badge badge-good">Battery, DPI, stage editing, sleep timer, brightness, colour</span> <span class="muted">@ungrav</span></td>
         </tr>
         <tr>
           <td>Razer Viper Ultimate <span class="muted">(wireless)</span></td>
@@ -246,6 +263,9 @@
         </tr>
       </tbody>
     </table>
+    <p class="mice-note">Got a mouse that isn't listed, or isn't verified yet? Right‑click the
+      menu bar icon, choose <strong>Help Support This Mouse…</strong> and send the result. That
+      tells me what works on your model, and it's how new mice get added.</p>
     <p class="mice-note">Adding a model is a small registry change plus on‑hardware verification:
       see <a href="https://github.com/SorcRR/MacRazer/blob/master/CONTRIBUTING.md">CONTRIBUTING.md</a>.</p>
   </section>
@@ -276,7 +296,8 @@
         <span class="step-num">3</span>
         <div>
           <p>Launch it. Grant <strong>Input Monitoring</strong> (and <strong>Accessibility</strong>
-          if you use button remapping) when asked. From then on MacRazer starts at login by
+          if you use button remapping) when asked. A mouse on Bluetooth also needs
+          <strong>Bluetooth</strong> access, which macOS asks for the first time. From then on MacRazer starts at login by
           itself and new versions install themselves. <strong>Update &amp; Restart</strong> in the
           popover replaces the app and relaunches it, so there's no DMG to drag. Both are
           switchable.</p>
