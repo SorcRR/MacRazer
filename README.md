@@ -95,8 +95,9 @@ Never in it: the mouse's serial number, or anything else about your Mac.
 
 Where it goes depends on the button. **Copy** puts it on your clipboard. **Open GitHub issue**
 makes it public, so it leaves out your email address. **Send** emails it to the maintainer
-through a small Cloudflare Worker ([worker/](worker/)), which keeps nothing but a count of
-reports per day.
+through a small Cloudflare Worker, which keeps nothing but a count of reports per day. Its code
+is in a private repository, and builds from this repository don't have Send: they offer Copy
+and the GitHub issue instead.
 
 Adding a model is a small change to a registry plus on-hardware verification. See
 [CONTRIBUTING.md](CONTRIBUTING.md).

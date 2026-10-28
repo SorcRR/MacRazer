@@ -82,13 +82,14 @@ enum ProjectLinks {
     static let cobraHyperSpeedPR = URL(string: "https://github.com/openrazer/openrazer/pull/2583")!
 }
 
-/// The Worker in `worker/`, behind the device test's Send and the usage stats. Nil in any
+/// The Worker behind the device test's Send and the usage stats. It lives in the private
+/// SorcRR/macrazer-worker repository. Nil in any
 /// build that wasn't given one: a clone, a fork, CI, `swift run`. Those builds hide and switch
 /// off everything that would talk to it, so a build from someone else's checkout never
 /// sends anything to the maintainer's Worker, or anywhere.
 ///
 /// `Scripts/build-app.sh` writes the address into the bundle's Info.plist from DOMAIN in the
-/// maintainer's private settings file (see `worker/README.md`). It is never in the repository.
+/// maintainer's private settings file (see that repository's README). It is never in the repository.
 enum WorkerEndpoint {
     static let infoKey = "MacRazerWorkerURL"
     /// For pointing a development build at `wrangler dev`: `MACRAZER_WORKER_URL=http://127.0.0.1:8787`.

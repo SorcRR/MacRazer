@@ -10,7 +10,7 @@ enum UsageStatsConsent: String {
     case undecided, granted, declined
 }
 
-/// One ping, exactly as the Worker takes it (`worker/src/stats.ts`). Settings shows this same
+/// One ping, exactly as the Worker takes it (`src/stats.ts` in SorcRR/macrazer-worker). Settings shows this same
 /// value as JSON, so what the person reads is what goes.
 struct UsagePing: Codable, Equatable {
     enum Event: String, Codable {

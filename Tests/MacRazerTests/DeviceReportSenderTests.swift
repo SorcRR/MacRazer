@@ -4,7 +4,8 @@
 import XCTest
 @testable import MacRazer
 
-/// Send, and the contract between the app's report and the Worker in `worker/` that takes it.
+/// Send, and the contract between the app's report and the Worker that takes it
+/// (SorcRR/macrazer-worker, private), through the fixtures in Fixtures/worker/.
 final class DeviceReportSenderTests: XCTestCase {
     private let endpoint = URL(string: "https://reports.example/v1/device-report")!
 
@@ -56,7 +57,7 @@ final class DeviceReportSenderTests: XCTestCase {
     private static var fixture: URL {
         URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("worker/test/fixtures/full-report.json")
+            .appendingPathComponent("Tests/MacRazerTests/Fixtures/worker/full-report.json")
     }
 
     /// The Worker's tests check it accepts this file, and that it computes the same verdict.
@@ -74,7 +75,7 @@ final class DeviceReportSenderTests: XCTestCase {
         let onDisk = try parsed(Data(contentsOf: Self.fixture))
         XCTAssertEqual(onDisk, try parsed(Data(json.utf8)), """
             The report's format changed. Rewrite the fixture with UPDATE_WORKER_FIXTURE=1 swift test \
-            --filter DeviceReportSenderTests, update worker/src/validate.ts to match, and run the Worker's tests.
+            --filter DeviceReportSenderTests, update src/validate.ts in SorcRR/macrazer-worker to match, and run its tests.
             """)
     }
 
@@ -123,9 +124,11 @@ final class DeviceReportSenderTests: XCTestCase {
 
     /// The real thing, end to end: this app's request, a real URLSession, and the Worker in
     /// Cloudflare's runtime. Skipped unless MACRAZER_WORKER_URL points at one, such as
-    /// `npx wrangler dev` in worker/ (http://127.0.0.1:8787/v1/device-report).
+    /// `npx wrangler dev` in the Worker's repository (http://127.0.0.1:8787). An origin, the
+    /// same as `WorkerEndpoint` takes it, so one variable serves both.
     func testSendReachesARunningWorker() async throws {
-        guard let url = ProcessInfo.processInfo.environment["MACRAZER_WORKER_URL"].flatMap(URL.init(string:)) else {
+        guard let url = WorkerEndpoint.parse(ProcessInfo.processInfo.environment[WorkerEndpoint.environmentKey])?
+            .appendingPathComponent("v1/device-report") else {
             throw XCTSkip("Set MACRAZER_WORKER_URL to a running Worker to run this.")
         }
         let outcome = await DeviceReportSender.send(Self.fullReport(), to: url)

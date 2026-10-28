@@ -303,7 +303,7 @@ buttons are handled onboard and never reach macOS.
 - Available both inline (popover buttons page) and as a standalone window
  (`RemapWindowController.swift`, opened from the right-click menu).
 
-### 6.4 Device test, `DeviceTest*.swift` + `worker/`
+### 6.4 Device test, `DeviceTest*.swift` + the Worker
 The right-click menu's **Help Support This Mouse…** (or **Test This Mouse…** on a verified
 model) runs a guided test and builds a report a maintainer can turn into a registry entry.
 
@@ -322,10 +322,13 @@ model) runs a guided test and builds a report a maintainer can turn into a regis
  never in the repository. A build without it (a clone, a fork, CI, `swift run`) hides Send and
  the reply address, and has no usage stats at all. `MACRAZER_WORKER_URL=http://127.0.0.1:8787`
  points a development build at `wrangler dev`.
-- `worker/`: a Cloudflare Worker that checks a report against the app's exact format, emails it
- to the maintainer, and keeps only daily counters. Setup is in `worker/README.md`.
+- The Worker: a Cloudflare Worker that checks a report against the app's exact format, emails it
+ to the maintainer, and keeps only daily counters. Its code and setup are in the private
+ SorcRR/macrazer-worker repository. The contract between the two is the fixtures in
+ `Tests/MacRazerTests/Fixtures/worker/`: the app's tests write them, and the Worker's CI fetches
+ them from this repository and tests against them.
 
-### 6.5 Usage stats, `UsageStats.swift` + `worker/src/stats.ts`
+### 6.5 Usage stats, `UsageStats.swift` + the Worker
 Opt-in only. Nothing is sent until the person clicks Share. In a build without the Worker (see
 `WorkerEndpoint` above) nothing is asked, Settings has no Privacy section, and nothing is sent.
 
@@ -347,7 +350,7 @@ Opt-in only. Nothing is sent until the person clicks Share. In a build without t
 - **Delete My Data.** Turns sharing off and sends `DELETE /v1/stats/<id>`. The Worker moves the
  row to tables without the ID. If the server can't be reached, the delete is kept and retried at
  every launch and whenever a mouse connects, and no ping goes before it succeeds.
-- **Seeing the numbers.** `npm run stats` in `worker/` prints a summary.
+- **Seeing the numbers.** `npm run stats` in the Worker's repository prints a summary.
 
 ---
 
@@ -454,7 +457,8 @@ that path draws the content but needs an explicit size, since there is no window
 | `MenuBarIcon.swift` | Vector-drawn menu bar mouse icon (+ triskelion). |
 | `RazerLogo.swift` | Embedded official Razer logo (vector PDF, base64) for the header. |
 
-`worker/` holds the Cloudflare Worker behind Send and the usage stats (TypeScript, tested with vitest).
+The Cloudflare Worker behind Send and the usage stats is in the private SorcRR/macrazer-worker
+repository. `Tests/MacRazerTests/Fixtures/worker/` holds the fixtures it tests against.
 
 External: `reference/openrazer/` (cloned driver source, the protocol reference, gitignored)
 and `reference/openrazer-pr-2583.diff` (the Cobra HyperSpeed PR).
