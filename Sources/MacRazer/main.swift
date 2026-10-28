@@ -302,7 +302,9 @@ case "render-device-test":
     let stage = args.dropFirst().compactMap { stages[$0] }.first ?? .intro
     let controller = MouseController()
     controller.loadPreviewState()
-    let model = DeviceTestModel(controller: controller, permissions: PermissionsModel())
+    // `noworker` shows the review as a build without the Worker has it: no Send, no reply email.
+    let model = DeviceTestModel(controller: controller, permissions: PermissionsModel(),
+                                reportEndpoint: args.contains("noworker") ? nil : URL(string: "https://reports.example/"))
     model.loadPreview(stage, known: !args.contains("unknown"), ranSteps: args.contains("ran"))
     if args.contains("sent") { model.previewSendState(.sent) }
     if args.contains("failed") { model.previewSendState(.failed(.tooMany)) }

@@ -317,11 +317,17 @@ model) runs a guided test and builds a report a maintainer can turn into a regis
  waits for a running step. The test needs USB; a mouse on Bluetooth is told to switch.
 - `DeviceReportOutput.swift`: Copy, the GitHub issue, size fitting, and text limits.
  `DeviceReportSender.swift`: Send, a POST to the Worker.
+- `WorkerEndpoint` (`AppInfo.swift`): the Worker's address, from the bundle's Info.plist, where
+ `Scripts/build-app.sh` writes it from DOMAIN in the maintainer's private settings file. It is
+ never in the repository. A build without it (a clone, a fork, CI, `swift run`) hides Send and
+ the reply address, and has no usage stats at all. `MACRAZER_WORKER_URL=http://127.0.0.1:8787`
+ points a development build at `wrangler dev`.
 - `worker/`: a Cloudflare Worker that checks a report against the app's exact format, emails it
  to the maintainer, and keeps only daily counters. Setup is in `worker/README.md`.
 
 ### 6.5 Usage stats, `UsageStats.swift` + `worker/src/stats.ts`
-Opt-in only. Nothing is sent until the person clicks Share.
+Opt-in only. Nothing is sent until the person clicks Share. In a build without the Worker (see
+`WorkerEndpoint` above) nothing is asked, Settings has no Privacy section, and nothing is sent.
 
 - **Asking.** A new install gets `UsageStatsConsentView` in its own window, once nothing else is
  on screen (the setup window comes first). Someone updating gets `UsageStatsCard` in the

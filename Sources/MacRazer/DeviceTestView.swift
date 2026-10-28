@@ -272,7 +272,9 @@ struct DeviceTestView: View {
         let report = model.finalReport()
         return VStack(alignment: .leading, spacing: 10) {
             title("Review")
-            note("Send emails this report to the maintainer. You can also copy it, or open a GitHub issue and paste it in. Nothing leaves your Mac until you choose one.")
+            note(model.canSend
+                ? "Send emails this report to the maintainer. You can also copy it, or open a GitHub issue and paste it in. Nothing leaves your Mac until you choose one."
+                : "Copy the report, or open a GitHub issue and paste it in. Nothing leaves your Mac until you choose one.")
             if let report, let verdict = report.verdict {
                 card {
                     VStack(spacing: 4) {
@@ -296,6 +298,8 @@ struct DeviceTestView: View {
             }
             TextField("Name or GitHub handle to credit (optional)", text: $model.credit)
                 .textFieldStyle(.roundedBorder).controlSize(.small)
+            // Only Send carries it, so without the Worker there's nowhere for it to go.
+            if model.canSend {
             VStack(alignment: .leading, spacing: 2) {
                 TextField("Your email, if you'd like a reply (optional)", text: $model.replyEmail)
                     .textFieldStyle(.roundedBorder).controlSize(.small)
@@ -306,6 +310,7 @@ struct DeviceTestView: View {
                     Text("Only Send includes it, and only the maintainer sees it.")
                         .font(.system(size: 10)).foregroundStyle(.secondary)
                 }
+            }
             }
             VStack(alignment: .trailing, spacing: 2) {
                 TextEditor(text: Binding(get: { model.comment },
@@ -373,9 +378,11 @@ struct DeviceTestView: View {
                 // Green as the screen's main action, but no default shortcut: Return in the email
                 // or credit field would send the report before the comment is written, and it
                 // can't be sent twice.
-                Button("Send") { model.send() }
-                    .buttonStyle(RazerProminentButtonStyle())
-                    .disabled(model.sendState == .sending || model.emailProblem != nil)
+                if model.canSend {
+                    Button("Send") { model.send() }
+                        .buttonStyle(RazerProminentButtonStyle())
+                        .disabled(model.sendState == .sending || model.emailProblem != nil)
+                }
             default:
                 Button("Back") { model.back() }.disabled(model.running || model.stage == .identify)
                 Spacer()

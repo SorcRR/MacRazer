@@ -40,7 +40,7 @@ enum DeviceReportSender {
 
     typealias Transport = @Sendable (URLRequest) async throws -> (Data, URLResponse)
 
-    static func send(_ report: DeviceReport, to endpoint: URL = ProjectLinks.deviceReports,
+    static func send(_ report: DeviceReport, to endpoint: URL,
                      transport: Transport = { try await WorkerSession.shared.data(for: $0) }) async -> Outcome {
         do {
             let (_, response) = try await transport(request(report, to: endpoint))

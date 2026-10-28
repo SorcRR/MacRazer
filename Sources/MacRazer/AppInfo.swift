@@ -47,11 +47,6 @@ enum ProjectLinks {
     static let privacy = URL(string: "https://sorcrr.github.io/MacRazer/#privacy")!
 
     static let issues = repo.appendingPathComponent("issues")
-    /// The device test's Send: the Worker in `worker/`, which emails the report to the
-    /// maintainer. Its name and route are set in `worker/wrangler.toml`.
-    static let deviceReports = URL(string: "https://macrazer-reports.sorcrr.workers.dev/v1/device-report")!
-    /// Usage stats, for people who said yes: the same Worker, `worker/src/stats.ts`.
-    static let usageStats = URL(string: "https://macrazer-reports.sorcrr.workers.dev/v1/stats")!
     /// Where "Full release notes" goes: the popover shows a parsed summary, this is the
     /// unabridged original.
     static let latestRelease = repo.appendingPathComponent("releases/latest")
@@ -85,4 +80,45 @@ enum ProjectLinks {
     // Upstream, credited in the About window and NOTICE.md.
     static let openRazer = URL(string: "https://github.com/openrazer/openrazer")!
     static let cobraHyperSpeedPR = URL(string: "https://github.com/openrazer/openrazer/pull/2583")!
+}
+
+/// The Worker in `worker/`, behind the device test's Send and the usage stats. Nil in any
+/// build that wasn't given one: a clone, a fork, CI, `swift run`. Those builds hide and switch
+/// off everything that would talk to it, so a build from someone else's checkout never
+/// sends anything to the maintainer's Worker, or anywhere.
+///
+/// `Scripts/build-app.sh` writes the address into the bundle's Info.plist from DOMAIN in the
+/// maintainer's private settings file (see `worker/README.md`). It is never in the repository.
+enum WorkerEndpoint {
+    static let infoKey = "MacRazerWorkerURL"
+    /// For pointing a development build at `wrangler dev`: `MACRAZER_WORKER_URL=http://127.0.0.1:8787`.
+    /// Only a `swift run` build reads it. A packaged app ignores it, so nothing in its launch
+    /// environment can send reports, reply addresses included, somewhere else.
+    static let environmentKey = "MACRAZER_WORKER_URL"
+
+    static let base: URL? = resolve(environment: ProcessInfo.processInfo.environment[environmentKey],
+                                    bundled: Bundle.main.object(forInfoDictionaryKey: infoKey) as? String,
+                                    isPackaged: AppInfo.version != nil)
+
+    static func resolve(environment: String?, bundled: String?, isPackaged: Bool) -> URL? {
+        isPackaged ? parse(bundled) : parse(environment) ?? parse(bundled)
+    }
+
+    static var deviceReports: URL? { base?.appendingPathComponent("v1/device-report") }
+    static var usageStats: URL? { base?.appendingPathComponent("v1/stats") }
+
+    /// An origin and nothing else: https, or plain http only to this Mac for `wrangler dev`.
+    /// Anything else counts as not configured rather than as somewhere to send reports.
+    static func parse(_ value: String?) -> URL? {
+        guard let value, let components = URLComponents(string: value),
+              let host = components.host, !host.isEmpty,
+              components.user == nil, components.password == nil,
+              components.query == nil, components.fragment == nil,
+              components.path.isEmpty || components.path == "/" else { return nil }
+        let local = host == "127.0.0.1" || host == "localhost"
+        guard components.scheme == "https" || (components.scheme == "http" && local) else { return nil }
+        var origin = components
+        origin.path = ""
+        return origin.url
+    }
 }

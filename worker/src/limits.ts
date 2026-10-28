@@ -51,14 +51,31 @@ export interface Admission {
   counted: string[];
 }
 
+/// Today's count for `key`, without counting anything.
+export async function count(db: Database, day: string, key: string): Promise<number> {
+  const row = await db.prepare("SELECT count FROM counters WHERE day = ?1 AND key = ?2").bind(day, key).first<{ count: number }>();
+  return Number(row?.count ?? 0);
+}
+
+/// Counts one more for `key` if today's count is still under `cap`, and says whether it was.
+/// Read first, so a request over the cap costs a read and no write: a flood past the cap
+/// can't use up D1's daily writes, which every route here shares.
+export async function withinCap(db: Database, day: string, key: string, cap: number): Promise<boolean> {
+  if ((await count(db, day, key)) >= cap) return false;
+  return (await hit(db, day, key)) <= cap;
+}
+
 /// Counts one report from `sender` (an `ipKey`) and says whether it is within today's caps.
 /// The total is only counted for a sender still within its own cap, so one sender going
-/// over can't use up everyone's day.
+/// over can't use up everyone's day. Nothing is written for a report already over a cap.
 export async function admit(db: Database, sender: string, now: Date, caps: Caps): Promise<Admission> {
   const day = dayOf(now);
-  if ((await hit(db, day, sender)) > caps.perIp) return { allowed: false, day, counted: [sender] };
-  const allowed = (await hit(db, day, "total")) <= caps.total;
-  return { allowed, day, counted: [sender, "total"] };
+  // The day's total first, read only: once it's spent, a flood from new addresses writes
+  // nothing either.
+  if ((await count(db, day, "total")) >= caps.total) return { allowed: false, day, counted: [] };
+  if (!(await withinCap(db, day, sender, caps.perIp))) return { allowed: false, day, counted: [] };
+  const allowed = await withinCap(db, day, "total", caps.total);
+  return { allowed, day, counted: allowed ? [sender, "total"] : [sender] };
 }
 
 /// Takes back an admitted report that wasn't sent after all, so a failure (a setup mistake,

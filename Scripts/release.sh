@@ -109,6 +109,13 @@ version_gt() {
 version_gt "${VERSION}" "${CURRENT}" \
     || fail "${VERSION} is not newer than the current ${CURRENT}; the updater would refuse it"
 
+# A release without the Worker would ship with Send and the usage stats hidden, which only
+# shows once people have it. Checked here, before anything is edited or built.
+WORKER_DOMAIN="$(./Scripts/worker-domain.sh)" || fail "fix DOMAIN in your settings file first"
+if [ -z "${WORKER_DOMAIN}" ] && [ "${MACRAZER_RELEASE_WITHOUT_WORKER:-0}" != "1" ]; then
+    fail "no Worker address (DOMAIN in ~/.config/macrazer-reports/settings.env), so Send and usage stats would be hidden. Set it up per worker/README.md, or re-run with MACRAZER_RELEASE_WITHOUT_WORKER=1"
+fi
+
 [ -z "$(git status --porcelain)" ] \
     || fail "working tree is dirty — commit or stash first, so the release diff is only the release"
 
@@ -203,6 +210,13 @@ step "Building the DMGs…"
 BUILT="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' MacRazer.app/Contents/Info.plist)"
 [ "${BUILT}" = "${VERSION}" ] \
     || fail "built app reports ${BUILT}, not ${VERSION} — do not tag this"
+
+# And the build really carries it, the way the checks above know the version is right.
+if [ -n "${WORKER_DOMAIN}" ]; then
+    WORKER="$(/usr/libexec/PlistBuddy -c 'Print :MacRazerWorkerURL' MacRazer.app/Contents/Info.plist 2>/dev/null || true)"
+    [ "${WORKER}" = "https://${WORKER_DOMAIN}" ] \
+        || fail "built app's Worker address is '${WORKER}', not https://${WORKER_DOMAIN}; do not tag this"
+fi
 
 for asset in "dist/MacRazer.dmg" "dist/MacRazer-${VERSION}.dmg"; do
     [ -f "${asset}" ] || fail "expected ${asset} — make-dmg.sh did not produce it"
