@@ -5,15 +5,15 @@ import XCTest
 @testable import MacRazer
 
 final class DPIStageAccentTests: XCTestCase {
-    func testStageAccentOrderMatchesDPIStagePalette() {
-        XCTAssertEqual((0..<5).map { DPIStageAccent.forStage(at: $0).name },
-                       ["Red", "Green", "Blue", "Teal", "Yellow"])
+    func testStageAccentOrderRepeatsPastFiveStages() {
+        XCTAssertEqual((0..<6).map { DPIStageAccent.forStage(at: $0).name },
+                       ["Red", "Green", "Blue", "Cyan", "Yellow", "Red"])
     }
 
-    func testStageAccessibilityLabelIncludesValueColorAndActiveState() {
-        XCTAssertEqual(DPIStageAccent.accessibilityLabel(value: 1600, stageIndex: 2, active: true),
-                       "1600 DPI, stage 3, Blue, active")
-        XCTAssertEqual(DPIStageAccent.accessibilityLabel(value: 800, stageIndex: 1, active: false),
+    func testStageAccessibilityLabelIncludesValueStageAndColor() {
+        XCTAssertEqual(DPIStageAccent.accessibilityLabel(value: 1600, stageIndex: 2),
+                       "1600 DPI, stage 3, Blue")
+        XCTAssertEqual(DPIStageAccent.accessibilityLabel(value: 800, stageIndex: 1),
                        "800 DPI, stage 2, Green")
     }
 }
