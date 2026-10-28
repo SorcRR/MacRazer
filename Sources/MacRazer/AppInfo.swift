@@ -109,6 +109,15 @@ enum WorkerEndpoint {
 
     static var deviceReports: URL? { base?.appendingPathComponent("v1/device-report") }
     static var usageStats: URL? { base?.appendingPathComponent("v1/stats") }
+    /// The updater's download of one release, through the Worker so it's counted. The Worker
+    /// redirects to the same file as `ProjectLinks.dmg(forVersion:tag:)`, and the updater goes
+    /// there itself if this fails.
+    static func download(tag: String, base: URL? = base) -> URL? {
+        guard let base else { return nil }
+        var components = URLComponents(url: base.appendingPathComponent("v1/download"), resolvingAgainstBaseURL: false)
+        components?.queryItems = [URLQueryItem(name: "via", value: "update"), URLQueryItem(name: "tag", value: tag)]
+        return components?.url
+    }
     /// The update check. `appVersion` is the only thing it says about this Mac; nil, for a
     /// `swift run` build, goes as "dev".
     static func releases(appVersion: String?, base: URL? = base) -> URL? {
