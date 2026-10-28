@@ -54,11 +54,7 @@ final class DeviceReportSenderTests: XCTestCase {
         return report
     }
 
-    private static var fixture: URL {
-        URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("Tests/MacRazerTests/Fixtures/worker/full-report.json")
-    }
+    private static var fixture: URL { WorkerFixtures.url("full-report.json") }
 
     /// The Worker's tests check it accepts this file, and that it computes the same verdict.
     /// Run with UPDATE_WORKER_FIXTURE=1 to rewrite it after changing the report.

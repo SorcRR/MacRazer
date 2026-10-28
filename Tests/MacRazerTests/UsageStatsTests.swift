@@ -52,11 +52,7 @@ final class UsageStatsTests: XCTestCase {
 
     // MARK: The contract with the Worker
 
-    private static var fixture: URL {
-        URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("Tests/MacRazerTests/Fixtures/worker/usage-ping.json")
-    }
+    private static var fixture: URL { WorkerFixtures.url("usage-ping.json") }
 
     /// The Worker's tests check it accepts this file as it is. Run with
     /// UPDATE_WORKER_FIXTURE=1 to rewrite it after changing the ping.
