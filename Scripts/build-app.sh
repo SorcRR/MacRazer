@@ -39,7 +39,7 @@ cp Packaging/Info.plist "${APP}/Contents/Info.plist"
 [ -f Packaging/AppIcon.icns ] && cp Packaging/AppIcon.icns "${APP}/Contents/Resources/AppIcon.icns"
 
 # The Worker behind Send and the usage stats. Its address comes from DOMAIN in the private
-# settings file worker/README.md sets up, never from the repository, so a build from anyone
+# settings file the Worker's README sets up (SorcRR/macrazer-worker, private), never from the repository, so a build from anyone
 # else's checkout has no Worker: those features are hidden and nothing is sent anywhere.
 # See `WorkerEndpoint` in Sources/MacRazer/AppInfo.swift.
 WORKER_DOMAIN="$(./Scripts/worker-domain.sh)"

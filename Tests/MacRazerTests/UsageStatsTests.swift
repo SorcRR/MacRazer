@@ -52,11 +52,7 @@ final class UsageStatsTests: XCTestCase {
 
     // MARK: The contract with the Worker
 
-    private static var fixture: URL {
-        URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("worker/test/fixtures/usage-ping.json")
-    }
+    private static var fixture: URL { WorkerFixtures.url("usage-ping.json") }
 
     /// The Worker's tests check it accepts this file as it is. Run with
     /// UPDATE_WORKER_FIXTURE=1 to rewrite it after changing the ping.
@@ -72,7 +68,7 @@ final class UsageStatsTests: XCTestCase {
         }
         XCTAssertEqual(try parsed(Data(contentsOf: Self.fixture)), try parsed(Data(json.utf8)), """
             The ping's format changed. Rewrite the fixture with UPDATE_WORKER_FIXTURE=1 swift test \
-            --filter UsageStatsTests, update worker/src/stats.ts to match, and run the Worker's tests.
+            --filter UsageStatsTests, update src/stats.ts in SorcRR/macrazer-worker to match, and run its tests.
             """)
     }
 

@@ -6,7 +6,7 @@
 #   ./Scripts/worker-domain.sh                 # ~/.config/macrazer-reports/settings.env
 #   MACRAZER_REPORTS_SETTINGS=/path ./Scripts/worker-domain.sh
 #
-# Reads the file the way worker/scripts/local-config.mjs does (KEY=value lines, # comments,
+# Reads the file the way the Worker's scripts/local-config.mjs does (KEY=value lines, # comments,
 # optional quotes), so the app and the deployed Worker always agree on the address. Used by
 # build-app.sh and release.sh.
 set -euo pipefail

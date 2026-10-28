@@ -113,7 +113,7 @@ version_gt "${VERSION}" "${CURRENT}" \
 # shows once people have it. Checked here, before anything is edited or built.
 WORKER_DOMAIN="$(./Scripts/worker-domain.sh)" || fail "fix DOMAIN in your settings file first"
 if [ -z "${WORKER_DOMAIN}" ] && [ "${MACRAZER_RELEASE_WITHOUT_WORKER:-0}" != "1" ]; then
-    fail "no Worker address (DOMAIN in ~/.config/macrazer-reports/settings.env), so Send and usage stats would be hidden. Set it up per worker/README.md, or re-run with MACRAZER_RELEASE_WITHOUT_WORKER=1"
+    fail "no Worker address (DOMAIN in ~/.config/macrazer-reports/settings.env), so Send and usage stats would be hidden. The Worker is maintainer-only (setup in the private SorcRR/macrazer-worker repo); anyone else releasing a build should re-run with MACRAZER_RELEASE_WITHOUT_WORKER=1"
 fi
 
 [ -z "$(git status --porcelain)" ] \

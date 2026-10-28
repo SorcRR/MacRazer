@@ -3,7 +3,7 @@
 
 import Foundation
 
-/// Send: posts a report to the Worker in `worker/`, which emails it to the maintainer and
+/// Send: posts a report to the Worker (SorcRR/macrazer-worker, private), which emails it to the maintainer and
 /// keeps nothing. The only network request the device test makes, and only when asked.
 enum DeviceReportSender {
     enum Outcome: Equatable {
@@ -51,7 +51,7 @@ enum DeviceReportSender {
     }
 }
 
-/// How the app talks to the Worker in `worker/`, for device reports and usage stats alike.
+/// How the app talks to the Worker, for device reports and usage stats alike.
 /// Ephemeral, so nothing leaves cookies or cache behind, and quick to give up: someone may be
 /// watching a spinner, and a ping that fails is simply due again later.
 enum WorkerSession {
