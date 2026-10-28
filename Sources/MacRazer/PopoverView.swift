@@ -32,6 +32,12 @@ extension Color {
     /// The Bluetooth chip's colour. System blue is too dark to read on a dark background,
     /// and this lighter blue too pale on a light one.
     static let bluetoothBlue = adaptive(light: NSColor(hex: 0x0A64D6), dark: NSColor(hex: 0x78B8FF))
+    // Lighting swatch hues, shared with the DPI stage chips. A true red: SwiftUI `.red` is
+    // a warm orange-red.
+    static let swatchRed = Color(red: 1.0, green: 0.0, blue: 0.0)
+    static let swatchYellow = Color(red: 1.0, green: 0.85, blue: 0.0)
+    static let swatchCyan = Color(red: 0.0, green: 0.8, blue: 1.0)
+    static let swatchBlue = Color(red: 0.15, green: 0.35, blue: 1.0)
     // Battery *state* uses Apple system colors (meaning), never the brand green.
     static let batteryFull = Color(red: 0x34 / 255, green: 0xC7 / 255, blue: 0x59 / 255)
     static let batteryMid = Color(red: 0xFF / 255, green: 0x9F / 255, blue: 0x0A / 255)
@@ -87,12 +93,12 @@ struct PopoverView: View {
     // Distinct hues with a true red (SwiftUI .red is a warm orange-red; .green duplicated razerGreen).
     // Each carries its spoken/tooltip name.
     private let swatches: [(name: String, color: Color)] = [
-        ("Red", Color(red: 1.0, green: 0.0, blue: 0.0)),
+        ("Red", .swatchRed),
         ("Orange", Color(red: 1.0, green: 0.5, blue: 0.0)),
-        ("Yellow", Color(red: 1.0, green: 0.85, blue: 0.0)),
+        ("Yellow", .swatchYellow),
         ("Green", .razerGreen),
-        ("Cyan", Color(red: 0.0, green: 0.8, blue: 1.0)),
-        ("Blue", Color(red: 0.15, green: 0.35, blue: 1.0)),
+        ("Cyan", .swatchCyan),
+        ("Blue", .swatchBlue),
         ("Purple", Color(red: 0.6, green: 0.2, blue: 1.0)),
         ("Pink", Color(red: 1.0, green: 0.2, blue: 0.65)),
     ]
@@ -996,7 +1002,11 @@ struct PopoverView: View {
 
     /// A fixed-preset DPI chip.
     private func dpiChip(_ value: Int, index: Int) -> some View {
-        let active = Int(dpiValue) == value
+        let activeStageIndex = controller.activeDpiStage.flatMap { stage in
+            displayedStages.indices.contains(stage) && displayedStages[stage] == Int(dpiValue) ? stage : nil
+        }
+        let active = activeStageIndex.map { $0 == index } ?? (Int(dpiValue) == value)
+        let accent = DPIStageAccent.forStage(at: index)
         let editing = editingDpiStage == index
         return Group {
             if editing {
@@ -1022,11 +1032,18 @@ struct PopoverView: View {
         }
         .buttonStyle(.plain)
         .font(.system(size: 10.5, weight: active ? .semibold : .regular).monospacedDigit())
-        .foregroundStyle(active ? Color.onRazerGreen : Color.secondary)
+        // The active stage is a solid fill like every other selected chip; the rest keep the
+        // neutral chip and readable secondary text, with the stage hue only as an outline.
+        .foregroundStyle(active ? accent.onColor : Color.secondary)
         .frame(maxWidth: .infinity)
         .frame(height: 24)
-        .background(active ? Color.razerGreen : Color.primary.opacity(0.08),
+        .background(active ? accent.color : Color.primary.opacity(0.08),
                     in: RoundedRectangle(cornerRadius: 6))
+        .overlay {
+            if !active {
+                RoundedRectangle(cornerRadius: 6).strokeBorder(accent.color.opacity(0.7), lineWidth: 1)
+            }
+        }
         .hoverHighlight(RoundedRectangle(cornerRadius: 6))
         .contextMenu {
             if supportsBasiliskBluetooth {
@@ -1035,7 +1052,8 @@ struct PopoverView: View {
         }
         // The stage editor lives in a context menu, which nothing on the chip hints at.
         .help(supportsBasiliskBluetooth ? "Stage \(index + 1) · Right-click to edit" : "Stage \(index + 1)")
-        .accessibilityLabel(editing ? "Stage \(index + 1) DPI" : "\(value) DPI, stage \(index + 1)")
+        .accessibilityLabel(editing ? "Stage \(index + 1) DPI" : DPIStageAccent.accessibilityLabel(
+            value: value, stageIndex: index))
         .accessibilityAddTraits(active ? .isSelected : [])
         .disabled(controller.isUpdatingDpiStages || (editingDpiStage != nil && !editing))
     }
