@@ -464,6 +464,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
 
         menu.addItem(.separator())
 
+        let tip = NSMenuItem(title: "Leave a Tip…", action: #selector(openTip), keyEquivalent: "")
+        tip.target = self
+        tip.image = NSImage(systemSymbolName: "heart", accessibilityDescription: nil)
+        menu.addItem(tip)
+
         let quit = NSMenuItem(title: "Quit MacRazer", action: #selector(quit), keyEquivalent: "q")
         quit.target = self
         menu.addItem(quit)
@@ -587,6 +592,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     private func autoInstallSettingChanged() { autoInstallIfEnabled() }
     @objc private func openPermissions() { present(permissionsWindow) }
     @objc private func openDeviceTest() { present(deviceTestWindow) }
+    @objc private func openTip() { NSWorkspace.shared.open(ProjectLinks.tip) }
     @objc private func quit() { NSApplication.shared.terminate(nil) }
 
     // MARK: - Appearance

@@ -22,8 +22,20 @@ struct UpdatedView: View {
             Divider()
             notes
             UsageStatsCard(stats: usageStats)
-            HStack {
-                Spacer()
+            HStack(alignment: .bottom, spacing: 12) {
+                // Once per update, right after something new arrived for free: the one moment
+                // a tip ask fits, so it's here and nowhere that comes back every day.
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("MacRazer is free and built in my spare time. If it's useful, a tip helps.")
+                        .font(.system(size: 11.5)).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Link(destination: ProjectLinks.tip) {
+                        Label("Leave a Tip", systemImage: "heart")
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.razerGreenText)
+                }
+                Spacer(minLength: 0)
                 Button("Done", action: onDone)
                     .keyboardShortcut(.defaultAction)
                     .buttonStyle(RazerProminentButtonStyle())
