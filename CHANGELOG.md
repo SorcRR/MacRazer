@@ -41,6 +41,15 @@ expect rough edges until 1.0.
  yet, it asks again the moment a connection appears, instead of waiting for the next
  round. Opening the popover also asks, if a check is due.
 
+- **Update checks and downloads are counted.** The update check now goes through my server
+ first, which passes on GitHub's answer and counts how many copies are in use each day, by app
+ version. Downloads from the website's buttons and the app's updater pass through it too on
+ their way to GitHub, counted per day and country. Only the app version is sent. The server
+ keeps a scrambled form of the IP address that changes every day (every month for the monthly
+ count), so no Mac can be named or followed over time. If the server doesn't answer, the app
+ asks GitHub directly, so this can never stop an update. Builds made from the source without
+ the server's address ask GitHub only, as before.
+
 - **The CLI probes run on shared code.** `battery`, `dpi`, `stages`, `poll`, `brightness` and
  `rgb` now go through `DeviceProbe`, which the coming in-app device test will use too, so what
  a contributor pastes from a terminal and what the app reports can't describe different
@@ -107,10 +116,9 @@ expect rough edges until 1.0.
  test asks for it first. A mouse the app doesn't know yet also gets a "Help test it" link in
  the popover.
 
-- **A small Cloudflare Worker receives sent reports.** It checks each report
- against the app's exact format, emails it, and keeps nothing but daily counters. It caps
- reports at 3 a minute and 10 a day per sender, and 50 a day in total. The address reports
- go to lives in a local config file that git ignores, so it never reaches the public repo.
+- **DPI stages have their own colours.** Each stage chip gets a hue (red, green, blue, cyan,
+  yellow, then round again), so stages are easier to tell apart at a glance. The active stage is
+  a solid fill, the others an outline. Thanks @ungrav.
 
 - **Two new CLI commands for contributors.** `discover` shows which transaction ids a mouse
  answers to, and `devicetest` runs the whole test without the window and prints the report.
