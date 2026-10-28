@@ -98,6 +98,7 @@ code { font-family: var(--mono); }
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 24px;
   padding: 28px 32px 0;
   position: relative;
   z-index: 1;
@@ -111,6 +112,7 @@ code { font-family: var(--mono); }
   font-size: 18px;
   font-weight: 600;
   color: #fff;
+  flex-shrink: 0;
 }
 
 .brand-icon { width: 26px; height: 26px; border-radius: 6px; }
