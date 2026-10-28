@@ -40,11 +40,13 @@ enum ElsewhereLinks {
 
 enum ProjectLinks {
     static let repo = URL(string: "https://github.com/SorcRR/MacRazer")!
-    static let site = URL(string: "https://sorcrr.github.io/MacRazer/")!
+    /// The homepage. Served by GitHub Pages from docs/ (docs/CNAME), so the old
+    /// sorcrr.github.io/MacRazer/ address redirects here, which keeps older builds' links working.
+    static let site = URL(string: "https://macrazer.com/")!
     static let tip = URL(string: "https://ko-fi.com/sorcrr")!
     static let developer = URL(string: "https://github.com/SorcRR")!
     /// The homepage's section on usage stats: what's sent, and how to delete it.
-    static let privacy = URL(string: "https://sorcrr.github.io/MacRazer/#privacy")!
+    static let privacy = URL(string: "https://macrazer.com/#privacy")!
 
     static let issues = repo.appendingPathComponent("issues")
     /// Where "Full release notes" goes: the popover shows a parsed summary, this is the
