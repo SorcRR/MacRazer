@@ -116,8 +116,21 @@ code { font-family: var(--mono); }
 .brand-icon { width: 26px; height: 26px; border-radius: 6px; }
 
 .topbar-links { display: flex; align-items: center; gap: 28px; font-size: 13px; color: var(--text-dim); }
+.topbar-links a { white-space: nowrap; }
 .topbar-links a:hover { color: var(--text); }
 .topbar-gh { color: var(--accent) !important; }
+.topbar-tip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 13px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #06120a !important;
+  font-weight: 500;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+.topbar-tip:hover { background: #6ee896; transform: translateY(-1px); }
 
 .hero-content {
   max-width: 1040px;
@@ -569,11 +582,18 @@ tbody tr:hover { background: var(--bg-raised); }
   .privacy-grid { grid-template-columns: 1fr; }
   .shots { grid-template-columns: 1fr; }
   .topbar-links { gap: 16px; font-size: 12px; }
+  /* The long guide links go first; they are linked from the page body too. */
+  .topbar-links a[href$="-mac.html"] { display: none; }
 }
 
 @media (max-width: 600px) {
   .feature-grid { grid-template-columns: 1fr; }
-  .topbar-links a:not(.topbar-gh) { display: none; }
+  .topbar-links a:not(.topbar-gh):not(.topbar-tip) { display: none; }
+}
+
+@media (max-width: 440px) {
+  /* Room for the brand and the tip button; GitHub is linked in the footer too. */
+  .topbar-gh { display: none; }
   h1 { font-size: 38px; }
 }
 
