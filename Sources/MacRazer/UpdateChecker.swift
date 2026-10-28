@@ -491,27 +491,42 @@ final class UpdateChecker: ObservableObject {
         let dir = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("MacRazerUpdate-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let downloader = ProgressDownload(
-            destination: dir.appendingPathComponent("MacRazer.dmg")
-        ) { [weak self] fraction in
-            Task { @MainActor in
-                // Only while still downloading: a late callback must not drag the card back
-                // out of "Installing…".
-                guard let self, case .downloading = self.phase else { return }
-                self.phase = .downloading(fraction)
-            }
+        let destination = dir.appendingPathComponent("MacRazer.dmg")
+        let download: (URL) async throws -> URL = { [weak self] url in
+            try await ProgressDownload(destination: destination) { fraction in
+                Task { @MainActor in
+                    // Only while still downloading: a late callback must not drag the card back
+                    // out of "Installing…".
+                    guard let self, case .downloading = self.phase else { return }
+                    self.phase = .downloading(fraction)
+                }
+            }.run(from: url)
         }
         do {
             // The release's own tag when the last check recorded one, so a release tagged
             // without the usual `v` still downloads.
             let tag = Self.cachedReleases(defaults).first { $0.version == version }?.tag
-            return try await downloader.run(from: ProjectLinks.dmg(forVersion: version, tag: tag))
+            return try await Self.fetchDMG(github: ProjectLinks.dmg(forVersion: version, tag: tag),
+                                           counted: WorkerEndpoint.download(tag: tag ?? "v\(version)"),
+                                           download: download)
         } catch {
             // Nobody else knows about this directory yet, so a failed download has to take it
             // with it — otherwise every offline retry leaves one behind.
             try? FileManager.default.removeItem(at: dir)
             throw error
         }
+    }
+
+    /// Through the Worker first, when the build has one, so the update is counted: it redirects
+    /// to the same file on GitHub. Any failure on that path, the Worker's or the download's,
+    /// tries GitHub's address directly, so counting can never cost anyone an update.
+    static func fetchDMG(github: URL, counted: URL?, download: (URL) async throws -> URL) async throws -> URL {
+        if let counted {
+            do { return try await download(counted) } catch let error as URLError where error.code == .notConnectedToInternet {
+                throw error // GitHub won't be any more reachable
+            } catch {}
+        }
+        return try await download(github)
     }
 
     /// The manual-DMG path can't delete its own download — the user still has to open it — so
