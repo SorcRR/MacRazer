@@ -13,9 +13,9 @@ Razer mice that use the same HID protocol family, but those are untested, so tre
 
 > Unofficial. Not affiliated with, authorized by, or endorsed by Razer Inc. See [NOTICE.md](NOTICE.md).
 > 
-> <img width="324" height="624" alt="image" src="https://github.com/user-attachments/assets/a7632668-2d12-4d2f-aa84-7b234bad31dc" />
-> <img width="323" height="290" alt="image" src="https://github.com/user-attachments/assets/c1cf4013-9c1e-40df-ac09-c3e36756df69" />
-> <img width="323" height="520" alt="image" src="docs/assets/battery-usage.png" />
+> <img width="324" height="713" alt="MacRazer popover: battery, DPI stages, polling rate, lighting, buttons and profiles" src="docs/assets/popover.png" />
+> <img width="326" height="718" alt="Configure Buttons: Back and Forward mapped to Copy and Paste" src="docs/assets/buttons.png" />
+> <img width="325" height="711" alt="Battery Usage: discharge curve, rate, time left and past charges" src="docs/assets/battery-usage.png" />
 
 
 ## Features
