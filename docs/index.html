@@ -290,7 +290,7 @@
   </section>
 
   <section id="privacy" class="privacy">
-    <h2>What MacRazer sends.<br>Only if you say yes.</h2>
+    <h2>What MacRazer sends.<br>Stats only if you say yes.</h2>
     <p class="privacy-lead">MacRazer asks once whether you'd like to share a few basic details.
       They tell me which mice people actually use, so I know what to support next.</p>
     <div class="feature-grid privacy-grid">
@@ -313,6 +313,12 @@
         anonymous count that can't be traced back to you.</p>
       </article>
     </div>
+    <p class="privacy-note">Separately, every few hours the app checks for updates. That check
+      goes through my server, which counts how many copies are in use each day, by app version.
+      It sends only the version number. The server keeps a scrambled form of your IP address that
+      changes every day, and one that changes every month for the monthly count, so no Mac can be
+      named or followed over time. This site counts page views with Cloudflare Web Analytics,
+      which uses no cookies.</p>
     <p class="privacy-note">The app is open source, so you can check what it sends.
       <a href="https://github.com/SorcRR/MacRazer/blob/master/Sources/MacRazer/UsageStats.swift">Read exactly what's sent</a>.</p>
   </section>
@@ -385,5 +391,6 @@
     .catch(() => {});
 </script>
 <script src="assets/mouse-wireframe.js" defer></script>
+<!-- Cloudflare Web Analytics: page views only, no cookies --><script defer src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "0a3b2c8ce68342bcb140b88d7776bba0"}'></script>
 </body>
 </html>

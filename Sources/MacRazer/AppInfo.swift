@@ -109,6 +109,14 @@ enum WorkerEndpoint {
 
     static var deviceReports: URL? { base?.appendingPathComponent("v1/device-report") }
     static var usageStats: URL? { base?.appendingPathComponent("v1/stats") }
+    /// The update check. `appVersion` is the only thing it says about this Mac; nil, for a
+    /// `swift run` build, goes as "dev".
+    static func releases(appVersion: String?, base: URL? = base) -> URL? {
+        guard let base else { return nil }
+        var components = URLComponents(url: base.appendingPathComponent("v1/releases"), resolvingAgainstBaseURL: false)
+        components?.queryItems = [URLQueryItem(name: "app", value: appVersion ?? "dev")]
+        return components?.url
+    }
 
     /// An origin and nothing else: https, or plain http only to this Mac for `wrangler dev`.
     /// Anything else counts as not configured rather than as somewhere to send reports.

@@ -138,6 +138,28 @@ final class UpdateChecker: ObservableObject {
 
     var currentVersion: String { AppInfo.comparableVersion }
 
+    typealias Fetch = (URL) async throws -> (Data, URLResponse)
+
+    /// The release list. A build with a Worker asks it first: the Worker answers with GitHub's
+    /// list and counts this Mac as active for the day, by a salted hash of its IP and nothing
+    /// else (the homepage's privacy section says so). Any failure there, from a timeout to a
+    /// bad answer, falls through to GitHub, so the Worker can never cost anyone an update.
+    static func fetchReleases(worker: URL?, github: URL,
+                              viaWorker: Fetch = { try await WorkerSession.shared.data(from: $0) },
+                              viaGitHub: Fetch = { try await URLSession.shared.data(from: $0) }) async throws -> [RemoteRelease] {
+        if let worker {
+            do { return try decodeReleases(await viaWorker(worker)) } catch {}
+        }
+        return try decodeReleases(await viaGitHub(github))
+    }
+
+    private static func decodeReleases(_ answer: (Data, URLResponse)) throws -> [RemoteRelease] {
+        if let http = answer.1 as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+            throw URLError(.badServerResponse)
+        }
+        return try JSONDecoder().decode([GitHubRelease].self, from: answer.0).map(\.remote)
+    }
+
     var isBusy: Bool { phase != .idle }
 
     /// Whether the one-click "Update & Restart" path is available, or the card should offer
@@ -234,8 +256,8 @@ final class UpdateChecker: ObservableObject {
         isChecking = true
         defer { isChecking = false }
         do {
-            let (data, _) = try await URLSession.shared.data(from: releaseAPIURL)
-            let releases = try JSONDecoder().decode([GitHubRelease].self, from: data).map(\.remote)
+            let releases = try await Self.fetchReleases(worker: WorkerEndpoint.releases(appVersion: AppInfo.version),
+                                                        github: releaseAPIURL)
             // GitHub's `releases/latest` applied "no drafts, no prereleases" on its side. The
             // list does not, so the rule lives in `ReleaseSpan` now, with tests.
             let published = ReleaseSpan.publishable(releases)
