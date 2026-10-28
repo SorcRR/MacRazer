@@ -83,6 +83,7 @@ struct PopoverView: View {
     @FocusState private var dpiStageFieldFocused: Bool
     @State private var versionHovered = false
     @State private var gearHovered = false
+    @State private var tipHovered = false
 
     private let pollRates = RazerCommands.supportedPollingRates
     private let defaultStages = [400, 800, 1600, 3200, 6400]
@@ -1519,6 +1520,19 @@ struct PopoverView: View {
             .help("Open the MacRazer website")
             Text(verbatim: "· unofficial").font(.system(size: 11)).foregroundStyle(.tertiary)
             Spacer()
+            // One quiet icon, never a banner: the popover is where people spend their time,
+            // and anything louder here would read as nagging.
+            Link(destination: ProjectLinks.tip) {
+                Image(systemName: tipHovered ? "heart.fill" : "heart")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(tipHovered ? AnyShapeStyle(Color.razerGreenText) : AnyShapeStyle(.secondary))
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .onHover { tipHovered = $0 }
+            .help("Leave a tip: MacRazer is free and built in spare time")
+            .accessibilityLabel("Leave a tip")
+            .padding(.trailing, 8)
             Button(action: onOpenSettings) {
                 Image(systemName: "gearshape")
                     .font(.system(size: 12.5))
