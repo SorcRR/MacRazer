@@ -6,6 +6,8 @@ expect rough edges until 1.0.
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-10-29
+
 ### Changed
 - **The popover follows your Mac's light or dark mode.** It used to be dark all the time. On a
   light Mac it is now light glass, with a darker green for text so it stays readable. Settings,
@@ -69,10 +71,6 @@ expect rough edges until 1.0.
   you agree. It tells me which mice people use, so I know what to support next.
   Settings › Privacy turns it off, shows the exact data that's sent, and has Delete My Data.
   That removes your Mac's ID from the server straight away. The anonymous counts stay.
-
-- **A way to leave a tip, without nagging.** MacRazer is free and built in my spare time. A
-  small heart in the popover's footer, "Leave a Tip…" in the right-click menu, and one line in
-  the window that confirms an update now link to the tip page. Nothing pops up by itself.
 
 - **Settings › Appearance.** Choose the theme for the popover and the app's windows: System
   (the default), Dark, Light or Razer Green, a dark look with a faint green tint. The popover
