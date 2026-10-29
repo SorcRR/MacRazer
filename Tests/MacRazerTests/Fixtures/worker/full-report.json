@@ -42,6 +42,45 @@
     ],
     "outcome" : "passed"
   },
+  "capabilities" : {
+    "reads" : [
+      {
+        "answer" : "answered",
+        "commandClass" : 0,
+        "commandId" : 192,
+        "name" : "pollingRate2",
+        "response" : [
+          0,
+          8,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "answer" : "notSupported",
+        "commandClass" : 7,
+        "commandId" : 131,
+        "name" : "idleTime"
+      },
+      {
+        "answer" : "failed",
+        "commandClass" : 15,
+        "commandId" : 130,
+        "led" : 10,
+        "name" : "zoneEffect"
+      },
+      {
+        "answer" : "noAnswer",
+        "commandClass" : 2,
+        "commandId" : 176,
+        "name" : "wheelMode"
+      }
+    ]
+  },
   "comment" : "Works on my Mac.\nSide buttons too.",
   "credit" : "@someone",
   "device" : {
@@ -64,6 +103,8 @@
   },
   "dpi" : {
     "data" : {
+      "activeStageByte" : 4,
+      "firstStageNumber" : 1,
       "maxProbe" : 26000,
       "original" : 6400,
       "readBack" : 6350,
@@ -317,7 +358,7 @@
     "transactionId" : 31
   },
   "replyEmail" : "person@example.com",
-  "schemaVersion" : 1,
+  "schemaVersion" : 2,
   "verdict" : {
     "failed" : [
 

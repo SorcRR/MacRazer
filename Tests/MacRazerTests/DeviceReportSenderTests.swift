@@ -39,7 +39,8 @@ final class DeviceReportSenderTests: XCTestCase {
             battery: .init(outcome: .passed, data: .init(raw: 92, percent: 36, charging: false), exchanges: [exchange]),
             dpi: .init(outcome: .passed,
                        data: .init(original: 6400, test: 6350, readBack: 6350, restored: true,
-                                   stages: [400, 800, 1600, 3200, 6400], maxProbe: 26000),
+                                   stages: [400, 800, 1600, 3200, 6400], firstStageNumber: 1, activeStageByte: 4,
+                                   maxProbe: 26000),
                        exchanges: [exchange]),
             polling: .init(outcome: .passed, data: .init(original: 500, test: 1000, readBack: 1000, restored: true)),
             lighting: .init(outcome: .passed,
@@ -47,6 +48,13 @@ final class DeviceReportSenderTests: XCTestCase {
                                         turnedRed: true, restored: true)),
             // 0c:223 is AC Home: consumer usages run past two hex digits.
             buttons: .init(outcome: .passed, data: .init(seen: ["09:04", "09:05", "07:1e", "0c:223"]), error: "none"),
+            capabilities: .init(reads: [
+                .init(name: "pollingRate2", commandClass: 0x00, commandId: 0xC0, answer: .answered,
+                      response: [0, 8, 0, 0, 0, 0, 0, 0]),
+                .init(name: "idleTime", commandClass: 0x07, commandId: 0x83, answer: .notSupported),
+                .init(name: "zoneEffect", commandClass: 0x0F, commandId: 0x82, led: 0x0A, answer: .failed),
+                .init(name: "wheelMode", commandClass: 0x02, commandId: 0xB0, answer: .noAnswer),
+            ]),
             verdict: nil, comment: "Works on my Mac.\nSide buttons too.", credit: "@someone",
             replyEmail: "person@example.com", exchangesDropped: ["lighting"])
         report.polling.error = "an example error"

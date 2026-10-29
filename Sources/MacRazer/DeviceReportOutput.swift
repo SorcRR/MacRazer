@@ -71,6 +71,15 @@ enum DeviceReportOutput {
             if !verdict.notSupported.isEmpty { lines.append("Not on this mouse: " + verdict.notSupported.joined(separator: ", ")) }
             if !verdict.skipped.isEmpty { lines.append("Skipped: " + verdict.skipped.joined(separator: ", ")) }
         }
+        if let reads = report.capabilities?.reads {
+            var answered: [String] = []
+            for read in reads where read.answer == .answered && read.led == nil && !answered.contains(read.name) {
+                answered.append(read.name)
+            }
+            let leds = reads.filter { $0.answer == .answered }.compactMap(\.led).map { String(format: "0x%02X", $0) }
+            if !leds.isEmpty { answered.append("lighting zones " + leds.joined(separator: " ")) }
+            lines.append("Also answers: " + (answered.isEmpty ? "none of the extra reads" : answered.joined(separator: ", ")))
+        }
         if withComment, let comment = report.comment, !comment.isEmpty {
             lines.append("\n> " + comment.replacingOccurrences(of: "\n", with: "\n> "))
         }
