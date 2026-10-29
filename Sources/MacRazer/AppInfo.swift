@@ -40,8 +40,9 @@ enum ElsewhereLinks {
 
 enum ProjectLinks {
     static let repo = URL(string: "https://github.com/SorcRR/MacRazer")!
-    /// The homepage. Served by GitHub Pages from docs/ (docs/CNAME), so the old
-    /// sorcrr.github.io/MacRazer/ address redirects here, which keeps older builds' links working.
+    /// The homepage, served by Cloudflare from the private Worker repository. GitHub Pages still
+    /// serves docs/, which only redirects the old sorcrr.github.io/MacRazer/ address here, so
+    /// older builds' links keep working.
     static let site = URL(string: "https://macrazer.com/")!
     static let tip = URL(string: "https://ko-fi.com/sorcrr")!
     static let developer = URL(string: "https://github.com/SorcRR")!

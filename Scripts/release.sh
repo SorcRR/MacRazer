@@ -5,7 +5,7 @@
 #   ./Scripts/release.sh 0.3.0             # do it
 #   ./Scripts/release.sh 0.3.0 --dry-run   # show what it would do, touch nothing
 #
-# The version lives in three places and the changelog in a fourth, and they have to agree.
+# The version lives in two places in Info.plist and the changelog in a third, and they have to agree.
 # That mattered little when a stale version was cosmetic; since the in-app updater compares
 # the GitHub tag against the running bundle's own version, a release tagged v0.3.0 whose
 # bundle still says 0.2.1 leaves every user with an update badge they can never clear — the
@@ -22,7 +22,6 @@ cd "$(dirname "$0")/.."
 
 PLIST="Packaging/Info.plist"
 CHANGELOG="CHANGELOG.md"
-SITE="docs/index.html"
 
 DRY_RUN=0
 VERSION=""
@@ -63,7 +62,7 @@ on_exit() {
     if [ "${status}" -ne 0 ] && [ "${EDITS_APPLIED}" -eq 1 ]; then
         echo >&2
         echo "✗ Stopped part-way with the release edits already applied. To undo them:" >&2
-        echo "    git checkout -- ${PLIST} ${CHANGELOG} ${SITE}" >&2
+        echo "    git checkout -- ${PLIST} ${CHANGELOG}" >&2
     fi
     return "${status}"
 }
@@ -177,15 +176,6 @@ awk -v ver="${VERSION}" -v today="${TODAY}" -v h="${UNRELEASED_HEADING}" '
     || fail "no line reading exactly '${UNRELEASED_HEADING}' in ${CHANGELOG} — nothing was promoted"
 mv "${CHANGELOG_TMP}" "${CHANGELOG}"
 
-step "Updating ${SITE}…"
-# Only the structured-data field is hardcoded; the visible version tags fetch the latest tag
-# from the GitHub API at page load, so they follow on their own.
-# Matched by shape, not by the old value: interpolating `0.2.1` into a regex made each dot a
-# wildcard, and the grep below would have been just as happy if that had matched the wrong line.
-sed -i '' "s/\"softwareVersion\": \"[^\"]*\"/\"softwareVersion\": \"${VERSION}\"/" "${SITE}"
-grep -q "\"softwareVersion\": \"${VERSION}\"" "${SITE}" \
-    || fail "couldn't update softwareVersion in ${SITE} — is it still there?"
-
 step "Drafting the release notes…"
 # Before the build, so a build failure doesn't lose them — and after the changelog is closed
 # off, since that's the section they're drafted from. The body is not cosmetic: the app
@@ -241,3 +231,6 @@ echo "  versioned copy is what makes the Releases page self-describing."
 echo
 echo "  Edit ${NOTES} first — it is a draft of the mechanical parts (every entry, everyone"
 echo "  credited, the install note), not the finished copy. The app shows this text."
+echo
+echo "  Then update the website, which lives in the private macrazer-worker repo: softwareVersion"
+echo "  in site/public/index.html, plus anything the release changes, then npm run site:deploy."
