@@ -178,7 +178,7 @@ struct DeviceReport: Codable, Equatable {
         /// The LED id, for the lighting reads that take one.
         var led: UInt8?
         var answer: CapabilityAnswer
-        /// The first argument bytes of an answer.
+        /// The first `DeviceTestSteps.capabilityResponseBytes` argument bytes of an answer.
         var response: [UInt8]?
     }
 
@@ -384,17 +384,34 @@ enum DeviceTestSteps {
         return reads
     }()
 
-    /// Asks each of `capabilityReads` once (with one retry) and keeps the answer. The
-    /// answers are the evidence, so no exchanges are kept: they would only repeat them.
-    static func capabilities(_ channel: DeviceProbeChannel) -> DeviceReport.CapabilitiesData {
+    /// How many argument bytes each answer keeps: enough for a zone's whole effect body
+    /// (args 2-11, its colours included), more than the steps' 8.
+    static let capabilityResponseBytes = 12
+
+    /// `readCapabilities` with the ids Identify chose, or nil when no id answered: every read
+    /// would only time out. Shared by the app and the CLI so their reports can't differ.
+    static func capabilities(_ device: TransactionChannel,
+                             identify: DeviceReport.StepRecord<DeviceReport.IdentifyData>,
+                             registry: RazerDeviceInfo?) -> DeviceReport.CapabilitiesData? {
+        guard identify.data?.standardId != nil else { return nil }
+        let ids = chosenIds(identify, registry: registry)
+        return readCapabilities(FixedTransactionChannel(base: device, standard: ids.standard, matrix: ids.matrix,
+                                                        overrides: registry?.transactionOverrides ?? [:]))
+    }
+
+    /// Asks each of `capabilityReads` once and keeps the answer. No retry: a refusal or a
+    /// timeout says the same the second time, and `noAnswer` already marks a read that
+    /// didn't come back. The answers are the evidence, so no exchanges are kept: they would
+    /// only repeat them.
+    static func readCapabilities(_ channel: DeviceProbeChannel) -> DeviceReport.CapabilitiesData {
         DeviceReport.CapabilitiesData(reads: capabilityReads.map { name, report in
             var read = DeviceReport.CapabilityRead(
                 name: name, commandClass: report.commandClass, commandId: report.commandId,
                 led: report.commandClass == 0x0F ? report.arguments[1] : nil, answer: .noAnswer)
             do {
-                let answer = try channel.sendWithRetry(report, attempts: 2)
+                let answer = try channel.sendWithRetry(report, attempts: 1)
                 read.answer = .answered
-                read.response = Array(answer.arguments.prefix(RecordingChannel.responseBytes))
+                read.response = Array(answer.arguments.prefix(capabilityResponseBytes))
             } catch HIDDevice.HIDError.commandFailed {
                 read.answer = .failed
             } catch HIDDevice.HIDError.notSupported {

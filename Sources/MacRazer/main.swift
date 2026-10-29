@@ -600,10 +600,7 @@ case "devicetest":
         polling: step { DeviceTestSteps.polling($0) },
         lighting: step { DeviceTestSteps.lighting($0, sweep: lightSweep, restoreEffect: nil, seconds: 2) },
         buttons: .init(),
-        capabilities: identify.data?.standardId != nil
-            ? DeviceTestSteps.capabilities(FixedTransactionChannel(
-                base: dev, standard: standardId, matrix: matrixId, overrides: info?.transactionOverrides ?? [:]))
-            : nil)
+        capabilities: DeviceTestSteps.capabilities(dev, identify: identify, registry: info))
     report.verdict = report.currentVerdict()
     // Encoded as the app encodes it, so a pasted CLI report reads like an in-app one.
     let json = DeviceReportOutput.json(report, forPublic: true)

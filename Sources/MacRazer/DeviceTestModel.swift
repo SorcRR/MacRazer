@@ -229,13 +229,7 @@ final class DeviceTestModel: ObservableObject {
             let result = try await controller.runDeviceTestStep { device -> IdentifyResult in
                 let info = RazerDevices.info(pid: device.productID)
                 let (record, sweep) = DeviceTestSteps.identify(device, registry: info)
-                let ids = DeviceTestSteps.chosenIds(record, registry: info)
-                // Only with an id the mouse answered: otherwise every read would time out.
-                let capabilities = record.data?.standardId != nil
-                    ? DeviceTestSteps.capabilities(FixedTransactionChannel(
-                        base: device, standard: ids.standard, matrix: ids.matrix,
-                        overrides: info?.transactionOverrides ?? [:]))
-                    : nil
+                let capabilities = DeviceTestSteps.capabilities(device, identify: record, registry: info)
                 let (interfaces, control) = HIDDevice.interfaceSummaries(vendorId: Razer.vendorId)
                 return IdentifyResult(pid: device.productID, name: device.productName, record: record,
                                       sweep: sweep, capabilities: capabilities, interfaces: interfaces, control: control)

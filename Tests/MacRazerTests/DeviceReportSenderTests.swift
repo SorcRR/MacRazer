@@ -48,13 +48,16 @@ final class DeviceReportSenderTests: XCTestCase {
                                         turnedRed: true, restored: true)),
             // 0c:223 is AC Home: consumer usages run past two hex digits.
             buttons: .init(outcome: .passed, data: .init(seen: ["09:04", "09:05", "07:1e", "0c:223"]), error: "none"),
-            capabilities: .init(reads: [
-                .init(name: "pollingRate2", commandClass: 0x00, commandId: 0xC0, answer: .answered,
-                      response: [0, 8, 0, 0, 0, 0, 0, 0]),
-                .init(name: "idleTime", commandClass: 0x07, commandId: 0x83, answer: .notSupported),
-                .init(name: "zoneEffect", commandClass: 0x0F, commandId: 0x82, led: 0x0A, answer: .failed),
-                .init(name: "wheelMode", commandClass: 0x02, commandId: 0xB0, answer: .noAnswer),
-            ]),
+            // Every read the app makes, so the Worker's schema sees every name and LED id,
+            // and every kind of answer.
+            capabilities: .init(reads: DeviceTestSteps.capabilityReads.enumerated().map { i, read in
+                let answers: [DeviceReport.CapabilityAnswer] = [.answered, .failed, .notSupported, .noAnswer]
+                let answer = answers[i % answers.count]
+                return .init(name: read.name, commandClass: read.report.commandClass, commandId: read.report.commandId,
+                             led: read.report.commandClass == 0x0F ? read.report.arguments[1] : nil, answer: answer,
+                             response: answer == .answered
+                                 ? Array(read.report.arguments.prefix(DeviceTestSteps.capabilityResponseBytes)) : nil)
+            }),
             verdict: nil, comment: "Works on my Mac.\nSide buttons too.", credit: "@someone",
             replyEmail: "person@example.com", exchangesDropped: ["lighting"])
         report.polling.error = "an example error"

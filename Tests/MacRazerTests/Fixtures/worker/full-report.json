@@ -51,7 +51,11 @@
         "name" : "pollingRate2",
         "response" : [
           0,
-          8,
+          0,
+          0,
+          0,
+          0,
+          0,
           0,
           0,
           0,
@@ -61,13 +65,213 @@
         ]
       },
       {
-        "answer" : "notSupported",
+        "answer" : "failed",
         "commandClass" : 7,
         "commandId" : 131,
         "name" : "idleTime"
       },
       {
+        "answer" : "notSupported",
+        "commandClass" : 7,
+        "commandId" : 130,
+        "name" : "lowBatteryThreshold"
+      },
+      {
+        "answer" : "noAnswer",
+        "commandClass" : 2,
+        "commandId" : 151,
+        "name" : "smartReel"
+      },
+      {
+        "answer" : "answered",
+        "commandClass" : 2,
+        "commandId" : 150,
+        "name" : "scrollAcceleration",
+        "response" : [
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
         "answer" : "failed",
+        "commandClass" : 2,
+        "commandId" : 162,
+        "name" : "scrollAccelerationLevel"
+      },
+      {
+        "answer" : "notSupported",
+        "commandClass" : 2,
+        "commandId" : 163,
+        "name" : "smartReelSensitivity"
+      },
+      {
+        "answer" : "noAnswer",
+        "commandClass" : 2,
+        "commandId" : 176,
+        "name" : "wheelMode"
+      },
+      {
+        "answer" : "answered",
+        "commandClass" : 5,
+        "commandId" : 129,
+        "name" : "profileSlots",
+        "response" : [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "answer" : "failed",
+        "commandClass" : 5,
+        "commandId" : 132,
+        "name" : "activeProfileSlot"
+      },
+      {
+        "answer" : "notSupported",
+        "commandClass" : 2,
+        "commandId" : 140,
+        "name" : "buttonFunction"
+      },
+      {
+        "answer" : "noAnswer",
+        "commandClass" : 2,
+        "commandId" : 140,
+        "name" : "buttonFunction"
+      },
+      {
+        "answer" : "answered",
+        "commandClass" : 15,
+        "commandId" : 130,
+        "led" : 0,
+        "name" : "zoneEffect",
+        "response" : [
+          1,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "answer" : "failed",
+        "commandClass" : 15,
+        "commandId" : 130,
+        "led" : 1,
+        "name" : "zoneEffect"
+      },
+      {
+        "answer" : "notSupported",
+        "commandClass" : 15,
+        "commandId" : 130,
+        "led" : 2,
+        "name" : "zoneEffect"
+      },
+      {
+        "answer" : "noAnswer",
+        "commandClass" : 15,
+        "commandId" : 130,
+        "led" : 3,
+        "name" : "zoneEffect"
+      },
+      {
+        "answer" : "answered",
+        "commandClass" : 15,
+        "commandId" : 130,
+        "led" : 4,
+        "name" : "zoneEffect",
+        "response" : [
+          1,
+          4,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "answer" : "failed",
+        "commandClass" : 15,
+        "commandId" : 130,
+        "led" : 5,
+        "name" : "zoneEffect"
+      },
+      {
+        "answer" : "notSupported",
+        "commandClass" : 15,
+        "commandId" : 130,
+        "led" : 6,
+        "name" : "zoneEffect"
+      },
+      {
+        "answer" : "noAnswer",
+        "commandClass" : 15,
+        "commandId" : 130,
+        "led" : 7,
+        "name" : "zoneEffect"
+      },
+      {
+        "answer" : "answered",
+        "commandClass" : 15,
+        "commandId" : 130,
+        "led" : 8,
+        "name" : "zoneEffect",
+        "response" : [
+          1,
+          8,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "answer" : "failed",
+        "commandClass" : 15,
+        "commandId" : 130,
+        "led" : 9,
+        "name" : "zoneEffect"
+      },
+      {
+        "answer" : "notSupported",
         "commandClass" : 15,
         "commandId" : 130,
         "led" : 10,
@@ -75,9 +279,80 @@
       },
       {
         "answer" : "noAnswer",
-        "commandClass" : 2,
-        "commandId" : 176,
-        "name" : "wheelMode"
+        "commandClass" : 15,
+        "commandId" : 130,
+        "led" : 11,
+        "name" : "zoneEffect"
+      },
+      {
+        "answer" : "answered",
+        "commandClass" : 15,
+        "commandId" : 130,
+        "led" : 12,
+        "name" : "zoneEffect",
+        "response" : [
+          1,
+          12,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "answer" : "failed",
+        "commandClass" : 15,
+        "commandId" : 130,
+        "led" : 13,
+        "name" : "zoneEffect"
+      },
+      {
+        "answer" : "notSupported",
+        "commandClass" : 15,
+        "commandId" : 130,
+        "led" : 14,
+        "name" : "zoneEffect"
+      },
+      {
+        "answer" : "noAnswer",
+        "commandClass" : 15,
+        "commandId" : 130,
+        "led" : 15,
+        "name" : "zoneEffect"
+      },
+      {
+        "answer" : "answered",
+        "commandClass" : 15,
+        "commandId" : 130,
+        "led" : 16,
+        "name" : "zoneEffect",
+        "response" : [
+          1,
+          16,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      },
+      {
+        "answer" : "failed",
+        "commandClass" : 15,
+        "commandId" : 130,
+        "led" : 17,
+        "name" : "zoneEffect"
       }
     ]
   },

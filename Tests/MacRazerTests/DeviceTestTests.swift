@@ -325,7 +325,7 @@ final class DeviceTestTests: XCTestCase {
                 }
             }
         }
-        let reads = DeviceTestSteps.capabilities(Scripted()).reads
+        let reads = DeviceTestSteps.readCapabilities(Scripted()).reads
         XCTAssertEqual(reads.count, DeviceTestSteps.capabilityReads.count)
         func answer(_ name: String) -> DeviceReport.CapabilityAnswer? { reads.first { $0.name == name }?.answer }
         XCTAssertEqual(answer("pollingRate2"), .noAnswer)
@@ -334,9 +334,24 @@ final class DeviceTestTests: XCTestCase {
         XCTAssertEqual(answer("profileSlots"), .answered)
         let underglow = try? XCTUnwrap(reads.first { $0.led == 0x0A })
         XCTAssertEqual(underglow?.answer, .answered)
-        XCTAssertEqual(underglow?.response?.count, RecordingChannel.responseBytes)
+        XCTAssertEqual(underglow?.response?.count, DeviceTestSteps.capabilityResponseBytes)
         XCTAssertEqual(underglow?.response?[2], 0x2A)
         XCTAssertNil(reads.first { $0.name == "idleTime" }?.response, "only an answer keeps bytes")
+    }
+
+    /// No id answered Identify: the reads are skipped rather than left to time out.
+    func testCapabilitiesNeedAnIdThatAnswered() {
+        let mouse = FakeMouse()
+        let none = DeviceReport.StepRecord<DeviceReport.IdentifyData>(outcome: .failed, data: .init(
+            standardAttempts: [], lightingAttempts: [], standardId: nil, lightingId: nil))
+        XCTAssertNil(DeviceTestSteps.capabilities(mouse, identify: none, registry: nil))
+        XCTAssertTrue(mouse.calls.isEmpty)
+        var found = none
+        found.data?.standardId = 0x1F
+        XCTAssertEqual(DeviceTestSteps.capabilities(mouse, identify: found, registry: nil)?.reads.count,
+                       DeviceTestSteps.capabilityReads.count)
+        XCTAssertTrue(mouse.calls.allSatisfy { if case .retried(_, _, attempts: 1) = $0 { return true }; return false },
+                      "one attempt per read")
     }
 
     func testTheSummaryListsWhatElseTheMouseAnswers() {
@@ -389,7 +404,7 @@ final class DeviceTestTests: XCTestCase {
             lighting: DeviceTestSteps.lighting(mouse, sweep: lightSweep, restoreEffect: RazerCommands.setNone(),
                                                seconds: 0, wait: { _ in }),
             buttons: .init(outcome: .passed, data: .init(seen: ["09:04", "09:05"])),
-            capabilities: DeviceTestSteps.capabilities(mouse),
+            capabilities: DeviceTestSteps.readCapabilities(mouse),
             verdict: nil, comment: String(repeating: "x", count: 2000), credit: "someone", replyEmail: nil)
         let json = String(decoding: try JSONEncoder().encode(report), as: UTF8.self)
         XCTAssertFalse(json.lowercased().contains("serial"))

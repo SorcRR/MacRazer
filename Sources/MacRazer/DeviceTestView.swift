@@ -61,7 +61,7 @@ struct DeviceTestView: View {
                 note("About two minutes. Keep the mouse on, nearby, and connected by cable or dongle.")
             }
             card {
-                Text("MacRazer talks to your mouse the way it does every day and records how it answers. Anything it changes is put back when each step ends, even if you stop half way.")
+                Text("MacRazer talks to your mouse the way it does every day and records how it answers. It also asks, read-only, which other features the mouse has. Anything it changes is put back when each step ends, even if you stop half way.")
                     .font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
             }
             note("Nothing is sent anywhere unless you choose to at the end, and you'll see all of it first. Your mouse's serial number is never included.")
