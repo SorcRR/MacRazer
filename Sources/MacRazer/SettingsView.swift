@@ -42,6 +42,7 @@ struct SettingsView: View {
             // Only in a build that can send stats: see `WorkerEndpoint`.
             if usageStats.isAvailable {
                 titledSection("Privacy") {
+                    mouseModelsRow
                     usageStatsRow
                     deleteDataRow
                 }
@@ -157,6 +158,15 @@ struct SettingsView: View {
             detail: "If MacRazer quits unexpectedly, ask next time whether to send a report. "
                 + "You see exactly what's in it first.",
             isOn: $offerCrashReports
+        )
+    }
+
+    private var mouseModelsRow: some View {
+        settingRow(
+            title: "Count my mouse model",
+            detail: "The update check also says which mouse model is connected, so I can see which "
+                + "mice people use. It's counted with nothing that identifies this Mac.",
+            isOn: $updateChecker.sendsMouseModels
         )
     }
 

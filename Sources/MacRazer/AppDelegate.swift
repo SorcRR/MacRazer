@@ -285,6 +285,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         }
         // Unthrottled: a launch is rare, and it is when someone who just installed or reopened
         // the app most expects it to know about the latest release.
+        updateChecker.connectedMice = { [weak self] in self?.usageStats.connectedMice ?? [] }
         Task { await updateChecker.checkForUpdatesNow() }
         startUpdateTriggers()
     }

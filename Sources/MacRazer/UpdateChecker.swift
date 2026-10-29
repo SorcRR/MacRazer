@@ -74,6 +74,14 @@ final class UpdateChecker: ObservableObject {
     /// and this app isn't Apple-notarised — opting in should be deliberate. The caller decides
     /// *when* an automatic install is acceptable (`AppDelegate` won't start one with the
     /// popover open); this flag only says whether it may.
+    /// Whether the update check names the connected mouse models. On unless turned off in
+    /// Settings: nothing in it identifies the Mac (see `WorkerEndpoint.releases`).
+    @Published var sendsMouseModels: Bool = true {
+        didSet { defaults.set(sendsMouseModels, forKey: Self.sendsMouseModelsKey) }
+    }
+    /// The mice connected now. Set by the app delegate, which knows the controller.
+    var connectedMice: @MainActor () -> [UsagePing.Mouse] = { [] }
+
     @Published var autoInstallEnabled: Bool = false {
         didSet { defaults.set(autoInstallEnabled, forKey: Self.autoInstallKey) }
     }
@@ -93,6 +101,7 @@ final class UpdateChecker: ObservableObject {
         // Assigned after `defaults` exists, and directly to the backing store, so the `didSet`
         // above does not write the value straight back during initialisation.
         _autoInstallEnabled = Published(initialValue: defaults.bool(forKey: Self.autoInstallKey))
+        _sendsMouseModels = Published(initialValue: defaults.object(forKey: Self.sendsMouseModelsKey) as? Bool ?? true)
     }
 
     private let releaseAPIURL = ProjectLinks.releasesAPI
@@ -105,6 +114,7 @@ final class UpdateChecker: ObservableObject {
     private static let lastCheckKey = "lastUpdateCheckDate"
     private static let lastFoundKey = "lastFoundUpdateVersion"
     private static let autoInstallKey = "autoInstallUpdates"
+    private static let sendsMouseModelsKey = "sendsMouseModels"
     private static let lastFoundNotesKey = "lastFoundUpdateNotes"
     private static let lastRunVersionKey = "lastRunVersion"
     private static let dismissedAnnouncementKey = "dismissedUpdateAnnouncement"
@@ -256,7 +266,8 @@ final class UpdateChecker: ObservableObject {
         isChecking = true
         defer { isChecking = false }
         do {
-            let releases = try await Self.fetchReleases(worker: WorkerEndpoint.releases(appVersion: AppInfo.version),
+            let mice = sendsMouseModels ? connectedMice() : []
+            let releases = try await Self.fetchReleases(worker: WorkerEndpoint.releases(appVersion: AppInfo.version, mice: mice),
                                                         github: releaseAPIURL)
             // GitHub's `releases/latest` applied "no drafts, no prereleases" on its side. The
             // list does not, so the rule lives in `ReleaseSpan` now, with tests.

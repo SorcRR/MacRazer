@@ -53,6 +53,24 @@ final class UpdateCheckSourceTests: XCTestCase {
         } catch {}
     }
 
+    func testTheWorkerURLNamesTheMiceAndNothingAboutTheMac() {
+        let base = URL(string: "https://reports.example.org")
+        let mice = [
+            UsagePing.Mouse(pid: 0xDB, name: "Razer Cobra HyperSpeed", link: "dongle", supported: true),
+            UsagePing.Mouse(pid: 0x99, name: "Basilisk V3 X.2 & co", link: "bluetooth", supported: false),
+        ]
+        let url = WorkerEndpoint.releases(appVersion: "0.6.1", mice: mice, base: base)!
+        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)!.queryItems!
+        XCTAssertEqual(items.map(\.name), ["app", "mouse", "mouse"])
+        XCTAssertEqual(items[1].value, "00db.dongle.1.Razer Cobra HyperSpeed")
+        XCTAssertEqual(items[2].value, "0099.bluetooth.0.Basilisk V3 X.2 & co")
+        // The & in a name is escaped, not a new parameter.
+        XCTAssertTrue(url.absoluteString.contains("%26"))
+        let five = Array(repeating: mice[0], count: 5)
+        XCTAssertEqual(URLComponents(url: WorkerEndpoint.releases(appVersion: "0.6.1", mice: five, base: base)!,
+                                     resolvingAgainstBaseURL: false)!.queryItems!.count, 5)
+    }
+
     func testTheWorkerURLCarriesOnlyTheAppVersion() {
         let base = URL(string: "https://reports.example.org")
         XCTAssertEqual(WorkerEndpoint.releases(appVersion: "0.6.0", base: base)?.absoluteString,
