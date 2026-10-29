@@ -6,6 +6,8 @@ expect rough edges until 1.0.
 
 ## [Unreleased]
 
+## [0.6.1] — 2026-10-29
+
 ### Changed
 - **The update check now says which mouse model is connected.** Nothing in it identifies
   your Mac, and it lets me see which mice people use without asking everyone to share stats. Turn it off in Settings › Privacy › Count my mouse model.
