@@ -6,6 +6,13 @@ expect rough edges until 1.0.
 
 ## [Unreleased]
 
+### Added
+- **MacRazer asks for help when it meets a mouse it doesn't fully support.** A small window
+  offers the short device test, which shows us what the mouse can do so a later release can
+  support it. It asks once, reminds you once a week later, and stops for good after a report
+  or "Don't ask for this mouse". A card in the popover offers the same test until then. Turn it
+  off in Settings › Ask me to test unsupported mice.
+
 ## [0.6.1] — 2026-10-29
 
 ### Changed

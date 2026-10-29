@@ -25,6 +25,7 @@ struct SettingsView: View {
     @AppStorage(CrashLogScanner.offerKey) private var offerCrashReports = true
     @ObservedObject var appearance: AppearanceSettings = .shared
     @ObservedObject var usageStats: UsageStats = .shared
+    @ObservedObject var supportPrompt: SupportPrompt = .shared
     @State private var confirmingDelete = false
 
     var body: some View {
@@ -38,6 +39,7 @@ struct SettingsView: View {
                 if controller.deviceHasBattery { batteryPercentRow }
                 // Hidden while there's nowhere to send a report; see `CrashReporting`.
                 if CrashReporting.isAvailable { crashReportsRow }
+                supportPromptRow
             }
             // Only in a build that can send stats: see `WorkerEndpoint`.
             if usageStats.isAvailable {
@@ -158,6 +160,15 @@ struct SettingsView: View {
             detail: "If MacRazer quits unexpectedly, ask next time whether to send a report. "
                 + "You see exactly what's in it first.",
             isOn: $offerCrashReports
+        )
+    }
+
+    private var supportPromptRow: some View {
+        settingRow(
+            title: "Ask me to test unsupported mice",
+            detail: "When a Razer mouse MacRazer doesn't fully support connects, ask whether to run "
+                + "a short test that helps add it. Right-click the menu bar icon to run it any time.",
+            isOn: $supportPrompt.isEnabled
         )
     }
 

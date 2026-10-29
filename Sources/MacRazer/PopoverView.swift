@@ -52,13 +52,16 @@ struct PopoverView: View {
     /// Settings › Appearance; only the Razer Green glass edge is drawn here. The rest is the
     /// popover's appearance and backdrop, which the app delegate sets.
     @ObservedObject var appearance: AppearanceSettings
+    /// Whether to show the card asking for a device test; see `SupportPromptPolicy`.
+    @ObservedObject var supportPrompt: SupportPrompt = .shared
     @Environment(\.colorScheme) private var colorScheme
     /// Opening a window is the owner's job — the popover doesn't know about window controllers.
     /// Deliberately not defaulted: a no-op default would let a future call site forget the
     /// handler and ship a gear button that depresses and does nothing, with no compiler error.
     /// The preview passes an explicit `{}`.
     var onOpenSettings: () -> Void
-    /// Opens the device test, from the "Help test it" link on a mouse with limited support.
+    /// Opens the device test, from the support card or the "Help test it" link on a mouse with
+    /// limited support.
     /// Not defaulted, for the same reason as `onOpenSettings`.
     var onOpenDeviceTest: () -> Void
 
@@ -219,6 +222,7 @@ struct PopoverView: View {
     private var mainPage: some View {
         VStack(alignment: .leading, spacing: 10) {
             headerCard
+            if let pid = supportCardPID { supportCard(pid) }
             if let version = updateChecker.latestVersion { updateCard(version) }
             // Never both: an update waiting to be installed is the more useful thing to say
             // than one that already was.
@@ -386,7 +390,9 @@ struct PopoverView: View {
                     }
                     // Only where it helps: an unverified mouse. A verified one reaches the same
                     // test from the right-click menu, without the popover asking every time.
-                    if controller.connected && !controller.deviceSupported {
+                    // The support card below says the same thing louder; once it's hidden or
+                    // a report went out, this stays as the quiet way back.
+                    if controller.connected && !controller.deviceSupported && supportCardPID == nil {
                         Button(action: onOpenDeviceTest) {
                             HStack(spacing: 3) {
                                 Text("Help test it")
@@ -405,6 +411,46 @@ struct PopoverView: View {
                     .accessibilityLabel(controller.connected ? "Connected" : "Not connected")
             }
         }
+    }
+
+    /// The unverified mouse the support card is for, or nil when there's no card to show. Not
+    /// over Bluetooth: the device test runs over the cable or dongle only.
+    private var supportCardPID: Int? {
+        guard controller.connected, !controller.deviceSupported, !controller.deviceIsBluetooth,
+              let pid = controller.deviceID, supportPrompt.showsCard(pid: pid) else { return nil }
+        return pid
+    }
+
+    private func supportCard(_ pid: Int) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "checklist")
+                    .foregroundStyle(Color.razerGreenText)
+                    .font(.system(size: 14, weight: .semibold))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Help us support this mouse").font(.system(size: 12, weight: .semibold))
+                    Text("A 2-minute test shows us what it can do. You review the report before it's sent.")
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
+            HStack(spacing: 8) {
+                Spacer(minLength: 0)
+                Button("Hide") { supportPrompt.markDeclined(pid: pid) }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .help("Hide this card. \"Help test it\" stays under the mouse name.")
+                Button("Run the Test", action: onOpenDeviceTest)
+                    .buttonStyle(RazerProminentButtonStyle())
+                    .controlSize(.small)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.razerGreenText.opacity(0.10), in: RoundedRectangle(cornerRadius: 13))
+        .overlay(RoundedRectangle(cornerRadius: 13).strokeBorder(Color.razerGreenText.opacity(0.28)))
     }
 
     private var headerSubtitle: String {
