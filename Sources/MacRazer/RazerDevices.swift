@@ -144,6 +144,13 @@ enum RazerDevices {
         // Same three-zone lighting as the Naga Pro, so the slider writes all three. The
         // firmware echoed a 45000 DPI write; 30000 is the vendor spec. Its cable PID is unknown.
         .init(pid: 0x00E8, name: "Razer Naga V3 Pro (Wireless)", fullySupported: true, hasBattery: true, hasLighting: true, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed, Razer.backlightLed], connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
+        // Basilisk V4 HyperSpeed over the dongle (in-app report, no credit given): battery and
+        // DPI answered with 0x1f. 0xFF and 0x80 time out. Every LED group refuses brightness,
+        // so no lighting. The classic polling command answers "not supported" (0x05); it likely
+        // needs OpenRazer's polling_rate2 pair, as the V4 Pro does in #55. Until that is tried,
+        // the polling picker fails here, so the row stays unverified. The 26000 DPI ceiling is
+        // the app's default for unknown models, not a measured value.
+        .init(pid: 0x00EA, name: "Razer Basilisk V4 HyperSpeed", fullySupported: false, hasBattery: true, hasLighting: false, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
     ]
 
     static func info(pid: Int) -> RazerDeviceInfo? { known.first { $0.pid == pid } }

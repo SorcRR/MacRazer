@@ -23,6 +23,7 @@ final class RazerDevicesTests: XCTestCase {
             XCTAssertEqual(txn(0x0090, cls), 0x1f) // Naga Pro dongle (hardware-verified, #69)
             XCTAssertEqual(txn(0x008F, cls), 0x1f)
             XCTAssertEqual(txn(0x00E8, cls), 0x1f) // Naga V3 Pro dongle (hardware-verified, #33)
+            XCTAssertEqual(txn(0x00EA, cls), 0x1f) // Basilisk V4 HyperSpeed dongle (hardware-verified)
             XCTAssertEqual(txn(0x9999, cls), 0x1f) // unknown → Cobra default
         }
         // Plain Cobra: 0xFF for standard/misc, but 0x1f for extended-matrix (lighting) —
