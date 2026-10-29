@@ -75,4 +75,22 @@ final class HIDDeviceSelectionTests: XCTestCase {
         let idx = HIDDeviceSelection.controlInterfaceIndex(interfaces: interfaces)
         XCTAssertEqual(interfaces[idx!].maxFeatureReportSize, 512)
     }
+
+    // MARK: Mouse or not, by name
+
+    func testKeyboardsAndAccessoriesAreNotMice() {
+        for name in ["Razer BlackWidow V4 Pro", "Razer Huntsman Mini", "Razer Ornata V3", "Razer Tartarus Pro",
+                     "Razer Blade 15", "Razer Pro Type Ultra", "Razer Mouse Dock Pro", "Razer Kraken V3 Pro"] {
+            XCTAssertFalse(HIDDeviceSelection.couldBeMouse(productName: name), name)
+        }
+    }
+
+    func testMiceStayMice() {
+        // The registry's names, plus older ones that share words with other product lines.
+        let names = RazerDevices.known.map(\.name) + ["Razer DeathAdder Chroma", "Razer Mamba Chroma",
+                                                       "Razer Naga Trinity", "Razer Orochi V2"]
+        for name in names {
+            XCTAssertTrue(HIDDeviceSelection.couldBeMouse(productName: name), name)
+        }
+    }
 }

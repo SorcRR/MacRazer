@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Part of MacRazer, a control app for Razer mice on macOS. See LICENSE and NOTICE.md.
 
+import Combine
 import Foundation
-import IOKit.hid
 
 /// A Razer mouse that isn't on the verified list, as the support prompt needs to describe it.
 struct UnsupportedMouse: Equatable {
@@ -99,24 +99,25 @@ final class SupportPrompt: ObservableObject {
         if let data = try? JSONEncoder().encode(records) { defaults.set(data, forKey: Self.recordsKey) }
     }
 
-    /// A Razer mouse plugged in by cable or dongle that the app can't open, because Input
-    /// Monitoring is missing. Listing devices and reading their ids needs no permission.
-    /// Supported models are left to the setup window, which already asks for the permission.
-    static func mouseWithoutAccess() -> UnsupportedMouse? {
-        guard !DeviceTestModel.inputMonitoringGranted else { return nil }
-        let mice = HIDDevice.devices(matching: [
-            kIOHIDVendorIDKey as String: Razer.vendorId,
-            kIOHIDDeviceUsagePageKey as String: kHIDPage_GenericDesktop,
-            kIOHIDDeviceUsageKey as String: kHIDUsage_GD_Mouse,
-        ])
-        for device in mice {
-            guard let pid = IOHIDDeviceGetProperty(device, kIOHIDProductIDKey as CFString) as? Int,
-                  !RazerDevices.fullySupported(pid: pid) else { continue }
-            let product = (IOHIDDeviceGetProperty(device, kIOHIDProductKey as CFString) as? String)?
-                .trimmingCharacters(in: .whitespaces)
-            let name = product.flatMap { $0.isEmpty ? nil : $0 } ?? RazerDevices.info(pid: pid)?.name ?? "Razer Mouse"
-            return UnsupportedMouse(pid: pid, name: name, canControl: false)
-        }
-        return nil
+    /// Marks a model reported once a test's report goes out, by Send or by opening the GitHub
+    /// issue, from wherever the test was opened.
+    func trackReports(from model: DeviceTestModel) -> AnyCancellable {
+        model.$sendState.combineLatest(model.$issueOpened)
+            .sink { [weak self, weak model] state, issueOpened in
+                // `report` is read off the model, not from the publishers: it is set before
+                // either of these changes and cleared by `reset` before they go back.
+                guard state == .sent || issueOpened,
+                      let pid = model?.report?.device.productID else { return }
+                self?.markReported(pid: pid)
+            }
+    }
+
+    /// The first unverified mouse among `mice` when the app can't open it, because Input
+    /// Monitoring is missing. Supported models are left to the setup window, which already
+    /// asks for the permission.
+    nonisolated static func mouseWithoutAccess(among mice: [HIDDevice.USBMouse], accessGranted: Bool) -> UnsupportedMouse? {
+        guard !accessGranted,
+              let mouse = mice.first(where: { !RazerDevices.fullySupported(pid: $0.pid) }) else { return nil }
+        return UnsupportedMouse(pid: mouse.pid, name: mouse.name, canControl: false)
     }
 }

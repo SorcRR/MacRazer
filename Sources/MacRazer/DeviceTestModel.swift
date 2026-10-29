@@ -134,16 +134,9 @@ final class DeviceTestModel: ObservableObject {
 
     // MARK: - Starting
 
-    /// A Razer device with a mouse interface is plugged in by cable or dongle. Listing devices
-    /// needs no permission, so this works before Input Monitoring. A mouse interface, not just
-    /// the vendor id: with only a Razer keyboard attached, the test would otherwise run on it.
-    static var razerMousePresent: Bool {
-        !HIDDevice.devices(matching: [
-            kIOHIDVendorIDKey as String: Razer.vendorId,
-            kIOHIDDeviceUsagePageKey as String: kHIDPage_GenericDesktop,
-            kIOHIDDeviceUsageKey as String: kHIDUsage_GD_Mouse,
-        ]).isEmpty
-    }
+    /// A Razer mouse is plugged in by cable or dongle. A mouse, not just the vendor id: with
+    /// only a Razer keyboard attached, the test would otherwise run on it. See `razerMice`.
+    static var razerMousePresent: Bool { !HIDDevice.razerMice().isEmpty }
 
     /// Why there's no mouse for the test: on Bluetooth, or not connected at all.
     private static func unavailable() -> Blocker {

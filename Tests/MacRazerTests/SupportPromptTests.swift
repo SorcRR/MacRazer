@@ -104,4 +104,62 @@ final class SupportPromptStoreTests: XCTestCase {
         defaults.set(Data("not json".utf8), forKey: SupportPrompt.recordsKey)
         XCTAssertTrue(SupportPrompt(defaults: defaults).shouldAsk(pid: pid))
     }
+
+    // MARK: Reports
+
+    /// A test at the review screen for the preview mouse, a Cobra HyperSpeed on the dongle.
+    private func reviewedTest() -> DeviceTestModel {
+        let model = DeviceTestModel(controller: MouseController(), permissions: PermissionsModel(),
+                                    reportEndpoint: nil)
+        model.loadPreview(.review, known: false, ranSteps: true)
+        return model
+    }
+
+    func testSendingAReportMarksItsModel() {
+        let prompt = SupportPrompt(defaults: defaults)
+        let model = reviewedTest()
+        let tracking = prompt.trackReports(from: model)
+        XCTAssertFalse(prompt.record(pid: 0x00DB).reported, "reaching the review is not a report")
+        model.previewSendState(.failed(.tooMany))
+        XCTAssertFalse(prompt.record(pid: 0x00DB).reported, "a failed send is not a report")
+        model.previewSendState(.sent)
+        XCTAssertTrue(prompt.record(pid: 0x00DB).reported)
+        tracking.cancel()
+    }
+
+    func testResetAfterSendingKeepsTheMark() {
+        let prompt = SupportPrompt(defaults: defaults)
+        let model = reviewedTest()
+        let tracking = prompt.trackReports(from: model)
+        model.previewSendState(.sent)
+        model.reset()
+        XCTAssertTrue(prompt.record(pid: 0x00DB).reported)
+        XCTAssertEqual(prompt.records.count, 1, "the reset must not mark some other model")
+        tracking.cancel()
+    }
+}
+
+final class SupportPromptMouseWithoutAccessTests: XCTestCase {
+    private let unknown = HIDDevice.USBMouse(pid: 0xFFFE, name: "Razer DeathAdder V3 Pro")
+    private var supported: HIDDevice.USBMouse {
+        let info = RazerDevices.known.first { $0.fullySupported }!
+        return HIDDevice.USBMouse(pid: info.pid, name: info.name)
+    }
+
+    func testFindsAnUnverifiedMouseWithoutAccess() {
+        XCTAssertEqual(SupportPrompt.mouseWithoutAccess(among: [unknown], accessGranted: false),
+                       UnsupportedMouse(pid: 0xFFFE, name: "Razer DeathAdder V3 Pro", canControl: false))
+    }
+
+    func testSkipsASupportedMouseForTheUnverifiedOne() {
+        XCTAssertEqual(SupportPrompt.mouseWithoutAccess(among: [supported, unknown], accessGranted: false)?.pid,
+                       0xFFFE)
+        XCTAssertNil(SupportPrompt.mouseWithoutAccess(among: [supported], accessGranted: false),
+                     "the setup window covers a supported mouse")
+    }
+
+    func testNothingOnceAccessIsGranted() {
+        XCTAssertNil(SupportPrompt.mouseWithoutAccess(among: [unknown], accessGranted: true),
+                     "with access the mouse connects, and the connected path asks instead")
+    }
 }

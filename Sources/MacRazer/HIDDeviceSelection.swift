@@ -69,6 +69,22 @@ enum HIDDeviceSelection {
         return best?.index
     }
 
+    /// Razer product lines that are not mice but may expose a pointer interface: keyboards,
+    /// keypads, laptops, and accessories. Lower case, matched as substrings of the product
+    /// string. Only families whose names no mouse shares: "Chroma", for one, is in mouse names
+    /// too (the DeathAdder Chroma).
+    static let nonMouseProductLines = [
+        "keyboard", "keypad", "blackwidow", "huntsman", "ornata", "cynosa", "deathstalker",
+        "anansi", "lycosa", "tartarus", "orbweaver", "nostromo", "pro type", "blade",
+        "kraken", "seiren", "firefly", "goliathus", "base station", "mouse dock",
+    ]
+
+    /// False for a product string naming one of `nonMouseProductLines`.
+    static func couldBeMouse(productName: String) -> Bool {
+        let name = productName.lowercased()
+        return !nonMouseProductLines.contains { name.contains($0) }
+    }
+
     /// Higher score = more likely to be this device's Razer control interface. (Which
     /// *device* to use is decided by the ranking above; this only picks among one device's
     /// own interfaces.)
