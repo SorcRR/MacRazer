@@ -91,6 +91,10 @@ You can read the whole report on the last screen before it goes anywhere.
 - What each step found: which transaction ids the mouse answered to, the battery level, the
   DPI and polling rate it read and wrote back, and the lighting brightness. Every command the
   test sent is listed, with the first 8 bytes of each answer.
+- Whether the mouse answers about 30 more read-only commands: newer polling rates, the sleep
+  timer, scroll wheel settings, profiles stored in the mouse, saved button functions and each
+  lighting zone. These only read, so nothing on the mouse changes. They show which features
+  are worth adding for it.
 - Which extra buttons you pressed during the button step, not when.
 - The app and macOS versions.
 - Only if you fill them in: a comment, a name to credit, and an email address for a reply.

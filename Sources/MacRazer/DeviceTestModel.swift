@@ -217,6 +217,7 @@ final class DeviceTestModel: ObservableObject {
         let name: String
         let record: DeviceReport.StepRecord<DeviceReport.IdentifyData>
         let sweep: [DeviceProbe.LEDAnswer]?
+        let capabilities: DeviceReport.CapabilitiesData?
         let interfaces: [DeviceProbe.Interface]
         let control: Int?
     }
@@ -226,17 +227,19 @@ final class DeviceTestModel: ObservableObject {
         defer { running = false }
         do {
             let result = try await controller.runDeviceTestStep { device -> IdentifyResult in
-                let (record, sweep) = DeviceTestSteps.identify(device, registry: RazerDevices.info(pid: device.productID))
+                let info = RazerDevices.info(pid: device.productID)
+                let (record, sweep) = DeviceTestSteps.identify(device, registry: info)
+                let capabilities = DeviceTestSteps.capabilities(device, identify: record, registry: info)
                 let (interfaces, control) = HIDDevice.interfaceSummaries(vendorId: Razer.vendorId)
                 return IdentifyResult(pid: device.productID, name: device.productName, record: record,
-                                      sweep: sweep, interfaces: interfaces, control: control)
+                                      sweep: sweep, capabilities: capabilities, interfaces: interfaces, control: control)
             }
             let info = RazerDevices.info(pid: result.pid)
             report = Self.emptyReport(pid: result.pid, name: result.name, interfaces: result.interfaces,
                                       control: result.control, identify: result.record)
             report?.registry = info.map(DeviceReport.Registry.init)
-            standardId = result.record.data?.standardId ?? info?.transactionId ?? 0x1F
-            matrixId = result.record.data?.lightingId ?? standardId
+            report?.capabilities = result.capabilities
+            (standardId, matrixId) = DeviceTestSteps.chosenIds(result.record, registry: info)
             overrides = info?.transactionOverrides ?? [:]
             lightSweep = result.sweep
             // Known models say how they connect; only an unknown one needs asking.

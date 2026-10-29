@@ -39,7 +39,8 @@ final class DeviceReportSenderTests: XCTestCase {
             battery: .init(outcome: .passed, data: .init(raw: 92, percent: 36, charging: false), exchanges: [exchange]),
             dpi: .init(outcome: .passed,
                        data: .init(original: 6400, test: 6350, readBack: 6350, restored: true,
-                                   stages: [400, 800, 1600, 3200, 6400], maxProbe: 26000),
+                                   stages: [400, 800, 1600, 3200, 6400], firstStageNumber: 1, activeStageByte: 4,
+                                   maxProbe: 26000),
                        exchanges: [exchange]),
             polling: .init(outcome: .passed, data: .init(original: 500, test: 1000, readBack: 1000, restored: true)),
             lighting: .init(outcome: .passed,
@@ -47,6 +48,16 @@ final class DeviceReportSenderTests: XCTestCase {
                                         turnedRed: true, restored: true)),
             // 0c:223 is AC Home: consumer usages run past two hex digits.
             buttons: .init(outcome: .passed, data: .init(seen: ["09:04", "09:05", "07:1e", "0c:223"]), error: "none"),
+            // Every read the app makes, so the Worker's schema sees every name and LED id,
+            // and every kind of answer.
+            capabilities: .init(reads: DeviceTestSteps.capabilityReads.enumerated().map { i, read in
+                let answers: [DeviceReport.CapabilityAnswer] = [.answered, .failed, .notSupported, .noAnswer]
+                let answer = answers[i % answers.count]
+                return .init(name: read.name, commandClass: read.report.commandClass, commandId: read.report.commandId,
+                             led: read.report.commandClass == 0x0F ? read.report.arguments[1] : nil, answer: answer,
+                             response: answer == .answered
+                                 ? Array(read.report.arguments.prefix(DeviceTestSteps.capabilityResponseBytes)) : nil)
+            }),
             verdict: nil, comment: "Works on my Mac.\nSide buttons too.", credit: "@someone",
             replyEmail: "person@example.com", exchangesDropped: ["lighting"])
         report.polling.error = "an example error"

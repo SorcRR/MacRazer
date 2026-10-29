@@ -11,7 +11,7 @@ import Foundation
 /// Never in here: the serial number (the app keys a mouse by it, and it names one physical
 /// unit), USB locations, or anything about the Mac beyond its OS version.
 struct DeviceReport: Codable, Equatable {
-    static let currentSchema = 1
+    static let currentSchema = 2
 
     var schemaVersion = DeviceReport.currentSchema
     var appVersion: String
@@ -25,6 +25,9 @@ struct DeviceReport: Codable, Equatable {
     var polling: StepRecord<PollingData>
     var lighting: StepRecord<LightingData>
     var buttons: StepRecord<ButtonsData>
+    /// What the mouse answers to commands the steps don't use, read once after Identify.
+    /// Schema 2; nil in earlier reports and when Identify found no id to ask with.
+    var capabilities: CapabilitiesData?
     var verdict: DeviceTestVerdict?
     var comment: String?
     /// How the person would like to be credited in the README, if at all.
@@ -123,6 +126,11 @@ struct DeviceReport: Codable, Equatable {
         var readBack: Int?
         var restored: Bool = false
         var stages: [Int]?
+        /// The stage table's own numbering, as the mouse answered: the first stage's number
+        /// (0 or 1) and the active-stage byte. Mice differ, and a write numbered the other way
+        /// selects the wrong stage.
+        var firstStageNumber: Int?
+        var activeStageByte: Int?
         /// Optional, run only when asked: what the mouse kept when asked for the protocol's
         /// ceiling. A mouse that clamps reads back its real maximum.
         var maxProbe: Int?
@@ -155,6 +163,35 @@ struct DeviceReport: Codable, Equatable {
         /// Each distinct input seen, as "page:usage" in hex, e.g. "09:04" for button 4 or
         /// "07:1e" for a key that types 1.
         var seen: [String] = []
+    }
+
+    /// One answer per read in `DeviceTestSteps.capabilityReads`, in that order.
+    struct CapabilitiesData: Codable, Equatable {
+        var reads: [CapabilityRead] = []
+    }
+
+    struct CapabilityRead: Codable, Equatable {
+        /// Which read, e.g. "pollingRate2" or "zoneEffect" (with `led`).
+        var name: String
+        var commandClass: UInt8
+        var commandId: UInt8
+        /// The LED id, for the lighting reads that take one.
+        var led: UInt8?
+        var answer: CapabilityAnswer
+        /// The first `DeviceTestSteps.capabilityResponseBytes` argument bytes of an answer.
+        var response: [UInt8]?
+    }
+
+    enum CapabilityAnswer: String, Codable {
+        /// The mouse has it: status 0x02.
+        case answered
+        /// Status 0x03. Often a wrong argument (an LED the mouse doesn't have) rather than
+        /// a missing command.
+        case failed
+        /// Status 0x05: the mouse doesn't have the command.
+        case notSupported
+        /// A timeout or a reply that made no sense.
+        case noAnswer
     }
 }
 
@@ -307,6 +344,85 @@ enum DeviceTestSteps {
         return (.init(outcome: outcome, data: data, exchanges: recording.exchanges), sweep)
     }
 
+    /// The ids the other steps use: what Identify found, else the registry's, else 0x1F.
+    static func chosenIds(_ identify: DeviceReport.StepRecord<DeviceReport.IdentifyData>, registry: RazerDeviceInfo?)
+        -> (standard: UInt8, matrix: UInt8) {
+        let standard = identify.data?.standardId ?? registry?.transactionId ?? 0x1F
+        return (standard, identify.data?.lightingId ?? standard)
+    }
+
+    /// Read-only commands asked once, to see what else the mouse can do. Each is a get (id
+    /// 0x80 or above): nothing here changes a setting. Sources: OpenRazer for polling_rate2,
+    /// idle time, the low-battery threshold, Smart-Reel and scroll acceleration; the
+    /// Basilisk V4 Pro's own replies (#55) for the wheel mode and levels, the onboard profile
+    /// slots, the button function table and the per-zone effect read, which finds lighting
+    /// zones the brightness sweep doesn't try (the V4 Pro's underglow is 0x0A).
+    static let capabilityReads: [(name: String, report: RazerReport)] = {
+        func read(_ commandClass: UInt8, _ id: UInt8, _ size: UInt8, _ args: [UInt8] = []) -> RazerReport {
+            var r = RazerReport(commandClass: commandClass, commandId: id, dataSize: size)
+            for (i, byte) in args.enumerated() { r.arguments[i] = byte }
+            return r
+        }
+        var reads: [(String, RazerReport)] = [
+            ("pollingRate2", read(0x00, 0xC0, 0x01)),
+            ("idleTime", read(0x07, 0x83, 0x02)),
+            ("lowBatteryThreshold", read(0x07, 0x82, 0x01)),
+            ("smartReel", read(0x02, 0x97, 0x02, [Razer.varstore])),
+            ("scrollAcceleration", read(0x02, 0x96, 0x02, [Razer.varstore])),
+            ("scrollAccelerationLevel", read(0x02, 0xA2, 0x02, [Razer.varstore])),
+            ("smartReelSensitivity", read(0x02, 0xA3, 0x02, [Razer.varstore])),
+            ("wheelMode", read(0x02, 0xB0, 0x02, [Razer.varstore])),
+            ("profileSlots", read(0x05, 0x81, 0x0A)),
+            ("activeProfileSlot", read(0x05, 0x84, 0x0A)),
+            ("buttonFunction", read(0x02, 0x8C, 0x0A, [Razer.varstore, 0x04, 0x00])),
+            ("buttonFunction", read(0x02, 0x8C, 0x0A, [Razer.varstore, 0x05, 0x00])),
+        ]
+        // Every LED id OpenRazer names, and a few past them.
+        for led in UInt8(0x00)...0x11 {
+            reads.append(("zoneEffect", read(0x0F, 0x82, 0x0C, [Razer.varstore, led])))
+        }
+        return reads
+    }()
+
+    /// How many argument bytes each answer keeps: enough for a zone's whole effect body
+    /// (args 2-11, its colours included), more than the steps' 8.
+    static let capabilityResponseBytes = 12
+
+    /// `readCapabilities` with the ids Identify chose, or nil when no id answered: every read
+    /// would only time out. Shared by the app and the CLI so their reports can't differ.
+    static func capabilities(_ device: TransactionChannel,
+                             identify: DeviceReport.StepRecord<DeviceReport.IdentifyData>,
+                             registry: RazerDeviceInfo?) -> DeviceReport.CapabilitiesData? {
+        guard identify.data?.standardId != nil else { return nil }
+        let ids = chosenIds(identify, registry: registry)
+        return readCapabilities(FixedTransactionChannel(base: device, standard: ids.standard, matrix: ids.matrix,
+                                                        overrides: registry?.transactionOverrides ?? [:]))
+    }
+
+    /// Asks each of `capabilityReads` once and keeps the answer. No retry: a refusal or a
+    /// timeout says the same the second time, and `noAnswer` already marks a read that
+    /// didn't come back. The answers are the evidence, so no exchanges are kept: they would
+    /// only repeat them.
+    static func readCapabilities(_ channel: DeviceProbeChannel) -> DeviceReport.CapabilitiesData {
+        DeviceReport.CapabilitiesData(reads: capabilityReads.map { name, report in
+            var read = DeviceReport.CapabilityRead(
+                name: name, commandClass: report.commandClass, commandId: report.commandId,
+                led: report.commandClass == 0x0F ? report.arguments[1] : nil, answer: .noAnswer)
+            do {
+                let answer = try channel.sendWithRetry(report, attempts: 1)
+                read.answer = .answered
+                read.response = Array(answer.arguments.prefix(capabilityResponseBytes))
+            } catch HIDDevice.HIDError.commandFailed {
+                read.answer = .failed
+            } catch HIDDevice.HIDError.notSupported {
+                read.answer = .notSupported
+            } catch {
+                read.answer = .noAnswer
+            }
+            return read
+        })
+    }
+
     static func battery(_ channel: DeviceProbeChannel, expectsBattery: Bool?)
         -> DeviceReport.StepRecord<DeviceReport.BatteryData> {
         var record = DeviceReport.StepRecord<DeviceReport.BatteryData>()
@@ -350,7 +466,11 @@ enum DeviceTestSteps {
                 // nil, not 0, when the probe got no answer: 0 would read as a real ceiling.
                 data.maxProbe = (try? DeviceProbe.writeDPI(channel, .init(x: 45000, y: 45000))).map { Int($0.readBack.value.x) }
             }
-            data.stages = try? DeviceProbe.readStages(channel).value.stages
+            if let table = try? DeviceProbe.readStages(channel) {
+                data.stages = table.value.stages
+                data.activeStageByte = table.value.activeByte
+                if !table.value.stages.isEmpty { data.firstStageNumber = Int(table.response.arguments[3]) }
+            }
             record.outcome = check.confirmed ? .passed : .failed
         } catch {
             record.error = String(describing: error)

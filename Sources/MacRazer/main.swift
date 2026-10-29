@@ -581,8 +581,7 @@ case "devicetest":
     defer { dev.close() }
     let info = RazerDevices.info(pid: dev.productID)
     let (identify, lightSweep) = DeviceTestSteps.identify(dev, registry: info)
-    let standardId = identify.data?.standardId ?? info?.transactionId ?? 0x1F
-    let matrixId = identify.data?.lightingId ?? standardId
+    let (standardId, matrixId) = DeviceTestSteps.chosenIds(identify, registry: info)
     func step<T>(_ body: (DeviceProbeChannel) -> DeviceReport.StepRecord<T>) -> DeviceReport.StepRecord<T> {
         DeviceTestSteps.recorded(dev, standard: standardId, matrix: matrixId,
                                  overrides: info?.transactionOverrides ?? [:], body)
@@ -600,7 +599,8 @@ case "devicetest":
         dpi: step { DeviceTestSteps.dpi($0, maxProbe: false) },
         polling: step { DeviceTestSteps.polling($0) },
         lighting: step { DeviceTestSteps.lighting($0, sweep: lightSweep, restoreEffect: nil, seconds: 2) },
-        buttons: .init())
+        buttons: .init(),
+        capabilities: DeviceTestSteps.capabilities(dev, identify: identify, registry: info))
     report.verdict = report.currentVerdict()
     // Encoded as the app encodes it, so a pasted CLI report reads like an in-app one.
     let json = DeviceReportOutput.json(report, forPublic: true)
