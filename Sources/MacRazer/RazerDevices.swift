@@ -64,6 +64,10 @@ struct RazerDeviceInfo {
     /// does not error, the slider just stops working, so a model gaining lighting support
     /// should be swept with `swift run MacRazer brightness` rather than inheriting this.
     var brightnessLed: UInt8 = Razer.logoLed
+    /// Further lit zones that take their own brightness, written after `brightnessLed` so
+    /// the slider moves the whole mouse. Reads and the write check use `brightnessLed` alone.
+    /// The Nagas light the logo, scroll wheel and side panel, and all three answer.
+    var extraBrightnessLeds: [UInt8] = []
     let connection: RazerConnection
     let silhouette: RazerMouseSilhouette
     /// Model key for the learned per-percent discharge curve (see `DischargeCurveModel`), or nil
@@ -131,15 +135,15 @@ enum RazerDevices {
         // Naga Pro over the dongle (#69): battery, DPI and stages, polling, static color and
         // brightness all passed the in-app test with 0x1f. 0xFF and 0x80 time out. It has
         // three lit zones and LOGO, SCROLL and BACKLIGHT all answer brightness (ZERO refuses),
-        // so the slider dims the logo only.
-        .init(pid: 0x0090, name: "Razer Naga Pro (Wireless)", fullySupported: true, hasBattery: true, hasLighting: true, maxDPI: 20000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
+        // so the slider writes all three.
+        .init(pid: 0x0090, name: "Razer Naga Pro (Wireless)", fullySupported: true, hasBattery: true, hasLighting: true, maxDPI: 20000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed, Razer.backlightLed], connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
         // Naga Pro on the cable: same ids as the dongle per razermouse_driver.c. Not verified.
-        .init(pid: 0x008F, name: "Razer Naga Pro (Wired)", fullySupported: false, hasBattery: true, hasLighting: true, maxDPI: 20000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
+        .init(pid: 0x008F, name: "Razer Naga Pro (Wired)", fullySupported: false, hasBattery: true, hasLighting: true, maxDPI: 20000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed, Razer.backlightLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
         // Naga V3 Pro over the dongle (#33, report from chris-agnew): battery, DPI and stages,
         // polling, static color and brightness all passed with 0x1f. 0xFF and 0x80 time out.
-        // Same three-zone lighting as the Naga Pro, so the slider dims the logo only. The
+        // Same three-zone lighting as the Naga Pro, so the slider writes all three. The
         // firmware echoed a 45000 DPI write; 30000 is the vendor spec. Its cable PID is unknown.
-        .init(pid: 0x00E8, name: "Razer Naga V3 Pro (Wireless)", fullySupported: true, hasBattery: true, hasLighting: true, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
+        .init(pid: 0x00E8, name: "Razer Naga V3 Pro (Wireless)", fullySupported: true, hasBattery: true, hasLighting: true, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed, Razer.backlightLed], connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
     ]
 
     static func info(pid: Int) -> RazerDeviceInfo? { known.first { $0.pid == pid } }
@@ -182,5 +186,9 @@ enum RazerDevices {
     /// Cobra family answers on.
     static func brightnessLed(pid: Int?) -> UInt8 {
         pid.flatMap { info(pid: $0)?.brightnessLed } ?? Razer.logoLed
+    }
+    /// Every LED group a brightness write goes to, `brightnessLed` first.
+    static func brightnessLeds(pid: Int?) -> [UInt8] {
+        [brightnessLed(pid: pid)] + (pid.flatMap { info(pid: $0)?.extraBrightnessLeds } ?? [])
     }
 }

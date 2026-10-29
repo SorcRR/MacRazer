@@ -105,6 +105,30 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(setLed(nil), Razer.logoLed)
     }
 
+    /// The Nagas light three zones and each takes its own brightness. Every other model
+    /// writes just its one `brightnessLed`.
+    func testBrightnessLedsCoverEveryZone() {
+        let naga = [Razer.logoLed, Razer.scrollLed, Razer.backlightLed]
+        for pid in [0x0090, 0x008F, 0x00E8] {
+            XCTAssertEqual(RazerDevices.brightnessLeds(pid: pid), naga)
+        }
+        XCTAssertEqual(RazerDevices.brightnessLeds(pid: 0x00DB), [Razer.logoLed])
+        XCTAssertEqual(RazerDevices.brightnessLeds(pid: 0x00B9), [Razer.scrollLed])
+        XCTAssertEqual(RazerDevices.brightnessLeds(pid: 0x9999), [Razer.logoLed])
+        XCTAssertEqual(RazerDevices.brightnessLeds(pid: nil), [Razer.logoLed])
+    }
+
+    func testWriteBrightnessSetsEveryZoneAndStopsOnARefusal() throws {
+        let naga = RecordingTransport(productID: 0x00E8)
+        try MouseController.writeBrightness(128, to: naga)
+        XCTAssertEqual(naga.sent.map { $0.arguments[1] }, [Razer.logoLed, Razer.scrollLed, Razer.backlightLed])
+        XCTAssertTrue(naga.sent.allSatisfy { $0.commandId == 0x04 && $0.arguments[2] == 128 })
+
+        let refusing = RecordingTransport(productID: 0x00E8, refuses: Razer.scrollLed)
+        XCTAssertThrowsError(try MouseController.writeBrightness(128, to: refusing))
+        XCTAssertEqual(refusing.sent.map { $0.arguments[1] }, [Razer.logoLed, Razer.scrollLed])
+    }
+
     func testConnectionKind() {
         XCTAssertEqual(RazerDevices.connection(pid: 0x00DB), .wirelessDongle)
         XCTAssertEqual(RazerDevices.connection(pid: 0x00DA), .wired)
@@ -184,4 +208,27 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(LightingEffect.wave.rawValue, "Wave")
         XCTAssertEqual(LightingEffect.off.rawValue, "Off")
     }
+}
+
+/// Records every report and answers it, or throws for one LED group.
+private final class RecordingTransport: RazerTransport {
+    let productID: Int
+    let productName = "Test mouse"
+    let locationID = 1
+    let isBluetooth = false
+    let refuses: UInt8?
+    private(set) var sent: [RazerReport] = []
+
+    init(productID: Int, refuses: UInt8? = nil) {
+        self.productID = productID
+        self.refuses = refuses
+    }
+
+    func sendWithRetry(_ report: RazerReport) throws -> RazerReport {
+        sent.append(report)
+        if report.arguments[1] == refuses { throw HIDDevice.HIDError.commandFailed }
+        return report
+    }
+
+    func close() {}
 }

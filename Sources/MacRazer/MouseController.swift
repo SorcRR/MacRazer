@@ -1028,6 +1028,14 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         }
     }
 
+    /// Sets brightness on every lit zone the model has (`RazerDevices.brightnessLeds`).
+    /// Throws on the first zone that refuses, so a half-dimmed mouse counts as a failed write.
+    static func writeBrightness(_ raw: UInt8, to dev: any RazerTransport) throws {
+        for led in RazerDevices.brightnessLeds(pid: dev.productID) {
+            _ = try dev.sendWithRetry(RazerCommands.setBrightness(raw, led: led))
+        }
+    }
+
     func setBrightness(_ percent: Int) {
         let pct = max(0, min(percent, 100))
         userCommand { [weak self] in
@@ -1036,7 +1044,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 let dev = try self.ensureDevice()
                 let led = RazerDevices.brightnessLed(pid: dev.productID)
                 let raw = RazerCommands.brightnessRaw(fromPercent: pct)
-                _ = try dev.sendWithRetry(RazerCommands.setBrightness(raw, led: led))
+                try Self.writeBrightness(raw, to: dev)
                 if RazerDevices.verifiesBrightnessWrite(pid: dev.productID) {
                     let readback = try dev.sendWithRetry(RazerCommands.getBrightness(led: led)).arguments[2]
                     guard readback == raw else { throw HIDDevice.HIDError.commandFailed }
@@ -1182,9 +1190,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             // (correctly) refuses them, and that must not block its profiles from applying.
             let hasLighting = RazerDevices.hasLighting(pid: dev.productID)
             let brightOK = !hasLighting
-                || (try? dev.sendWithRetry(RazerCommands.setBrightness(
-                        RazerCommands.brightnessRaw(fromPercent: brightnessPct),
-                        led: RazerDevices.brightnessLed(pid: dev.productID)))) != nil
+                || (try? Self.writeBrightness(RazerCommands.brightnessRaw(fromPercent: brightnessPct), to: dev)) != nil
             let lightOK = !hasLighting || (try? dev.sendWithRetry(lighting)) != nil
             let allOK = stagesOK && dpiOK && pollOK && brightOK && lightOK
             let anyOK = dpiOK || pollOK || (hasLighting && (brightOK || lightOK))
