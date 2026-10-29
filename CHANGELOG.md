@@ -7,9 +7,8 @@ expect rough edges until 1.0.
 ## [Unreleased]
 
 ### Changed
-- **The update check now says which mouse model is connected.** It's counted per day and
-  country, with nothing that identifies your Mac, so I can see which mice people use without
-  asking everyone to share stats. Turn it off in Settings › Privacy › Count my mouse model.
+- **The update check now says which mouse model is connected.** Nothing in it identifies
+  your Mac, and it lets me see which mice people use without asking everyone to share stats. Turn it off in Settings › Privacy › Count my mouse model.
   The detailed usage stats still only go if you say yes.
 
 ## [0.6.0] — 2026-10-29
