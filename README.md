@@ -60,11 +60,14 @@ says so.
 | Razer Atheris | Battery, DPI, polling | maintainer |
 | Razer Basilisk V3 X HyperSpeed | Battery, DPI, DPI stages, polling, lighting, brightness | [@joelday](https://github.com/joelday) |
 | Razer Viper Ultimate (Wireless) | Battery, DPI, polling, brightness | [@raphaelchenouard](https://github.com/raphaelchenouard) |
+| Razer Naga Pro (Wireless) | Battery, DPI, DPI stages, polling, lighting, brightness | [@sidneylopes](https://github.com/sidneylopes) |
+| Razer Naga V3 Pro (Wireless) | Battery, DPI, DPI stages, polling, lighting, brightness | [@chris-agnew](https://github.com/chris-agnew) |
 | Razer Orochi 2013 | DPI only | [@raphaelchenouard](https://github.com/raphaelchenouard) |
 | Razer Basilisk V3 | Nothing; reported working by a user | — |
 | Razer Cobra, Cobra Pro (wired + wireless) | Nothing; same protocol family, values from OpenRazer | — |
 | Razer Basilisk X HyperSpeed | Nothing; values from OpenRazer | — |
 | Razer Viper Ultimate (Wired) | Nothing; its wireless sibling is verified | — |
+| Razer Naga Pro (Wired) | Nothing; its wireless sibling is verified | — |
 | Any other Razer mouse | Nothing; detected and named, controls attempted | — |
 
 An unverified mouse is not a broken one. Detection and naming work for any Razer mouse, and
