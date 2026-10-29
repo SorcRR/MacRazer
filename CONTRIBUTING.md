@@ -3,7 +3,7 @@
 Thanks for helping! This is a community macOS control app for Razer mice. By contributing you
 agree your contributions are licensed under **GPL-2.0** (the project license).
 
-Start with **[docs/DOCUMENTATION.md](docs/DOCUMENTATION.md)**, it explains the architecture,
+Start with **[Documentation/DOCUMENTATION.md](Documentation/DOCUMENTATION.md)**, it explains the architecture,
 the HID protocol, and every feature.
 
 ## Build & run
