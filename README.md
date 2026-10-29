@@ -6,6 +6,8 @@ is short and doesn't include the Cobra HyperSpeed or Atheris — this fills that
 to the mouse directly over USB HID (no kernel extension, no driver install), using a protocol
 ported from [OpenRazer](https://github.com/openrazer/openrazer).
 
+Website, with the download and setup help: [macrazer.com](https://macrazer.com/?utm_source=github&utm_campaign=readme)
+
 Works best with the **Razer Cobra HyperSpeed** and the **Razer Atheris**, the two devices this
 has actually been tested on. It detects any Razer mouse by name and should work with other
 Razer mice that use the same HID protocol family, but those are untested, so treat support as
