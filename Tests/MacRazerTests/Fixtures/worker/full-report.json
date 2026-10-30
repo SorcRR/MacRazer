@@ -27,6 +27,18 @@
     ],
     "outcome" : "passed"
   },
+  "bluetooth" : {
+    "batteryLevel" : 64,
+    "error" : "an example error",
+    "pnpProductID" : 220,
+    "pnpVendorID" : 1678,
+    "pnpVersion" : 256,
+    "razerService" : true,
+    "services" : [
+      "52401523-F97C-7F90-0E7F-6C6F4E36DB1C",
+      "180F"
+    ]
+  },
   "buttons" : {
     "data" : {
       "seen" : [
@@ -711,7 +723,7 @@
     "transactionId" : 31
   },
   "replyEmail" : "person@example.com",
-  "schemaVersion" : 3,
+  "schemaVersion" : 4,
   "verdict" : {
     "failed" : [
 

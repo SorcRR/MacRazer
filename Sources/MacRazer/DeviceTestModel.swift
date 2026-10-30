@@ -13,7 +13,7 @@ import IOKit.hid
 @MainActor
 final class DeviceTestModel: ObservableObject {
     enum Stage: Int, Comparable {
-        case intro, permission, identify, battery, dpi, polling, lighting, buttons, review
+        case intro, permission, bluetooth, identify, battery, dpi, polling, lighting, buttons, review
         static func < (a: Stage, b: Stage) -> Bool { a.rawValue < b.rawValue }
     }
 
@@ -201,6 +201,32 @@ final class DeviceTestModel: ObservableObject {
         }
         stage = .identify
         Task { await runIdentify() }
+    }
+
+    /// The shorter, read-only test for a mouse on Bluetooth (`DeviceTestSteps.bluetoothTest`).
+    /// Needs no Input Monitoring: nothing goes through IOHID but the interface list.
+    func startBluetooth() {
+        guard !running else { return }
+        guard let mouse = HIDDevice.bluetoothRazerMouse() else {
+            blocker = Self.unavailable()
+            return
+        }
+        blocker = nil
+        if !sessionOpen {
+            // Pauses the app's own reads, Bluetooth ones included, while the test runs.
+            controller.beginDeviceTest()
+            sessionOpen = true
+        }
+        stage = .bluetooth
+        Task { await runBluetooth(name: mouse.name) }
+    }
+
+    private func runBluetooth(name: String) async {
+        running = true
+        defer { running = false }
+        report = await Task.detached { DeviceTestSteps.bluetoothTest(name: name) }.value
+        // Nothing more will touch the mouse.
+        endSession()
     }
 
     // MARK: - Steps
@@ -434,7 +460,7 @@ final class DeviceTestModel: ObservableObject {
     /// its dongle, so each link needs its own report. A mouse on a cable with no battery is
     /// wired only, and a link the registry already fully supports for this model needs none.
     var otherLink: DeviceReport.Connection? {
-        guard let report, let connection = report.device.connection else { return nil }
+        guard let report, let connection = report.device.connection, connection != .bluetooth else { return nil }
         if connection == .cable, report.battery.outcome != .passed, report.registry?.hasBattery != true { return nil }
         let other: DeviceReport.Connection = connection == .cable ? .dongle : .cable
         let registryLink: RazerConnection = other == .cable ? .wired : .wirelessDongle
@@ -532,7 +558,7 @@ enum DeviceTestFlow {
         case .dpi: return .polling
         case .polling: return .lighting
         case .lighting: return .buttons
-        case .buttons: return .review
+        case .buttons, .bluetooth: return .review
         case .intro, .permission, .review: return nil
         }
     }
@@ -547,7 +573,7 @@ enum DeviceTestFlow {
         case .lighting: return .polling
         case .buttons: return .lighting
         case .review: return identifyRan ? .buttons : nil
-        case .intro, .permission, .identify: return nil
+        case .intro, .permission, .bluetooth, .identify: return nil
         }
     }
 }

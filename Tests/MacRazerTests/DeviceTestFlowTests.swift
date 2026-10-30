@@ -30,6 +30,12 @@ final class DeviceTestFlowTests: XCTestCase {
         XCTAssertNil(DeviceTestFlow.next(from: .intro), "Start, not Next, leaves the intro")
     }
 
+    /// The Bluetooth test is one screen, then Review, with no USB steps behind it.
+    func testTheBluetoothTestGoesStraightToReview() {
+        XCTAssertEqual(DeviceTestFlow.next(from: .bluetooth), .review)
+        XCTAssertNil(DeviceTestFlow.back(from: .bluetooth, identifyRan: false))
+    }
+
     // MARK: Resume after relaunch
 
     private func defaults() -> UserDefaults {

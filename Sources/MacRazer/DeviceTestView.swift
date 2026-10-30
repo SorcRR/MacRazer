@@ -40,6 +40,7 @@ struct DeviceTestView: View {
         switch model.stage {
         case .intro: intro
         case .permission: permission
+        case .bluetooth: bluetooth
         case .identify: identify
         case .battery: battery
         case .dpi: dpi
@@ -69,9 +70,35 @@ struct DeviceTestView: View {
             case .noMouse?:
                 warning("No Razer mouse is connected by cable or dongle right now. Connect it and press Start again.")
             case .bluetoothOnly(let name)?:
-                warning("\(name) is connected over Bluetooth. The test needs the dongle or the cable, so switch it over and press Start again.")
+                warning("\(name) is connected over Bluetooth. The full test needs the dongle or the cable: switch it over and press Start again. Or run the shorter Bluetooth test, which only reads.")
             case nil:
                 EmptyView()
+            }
+        }
+    }
+
+    private var bluetooth: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            stepTitle("Bluetooth", changes: false)
+            note("Read-only. What your mouse shares over Bluetooth, and which of Razer's commands it answers there. macOS may ask you to allow Bluetooth first.")
+            if model.running {
+                running("Reading your mouse over Bluetooth. This can take up to half a minute.")
+            } else if let report = model.report, let bt = report.bluetooth {
+                card {
+                    VStack(spacing: 4) {
+                        row("Name", report.device.name)
+                        row("Product ID", String(format: "0x%04X", report.device.productID))
+                        row("Razer's service", bt.razerService ? "Yes" : "No")
+                        row("Battery", bt.batteryLevel.map { "\($0)%" } ?? "Unknown")
+                        if let reads = report.capabilities?.reads {
+                            row("Answered", "\(reads.filter { $0.answer == .answered }.count) of \(reads.count) reads")
+                        }
+                        if let table = report.capabilities?.buttonTable, !table.isEmpty {
+                            row("Button table", "\(table.count) \(table.count == 1 ? "entry" : "entries")")
+                        }
+                    }
+                }
+                if let error = bt.error { warning(error) }
             }
         }
     }
@@ -265,6 +292,12 @@ struct DeviceTestView: View {
             }
             note(report.replyEmail.map { "Your report is on its way to the maintainer, who can reply to \($0)." }
                  ?? "Your report is on its way to the maintainer.")
+            if report.device.connection == .bluetooth {
+                card {
+                    Text("Over its dongle or cable, MacRazer can run the full test. If your mouse has either, switch to it and run the test again from the menu.")
+                        .font(.system(size: 13)).fixedSize(horizontal: false, vertical: true)
+                }
+            }
             if let other = model.otherLink {
                 card {
                     Text(other == .cable
@@ -366,6 +399,9 @@ struct DeviceTestView: View {
             case .intro:
                 Button("Cancel", action: onClose)
                 Spacer()
+                if case .bluetoothOnly? = model.blocker {
+                    Button("Bluetooth test") { model.startBluetooth() }
+                }
                 Button("Start") { model.start() }.keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
             case .permission:
                 Button("Continue without it") { model.continueWithoutAccess() }
@@ -375,6 +411,10 @@ struct DeviceTestView: View {
                 } else {
                     Button("Grant access") { model.grantAccess() }.keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
                 }
+            case .bluetooth:
+                Spacer()
+                Button("Next") { model.next() }.disabled(model.running)
+                    .keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
             case .review where model.sendState == .sent:
                 if model.otherLink != nil { Button("Test again") { model.testAgain() } }
                 Spacer()

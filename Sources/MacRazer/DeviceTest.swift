@@ -11,7 +11,7 @@ import Foundation
 /// Never in here: the serial number (the app keys a mouse by it, and it names one physical
 /// unit), USB locations, or anything about the Mac beyond its OS version.
 struct DeviceReport: Codable, Equatable {
-    static let currentSchema = 3
+    static let currentSchema = 4
 
     var schemaVersion = DeviceReport.currentSchema
     var appVersion: String
@@ -28,6 +28,10 @@ struct DeviceReport: Codable, Equatable {
     /// What the mouse answers to commands the steps don't use, read once after Identify.
     /// Schema 2; nil in earlier reports and when Identify found no id to ask with.
     var capabilities: CapabilitiesData?
+    /// What the mouse showed over Bluetooth, for a report made there
+    /// (`DeviceTestSteps.bluetoothReport`). Schema 4. Its reads are in `capabilities`, with
+    /// the Bluetooth key's class and command in place of the USB ones.
+    var bluetooth: BluetoothData?
     var verdict: DeviceTestVerdict?
     var comment: String?
     /// How the person would like to be credited in the README, if at all.
@@ -49,7 +53,7 @@ struct DeviceReport: Codable, Equatable {
         var controlInterface: Int?
     }
 
-    enum Connection: String, Codable { case cable, dongle }
+    enum Connection: String, Codable { case cable, dongle, bluetooth }
 
     struct Registry: Codable, Equatable {
         var name: String
@@ -186,9 +190,26 @@ struct DeviceReport: Codable, Equatable {
 
     /// One entry of a button function table: its id and the seven-byte block it holds (a
     /// function type, the data's length, then the data, e.g. 01 01 04 for mouse button 4).
+    /// Over Bluetooth, whose layout isn't known yet, the reply's first
+    /// `DeviceTestSteps.capabilityResponseBytes` bytes as they came.
     struct ButtonEntry: Codable, Equatable {
         var id: UInt8
         var block: [UInt8]
+    }
+
+    struct BluetoothData: Codable, Equatable {
+        /// Every GATT service the mouse has, as UUID strings.
+        var services: [String] = []
+        /// Whether one of them is Razer's control service (`BLEProtocol.serviceUUID`).
+        var razerService = false
+        /// From the Device Information service's PnP ID.
+        var pnpVendorID: Int?
+        var pnpProductID: Int?
+        var pnpVersion: Int?
+        /// The standard Battery service's level, in percent.
+        var batteryLevel: Int?
+        /// Why part of it couldn't be read: Bluetooth off or not allowed, a slow setup.
+        var error: String?
     }
 
     struct CapabilityRead: Codable, Equatable {
@@ -526,6 +547,116 @@ enum DeviceTestSteps {
             }
             return read
         })
+    }
+
+    // MARK: Bluetooth
+
+    /// Read-only keys over Razer's Bluetooth service, from the Basilisk V3 X HyperSpeed (#32)
+    /// and the Basilisk V4 Pro (#55). The third key byte of a settings read is the profile
+    /// slot, 0x01 here. Built here rather than in `BLEProtocol.Key`, where #55 adds its own.
+    static let bluetoothReads: [(name: String, key: BLEProtocol.Key)] = {
+        typealias Key = BLEProtocol.Key
+        var reads: [(String, Key)] = [
+            ("battery", .battery),
+            ("sleepTimeout", .powerTimeoutGet),
+            ("lowBatteryThreshold", Key(0x05, 0x82, 0x00, 0x00)),
+            ("profileSlots", Key(0x03, 0x80, 0x00, 0x00)),
+            ("activeProfileSlot", Key(0x03, 0x82, 0x00, 0x00)),
+            ("dpiStages", .dpiStagesGet),
+            ("buttonFunction", bluetoothButtonRead(0x04)),
+            ("buttonFunction", bluetoothButtonRead(0x60)),
+        ]
+        // The LED ids the USB side knows of: ZERO, SCROLL, LOGO, BACKLIGHT and underglow.
+        for led: UInt8 in [0x00, 0x01, 0x04, 0x05, 0x0A] {
+            reads.append(("brightness", Key(0x10, 0x85, 0x01, led)))
+            reads.append(("zoneEffect", Key(0x10, 0x83, 0x01, led)))
+        }
+        return reads
+    }()
+
+    /// An entry of the function table over Bluetooth (the DPI Cycle entry is 0x60).
+    static func bluetoothButtonRead(_ id: UInt8) -> BLEProtocol.Key { BLEProtocol.Key(0x08, 0x84, 0x00, id) }
+
+    /// `bluetoothReads`, each asked once, and the button table when one of its probes answered.
+    /// Stops asking after a few timeouts in a row: each costs a second and a half over
+    /// Bluetooth, and a mouse that stopped answering won't start again.
+    static func bluetoothCapabilities(_ channel: BluetoothReadChannel) -> DeviceReport.CapabilitiesData {
+        var timeouts = 0
+        let reads = bluetoothReads.map { name, key -> DeviceReport.CapabilityRead in
+            let b = key.bytes
+            var read = DeviceReport.CapabilityRead(name: name, commandClass: b[0], commandId: b[1],
+                                                   led: b[0] == 0x10 ? b[3] : nil, answer: .noAnswer)
+            guard timeouts < 3 else { return read }
+            (read.answer, read.response) = bluetoothAnswer(channel, key, timeouts: &timeouts)
+            return read
+        }
+        var data = DeviceReport.CapabilitiesData(reads: reads)
+        if timeouts < 3, reads.contains(where: { $0.name == "buttonFunction" && $0.answer == .answered }) {
+            data.buttonTable = buttonTableIds.compactMap { id in
+                guard timeouts < 3 else { return nil }
+                let (answer, response) = bluetoothAnswer(channel, bluetoothButtonRead(id), timeouts: &timeouts)
+                // Replies are matched to their request by frame id, so no stale one gets here.
+                guard answer == .answered, let response, response.contains(where: { $0 != 0 }) else { return nil }
+                return .init(id: id, block: response)
+            }
+        }
+        return data
+    }
+
+    private static func bluetoothAnswer(_ channel: BluetoothReadChannel, _ key: BLEProtocol.Key, timeouts: inout Int)
+        -> (DeviceReport.CapabilityAnswer, [UInt8]?) {
+        do {
+            let payload = try channel.read(key)
+            timeouts = 0
+            return (.answered, Array(payload.prefix(capabilityResponseBytes)))
+        } catch HIDDevice.HIDError.commandFailed {
+            timeouts = 0
+            return (.failed, nil)
+        } catch HIDDevice.HIDError.notSupported {
+            timeouts = 0
+            return (.notSupported, nil)
+        } catch {
+            timeouts += 1
+            return (.noAnswer, nil)
+        }
+    }
+
+    /// The whole Bluetooth test for the mouse macOS lists as `name`. Blocks for as long as the
+    /// reads take: call it off the main thread. Shared by the app and the CLI.
+    static func bluetoothTest(name: String) -> DeviceReport {
+        let hid = HIDDevice.bluetoothHID(name: name)
+        let (probe, capabilities) = BluetoothProbe.describe(hidName: name, bluetoothCapabilities)
+        return bluetoothReport(name: name, hid: hid, probe: probe, capabilities: capabilities)
+    }
+
+    /// The report for a mouse on Bluetooth, from what `BluetoothProbe` found and the reads
+    /// it ran. Identify passes when Razer's service answered a read; with no such service it's
+    /// not on this mouse (#35's Pro Click V2 has none). Battery comes from the standard
+    /// service. The other steps need the USB protocol and stay skipped.
+    static func bluetoothReport(name: String, hid: HIDDevice.BluetoothHID, probe: DeviceReport.BluetoothData,
+                                capabilities: DeviceReport.CapabilitiesData?) -> DeviceReport {
+        let registry = hid.productID.flatMap { RazerDevices.info(pid: $0) }
+        var identify = DeviceReport.StepRecord<DeviceReport.IdentifyData>()
+        if !probe.razerService {
+            identify.outcome = .notSupported
+            identify.error = probe.error ?? "No Razer control service over Bluetooth."
+        } else {
+            identify.outcome = capabilities?.reads.contains { $0.answer == .answered } == true ? .passed : .failed
+            identify.error = probe.error
+        }
+        var battery = DeviceReport.StepRecord<DeviceReport.BatteryData>()
+        if let level = probe.batteryLevel {
+            battery = .init(outcome: .passed, data: .init(percent: level))
+        }
+        var report = DeviceReport(
+            appVersion: AppInfo.displayVersion, macOSVersion: DeviceReport.currentMacOSVersion,
+            device: .init(vendorID: hid.vendorID ?? 0, productID: hid.productID ?? 0, name: name,
+                          connection: .bluetooth, interfaces: hid.interfaces, controlInterface: nil),
+            registry: registry.map(DeviceReport.Registry.init),
+            identify: identify, battery: battery, dpi: .init(), polling: .init(), lighting: .init(), buttons: .init(),
+            capabilities: capabilities, bluetooth: probe)
+        report.verdict = report.currentVerdict()
+        return report
     }
 
     static func battery(_ channel: DeviceProbeChannel, expectsBattery: Bool?)

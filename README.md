@@ -88,8 +88,8 @@ column is about who has actually seen it happen.
 menu bar icon and choose **Help Support This Mouse…**. It runs the same probes as the
 commands below, puts every setting back, and builds the report for you. **Send** emails it to
 the maintainer, or you can copy it or open a GitHub issue with it. On a verified mouse the item
-reads **Test This Mouse…**, and a report confirms it still works on your firmware. The test
-needs the dongle or a cable, even on a mouse that also works over Bluetooth.
+reads **Test This Mouse…**, and a report confirms it still works on your firmware. The full
+test needs the dongle or a cable. A mouse on Bluetooth gets a shorter test that only reads.
 
 You don't have to find the menu item. When an unverified mouse connects by cable or dongle,
 MacRazer asks once, when no other window is open. If you say Not Now, it reminds you once a
@@ -114,6 +114,8 @@ You can read the whole report on the last screen before it goes anywhere.
 - If the mouse keeps a button function table, every entry in it. With the buttons you press,
   that is most of what's needed to remap them.
 - If no transaction id answers, whether the mouse's other interfaces do.
+- From the Bluetooth test: the Bluetooth services the mouse has, its standard battery level,
+  and which of Razer's Bluetooth commands it answers, button table included.
 - Which extra buttons you pressed during the button step, not when.
 - The app and macOS versions.
 - Only if you fill them in: a comment, a name to credit, and an email address for a reply.

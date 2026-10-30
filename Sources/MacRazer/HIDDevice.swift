@@ -157,9 +157,11 @@ final class HIDDevice {
 
     /// Whether a Bluetooth HID mouse is a Razer one, and one we can control. Control needs
     /// the exact Bluetooth vendor and product id (a name match could be another model on the
-    /// same service); recognising it for the hint only needs the name.
+    /// same service). Razer's Bluetooth vendor id alone is enough to recognise one, whatever
+    /// its name: the Pro Click V2 calls itself "PCV2 Ver" (#35). Without it, the name.
     static func classifyBluetoothMouse(vendorID: Int?, productID: Int?, name: String) -> BluetoothMouse? {
-        if vendorID == BLEProtocol.vendorId, let pid = productID, RazerDevices.bluetoothPIDs.contains(pid) {
+        if vendorID == BLEProtocol.vendorId {
+            let pid = productID.flatMap { RazerDevices.bluetoothPIDs.contains($0) ? $0 : nil }
             return BluetoothMouse(name: name, controllablePID: pid)
         }
         let lower = name.lowercased()
@@ -167,21 +169,43 @@ final class HIDDevice {
         return BluetoothMouse(name: name, controllablePID: nil)
     }
 
+    /// What the device test's report says about one interface.
+    private static func interfaceSummary(_ dev: IOHIDDevice) -> DeviceProbe.Interface {
+        DeviceProbe.Interface(
+            productID: intProp(dev, kIOHIDProductIDKey) ?? 0,
+            product: strProp(dev, kIOHIDProductKey) ?? "",
+            usagePage: intProp(dev, kIOHIDPrimaryUsagePageKey) ?? 0,
+            usage: intProp(dev, kIOHIDPrimaryUsageKey) ?? 0,
+            maxFeatureReportSize: intProp(dev, kIOHIDMaxFeatureReportSizeKey) ?? 0,
+            maxInputReportSize: intProp(dev, kIOHIDMaxInputReportSizeKey) ?? 0,
+            transport: strProp(dev, kIOHIDTransportKey) ?? "")
+    }
+
+    /// A Bluetooth HID device's ids and interfaces, for the device test's report.
+    struct BluetoothHID: Equatable {
+        let vendorID: Int?
+        let productID: Int?
+        let interfaces: [DeviceProbe.Interface]
+    }
+
+    /// Every Bluetooth HID interface macOS lists under `name`: report sizes included, as a
+    /// feature report of 1 byte is what says a mouse can't take Razer's control report there.
+    static func bluetoothHID(name: String) -> BluetoothHID {
+        let devices = devices(matching: [kIOHIDProductKey as String: name]).filter {
+            (strProp($0, kIOHIDTransportKey) ?? "").localizedCaseInsensitiveContains("Bluetooth")
+        }
+        let interfaces = devices.map(interfaceSummary).sorted { ($0.usagePage, $0.usage, $0.maxFeatureReportSize) < ($1.usagePage, $1.usage, $1.maxFeatureReportSize) }
+        return BluetoothHID(vendorID: devices.first.flatMap { intProp($0, kIOHIDVendorIDKey) },
+                            productID: devices.first.flatMap { intProp($0, kIOHIDProductIDKey) },
+                            interfaces: interfaces)
+    }
+
     /// Every HID interface the vendor's devices expose, in a stable order, and which one
     /// `open(vendorId:)` would pick for control. For the device test's report; the order is
     /// sorted because macOS returns the set in no particular order.
     static func interfaceSummaries(vendorId: Int) -> (interfaces: [DeviceProbe.Interface], control: Int?) {
         let devices = matchingDevices(vendorId: vendorId)
-        let summaries = devices.map { dev in
-            DeviceProbe.Interface(
-                productID: intProp(dev, kIOHIDProductIDKey) ?? 0,
-                product: strProp(dev, kIOHIDProductKey) ?? "",
-                usagePage: intProp(dev, kIOHIDPrimaryUsagePageKey) ?? 0,
-                usage: intProp(dev, kIOHIDPrimaryUsageKey) ?? 0,
-                maxFeatureReportSize: intProp(dev, kIOHIDMaxFeatureReportSizeKey) ?? 0,
-                maxInputReportSize: intProp(dev, kIOHIDMaxInputReportSizeKey) ?? 0,
-                transport: strProp(dev, kIOHIDTransportKey) ?? "")
-        }
+        let summaries = devices.map(interfaceSummary)
         // The same choice `controlInterface(vendorId:)` makes, so the report names the one opened.
         let chosen = HIDDeviceSelection.controlInterfaceIndex(interfaces: interfaceInfos(devices)).map { summaries[$0] }
         let sorted = summaries.sorted {

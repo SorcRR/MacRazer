@@ -84,6 +84,12 @@ final class BluetoothLinkTests: XCTestCase {
                        HIDDevice.BluetoothMouse(name: "Cobra HS", controllablePID: nil))
     }
 
+    /// Razer's Bluetooth vendor id is enough, whatever the name: #35's Pro Click V2 is "PCV2 Ver".
+    func testRazersVendorIdIsRecognisedWithoutAName() {
+        XCTAssertEqual(HIDDevice.classifyBluetoothMouse(vendorID: 0x068E, productID: 0x00C9, name: "PCV2 Ver"),
+                       HIDDevice.BluetoothMouse(name: "PCV2 Ver", controllablePID: nil))
+    }
+
     func testOtherMiceAreIgnored() {
         XCTAssertNil(HIDDevice.classifyBluetoothMouse(vendorID: 0x004C, productID: 0x0269, name: "Magic Mouse"))
         XCTAssertNil(HIDDevice.classifyBluetoothMouse(vendorID: nil, productID: nil, name: "MX Master 3"))

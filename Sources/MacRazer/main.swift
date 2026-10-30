@@ -623,6 +623,21 @@ case "devicetest":
     }
     print(json)
 
+case "bluetoothtest":
+    // The in-app Bluetooth test: read-only, for a mouse macOS has connected over Bluetooth.
+    guard let mouse = HIDDevice.bluetoothRazerMouse() else {
+        status("✗ No Razer mouse is connected over Bluetooth.")
+        exit(1)
+    }
+    status("Reading \(mouse.name) over Bluetooth. macOS may ask to allow Bluetooth first.")
+    let report = DeviceTestSteps.bluetoothTest(name: mouse.name)
+    let json = DeviceReportOutput.json(report, forPublic: true)
+    guard !json.isEmpty else {
+        status("✗ The report couldn't be encoded.")
+        exit(2)
+    }
+    print(json)
+
 case "rgb":
     guard let dev = openDevice() else { exit(1) }
     defer { dev.close() }
@@ -663,6 +678,6 @@ case "rgb":
 
 default:
     print("Unknown command: \(command)")
-    print("Available: info, discover, devicetest, battery, dpi [x] [y], poll [hz], stages [d1,d2,…] [active], rgb <static rrggbb|spectrum|wave|off>, brightness [pct], login-item [on|off]")
+    print("Available: info, discover, devicetest, bluetoothtest, battery, dpi [x] [y], poll [hz], stages [d1,d2,…] [active], rgb <static rrggbb|spectrum|wave|off>, brightness [pct], login-item [on|off]")
     exit(64)
 }
