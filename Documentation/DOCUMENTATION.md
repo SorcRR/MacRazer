@@ -593,7 +593,7 @@ swift run MacRazer battery # read battery %
 swift run MacRazer dpi [x] [y] # read / set DPI
 swift run MacRazer stages # read (and optionally write) the onboard DPI stage table
 swift run MacRazer poll [125|500|1000]
-swift run MacRazer rgb static ff0000 # or: spectrum | wave | off
+swift run MacRazer rgb static ff0000 # or: spectrum | wave [speed hex, lower is faster] | off
 swift run MacRazer brightness [0-100] # sweeps LOGO/SCROLL/ZERO/BACKLIGHT LEDs
 swift run MacRazer discover # which transaction ids the mouse answers to
 swift run MacRazer devicetest # the device test without its window, as JSON on stdout

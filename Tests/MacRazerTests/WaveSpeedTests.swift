@@ -60,4 +60,10 @@ final class WaveSpeedTests: XCTestCase {
         let decoded = try JSONDecoder().decode(MouseProfile.self, from: JSONSerialization.data(withJSONObject: json))
         XCTAssertNil(decoded.waveSpeed)
     }
+
+    func testSpokenValueNamesTheEndsAndTheMiddle() {
+        XCTAssertEqual(WaveSpeed.spokenValue(fromFraction: 0), "Slowest")
+        XCTAssertEqual(WaveSpeed.spokenValue(fromFraction: WaveSpeed.fraction(fromByte: WaveSpeed.standard)), "Standard")
+        XCTAssertEqual(WaveSpeed.spokenValue(fromFraction: 1), "Fastest")
+    }
 }

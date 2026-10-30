@@ -1124,7 +1124,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             waveSpeed = speed
             return
         }
-        sendLighting(RazerCommands.setWave(speed: speed)) {
+        sendLighting(report(for: .wave, color: lightingColor, waveSpeed: speed)) {
             self.waveSpeed = speed
         }
     }
@@ -1206,7 +1206,8 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         let hz = profile.pollRate == 0 ? 1000 : profile.pollRate
         let brightnessPct = max(0, min(profile.brightness, 100))
         let effect = profile.lightingEffect
-        let speed = profile.waveSpeed ?? WaveSpeed.standard
+        // A profile saved before the speed existed keeps whatever speed the slider has.
+        let speed = profile.waveSpeed ?? waveSpeed
         let lighting = report(for: effect, color: profile.color, waveSpeed: speed)
         let color = profile.color
         let mappings = profile.buttonMappings

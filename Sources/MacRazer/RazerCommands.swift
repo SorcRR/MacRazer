@@ -56,6 +56,18 @@ enum WaveSpeed {
         return UInt8((Double(slowest) * pow(Double(fastest) / Double(slowest), f)).rounded())
     }
 
+    /// What VoiceOver says for a slider position: the slider runs 0 to 1, and a bare
+    /// percentage there reads like a brightness ("0%" sounds like off).
+    static func spokenValue(fromFraction fraction: Double) -> String {
+        switch fraction {
+        case ..<0.15: return "Slowest"
+        case ..<0.4: return "Slow"
+        case ..<0.6: return "Standard"
+        case ..<0.85: return "Fast"
+        default: return "Fastest"
+        }
+    }
+
     /// The slider position for a speed byte; bytes outside the range pin to its ends.
     static func fraction(fromByte byte: UInt8) -> Double {
         let b = Double(max(fastest, min(byte, slowest)))

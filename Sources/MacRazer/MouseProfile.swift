@@ -37,7 +37,7 @@ struct MouseProfile: Codable, Identifiable, Equatable {
     /// stage table, exactly as they always did).
     var dpiStages: [Int]?
     /// The wave's speed byte (`WaveSpeed`). Optional for the same reason: older profiles
-    /// apply at the standard speed.
+    /// apply at whatever speed the slider has.
     var waveSpeed: UInt8?
 
     init(name: String, dpi: Int, pollRate: Int, brightness: Int, effect: String, color: RGB,

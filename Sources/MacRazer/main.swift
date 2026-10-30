@@ -685,11 +685,18 @@ case "rgb":
         case "spectrum":
             print("Setting spectrum cycle …"); report = RazerCommands.setSpectrum()
         case "wave":
-            print("Setting wave …"); report = RazerCommands.setWave()
+            // Optional speed byte in hex, lower is faster (`WaveSpeed`): `rgb wave c8` is the
+            // slider's slowest, `rgb wave 08` its fastest.
+            let speedArg = args.dropFirst(2).first
+            guard let speed = speedArg.map({ UInt8($0, radix: 16) }) ?? WaveSpeed.standard else {
+                print("Usage: rgb wave [speed]   speed is a hex byte, lower is faster, e.g. `rgb wave c8` (slow)")
+                exit(64)
+            }
+            print(String(format: "Setting wave at speed 0x%02x …", speed)); report = RazerCommands.setWave(speed: speed)
         case "off":
             print("Turning lighting off …"); report = RazerCommands.setNone()
         default:
-            print("Usage: rgb <static rrggbb | spectrum | wave | off>")
+            print("Usage: rgb <static rrggbb | spectrum | wave [speed] | off>")
             exit(64)
         }
         let resp = try DeviceProbe.applyLighting(dev, report)

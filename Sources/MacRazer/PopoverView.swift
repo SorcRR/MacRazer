@@ -1401,6 +1401,7 @@ struct PopoverView: View {
             .tint(.razerGreen)
             .controlSize(.small)
             .accessibilityLabel("Wave speed")
+            .accessibilityValue(WaveSpeed.spokenValue(fromFraction: value.wrappedValue))
             Image(systemName: "hare.fill").font(.system(size: 11)).foregroundStyle(.secondary)
         }
     }
