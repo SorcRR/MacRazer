@@ -43,6 +43,16 @@ final class PopoverFocusReturnTests: XCTestCase {
         XCTAssertFalse(PopoverFocusReturn.menuClickHeld(pressedButtons: 0, control: true), "Control alone")
     }
 
+    /// The second right-click after a menu used to open the popover: its action came without
+    /// the press as the current event. The button still being down is enough.
+    func testARightClickIsKnownWithoutItsEvent() {
+        XCTAssertTrue(PopoverFocusReturn.isMenuClick(eventType: .rightMouseDown, pressedButtons: 0b10, control: false))
+        XCTAssertTrue(PopoverFocusReturn.isMenuClick(eventType: nil, pressedButtons: 0b10, control: false))
+        XCTAssertTrue(PopoverFocusReturn.isMenuClick(eventType: .leftMouseUp, pressedButtons: 0b10, control: false))
+        XCTAssertTrue(PopoverFocusReturn.isMenuClick(eventType: .leftMouseUp, pressedButtons: 0, control: true), "Control-click")
+        XCTAssertFalse(PopoverFocusReturn.isMenuClick(eventType: .leftMouseUp, pressedButtons: 0, control: false))
+    }
+
     func testEachReasonToStayIsEnoughOnItsOwn() {
         for (name, v) in [
             ("closed on the way to one of the app's windows or panels", verdict(window: true)),

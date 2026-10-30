@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Part of MacRazer, a control app for Razer mice on macOS. See LICENSE and NOTICE.md.
 
+import AppKit
+
 /// Whether closing the popover should give keyboard focus back to the app the user was in.
 ///
 /// Opening the popover activates MacRazer, so its controls answer the first click. But the app
@@ -46,6 +48,15 @@ enum PopoverFocusReturn {
     /// `pressedButtons` is `NSEvent.pressedMouseButtons`: bit 0 left, bit 1 right.
     static func menuClickHeld(pressedButtons: Int, control: Bool) -> Bool {
         pressedButtons & 0b10 != 0 || (pressedButtons & 0b1 != 0 && control)
+    }
+
+    /// Whether a click on the menu bar icon is the one for the right-click menu. The event type
+    /// alone isn't enough: after the menu has run its own tracking inside a press, the next
+    /// right-click's action can arrive without `NSApp.currentEvent` being that press, and the
+    /// popover opened in place of the menu. The right button still being down settles it, as
+    /// the action comes on the press.
+    static func isMenuClick(eventType: NSEvent.EventType?, pressedButtons: Int, control: Bool) -> Bool {
+        eventType == .rightMouseDown || eventType == .rightMouseUp || pressedButtons & 0b10 != 0 || control
     }
 
     static func verdict(_ c: Conditions) -> Verdict {

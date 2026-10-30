@@ -383,9 +383,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
 
     @objc private func statusItemClicked() {
         let event = NSApp.currentEvent
-        let isRightClick = event?.type == .rightMouseDown
-            || event?.modifierFlags.contains(.control) == true
-        if isRightClick {
+        if PopoverFocusReturn.isMenuClick(eventType: event?.type,
+                                          pressedButtons: NSEvent.pressedMouseButtons,
+                                          control: event?.modifierFlags.contains(.control) == true
+                                              || NSEvent.modifierFlags.contains(.control)) {
             showAppMenu()
         } else {
             togglePopover()
