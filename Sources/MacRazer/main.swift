@@ -244,9 +244,13 @@ case "render-settings":
     // `update` shows the Updates section in its available state, which is the only way to see
     // the Install Now button without waiting for a real release.
     if args.contains("update") { su.loadPreviewState() }
-    writeViewPNG(SettingsView(controller: sc, launchAtLogin: sl, updateChecker: su, onDone: {},
-                              usageStats: .preview(consent: args.contains("notsharing") ? .declined : .granted)),
-                 to: settingsPath)
+    // A page name (`privacy`, `appearance`, `updates`) opens that page instead of General.
+    let settingsPane = SettingsPane.allCases.first { args.contains($0.rawValue) } ?? .general
+    // Hosted rather than `ImageRenderer`: each page is a scroll view.
+    writeHostedPNG(SettingsView(controller: sc, launchAtLogin: sl, updateChecker: su, onDone: {},
+                                usageStats: .preview(consent: args.contains("notsharing") ? .declined : .granted),
+                                pane: settingsPane),
+                   size: SettingsView.size, to: settingsPath)
 
 case "render-updated":
     // The window shown on the first launch after an update. `nonotes` shows the fallback

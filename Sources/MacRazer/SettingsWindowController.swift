@@ -39,7 +39,14 @@ final class SettingsWindowController: AppWindowPresenter {
             hosting.sizingOptions = [.preferredContentSize]
             let w = NSWindow(contentViewController: hosting)
             w.title = "MacRazer Settings"
-            w.styleMask = [.titled, .closable]
+            // The sidebar runs up under the traffic lights, as in System Settings, so the
+            // title bar draws no title of its own. The title stays set for the Window menu
+            // and VoiceOver.
+            w.styleMask = [.titled, .closable, .fullSizeContentView]
+            w.titleVisibility = .hidden
+            // The content now covers the title bar strip, and a hosting view doesn't pass a
+            // drag there on to the window. Controls still take their own clicks.
+            w.isMovableByWindowBackground = true
             w.isReleasedWhenClosed = false
             // Themed like the popover per Settings › Appearance, kept up to date when it changes.
             AppearanceSettings.shared.track(w)
