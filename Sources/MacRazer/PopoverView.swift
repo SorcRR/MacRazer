@@ -637,8 +637,8 @@ struct PopoverView: View {
         HStack(spacing: 6) {
             TextField("Profile name", text: $newProfileName, onCommit: saveNewProfile)
                 .textFieldStyle(.plain)
-                .font(.system(size: 11.5))
-                .padding(.horizontal, 8).padding(.vertical, 4)
+                .font(.system(size: 12.5))
+                .padding(.horizontal, 8).padding(.vertical, 6)
                 .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
             Button("Save", action: saveNewProfile)
                 .buttonStyle(RazerProminentButtonStyle())

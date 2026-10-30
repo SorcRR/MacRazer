@@ -144,12 +144,11 @@ struct DeviceTestView: View {
                 outcomeRow("Identify", report.identify.outcome)
                 VStack(alignment: .leading, spacing: 4) {
                     Text("How is it connected right now?").font(.system(size: 12))
-                    Picker("", selection: $model.connection) {
-                        Text("Not sure").tag(DeviceReport.Connection?.none)
-                        Text("Cable").tag(DeviceReport.Connection?.some(.cable))
-                        Text("Dongle").tag(DeviceReport.Connection?.some(.dongle))
-                    }
-                    .pickerStyle(.segmented).labelsHidden().controlSize(.small)
+                    ChoiceButtons(selection: $model.connection, options: [
+                        .init(value: .some(.cable), title: "Cable", icon: "cable.connector"),
+                        .init(value: .some(.dongle), title: "Dongle", icon: "antenna.radiowaves.left.and.right"),
+                        .init(value: nil, title: "Not sure", icon: "questionmark.circle"),
+                    ])
                 }
             }
         }
@@ -176,7 +175,7 @@ struct DeviceTestView: View {
                 }
                 outcomeRow("Battery", record.outcome)
                 note("Plug in the cable now and check again to see charging detected.")
-                Button("Check again") { Task { await model.runBattery() } }.controlSize(.small)
+                Button("Check again") { Task { await model.runBattery() } }
             }
         }
     }
@@ -338,12 +337,12 @@ struct DeviceTestView: View {
                 .font(.system(size: 11))
             }
             TextField("Name or GitHub handle to credit (optional)", text: $model.credit)
-                .textFieldStyle(.roundedBorder).controlSize(.small)
+                .inputBox()
             // Only Send carries it, so without the Worker there's nowhere for it to go.
             if model.canSend {
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 6) {
                 TextField("Your email, if you'd like a reply (optional)", text: $model.replyEmail)
-                    .textFieldStyle(.roundedBorder).controlSize(.small)
+                    .inputBox()
                 if let problem = model.emailProblem {
                     warning(problem)
                 } else {
@@ -356,19 +355,7 @@ struct DeviceTestView: View {
             VStack(alignment: .trailing, spacing: 2) {
                 TextEditor(text: Binding(get: { model.comment },
                                          set: { model.comment = String($0.prefix(DeviceReportOutput.maxComment)) }))
-                    .font(.system(size: 12))
-                    .frame(height: 54)
-                    // The editor's own opaque background would sit as a flat box on a glass or tinted
-                    // window; a faint fill like the cards keeps it readable on all of them.
-                    .scrollContentBackground(.hidden)
-                    .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 6))
-                    .overlay(alignment: .topLeading) {
-                        if model.comment.isEmpty {
-                            Text("Comments or feedback (optional)").font(.system(size: 12)).foregroundStyle(.tertiary)
-                                .padding(.leading, 5).padding(.top, 1).allowsHitTesting(false)
-                        }
-                    }
-                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.primary.opacity(0.15)))
+                    .editorBox(placeholder: "Comments or feedback (optional)", isEmpty: model.comment.isEmpty)
                 // Verbatim: a localized number would print 2000 as "2.000" in some regions.
                 Text(verbatim: "\(model.comment.count) / \(DeviceReportOutput.maxComment)")
                     .font(.system(size: 10)).foregroundStyle(.secondary)
@@ -526,12 +513,11 @@ struct DeviceTestView: View {
         card {
             VStack(alignment: .leading, spacing: 6) {
                 Text(text).font(.system(size: 12, weight: .medium))
-                Picker("", selection: answer) {
-                    Text("Yes").tag(DeviceTestModel.Answer?.some(.yes))
-                    Text("No").tag(DeviceTestModel.Answer?.some(.no))
-                    Text("Not sure").tag(DeviceTestModel.Answer?.some(.unsure))
-                }
-                .pickerStyle(.segmented).labelsHidden().controlSize(.small)
+                ChoiceButtons(selection: answer, options: [
+                    .init(value: .some(.yes), title: "Yes", icon: "checkmark.circle"),
+                    .init(value: .some(.no), title: "No", icon: "xmark.circle"),
+                    .init(value: .some(.unsure), title: "Not sure", icon: "questionmark.circle"),
+                ])
             }
         }
     }
