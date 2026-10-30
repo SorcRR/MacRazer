@@ -122,8 +122,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         statusItem.button?.title = " …"
         statusItem.button?.target = self
         statusItem.button?.action = #selector(statusItemClicked)
-        // Receive both clicks so we can branch: left → popover, right → app menu.
-        statusItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        // Receive both clicks so we can branch: left → popover, right → app menu. The menu opens
+        // on the right button's press, as macOS's own menu bar items do: the popover closes on
+        // that press too, and a menu opened only on the release raced its focus hand-back.
+        statusItem.button?.sendAction(on: [.leftMouseUp, .rightMouseDown])
 
         popover.behavior = .transient
         popover.delegate = self
@@ -381,7 +383,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
 
     @objc private func statusItemClicked() {
         let event = NSApp.currentEvent
-        let isRightClick = event?.type == .rightMouseUp
+        let isRightClick = event?.type == .rightMouseDown
             || event?.modifierFlags.contains(.control) == true
         if isRightClick {
             showAppMenu()
@@ -735,14 +737,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     /// Hands keyboard focus back to the app the user was in, when the popover session is over
     /// and nothing says to stay. Called a turn after each way that session can end: the popover
     /// closing, and the right-click menu finishing. See `PopoverFocusReturn` for the rules.
-    /// A right-click, or a Control-click, held down on the menu bar icon right now.
-    private func menuClickHeldOnStatusItem() -> Bool {
-        let buttons = NSEvent.pressedMouseButtons
-        let held = buttons & 0b10 != 0 || (buttons & 0b1 != 0 && NSEvent.modifierFlags.contains(.control))
-        guard held, let window = statusItem.button?.window else { return false }
-        return window.frame.contains(NSEvent.mouseLocation)
-    }
-
     private func returnFocusAfterPopover() {
         let previous = appBeforePopover.flatMap { $0.isTerminated ? nil : $0 }
         let popoverWindow = popover.contentViewController?.view.window
@@ -751,12 +745,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         }
         let verdict = PopoverFocusReturn.verdict(.init(
             appMenuOpen: appMenuOpen,
-            menuClickHeld: menuClickHeldOnStatusItem(),
+            menuClickHeld: PopoverFocusReturn.menuClickHeld(pressedButtons: NSEvent.pressedMouseButtons,
+                                                            control: NSEvent.modifierFlags.contains(.control)),
             popoverShown: popover.isShown,
             windowOpened: windowRequested || somethingNewOnScreen,
             appIsActive: NSApp.isActive,
             hasPreviousApp: previous != nil))
         switch verdict {
+        case .wait where !appMenuOpen && !popover.isShown:
+            // Only a held click is keeping it: a menu may open when it lets go, or nothing may,
+            // when it's released off the icon. Look again shortly rather than leave focus here.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in self?.returnFocusAfterPopover() }
         case .wait:
             return
         case .stay:

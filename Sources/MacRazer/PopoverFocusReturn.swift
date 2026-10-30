@@ -14,10 +14,9 @@ enum PopoverFocusReturn {
     struct Conditions: Equatable {
         /// The right-click menu is being tracked. Activating another app now would dismiss it.
         var appMenuOpen: Bool
-        /// A right-click (or Control-click) is held on the menu bar icon: the menu opens when it
-        /// lets go. The popover closes on the press, so without this its close handed focus away
-        /// just as the menu came up, and the menu closed again at once. The menu decides when it
-        /// ends, as for `appMenuOpen`.
+        /// A Control-click is held (`menuClickHeld(pressedButtons:control:)`): its menu opens on
+        /// the release, and the popover closed on the press, so handing focus away in between
+        /// closed that menu as it came up. A right-click opens the menu on its press instead.
         var menuClickHeld = false
         /// The popover is showing again, e.g. "Open Controls" from that menu.
         var popoverShown: Bool
@@ -40,6 +39,13 @@ enum PopoverFocusReturn {
         case stay
         /// The session is over; activate the previous app.
         case returnFocus
+    }
+
+    /// Whether a click that opens the right-click menu is still held: the right button, or the
+    /// left one with Control. Anywhere on screen, as the menu bar can be on every display.
+    /// `pressedButtons` is `NSEvent.pressedMouseButtons`: bit 0 left, bit 1 right.
+    static func menuClickHeld(pressedButtons: Int, control: Bool) -> Bool {
+        pressedButtons & 0b10 != 0 || (pressedButtons & 0b1 != 0 && control)
     }
 
     static func verdict(_ c: Conditions) -> Verdict {

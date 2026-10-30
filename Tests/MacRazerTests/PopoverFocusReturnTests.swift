@@ -36,6 +36,13 @@ final class PopoverFocusReturnTests: XCTestCase {
         XCTAssertEqual(verdict(popover: true, active: false), .wait)
     }
 
+    func testWhichClicksOpenTheMenu() {
+        XCTAssertTrue(PopoverFocusReturn.menuClickHeld(pressedButtons: 0b10, control: false), "right button")
+        XCTAssertTrue(PopoverFocusReturn.menuClickHeld(pressedButtons: 0b1, control: true), "Control-click")
+        XCTAssertFalse(PopoverFocusReturn.menuClickHeld(pressedButtons: 0b1, control: false), "a plain click")
+        XCTAssertFalse(PopoverFocusReturn.menuClickHeld(pressedButtons: 0, control: true), "Control alone")
+    }
+
     func testEachReasonToStayIsEnoughOnItsOwn() {
         for (name, v) in [
             ("closed on the way to one of the app's windows or panels", verdict(window: true)),
