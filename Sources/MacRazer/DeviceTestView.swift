@@ -175,7 +175,7 @@ struct DeviceTestView: View {
                 }
                 outcomeRow("Battery", record.outcome)
                 note("Plug in the cable now and check again to see charging detected.")
-                Button("Check again") { Task { await model.runBattery() } }.controlSize(.large)
+                Button("Check again") { Task { await model.runBattery() } }
             }
         }
     }
