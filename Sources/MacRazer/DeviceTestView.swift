@@ -338,12 +338,12 @@ struct DeviceTestView: View {
                 .font(.system(size: 11))
             }
             TextField("Name or GitHub handle to credit (optional)", text: $model.credit)
-                .textFieldStyle(.roundedBorder).controlSize(.small)
+                .textFieldStyle(.roundedBorder).controlSize(.large)
             // Only Send carries it, so without the Worker there's nowhere for it to go.
             if model.canSend {
             VStack(alignment: .leading, spacing: 2) {
                 TextField("Your email, if you'd like a reply (optional)", text: $model.replyEmail)
-                    .textFieldStyle(.roundedBorder).controlSize(.small)
+                    .textFieldStyle(.roundedBorder).controlSize(.large)
                 if let problem = model.emailProblem {
                     warning(problem)
                 } else {
@@ -356,15 +356,15 @@ struct DeviceTestView: View {
             VStack(alignment: .trailing, spacing: 2) {
                 TextEditor(text: Binding(get: { model.comment },
                                          set: { model.comment = String($0.prefix(DeviceReportOutput.maxComment)) }))
-                    .font(.system(size: 12))
-                    .frame(height: 54)
+                    .font(.system(size: 13))
+                    .frame(height: 80)
                     // The editor's own opaque background would sit as a flat box on a glass or tinted
                     // window; a faint fill like the cards keeps it readable on all of them.
                     .scrollContentBackground(.hidden)
                     .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 6))
                     .overlay(alignment: .topLeading) {
                         if model.comment.isEmpty {
-                            Text("Comments or feedback (optional)").font(.system(size: 12)).foregroundStyle(.tertiary)
+                            Text("Comments or feedback (optional)").font(.system(size: 13)).foregroundStyle(.tertiary)
                                 .padding(.leading, 5).padding(.top, 1).allowsHitTesting(false)
                         }
                     }
