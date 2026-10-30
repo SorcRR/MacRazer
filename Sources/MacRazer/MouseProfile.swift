@@ -8,10 +8,14 @@ import Foundation
 /// effect (it decodes as a plain string and falls back to `.off`), so treat them as frozen.
 enum LightingEffect: String, CaseIterable, Identifiable {
     case staticColor = "Static"
+    case breathing = "Breathing"
     case spectrum = "Spectrum"
     case wave = "Wave"
     case off = "Off"
     var id: Self { self }
+
+    /// The effect takes the lighting colour, so the colour controls apply to it.
+    var usesColor: Bool { self == .staticColor || self == .breathing }
 }
 
 /// A named, switchable snapshot of everything the popover lets you configure: DPI, polling rate,
@@ -27,7 +31,7 @@ struct MouseProfile: Codable, Identifiable, Equatable {
     /// Raw value of `LightingEffect` — stored as a string so one unrecognized value can't
     /// fail the whole profiles array's decode. Read through `lightingEffect`.
     var effect: String
-    /// Only meaningful when the effect is `.staticColor`.
+    /// Only meaningful when the effect `usesColor` (static or breathing).
     var color: RGB
 
     var lightingEffect: LightingEffect { LightingEffect(rawValue: effect) ?? .off }

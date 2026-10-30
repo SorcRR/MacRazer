@@ -160,7 +160,7 @@ struct PopoverView: View {
         VStack(spacing: 0) {
             Spacer(minLength: 0)
             ColorPickerPage(color: $color, onBack: { page = .main }) { rgb in
-                controller.setStaticColor(rgb)
+                controller.setColor(rgb)
             }
             .frame(maxWidth: .infinity)
             Spacer(minLength: 0)
@@ -1295,7 +1295,7 @@ struct PopoverView: View {
                 .labelsHidden()
             }
 
-            if controller.effect == .staticColor || !controller.supportsLightingEffects {
+            if controller.effect.usesColor || !controller.supportsLightingEffects {
                 HStack(spacing: 7) {
                     ForEach(swatches.indices, id: \.self) { i in
                         swatch(swatches[i].color, name: swatches[i].name)
@@ -1342,7 +1342,7 @@ struct PopoverView: View {
     /// A real button rather than a tap gesture on a circle, so it reaches VoiceOver and
     /// keyboard navigation, and greys out with the rest of the card while disconnected.
     private func swatch(_ sw: Color, name: String) -> some View {
-        Button { controller.setStaticColor(sw.rgb) } label: {
+        Button { controller.setColor(sw.rgb) } label: {
             Circle()
                 .fill(sw)
                 .frame(width: 18, height: 18)

@@ -207,7 +207,7 @@ enum RazerCommands {
     // Cobra Pro / HyperSpeed drive ALL lighting as one group via led_id ZERO_LED (0x00).
     // The "4 zones" in Razer's marketing are NOT independently addressable in this protocol;
     // the daemon only exposes "all LEDs" + a separate "logo" (LOGO_LED 0x04) group.
-    // Extended-matrix effect ids: none=0x00, static=0x01, spectrum=0x03, wave=0x04.
+    // Extended-matrix effect ids: none=0x00, static=0x01, breathing=0x02, spectrum=0x03, wave=0x04.
     static let zeroLed: UInt8 = 0x00
 
     /// razer_chroma_extended_matrix_effect_base(arg_size, VARSTORE, led, effect_id)
@@ -228,6 +228,39 @@ enum RazerCommands {
         r.arguments[7] = rgb.g
         r.arguments[8] = rgb.b
         return r
+    }
+
+    /// Breathing in one colour. razer_chroma_extended_matrix_effect_breathing_single:
+    /// base(0x09, …, 0x02); args[3]=0x01, args[5]=0x01 (colour count), args[6..8]=r,g,b.
+    static func setBreathingSingle(led: UInt8 = zeroLed, rgb: RGB) -> RazerReport {
+        var r = effectBase(argSize: 0x09, led: led, effect: 0x02)
+        r.arguments[3] = 0x01
+        r.arguments[5] = 0x01
+        r.arguments[6] = rgb.r
+        r.arguments[7] = rgb.g
+        r.arguments[8] = rgb.b
+        return r
+    }
+
+    /// Breathing that alternates two colours. razer_chroma_extended_matrix_effect_breathing_dual:
+    /// base(0x0C, …, 0x02); args[3]=0x02, args[5]=0x02, args[6..8]=first, args[9..11]=second.
+    static func setBreathingDual(led: UInt8 = zeroLed, rgb1: RGB, rgb2: RGB) -> RazerReport {
+        var r = effectBase(argSize: 0x0C, led: led, effect: 0x02)
+        r.arguments[3] = 0x02
+        r.arguments[5] = 0x02
+        r.arguments[6] = rgb1.r
+        r.arguments[7] = rgb1.g
+        r.arguments[8] = rgb1.b
+        r.arguments[9] = rgb2.r
+        r.arguments[10] = rgb2.g
+        r.arguments[11] = rgb2.b
+        return r
+    }
+
+    /// Breathing in colours the mouse picks. razer_chroma_extended_matrix_effect_breathing_random:
+    /// base(0x06, …, 0x02), no further arguments.
+    static func setBreathingRandom(led: UInt8 = zeroLed) -> RazerReport {
+        effectBase(argSize: 0x06, led: led, effect: 0x02)
     }
 
     /// Spectrum cycle. base(0x06, …, 0x03).

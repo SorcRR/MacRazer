@@ -1077,7 +1077,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         }
     }
 
-    /// Sets the lighting effect (using the current `lightingColor` for `.staticColor`).
+    /// Sets the lighting effect (using the current `lightingColor` for static and breathing).
     /// Like the other setters: the device write happens on `io`, and `effect` is published
     /// only on success — the picker never claims lighting the mouse didn't take.
     func setEffect(_ newEffect: LightingEffect) {
@@ -1090,18 +1090,27 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         }
     }
 
-    /// Sets a static colour (switching the effect to `.staticColor` if needed).
-    func setStaticColor(_ rgb: RGB) {
-        guard !(effect == .staticColor && lightingColor == rgb) else { return } // no-change re-click
-        sendLighting(RazerCommands.setStatic(rgb: rgb)) {
-            self.effect = .staticColor
+    /// Sets the lighting colour. Breathing keeps breathing in the new colour; any other effect
+    /// switches to static. Bluetooth always gets static, the only effect it has a command for,
+    /// whatever effect is left over from USB.
+    func setColor(_ rgb: RGB) {
+        let target = Self.colorEffect(current: effect, effectsSupported: supportsLightingEffects)
+        guard !(effect == target && lightingColor == rgb) else { return } // no-change re-click
+        sendLighting(report(for: target, color: rgb)) {
+            self.effect = target
             self.lightingColor = rgb
         }
+    }
+
+    /// The effect a colour pick lands on. Pure, for the tests.
+    static func colorEffect(current: LightingEffect, effectsSupported: Bool) -> LightingEffect {
+        current == .breathing && effectsSupported ? .breathing : .staticColor
     }
 
     private func report(for effect: LightingEffect, color: RGB) -> RazerReport {
         switch effect {
         case .staticColor: return RazerCommands.setStatic(rgb: color)
+        case .breathing: return RazerCommands.setBreathingSingle(rgb: color)
         case .spectrum: return RazerCommands.setSpectrum()
         case .wave: return RazerCommands.setWave()
         case .off: return RazerCommands.setNone()

@@ -12,6 +12,10 @@ expect rough edges until 1.0.
   support it. It asks once, reminds you once a week later, and stops for good after a report
   or "Don't ask for this mouse". A card in the popover offers the same test until then. Turn it
   off in Settings › General › Ask me to test unsupported mice.
+- **Breathing lighting.** The Lighting card has a new Breathing effect. The lights fade in
+  and out in the colour you pick from the swatches or the colour wheel. It works over USB and
+  the 2.4 GHz dongle. Over Bluetooth only a static colour is available, as before. From the
+  command line, `rgb breathing` also takes two colours, or none for random ones.
 
 ### Changed
 - **Settings has a new layout.** A wider window with a sidebar for General, Privacy,

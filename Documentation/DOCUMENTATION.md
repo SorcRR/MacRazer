@@ -92,7 +92,7 @@ Built in [`RazerCommands.swift`](../Sources/MacRazer/RazerCommands.swift). VID `
 | Get charging | `0x07` / `0x84` | `0x02` | response `args[1]` != 0 = charging. |
 | Get / Set DPI | `0x04` / `0x85` / `0x05` | `0x07` | VARSTORE + big-endian x/y; clamp **100-45000** (arbitrary DPI). |
 | Get / Set poll | `0x00` / `0x85` / `0x05` | `0x01` | 1000->`0x01`, 500->`0x02`, 125->`0x08` (basic set only). |
-| Lighting effect | `0x0F` / `0x02` | varies | extended-matrix on **ZERO_LED (0x00)**; effect ids: none `0x00`, static `0x01`, spectrum `0x03`, wave `0x04`. |
+| Lighting effect | `0x0F` / `0x02` | varies | extended-matrix on **ZERO_LED (0x00)**; effect ids: none `0x00`, static `0x01`, breathing `0x02`, spectrum `0x03`, wave `0x04`. Breathing takes one colour (arg size `0x09`), two (`0x0C`) or none for random (`0x06`). |
 | Get / Set brightness | `0x0F` / `0x84` / `0x04` | `0x03` | value 0-255. LED group is **per model** (`RazerDevices.brightnessLed`), never ZERO_LED — see quirk below. |
 
 ### 3.4 Hardware quirks (discovered by testing, important!)
@@ -210,7 +210,7 @@ On a connection-state transition (after the first baseline poll), plays a system
 General can turn them off (`connectionSoundsEnabled`).
 
 ### 5.3 Writes
-`setDPI`, `setPollRate`, `setBrightness`, `setStatic/Spectrum/Wave/LightingOff`, each
+`setDPI`, `setPollRate`, `setBrightness`, `setStatic/Breathing/Spectrum/Wave/LightingOff`, each
 dispatches a command on the io queue and re-publishes the new value optimistically. While
 the popover is open, `setPopoverVisible(true)` polls DPI/poll every 2 s so on-mouse changes
 (e.g. the DPI-cycle button) reflect live.
@@ -302,8 +302,11 @@ long content scrolls without resizing the popover):
  settings rows expand in place, each on its own; which are open is remembered
  (`popoverExpandedSections` in UserDefaults). Rows a mouse can't use are left out.
  - **Polling rate**: segmented 125/500/1000 Hz, plus what the rate is good for.
- - **Lighting**: brightness slider (☀︎) + effect segmented (Static/Spectrum/Wave/Off)
+ - **Lighting**: brightness slider (☀︎) + effect segmented (Static/Breathing/Spectrum/Wave/Off)
  + colour swatches (true red...pink) + a rainbow "custom" well that opens the colour wheel.
+ The swatches show for Static and Breathing, and set the colour of whichever is on. Breathing
+ uses one colour. Over Bluetooth only a static colour has a known command, so the effect
+ picker is hidden there.
  - **Power Management** (Basilisk V3 X over Bluetooth): the sleep timer.
  - **Buttons**: opens the buttons page; shows how many buttons are remapped, or "Needs access"
  when saved remaps can't fire without Accessibility permission.
@@ -576,6 +579,7 @@ swift run MacRazer dpi [x] [y] # read / set DPI
 swift run MacRazer stages # read (and optionally write) the onboard DPI stage table
 swift run MacRazer poll [125|500|1000]
 swift run MacRazer rgb static ff0000 # or: spectrum | wave | off
+swift run MacRazer rgb breathing ff0000 # one colour; two for dual, none for random
 swift run MacRazer brightness [0-100] # sweeps LOGO/SCROLL/ZERO/BACKLIGHT LEDs
 swift run MacRazer discover # which transaction ids the mouse answers to
 swift run MacRazer devicetest # the device test without its window, as JSON on stdout

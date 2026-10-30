@@ -114,6 +114,49 @@ final class RazerCommandsTests: XCTestCase {
         XCTAssertEqual(RazerCommands.parseActiveDPIStage(r), 4, "active index clamps to the last stage")
     }
 
+    func testBreathingWireLayouts() {
+        // razerchromacommon.c, razer_chroma_extended_matrix_effect_breathing_*: the byte
+        // strings in its comment, VARSTORE and the LED group in front.
+        let red = RGB(r: 0xFF, g: 0x00, b: 0x00), green = RGB(r: 0x00, g: 0xFF, b: 0x00)
+
+        let single = RazerCommands.setBreathingSingle(rgb: green)
+        XCTAssertEqual(single.commandClass, 0x0F)
+        XCTAssertEqual(single.commandId, 0x02)
+        XCTAssertEqual(single.dataSize, 0x09)
+        XCTAssertEqual(Array(single.arguments[0...8]), [0x01, 0x00, 0x02, 0x01, 0x00, 0x01, 0x00, 0xFF, 0x00])
+        XCTAssertEqual(single.arguments[9], 0x00)
+
+        let dual = RazerCommands.setBreathingDual(rgb1: green, rgb2: red)
+        XCTAssertEqual(dual.dataSize, 0x0C)
+        XCTAssertEqual(Array(dual.arguments[0...11]),
+                       [0x01, 0x00, 0x02, 0x02, 0x00, 0x02, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0x00])
+
+        let random = RazerCommands.setBreathingRandom()
+        XCTAssertEqual(random.dataSize, 0x06)
+        XCTAssertEqual(Array(random.arguments[0...5]), [0x01, 0x00, 0x02, 0x00, 0x00, 0x00])
+
+        XCTAssertEqual(RazerCommands.setBreathingSingle(led: 0x04, rgb: red).arguments[1], 0x04)
+    }
+
+    func testColourPickKeepsBreathingOnlyWhereEffectsWork() {
+        XCTAssertEqual(MouseController.colorEffect(current: .breathing, effectsSupported: true), .breathing)
+        XCTAssertEqual(MouseController.colorEffect(current: .breathing, effectsSupported: false), .staticColor,
+                       "Bluetooth has no breathing command")
+        for other in [LightingEffect.staticColor, .spectrum, .wave, .off] {
+            XCTAssertEqual(MouseController.colorEffect(current: other, effectsSupported: true), .staticColor)
+        }
+    }
+
+    func testBreathingProfileRoundTrips() throws {
+        let profile = MouseProfile(name: "Calm", dpi: 800, pollRate: 500, brightness: 60,
+                                   effect: LightingEffect.breathing.rawValue,
+                                   color: RGB(r: 0x12, g: 0x34, b: 0x56), buttonMappings: [:])
+        let decoded = try JSONDecoder().decode(MouseProfile.self, from: JSONEncoder().encode(profile))
+        XCTAssertEqual(decoded, profile)
+        XCTAssertEqual(decoded.lightingEffect, .breathing)
+        XCTAssertEqual(decoded.color, RGB(r: 0x12, g: 0x34, b: 0x56))
+    }
+
     func testProfileDecodesWithoutDPIStagesField() {
         // Profiles saved before dpiStages existed must keep decoding (and apply without
         // touching the stage table).
