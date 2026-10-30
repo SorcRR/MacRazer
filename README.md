@@ -42,6 +42,9 @@ Razer mice that use the same HID protocol family, but those are untested, so tre
 - **Any Razer mouse is detected and named.** Controls a model lacks are hidden automatically
   (no lighting on the Atheris, no battery UI on wired-only mice). A Razer keyboard or other
   product that is never a mouse is not taken for one.
+- **Razer keyboard lighting.** A Razer keyboard next to the mouse gets its own colour, effect
+  and brightness in the popover, or can follow the mouse's lighting. Tested on the Cynosa
+  Chroma; the Cynosa Chroma Pro, Cynosa Lite and Ornata V3 family should work too.
 - **Asks for help with a new mouse.** When a mouse MacRazer doesn't fully support connects, a
   small window offers the device test (see below). It can be turned off in Settings.
 - Settings are written to the mouse's **onboard memory** where supported, so they persist when

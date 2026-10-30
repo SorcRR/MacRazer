@@ -59,6 +59,10 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// lighting the mouse never took).
     @Published private(set) var effect: LightingEffect = .staticColor
     @Published private(set) var lightingColor = RGB(r: 0x44, g: 0xD6, b: 0x2C) // razer green
+    /// Counts lighting the app has set on the mouse: an effect, a colour, a brightness or a
+    /// profile. Not reads: "Also light the keyboard" follows what the person sets, and the
+    /// brightness read after launch would otherwise push the unread default effect along.
+    @Published private(set) var lightingChanges = 0
     @Published private(set) var dpiStages: [Int] = [] // the mouse's configured DPI presets
     @Published private(set) var activeDpiStage: Int?
     @Published private(set) var dpiStagesError: String?
@@ -1073,6 +1077,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             self.publish {
                 guard ok else { self.lastWriteFailure = Date(); return }
                 self.brightness = pct; self.clearActiveProfileIfNeeded()
+                self.lightingChanges &+= 1
             }
         }
     }
@@ -1100,12 +1105,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     }
 
     private func report(for effect: LightingEffect, color: RGB) -> RazerReport {
-        switch effect {
-        case .staticColor: return RazerCommands.setStatic(rgb: color)
-        case .spectrum: return RazerCommands.setSpectrum()
-        case .wave: return RazerCommands.setWave()
-        case .off: return RazerCommands.setNone()
-        }
+        RazerCommands.effect(effect, color: color)
     }
 
     /// Every lighting change the user makes goes through here, so it is the one place the
@@ -1122,6 +1122,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 guard ok else { self.lastWriteFailure = Date(); return }
                 onSuccess()
                 self.clearActiveProfileIfNeeded()
+                self.lightingChanges &+= 1
             }
         }
     }
@@ -1229,6 +1230,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                     if hasLighting {
                         self.effect = effect
                         self.lightingColor = color
+                        self.lightingChanges &+= 1
                     }
                     self.activeProfileID = profile.id
                     ProfileStore.setActiveProfileID(profile.id, forDevice: key)
