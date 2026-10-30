@@ -30,6 +30,12 @@ Razer mice that use the same HID protocol family, but those are untested, so tre
 - **Polling rate**: 125 / 500 / 1000 Hz.
 - **RGB lighting**: static colour via an inline hue/saturation wheel, plus spectrum, wave, off,
   and a brightness slider.
+- **Low battery alert**: a notification when the battery drops below 15%, once per charge.
+- **Profiles**: save DPI, polling rate, lighting and button remaps under a name, and switch
+  between them from the popover. Saved per device.
+- **Themes**: System, Dark, Light or Razer Green, with an optional glass effect, in
+  Settings › Appearance.
+- **Connection sounds** when the mouse connects or disconnects (can be turned off).
 - **Button remapping** for the side Back/Forward buttons (software, via a CGEvent tap):
   keyboard shortcuts (presets or a custom recorder), mouse clicks, and media keys. Saved per
   device.
