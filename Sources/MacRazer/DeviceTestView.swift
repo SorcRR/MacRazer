@@ -265,6 +265,14 @@ struct DeviceTestView: View {
             }
             note(report.replyEmail.map { "Your report is on its way to the maintainer, who can reply to \($0)." }
                  ?? "Your report is on its way to the maintainer.")
+            if let other = model.otherLink {
+                card {
+                    Text(other == .cable
+                         ? "On its cable, this mouse is a different product to MacRazer, so it needs its own test. If you can, plug the cable in, unplug the dongle, and press Test again."
+                         : "On its dongle, this mouse is a different product to MacRazer, so it needs its own test. If you can, unplug the cable, switch the mouse to its dongle, and press Test again.")
+                        .font(.system(size: 13)).fixedSize(horizontal: false, vertical: true)
+                }
+            }
         }
     }
 
@@ -368,6 +376,7 @@ struct DeviceTestView: View {
                     Button("Grant access") { model.grantAccess() }.keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
                 }
             case .review where model.sendState == .sent:
+                if model.otherLink != nil { Button("Test again") { model.testAgain() } }
                 Spacer()
                 Button("Done", action: onClose).keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
             case .review:

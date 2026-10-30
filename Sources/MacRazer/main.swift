@@ -561,7 +561,7 @@ case "discover":
     defer { dev.close() }
     // The device test's own Identify step, so this can't choose differently from it.
     let registry = RazerDevices.info(pid: dev.productID)
-    let (identify, _) = DeviceTestSteps.identify(dev, registry: registry)
+    let (identify, _) = DeviceTestSteps.identifyMouse(dev, registry: registry)
     guard let found = identify.data else { exit(2) }
     func hex(_ id: UInt8?) -> String { id.map { String(format: "0x%02x", $0) } ?? "none" }
     func show(_ results: [DeviceReport.TransactionResult]) {
@@ -577,6 +577,10 @@ case "discover":
         print("No id answered the firmware read, so again with a DPI read:")
         show(dpi)
     }
+    for other in found.otherInterfaces ?? [] {
+        print(String(format: "Nothing answered, so again on interface usagePage=0x%02x usage=0x%02x:", other.usagePage, other.usage))
+        show(other.attempts)
+    }
     print("Lighting (brightness sweep). Registry says \(registry.map { hex($0.matrixTransactionId) } ?? "nothing"):")
     show(found.lightingAttempts)
     print("Firmware: \(found.firmware ?? "unknown")")
@@ -589,7 +593,7 @@ case "devicetest":
     guard let dev = openDevice() else { exit(1) }
     defer { dev.close() }
     let info = RazerDevices.info(pid: dev.productID)
-    let (identify, lightSweep) = DeviceTestSteps.identify(dev, registry: info)
+    let (identify, lightSweep) = DeviceTestSteps.identifyMouse(dev, registry: info)
     let (standardId, matrixId) = DeviceTestSteps.chosenIds(identify, registry: info)
     func step<T>(_ body: (DeviceProbeChannel) -> DeviceReport.StepRecord<T>) -> DeviceReport.StepRecord<T> {
         DeviceTestSteps.recorded(dev, standard: standardId, matrix: matrixId,

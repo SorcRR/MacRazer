@@ -221,7 +221,7 @@ final class DeviceTestModel: ObservableObject {
         do {
             let result = try await controller.runDeviceTestStep { device -> IdentifyResult in
                 let info = RazerDevices.info(pid: device.productID)
-                let (record, sweep) = DeviceTestSteps.identify(device, registry: info)
+                let (record, sweep) = DeviceTestSteps.identifyMouse(device, registry: info)
                 let capabilities = DeviceTestSteps.capabilities(device, identify: record, registry: info)
                 let (interfaces, control) = HIDDevice.interfaceSummaries(vendorId: Razer.vendorId)
                 return IdentifyResult(pid: device.productID, name: device.productName, record: record,
@@ -428,6 +428,23 @@ final class DeviceTestModel: ObservableObject {
             controller.endDeviceTest()
             sessionOpen = false
         }
+    }
+
+    /// The link worth testing next, or nil. A mouse is a different product id on its cable and
+    /// its dongle, so each link needs its own report. A mouse on a cable with no battery is
+    /// wired only, and a link the registry already fully supports for this model needs none.
+    var otherLink: DeviceReport.Connection? {
+        guard let report, let connection = report.device.connection else { return nil }
+        if connection == .cable, report.battery.outcome != .passed, report.registry?.hasBattery != true { return nil }
+        let other: DeviceReport.Connection = connection == .cable ? .dongle : .cable
+        let registryLink: RazerConnection = other == .cable ? .wired : .wirelessDongle
+        return RazerDevices.fullySupported(modelOf: report.device.productID, on: registryLink) ? nil : other
+    }
+
+    /// From the start again, for the other link once the person has switched to it.
+    func testAgain() {
+        reset()
+        start()
     }
 
     /// Back to the start, for the next time the window opens.

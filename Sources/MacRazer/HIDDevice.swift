@@ -240,6 +240,22 @@ final class HIDDevice {
 
     static func productID(of dev: IOHIDDevice) -> Int { intProp(dev, kIOHIDProductIDKey) ?? 0 }
 
+    /// Runs `body` with this mouse's other interfaces that can carry the control report,
+    /// opened, and closes them after. For the device test, when the interface picked doesn't
+    /// answer: an answer on another one means the selection is wrong for this mouse.
+    func withOtherControlInterfaces<T>(_ body: ([(usagePage: Int, usage: Int, channel: TransactionChannel)]) -> T) -> T {
+        let opened: [(usagePage: Int, usage: Int, device: HIDDevice)] = HIDDevice.matchingDevices(vendorId: Razer.vendorId).compactMap { dev in
+            guard !CFEqual(dev, device),
+                  HIDDevice.productID(of: dev) == productID,
+                  (HIDDevice.intProp(dev, kIOHIDLocationIDKey) ?? 0) == locationID,
+                  (HIDDevice.intProp(dev, kIOHIDMaxFeatureReportSizeKey) ?? 0) >= HIDDeviceSelection.controlReportSize,
+                  let other = try? HIDDevice.open(dev) else { return nil }
+            return (HIDDevice.intProp(dev, kIOHIDPrimaryUsagePageKey) ?? 0, HIDDevice.intProp(dev, kIOHIDPrimaryUsageKey) ?? 0, other)
+        }
+        defer { opened.forEach { $0.device.close() } }
+        return body(opened.map { ($0.usagePage, $0.usage, $0.device) })
+    }
+
     static func open(_ chosen: IOHIDDevice) throws -> HIDDevice {
         // stderr, not stdout: this fires on every (re)open inside the GUI app too, and the
         // CLI's actual output goes to stdout.
