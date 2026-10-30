@@ -220,14 +220,23 @@ final class BluetoothDevice: NSObject, RazerTransport, @unchecked Sendable {
     }
 
     func close() {
-        queue.async {
-            if let pending = self.pending { self.finish(pending, error: HIDDevice.HIDError.notFound) }
-            if let peripheral = self.peripheral { self.central?.cancelPeripheralConnection(peripheral) }
-            self.peripheral = nil
-            self.writeCharacteristic = nil
-            self.notifyReady = false
-            self.central = nil
-        }
+        queue.async { self.tearDown() }
+    }
+
+    /// `close`, returning once the connection is let go. For a caller about to connect to the
+    /// same mouse itself (the device test), so the cancel can't land on its new connection.
+    /// Never call it on `queue`.
+    func closeAndWait() {
+        queue.sync { tearDown() }
+    }
+
+    private func tearDown() {
+        if let pending { finish(pending, error: HIDDevice.HIDError.notFound) }
+        if let peripheral { central?.cancelPeripheralConnection(peripheral) }
+        peripheral = nil
+        writeCharacteristic = nil
+        notifyReady = false
+        central = nil
     }
 
     // MARK: - `queue` only

@@ -261,6 +261,10 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// returned. Retry a bounded number of times, serially, and bypass the slow-open
     /// cooldown for these attempts. This never sends traffic merely to keep the mouse awake.
     private func beginWakeRecovery(discardBluetoothSession: Bool = false) {
+        // A device test holds the mouse, and the Bluetooth test has let go of the app's own
+        // connection on purpose: reopening it now would leave the test's reads unanswered.
+        // `endDeviceTest` reads everything again, which does the recovery's job.
+        guard !deviceTestActive else { return }
         let generation = beginWakeRecoveryGeneration()
         if !connected { update(\.bluetoothRecoveryState, .reconnecting) }
         io.async { [weak self] in
@@ -808,6 +812,21 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         pollTimer = nil
         settingsTimer?.invalidate()
         settingsTimer = nil
+    }
+
+    /// Closes the app's own Bluetooth connection, for the Bluetooth test: while it stays open,
+    /// every read the test sends over its own connection goes unanswered (seen on the Cobra
+    /// HyperSpeed). The polls are paused for the test, and `endDeviceTest`'s refresh reopens it.
+    func releaseBluetoothForDeviceTest() async {
+        await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+            userCommand { [weak self] in
+                if let self, let bluetooth = self.device as? BluetoothDevice {
+                    bluetooth.closeAndWait()
+                    self.device = nil
+                }
+                done.resume()
+            }
+        }
     }
 
     /// Reads everything again rather than trusting what was published before the test: steps

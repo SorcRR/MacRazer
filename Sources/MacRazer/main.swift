@@ -635,6 +635,15 @@ case "bluetoothtest":
         status("✗ Bluetooth needs the app's Info.plist. Run it from the app: MacRazer.app/Contents/MacOS/MacRazer bluetoothtest")
         exit(1)
     }
+    // The running app's own connection to the mouse leaves every read here unanswered, and
+    // only the app can let go of it (the in-app test does).
+    let me = ProcessInfo.processInfo.processIdentifier
+    guard let bundleID = Bundle.main.bundleIdentifier,
+          !NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+            .contains(where: { $0.processIdentifier != me }) else {
+        status("✗ Quit MacRazer first: its own Bluetooth connection keeps the mouse from answering. Or run the test from its menu.")
+        exit(1)
+    }
     status("Reading \(mouse.name) over Bluetooth. macOS may ask to allow Bluetooth first.")
     let report = DeviceTestSteps.bluetoothTest(name: mouse.name)
     let json = DeviceReportOutput.json(report, forPublic: true)

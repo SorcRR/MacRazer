@@ -104,6 +104,8 @@ final class DeviceTestModel: ObservableObject {
     private var overrides: [UInt16: UInt8] = [:]
     private var lightSweep: [DeviceProbe.LEDAnswer]?
     private var sessionOpen = false
+    /// The Bluetooth test is reading, which `endSession` waits for.
+    private var bluetoothRunning = false
 
     /// Where Send goes, or nil in a build without the Worker, which hides Send and the reply
     /// address that only Send would carry. Copy and the GitHub issue work either way.
@@ -230,8 +232,13 @@ final class DeviceTestModel: ObservableObject {
 
     private func runBluetooth(name: String) async {
         running = true
+        bluetoothRunning = true
         defer { running = false }
-        report = await Task.detached { DeviceTestSteps.bluetoothTest(name: name) }.value
+        await controller.releaseBluetoothForDeviceTest()
+        let result = await Task.detached { DeviceTestSteps.bluetoothTest(name: name) }.value
+        bluetoothRunning = false
+        // Closed and reset while it ran: the result is for a window that has moved on.
+        if stage == .bluetooth { report = result }
         // Nothing more will touch the mouse.
         endSession()
     }
@@ -457,6 +464,10 @@ final class DeviceTestModel: ObservableObject {
         capture?.stop()
         capture = nil
         listening = false
+        // The Bluetooth test is still reading over its own connection: resuming the app's reads
+        // now would reopen the app's, and the rest would go unanswered. It ends the session
+        // itself when it's done.
+        guard !bluetoothRunning else { return }
         if sessionOpen {
             controller.endDeviceTest()
             sessionOpen = false
