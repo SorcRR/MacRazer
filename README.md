@@ -174,7 +174,8 @@ mouse on Bluetooth.
 
 ## Install
 
-Download `MacRazer.dmg` from the [latest release](../../releases/latest), open it, and drag
+Download [`MacRazer.dmg`](https://reports.macrazer.com/v1/download?via=site&page=readme)
+(release notes on the [latest release](../../releases/latest) page), open it, and drag
 **MacRazer** into Applications.
 
 This build is unsigned (no paid Apple Developer ID), so on first launch Gatekeeper will say
