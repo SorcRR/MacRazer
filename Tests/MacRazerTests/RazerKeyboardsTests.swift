@@ -102,19 +102,19 @@ final class RazerKeyboardsTests: XCTestCase {
         let kb = KeyboardController()
         kb.loadPreviewState(synapse: false)
         XCTAssertTrue(kb.canWrite)
-        XCTAssertFalse(kb.needsOwnerChoice)
+        XCTAssertFalse(kb.leftToSynapse)
     }
 
-    func testSynapseAsksFirstAndRespectsTheAnswer() {
+    /// "Use MacRazer" starts off while Synapse runs, and goes either way.
+    func testSynapseKeepsTheKeyboardUntilUseMacRazerIsOn() {
         let kb = KeyboardController()
         kb.loadPreviewState(synapse: true)
-        XCTAssertTrue(kb.needsOwnerChoice)
-        XCTAssertFalse(kb.canWrite)
-        kb.choose(.synapse)
         XCTAssertTrue(kb.leftToSynapse)
         XCTAssertFalse(kb.canWrite)
         kb.choose(.macRazer)
         XCTAssertTrue(kb.canWrite)
+        kb.choose(.synapse)
+        XCTAssertFalse(kb.canWrite)
     }
 
     func testFollowingAsksForTheMouseOnlyWhenOn() {

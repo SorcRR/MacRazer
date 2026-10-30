@@ -743,7 +743,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
 
     // MARK: - NSPopoverDelegate
 
-    func popoverDidShow(_ notification: Notification) { controller.setPopoverVisible(true) }
+    func popoverDidShow(_ notification: Notification) {
+        controller.setPopoverVisible(true)
+        // Re-reads the keyboard's brightness: its own keys change it behind the app's back.
+        keyboard.rescan()
+    }
     func popoverDidClose(_ notification: Notification) {
         controller.setPopoverVisible(false)
         // An update found while the popover was open was deliberately left alone; now that

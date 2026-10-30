@@ -45,12 +45,10 @@ final class KeyboardController: ObservableObject, @unchecked Sendable {
     static let ownerKey = "keyboardLightingOwner"
     private static func lightingKey(pid: Int) -> String { "keyboardLighting.\(pid)" }
 
-    /// Synapse is running and nobody has said who sets the colours: ask before writing.
-    var needsOwnerChoice: Bool { synapseRunning && owner == nil }
-    /// Synapse sets the colours, as the person chose. MacRazer leaves the keyboard alone.
-    var leftToSynapse: Bool { synapseRunning && owner == .synapse }
-    /// MacRazer may write: no Synapse, or the person picked MacRazer over it.
-    var canWrite: Bool { !needsOwnerChoice && !leftToSynapse }
+    /// Synapse runs and "Use MacRazer" is off (the default): MacRazer leaves the keyboard alone.
+    var leftToSynapse: Bool { synapseRunning && owner != .macRazer }
+    /// MacRazer may write: no Synapse, or "Use MacRazer" is on.
+    var canWrite: Bool { !leftToSynapse }
 
     /// The mouse's lighting as MacRazer last set it, for "Also light the keyboard". Set by
     /// the app delegate; nil in previews and tests.
@@ -125,14 +123,14 @@ final class KeyboardController: ObservableObject, @unchecked Sendable {
     func setEffect(_ effect: LightingEffect) {
         var next = lighting
         next.effect = effect
-        write(next)
+        write(next, brightness: false)
     }
 
     func setStaticColor(_ rgb: RGB) {
         var next = lighting
         next.effect = .staticColor
         next.color = rgb
-        write(next)
+        write(next, brightness: false)
     }
 
     func setBrightness(_ percent: Int) {
@@ -145,7 +143,7 @@ final class KeyboardController: ObservableObject, @unchecked Sendable {
     /// the two read as one.
     func followMouse() {
         guard followsMouse, let next = mouseLighting?(), next != lighting else { return }
-        write(next)
+        write(next, brightness: next.brightness != lighting.brightness)
     }
 
     /// What the keyboard should show now: the mouse's lighting while following it, else what
@@ -170,8 +168,11 @@ final class KeyboardController: ObservableObject, @unchecked Sendable {
         write(intended)
     }
 
-    /// `effect: false` writes only the brightness.
-    private func write(_ next: KeyboardLighting, effect: Bool = true) {
+    /// `effect: false` skips the effect command, `brightness: false` the brightness one. A
+    /// colour or effect change leaves the brightness alone: the keyboard's own keys may have
+    /// changed it since it was last read, and resending ours would undo them. Putting
+    /// MacRazer's lighting back over Synapse sends both.
+    private func write(_ next: KeyboardLighting, effect: Bool = true, brightness: Bool = true) {
         guard canWrite else { return }
         io.async { [weak self] in
             guard let self else { return }
@@ -179,19 +180,27 @@ final class KeyboardController: ObservableObject, @unchecked Sendable {
                 self.publish { self.lastWriteFailure = Date() }
                 return
             }
-            let ok = (try? {
+            var failure: Error?
+            do {
                 if effect, let e = next.effect {
                     _ = try device.sendWithRetry(RazerKeyboards.report(for: e, color: next.color),
                                                  attempts: HIDDevice.defaultAttempts, transactionId: info.transactionId)
                 }
-                let raw = RazerCommands.brightnessRaw(fromPercent: next.brightness)
-                _ = try device.sendWithRetry(RazerCommands.setBrightness(raw, led: RazerKeyboards.led),
-                                             attempts: HIDDevice.defaultAttempts, transactionId: info.transactionId)
-                return true
-            }()) != nil
-            if ok {
+                if brightness {
+                    let raw = RazerCommands.brightnessRaw(fromPercent: next.brightness)
+                    _ = try device.sendWithRetry(RazerCommands.setBrightness(raw, led: RazerKeyboards.led),
+                                                 attempts: HIDDevice.defaultAttempts, transactionId: info.transactionId)
+                }
+            } catch {
+                failure = error
+            }
+            let ok = failure == nil
+            switch failure {
+            case nil:
                 Self.store(next, pid: info.pid)
-            } else {
+            case HIDDevice.HIDError.commandFailed?, HIDDevice.HIDError.notSupported?:
+                break // the keyboard answered and refused: the handle is fine
+            default:
                 // Most likely the handle outlived a quick unplug and replug: drop it, so the
                 // rescan opens the keyboard afresh.
                 device.close()

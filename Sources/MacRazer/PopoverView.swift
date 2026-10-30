@@ -1483,7 +1483,7 @@ struct PopoverView: View {
     }
 
     private func keyboardSubtitle(_ kb: KeyboardController.Keyboard) -> String {
-        if keyboard.leftToSynapse || keyboard.needsOwnerChoice { return "Colours set by Synapse" }
+        if keyboard.leftToSynapse { return "Colours set by Synapse" }
         if keyboardFollowing { return "Following mouse · \(keyboardLightingSummary)" }
         return kb.verified ? "Keyboard · lighting only" : "Keyboard · lighting only, untested"
     }

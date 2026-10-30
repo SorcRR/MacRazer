@@ -315,6 +315,20 @@ long content scrolls without resizing the popover):
  firmware and tells the app nothing, so switching is done from the popover
  (`MouseController.applyProfile`). The Profiles page (`ProfilesView.swift`) renames, sets
  active and deletes.
+ - **Other Razer devices** (`KeyboardController.swift`, `RazerKeyboards.swift`): a card for a
+ Razer keyboard MacRazer knows, under the mouse's sections and independent of the mouse being
+ connected. Its Lighting row has the mouse's brightness slider and effect picker; its colour
+ swatches stay on screen under every effect (picking one switches to Static). The effect
+ can't be read back from the keyboard, so what MacRazer sets is saved per model
+ (`keyboardLighting.<pid>`) and none is shown picked until it has set one. The brightness is
+ re-read whenever the popover opens, and a colour or effect change never resends it, so the
+ keyboard's own brightness keys stick.
+ - **Also light the keyboard** (in the mouse's Lighting row): the keyboard follows lighting the
+ person sets on the mouse (`MouseController.lightingChanges`), never values read from it. The
+ card then shrinks to one line.
+ - **Use MacRazer** (only while Razer Synapse runs): off by default, so Synapse keeps the
+ keyboard and MacRazer writes nothing. On, MacRazer puts its lighting on, and back on after a
+ wake or reconnect.
  - **Update card**: when a newer release is found, "Update & Restart" (or the DMG download)
  and a row that opens the **What's new** page (`WhatsNewPage.swift`). After an update, an
  "Updated to …" card until dismissed. See §6.7.
