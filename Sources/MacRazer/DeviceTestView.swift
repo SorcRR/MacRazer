@@ -338,12 +338,12 @@ struct DeviceTestView: View {
                 .font(.system(size: 11))
             }
             TextField("Name or GitHub handle to credit (optional)", text: $model.credit)
-                .textFieldStyle(.roundedBorder).controlSize(.large)
+                .inputBox()
             // Only Send carries it, so without the Worker there's nowhere for it to go.
             if model.canSend {
             VStack(alignment: .leading, spacing: 2) {
                 TextField("Your email, if you'd like a reply (optional)", text: $model.replyEmail)
-                    .textFieldStyle(.roundedBorder).controlSize(.large)
+                    .inputBox()
                 if let problem = model.emailProblem {
                     warning(problem)
                 } else {
@@ -534,5 +534,18 @@ struct DeviceTestView: View {
                 .pickerStyle(.segmented).labelsHidden().controlSize(.small)
             }
         }
+    }
+}
+
+private extension View {
+    /// A one-line field drawn like the comment box below it: the system's rounded-border style
+    /// stays about 22 points high whatever its control size, too small to read or hit here.
+    func inputBox() -> some View {
+        textFieldStyle(.plain)
+            .font(.system(size: 13))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 7)
+            .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 6))
+            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.primary.opacity(0.15)))
     }
 }
