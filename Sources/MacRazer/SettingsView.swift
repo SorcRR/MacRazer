@@ -421,20 +421,20 @@ struct SettingsView: View {
                 let on = appearance.theme == theme
                 Button { appearance.theme = theme } label: {
                     Text(theme.title)
-                        .font(.system(size: 11.5))
+                        .font(.system(size: 12))
                         .foregroundStyle(on ? Color.primary : Color.primary.opacity(0.75))
                         .padding(.horizontal, 10)
-                        .padding(.vertical, 3)
-                        .background(Color.primary.opacity(on ? 0.18 : 0), in: RoundedRectangle(cornerRadius: 5))
-                        .contentShape(RoundedRectangle(cornerRadius: 5))
+                        .padding(.vertical, 6)
+                        .background(Color.primary.opacity(on ? 0.18 : 0), in: RoundedRectangle(cornerRadius: 6))
+                        .contentShape(RoundedRectangle(cornerRadius: 6))
                 }
                 .buttonStyle(.plain)
                 .accessibilityAddTraits(on ? .isSelected : [])
             }
         }
-        .padding(2)
-        .background(Color.black.opacity(0.18), in: RoundedRectangle(cornerRadius: 7))
-        .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Color.primary.opacity(0.14)))
+        .padding(3)
+        .background(Color.black.opacity(0.18), in: RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.primary.opacity(0.14)))
         .fixedSize()
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Theme")
