@@ -305,8 +305,8 @@ long content scrolls without resizing the popover):
  - **Lighting**: brightness slider (☀︎) + effect segmented (Static/Spectrum/Wave/Off)
  + colour swatches (true red...pink) + a rainbow "custom" well that opens the colour wheel.
  Under Wave, a speed slider (tortoise to hare). The speed byte is `args[4]` of the wave
- command, lower is faster; `WaveSpeed` maps the slider to 0x48...0x08 with the standard 0x28
- in the middle. It can't be read back, so the last one set is kept (`mouseWaveSpeed`, and in
+ command, lower is faster; `WaveSpeed` maps the slider geometrically to 0xC8...0x08, so the
+ standard 0x28 sits in the middle and speed changes evenly along it. It can't be read back, so the last one set is kept (`mouseWaveSpeed`, and in
  a profile). The keyboard card has the same slider.
  - **Power Management** (Basilisk V3 X over Bluetooth): the sleep timer.
  - **Buttons**: opens the buttons page; shows how many buttons are remapped, or "Needs access"

@@ -41,23 +41,25 @@ struct RGB: Codable, Equatable, Sendable {
 
 /// The wave effect's speed byte, `args[4]` of the wave command. Lower is faster
 /// (`razerchromacommon.c`): OpenRazer always sends 0x28, and Razer's own "Fast Wave" uses 0x10.
-/// The slider spans 0x48 to 0x08, which puts the standard speed in the middle. Verified on
-/// the Cynosa Chroma: the wave visibly speeds up and slows down. The mice haven't been tried.
+/// The slider spans 0xC8 to 0x08. A wave's speed goes with 1 / byte, so the slider is
+/// geometric: each step multiplies the byte by the same factor, and the standard 0x28
+/// (200 / 40 = 40 / 8) sits exactly in the middle. Verified on the Cynosa Chroma (the
+/// slider's range) and the Cobra HyperSpeed (0xC8 answered and ran slower).
 enum WaveSpeed {
     static let standard: UInt8 = 0x28
-    static let slowest: UInt8 = 0x48
+    static let slowest: UInt8 = 0xC8
     static let fastest: UInt8 = 0x08
 
     /// The speed byte for a slider position, 0 (slowest) to 1 (fastest).
     static func byte(fromFraction fraction: Double) -> UInt8 {
         let f = max(0, min(fraction, 1))
-        return UInt8((Double(slowest) - f * Double(slowest - fastest)).rounded())
+        return UInt8((Double(slowest) * pow(Double(fastest) / Double(slowest), f)).rounded())
     }
 
     /// The slider position for a speed byte; bytes outside the range pin to its ends.
     static func fraction(fromByte byte: UInt8) -> Double {
         let b = Double(max(fastest, min(byte, slowest)))
-        return (Double(slowest) - b) / Double(slowest - fastest)
+        return log(Double(slowest) / b) / log(Double(slowest) / Double(fastest))
     }
 }
 

@@ -20,8 +20,15 @@ final class WaveSpeedTests: XCTestCase {
     func testOutOfRangeValuesPin() {
         XCTAssertEqual(WaveSpeed.byte(fromFraction: -1), WaveSpeed.slowest)
         XCTAssertEqual(WaveSpeed.byte(fromFraction: 2), WaveSpeed.fastest)
-        XCTAssertEqual(WaveSpeed.fraction(fromByte: 0xA0), 0)
+        XCTAssertEqual(WaveSpeed.fraction(fromByte: 0xFF), 0)
         XCTAssertEqual(WaveSpeed.fraction(fromByte: 0x01), 1)
+    }
+
+    /// Each slider quarter multiplies the byte by the same factor (about 2.24), so the
+    /// speed changes evenly along it.
+    func testStepsAreGeometric() {
+        XCTAssertEqual(WaveSpeed.byte(fromFraction: 0.25), 89)
+        XCTAssertEqual(WaveSpeed.byte(fromFraction: 0.75), 18)
     }
 
     func testRoundTripsEverySliderByte() {
