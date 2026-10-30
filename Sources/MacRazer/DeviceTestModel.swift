@@ -231,6 +231,7 @@ final class DeviceTestModel: ObservableObject {
     private func runBluetooth(name: String) async {
         running = true
         defer { running = false }
+        await controller.releaseBluetoothForDeviceTest()
         report = await Task.detached { DeviceTestSteps.bluetoothTest(name: name) }.value
         // Nothing more will touch the mouse.
         endSession()

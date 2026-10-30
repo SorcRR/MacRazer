@@ -810,6 +810,24 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         settingsTimer = nil
     }
 
+    /// Closes the app's own Bluetooth connection, for the Bluetooth test: while it stays open,
+    /// every read the test sends over its own connection goes unanswered (seen on the Cobra
+    /// HyperSpeed). The polls are paused for the test, and `endDeviceTest`'s refresh reopens it.
+    func releaseBluetoothForDeviceTest() async {
+        await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+            userCommand { [weak self] in
+                if let self, self.device?.isBluetooth == true {
+                    self.device?.close()
+                    self.device = nil
+                    // `close` lets go on the Bluetooth queue; give it that long before the
+                    // test connects, so the cancel can't land on the new connection.
+                    Thread.sleep(forTimeInterval: 0.5)
+                }
+                done.resume()
+            }
+        }
+    }
+
     /// Reads everything again rather than trusting what was published before the test: steps
     /// restore what they change, but if a restore failed (the mouse went away mid-step), the
     /// popover should show what the mouse actually holds.
