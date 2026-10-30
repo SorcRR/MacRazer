@@ -123,6 +123,13 @@ final class DeviceTestTests: XCTestCase {
         let notReady = FakeMouse()
         XCTAssertEqual(DeviceTestSteps.battery(notReady, expectsBattery: nil).outcome, .failed,
                        "raw 0 is the protocol's not-ready, not an empty battery")
+        XCTAssertEqual(DeviceTestSteps.battery(notReady, expectsBattery: false).outcome, .notSupported,
+                       "a wired-only model on record answering zeros has no battery")
+
+        let charging = FakeMouse()
+        charging.answers(RazerCommands.getChargingStatus()) { $0[1] = 1 }
+        XCTAssertEqual(DeviceTestSteps.battery(charging, expectsBattery: false).outcome, .failed,
+                       "a mouse that says it is charging has a battery, whatever the registry says")
 
         let wired = FakeMouse()
         wired.refuse = { $0.commandClass == 0x07 }

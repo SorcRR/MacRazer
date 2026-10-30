@@ -154,8 +154,28 @@ enum RazerDevices {
         // Naga V3 Pro over the dongle (#33, report from chris-agnew): battery, DPI and stages,
         // polling, static color and brightness all passed with 0x1f. 0xFF and 0x80 time out.
         // Same three-zone lighting as the Naga Pro, so the slider writes all three. The
-        // firmware echoed a 45000 DPI write; 30000 is the vendor spec. Its cable PID is unknown.
+        // firmware echoed a 45000 DPI write; 30000 is the vendor spec.
         .init(pid: 0x00E8, name: "Razer Naga V3 Pro (Wireless)", fullySupported: true, hasBattery: true, hasLighting: true, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed, Razer.backlightLed], connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
+        // Naga V3 Pro on the cable (two in-app reports, one from chris-agnew): every test passed
+        // with 0x1f, the same zones as the dongle. Its control interface is the second one.
+        .init(pid: 0x00E7, name: "Razer Naga V3 Pro (Wired)", fullySupported: true, hasBattery: true, hasLighting: true, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed, Razer.backlightLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
+        // Naga Trinity (in-app report, no credit given): wired only, so no battery (0x05).
+        // DPI, polling, static color and brightness passed with 0x1f. LOGO and SCROLL answer
+        // brightness, ZERO and BACKLIGHT return 0x03. 16000 is OpenRazer's DPI_MAX.
+        .init(pid: 0x0067, name: "Razer Naga Trinity", fullySupported: true, hasBattery: false, hasLighting: true, maxDPI: 16000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
+        // Naga Chroma (in-app report, no credit given): an older wired-only Naga. DPI and
+        // polling passed with 0x1f. Its battery read answers zeros. The extended-matrix
+        // brightness commands are acknowledged but every zone reads back 0 and nothing
+        // changes, so it likely takes the older standard-matrix (class 0x03) lighting
+        // commands. Lighting stays off until those are tried. The DPI stages read fails (0x03).
+        .init(pid: 0x0053, name: "Razer Naga Chroma", fullySupported: false, hasBattery: false, hasLighting: false, maxDPI: 16000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
+        // Mouse Dock Pro: the dock acts as the receiver for the mouse paired to it, so what
+        // answers is that mouse. The one report (no credit given) had a Naga V3 Pro behind
+        // it: battery, DPI, static color and brightness passed with 0x1f. The classic polling
+        // command answers "not supported" (0x05). Brightness stays on LOGO_LED alone, since
+        // other mice the dock pairs with may lack the Naga's side panel. The dock's own
+        // lighting is not reachable here.
+        .init(pid: 0x00A4, name: "Razer Mouse Dock Pro", fullySupported: false, hasBattery: true, hasLighting: true, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
         // Basilisk V4 HyperSpeed over the dongle (in-app report, no credit given): battery and
         // DPI answered with 0x1f. 0xFF and 0x80 time out. Every LED group refuses brightness,
         // so no lighting. The classic polling command answers "not supported" (0x05); it likely
@@ -163,6 +183,16 @@ enum RazerDevices {
         // the polling picker fails here, so the row stays unverified. The 26000 DPI ceiling is
         // the app's default for unknown models, not a measured value.
         .init(pid: 0x00EA, name: "Razer Basilisk V4 HyperSpeed", fullySupported: false, hasBattery: true, hasLighting: false, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
+        // Basilisk V4 Pro over the dongle (in-app report, no credit given): battery, DPI and
+        // stages, static color and brightness passed with 0x1f. LOGO and SCROLL answer
+        // brightness, ZERO and BACKLIGHT return 0x03. The classic polling command answers
+        // "not supported" (0x05), the same gap as the V4 HyperSpeed, so the row stays
+        // unverified. The 26000 ceiling is the app's default, not a measured value.
+        .init(pid: 0x00E3, name: "Razer Basilisk V4 Pro (Wireless)", fullySupported: false, hasBattery: true, hasLighting: true, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
+        // DeathAdder V3 HyperSpeed over the dongle (in-app report, no credit given): DPI and
+        // stages and polling passed with 0x1f. It has no lighting (every group answers 0x05).
+        // The battery read timed out, so the row stays unverified until it answers.
+        .init(pid: 0x00C5, name: "Razer DeathAdder V3 HyperSpeed", fullySupported: false, hasBattery: true, hasLighting: false, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
     ]
 
     static func info(pid: Int) -> RazerDeviceInfo? { known.first { $0.pid == pid } }

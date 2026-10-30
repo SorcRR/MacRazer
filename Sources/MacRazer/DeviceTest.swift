@@ -675,8 +675,13 @@ enum DeviceTestSteps {
             data.percent = RazerCommands.batteryPercent(fromRaw: level.value)
             data.charging = try? DeviceProbe.charging(channel).value
             // Raw 0 is the protocol's "not ready" (just woken, or refusing around sleep), not
-            // an empty battery, so it doesn't pass.
-            record.outcome = level.value == 0 ? .failed : .passed
+            // an empty battery, so it doesn't pass. A wired-only mouse the registry knows
+            // answers zeros too (the Naga Chroma does), and that is no battery, not a fault.
+            if level.value != 0 {
+                record.outcome = .passed
+            } else {
+                record.outcome = expectsBattery == false && data.charging != true ? .notSupported : .failed
+            }
         } catch {
             record.error = String(describing: error)
             record.outcome = DeviceProbe.isRefusal(error) && expectsBattery != true ? .notSupported : .failed
