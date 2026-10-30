@@ -132,6 +132,9 @@ struct SettingsView: View {
         .frame(width: Self.sidebarWidth)
         .frame(maxHeight: .infinity)
         .background(Color.primary.opacity(0.04))
+        // The window is kept when closed, and closing it under the pointer never sends the
+        // hover's end: without this the item would still be lit when Settings reopens.
+        .onDisappear { hoveredPane = nil; tipHovered = false }
     }
 
     private func sidebarItem(_ item: SettingsPane) -> some View {
@@ -186,7 +189,8 @@ struct SettingsView: View {
     }
 
     /// What's installed and where updating stands, always the same three lines high — version,
-    /// status, one action — so the tip button above it never moves as the state changes.
+    /// status, and a slot for an action, empty when there's nothing to do — so the tip button
+    /// above it never moves as the state changes.
     private var versionFooter: some View {
         VStack(alignment: .leading, spacing: 6) {
             VStack(alignment: .leading, spacing: 1) {
@@ -247,8 +251,13 @@ struct SettingsView: View {
             Button("Quit MacRazer") { NSApplication.shared.terminate(nil) }
                 .controlSize(.small)
         case .idle:
-            // Up to date leaves the slot empty: checking by hand is on the Updates page.
-            if updateChecker.latestVersion != nil { installButton }
+            // Up to date leaves the slot empty: checking by hand is on the Updates page. A
+            // failed install still gets a way to try again from here.
+            if updateChecker.latestVersion != nil {
+                installButton
+            } else if updateChecker.downloadError != nil {
+                checkNowButton
+            }
         }
     }
 
