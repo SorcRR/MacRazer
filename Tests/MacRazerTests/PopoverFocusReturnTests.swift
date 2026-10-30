@@ -46,11 +46,11 @@ final class PopoverFocusReturnTests: XCTestCase {
     /// The second right-click after a menu used to open the popover: its action came without
     /// the press as the current event. The button still being down is enough.
     func testARightClickIsKnownWithoutItsEvent() {
-        XCTAssertTrue(PopoverFocusReturn.isMenuClick(eventType: .rightMouseDown, pressedButtons: 0b10, control: false))
-        XCTAssertTrue(PopoverFocusReturn.isMenuClick(eventType: nil, pressedButtons: 0b10, control: false))
-        XCTAssertTrue(PopoverFocusReturn.isMenuClick(eventType: .leftMouseUp, pressedButtons: 0b10, control: false))
-        XCTAssertTrue(PopoverFocusReturn.isMenuClick(eventType: .leftMouseUp, pressedButtons: 0, control: true), "Control-click")
-        XCTAssertFalse(PopoverFocusReturn.isMenuClick(eventType: .leftMouseUp, pressedButtons: 0, control: false))
+        XCTAssertTrue(StatusItemClick.opensMenu(eventType: .rightMouseDown, pressedButtons: 0b10, control: false))
+        XCTAssertTrue(StatusItemClick.opensMenu(eventType: nil, pressedButtons: 0b10, control: false))
+        XCTAssertTrue(StatusItemClick.opensMenu(eventType: .leftMouseUp, pressedButtons: 0b10, control: false))
+        XCTAssertTrue(StatusItemClick.opensMenu(eventType: .leftMouseUp, pressedButtons: 0, control: true), "Control-click")
+        XCTAssertFalse(StatusItemClick.opensMenu(eventType: .leftMouseUp, pressedButtons: 0, control: false))
     }
 
     func testEachReasonToStayIsEnoughOnItsOwn() {
