@@ -61,6 +61,23 @@ final class DischargeCurveModelTests: XCTestCase {
         XCTAssertEqual(hours ?? 0, 5 * 615 / 3600, accuracy: 0.1)
     }
 
+    func testModelSpecificEstimateWaitsForTwoCompleteTraversals() {
+        let model = makeModel()
+        for pass in 0..<2 {
+            model.record(fromPercent: 4, toPercent: 3, duration: 15)
+            for percent in stride(from: 3, through: 1, by: -1) {
+                traverse(model, percent: percent, dwell: 600)
+            }
+            if pass == 0 {
+                XCTAssertNil(model.estimateHoursRemaining(currentPercent: 3, fallbackRatePerHour: nil),
+                             "one observed battery cycle is not enough to claim a model-specific ETA")
+            }
+            model.observationInterrupted()
+        }
+
+        XCTAssertNotNil(model.estimateHoursRemaining(currentPercent: 3, fallbackRatePerHour: nil))
+    }
+
     func testUnwatchedEntryDoesNotCommit() {
         let model = makeModel()
         // No watched arrival (fresh model = app relaunch): dwell then drop must NOT count.

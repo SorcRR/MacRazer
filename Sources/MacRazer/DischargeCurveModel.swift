@@ -4,10 +4,9 @@
 import Foundation
 
 /// Running mean of how long the battery actually dwells at each percent (0-100), learned from
-/// real discharge history. A Li-ion cell's voltage — and so a firmware fuel gauge's reported
-/// percent — isn't linear with time: there's a long flat plateau through most of the
-/// discharge, then steep drops near full and near empty. A single %/hour rate (the generic
-/// model `BatteryHistory` uses for every other mouse) can't represent that shape; this can,
+/// real discharge history. A firmware fuel gauge's reported percent does not necessarily
+/// map linearly to time for every battery chemistry and device. A single %/hour rate (the
+/// generic model `BatteryHistory` uses for most mice) can't represent that shape; this can,
 /// because each percent gets its own learned dwell time instead of one shared rate.
 struct DischargeBucket: Codable {
     var totalSeconds: Double = 0
@@ -99,9 +98,8 @@ final class DischargeCurveModel {
     }
 
     /// Sum of learned (or rate-derived fallback) dwell time for every bucket from
-    /// `currentPercent` down to 1, in hours. nil only if there's no curve data for any bucket
-    /// in range AND no fallback rate — mirrors `BatteryHistory.estimateHoursRemaining`'s
-    /// "no data yet" case.
+    /// `currentPercent` down to 1, in hours. nil if any bucket lacks two complete traversals
+    /// and there is no fallback rate.
     func estimateHoursRemaining(currentPercent: Int, fallbackRatePerHour: Double?) -> Double? {
         guard currentPercent > 0 else { return 0 }
         let fallbackSecondsPerPercent = fallbackRatePerHour.map { 3600 / $0 }
@@ -114,12 +112,8 @@ final class DischargeCurveModel {
                 hasAnyData = true
             } else if let fallback = fallbackSecondsPerPercent {
                 totalSeconds += fallback
-            } else if let mean = bucket.mean {
-                // No fallback rate available at all — better than nothing even under-sampled.
-                totalSeconds += mean
-                hasAnyData = true
             } else {
-                return nil // this bucket has neither learned data nor a fallback rate
+                return nil // this bucket lacks trusted dwell data and a fallback rate
             }
         }
         guard hasAnyData || fallbackSecondsPerPercent != nil else { return nil }

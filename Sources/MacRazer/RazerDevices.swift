@@ -88,6 +88,9 @@ struct RazerDeviceInfo {
     /// serial of a covered model (one shared key) so data accumulates faster than a per-unit or
     /// per-PID table would.
     let dischargeCurveModelKey: String?
+    /// Do not present the generic percent-per-hour projection until this model has enough
+    /// complete, model-specific discharge traversals to estimate from its own curve.
+    var requiresTrustedDischargeCurve = false
     var supportsDpiButtonBinding = false
     var supportsSleepTimeout = false
     var supportsStageEditing = false
@@ -110,7 +113,7 @@ enum RazerDevices {
         // Basilisk V3 X HyperSpeed over Bluetooth. The shared BLE layer covers battery, DPI,
         // stages and static lighting; the DPI Cycle assignment is handled by BluetoothDevice.
         // Its only lit zone is the scroll wheel, so brightness must target SCROLL_LED.
-        .init(pid: 0x00BA, name: "Razer Basilisk V3 X HyperSpeed (Bluetooth)", fullySupported: true, hasBattery: true, hasLighting: true, maxDPI: 18000, transactionId: 0x1f, matrixTransactionId: 0x1f, brightnessLed: Razer.scrollLed, connection: .bluetooth, silhouette: .cobra, dischargeCurveModelKey: nil, supportsDpiButtonBinding: true, supportsSleepTimeout: true, supportsStageEditing: true, verifiesBrightnessWrite: true),
+        .init(pid: 0x00BA, name: "Razer Basilisk V3 X HyperSpeed (Bluetooth)", fullySupported: true, hasBattery: true, hasLighting: true, maxDPI: 18000, transactionId: 0x1f, matrixTransactionId: 0x1f, brightnessLed: Razer.scrollLed, connection: .bluetooth, silhouette: .cobra, dischargeCurveModelKey: "basilisk-v3-x-hyperspeed", requiresTrustedDischargeCurve: true, supportsDpiButtonBinding: true, supportsSleepTimeout: true, supportsStageEditing: true, verifiesBrightnessWrite: true),
         // Plain Cobra per razermouse_driver.c: 0xFF for standard/misc (serial :1509,
         // polling :2011/:2193, DPI :2600/:2781) but 0x1f for every extended-matrix
         // command (brightness :4202/:4312, spectrum :4622, static :5085, none :5301).
@@ -129,7 +132,7 @@ enum RazerDevices {
         // rate, lighting effects, and brightness on SCROLL_LED. The 18000 ceiling is the
         // vendor spec — the reporter exercised DPI at 6400, so the top of the range is the
         // one field here not demonstrated on a device.
-        .init(pid: 0x00B9, name: "Razer Basilisk V3 X HyperSpeed", fullySupported: true, hasBattery: true, hasLighting: true, maxDPI: 18000, transactionId: 0x1f, matrixTransactionId: 0x1f, brightnessLed: Razer.scrollLed, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
+        .init(pid: 0x00B9, name: "Razer Basilisk V3 X HyperSpeed", fullySupported: true, hasBattery: true, hasLighting: true, maxDPI: 18000, transactionId: 0x1f, matrixTransactionId: 0x1f, brightnessLed: Razer.scrollLed, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: "basilisk-v3-x-hyperspeed", requiresTrustedDischargeCurve: true),
         // Basilisk X HyperSpeed: the older AA-cell sibling — no lighting at all, and
         // razermouse_driver.c gives it 0xFF for every command it supports. Not verified
         // on hardware by us.
@@ -183,6 +186,9 @@ enum RazerDevices {
     static func supportsSleepTimeout(pid: Int) -> Bool { info(pid: pid)?.supportsSleepTimeout ?? false }
     static func supportsStageEditing(pid: Int) -> Bool { info(pid: pid)?.supportsStageEditing ?? false }
     static func verifiesBrightnessWrite(pid: Int) -> Bool { info(pid: pid)?.verifiesBrightnessWrite ?? false }
+    static func requiresTrustedDischargeCurve(pid: Int) -> Bool {
+        info(pid: pid)?.requiresTrustedDischargeCurve ?? false
+    }
     /// Per-command transaction id: explicit per-command override, else the class split
     /// (see `RazerDeviceInfo.matrixTransactionId`). 0x1f default for unknown models — the
     /// Cobra-family id this app has hardware verified.
