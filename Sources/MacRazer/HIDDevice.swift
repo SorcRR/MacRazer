@@ -58,9 +58,14 @@ final class HIDDevice {
         self.device = device
         self.productID = HIDDevice.intProp(device, kIOHIDProductIDKey) ?? 0
         self.locationID = HIDDevice.intProp(device, kIOHIDLocationIDKey) ?? 0
-        // The device's own USB product string — works for any Razer mouse without a registry.
-        let raw = HIDDevice.strProp(device, kIOHIDProductKey)?.trimmingCharacters(in: .whitespaces)
-        self.productName = (raw?.isEmpty == false ? raw! : RazerDevices.info(pid: HIDDevice.intProp(device, kIOHIDProductIDKey) ?? 0)?.name) ?? "Razer Mouse"
+        self.productName = HIDDevice.productName(of: device)
+    }
+
+    /// The device's own USB product string, which works for any Razer mouse without a
+    /// registry, else the registry's name for its PID.
+    static func productName(of device: IOHIDDevice) -> String {
+        let raw = strProp(device, kIOHIDProductKey)?.trimmingCharacters(in: .whitespaces)
+        return (raw?.isEmpty == false ? raw! : RazerDevices.info(pid: intProp(device, kIOHIDProductIDKey) ?? 0)?.name) ?? "Razer Mouse"
     }
 
     private static func intProp(_ dev: IOHIDDevice, _ key: String) -> Int? {
@@ -86,6 +91,33 @@ final class HIDDevice {
     /// All HID interfaces for the vendor (any product). We pick the right one by control score.
     static func matchingDevices(vendorId: Int) -> [IOHIDDevice] {
         devices(matching: [kIOHIDVendorIDKey as String: vendorId])
+    }
+
+    /// A Razer mouse plugged in by cable or dongle, found without opening anything.
+    struct USBMouse: Equatable {
+        let pid: Int
+        let name: String
+    }
+
+    /// Every Razer mouse plugged in by cable or dongle, one entry per product. Listing devices
+    /// needs no permission, so this works before Input Monitoring.
+    ///
+    /// Matched on an interface whose *primary* usage is Mouse. Matching any Mouse usage would
+    /// also catch a keyboard that carries a pointer collection on one of its interfaces. A
+    /// mouse's own pointer interface has it as the primary usage, as on the Cobra HyperSpeed
+    /// (the capture in `HIDDeviceSelectionTests`) and as `HIDDeviceSelection` already assumes
+    /// when it ranks devices. Product lines that are never mice are dropped by name on top,
+    /// for a keyboard or keypad that still gets through.
+    static func razerMice() -> [USBMouse] {
+        var seen = Set<Int>()
+        return devices(matching: [
+            kIOHIDVendorIDKey as String: Razer.vendorId,
+            kIOHIDPrimaryUsagePageKey as String: kHIDPage_GenericDesktop,
+            kIOHIDPrimaryUsageKey as String: kHIDUsage_GD_Mouse,
+        ])
+        .map { USBMouse(pid: productID(of: $0), name: productName(of: $0)) }
+        .sorted { $0.pid < $1.pid }
+        .filter { HIDDeviceSelection.couldBeMouse(productName: $0.name) && seen.insert($0.pid).inserted }
     }
 
     /// Razer mouse model keywords — used to recognise a Bluetooth-connected Razer mouse, which
@@ -201,7 +233,8 @@ final class HIDDevice {
                              locationID: intProp(dev, kIOHIDLocationIDKey) ?? 0,
                              usagePage: intProp(dev, kIOHIDPrimaryUsagePageKey) ?? 0,
                              usage: intProp(dev, kIOHIDPrimaryUsageKey) ?? 0,
-                             maxFeatureReportSize: intProp(dev, kIOHIDMaxFeatureReportSizeKey) ?? 0)
+                             maxFeatureReportSize: intProp(dev, kIOHIDMaxFeatureReportSizeKey) ?? 0,
+                             productName: productName(of: dev))
         }
     }
 

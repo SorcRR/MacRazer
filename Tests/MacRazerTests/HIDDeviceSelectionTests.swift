@@ -68,11 +68,51 @@ final class HIDDeviceSelectionTests: XCTestCase {
         XCTAssertNil(HIDDeviceSelection.controlInterfaceIndex(interfaces: interfaces))
     }
 
-    func testKeyboardIsUsableWhenItIsTheOnlyDevice() {
-        // Nothing better attached: still bind the best control-capable interface rather
-        // than reporting "not found" (unknown future mice may look like this).
+    func testAnUnnamedUnknownDeviceIsUsableWhenItIsTheOnlyOne() {
+        // Nothing better attached and no product string to rule it out: still bind the best
+        // control-capable interface rather than reporting "not found" (unknown future mice
+        // may look like this). A named keyboard is skipped; see the next test.
         let interfaces = keyboard()
         let idx = HIDDeviceSelection.controlInterfaceIndex(interfaces: interfaces)
         XCTAssertEqual(interfaces[idx!].maxFeatureReportSize, 512)
+    }
+
+    func testANamedKeyboardIsNeverTakenForTheMouse() {
+        let named = keyboard().map {
+            HIDInterfaceInfo(pid: $0.pid, locationID: $0.locationID, usagePage: $0.usagePage, usage: $0.usage,
+                             maxFeatureReportSize: $0.maxFeatureReportSize, productName: "Razer BlackWidow V4 Pro")
+        }
+        XCTAssertNil(HIDDeviceSelection.controlInterfaceIndex(interfaces: named),
+                     "alone, it must not show as a mouse or get the support prompt")
+        let interfaces = named + hyperSpeedDongle()
+        XCTAssertEqual(interfaces[HIDDeviceSelection.controlInterfaceIndex(interfaces: interfaces)!].pid, 0x00DB)
+    }
+
+    func testARegisteredMouseIsKeptWhateverItsName() {
+        let renamed = hyperSpeedDongle().map {
+            HIDInterfaceInfo(pid: $0.pid, locationID: $0.locationID, usagePage: $0.usagePage, usage: $0.usage,
+                             maxFeatureReportSize: $0.maxFeatureReportSize, productName: "Razer Keyboard Receiver")
+        }
+        XCTAssertEqual(HIDDeviceSelection.controlInterfaceIndex(interfaces: renamed), 2)
+    }
+
+    // MARK: Mouse or not, by name
+
+    func testKeyboardsAndAccessoriesAreNotMice() {
+        for name in ["Razer BlackWidow V4 Pro", "Razer Huntsman Mini", "Razer Ornata V3", "Razer Tartarus Pro",
+                     "Razer Blade 15", "Razer Pro Type Ultra", "Razer Kraken V3 Pro"] {
+            XCTAssertFalse(HIDDeviceSelection.couldBeMouse(productName: name), name)
+        }
+    }
+
+    func testMiceStayMice() {
+        // The registry's names, plus older ones that share words with other product lines.
+        let names = RazerDevices.known.map(\.name) + ["Razer DeathAdder Chroma", "Razer Mamba Chroma",
+                                                       "Razer Naga Trinity", "Razer Orochi V2",
+                                                       // A mouse on the dock, if it shows as the dock.
+                                                       "Razer Mouse Dock Pro"]
+        for name in names {
+            XCTAssertTrue(HIDDeviceSelection.couldBeMouse(productName: name), name)
+        }
     }
 }

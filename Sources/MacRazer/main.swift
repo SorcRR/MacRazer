@@ -273,6 +273,15 @@ case "render-usage-consent":
     writeHostedPNG(UsageStatsConsentView(stats: .preview(consent: .undecided), onDone: {}),
                    to: outputPath(args.dropFirst(), default: "usage-consent-preview.png"))
 
+case "render-support-prompt":
+    // The window asking to test an unverified mouse. `noaccess` shows the Input Monitoring
+    // version. The mouse is made up.
+    _ = NSApplication.shared
+    let mouse = UnsupportedMouse(pid: 0xFFFE, name: "Razer DeathAdder V3 Pro",
+                                 canControl: !args.contains("noaccess"))
+    writeHostedPNG(SupportPromptView(mouse: mouse, onRunTest: {}, onNotNow: {}, onDontAsk: {}),
+                   to: outputPath(args.dropFirst(), default: "support-prompt-preview.png"))
+
 case "render-about":
     _ = NSApplication.shared
     let aboutPath = outputPath(args.dropFirst(), default: "about-preview.png")
