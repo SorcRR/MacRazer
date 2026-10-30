@@ -64,6 +64,8 @@ struct SettingsView: View {
     @ObservedObject var supportPrompt: SupportPrompt = .shared
     @State var pane: SettingsPane = .general
     @State private var confirmingDelete = false
+    @State private var hoveredPane: SettingsPane?
+    @State private var tipHovered = false
 
     /// The window's one size. Fixed so switching pages doesn't make the window jump; a page
     /// with more than fits scrolls instead.
@@ -156,11 +158,12 @@ struct SettingsView: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
             .foregroundStyle(selected ? Color.primary : Color.primary.opacity(0.85))
-            .background(selected ? Color.primary.opacity(0.10) : .clear,
+            .background(Color.primary.opacity(selected ? 0.10 : hoveredPane == item ? 0.05 : 0),
                         in: RoundedRectangle(cornerRadius: 7))
             .contentShape(RoundedRectangle(cornerRadius: 7))
         }
         .buttonStyle(.plain)
+        .onHover { hoveredPane = $0 ? item : (hoveredPane == item ? nil : hoveredPane) }
         .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
@@ -173,11 +176,12 @@ struct SettingsView: View {
             .font(.system(size: 12.5, weight: .medium))
             .frame(maxWidth: .infinity)
             .padding(.vertical, 7)
-            .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
-            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.primary.opacity(0.10)))
+            .background(Color.primary.opacity(tipHovered ? 0.11 : 0.06), in: RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.primary.opacity(tipHovered ? 0.16 : 0.10)))
             .contentShape(RoundedRectangle(cornerRadius: 8))
         }
         .buttonStyle(.plain)
+        .onHover { tipHovered = $0 }
         .help("MacRazer is free and built in spare time")
     }
 
@@ -243,11 +247,8 @@ struct SettingsView: View {
             Button("Quit MacRazer") { NSApplication.shared.terminate(nil) }
                 .controlSize(.small)
         case .idle:
-            if updateChecker.latestVersion != nil {
-                installButton
-            } else {
-                checkNowButton
-            }
+            // Up to date leaves the slot empty: checking by hand is on the Updates page.
+            if updateChecker.latestVersion != nil { installButton }
         }
     }
 
@@ -398,27 +399,45 @@ struct SettingsView: View {
         )
     }
 
-    /// The picker goes under the text rather than beside it: four segments beside it left the
-    /// note one word wide.
+    /// A compact segmented control of its own beside the text, as in the design: the system one
+    /// is wide enough there to leave the note one word wide.
     private var themeRow: some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .center, spacing: 12) {
             iconChip("circle.lefthalf.filled", tint: Color(nsColor: .systemPurple))
             VStack(alignment: .leading, spacing: 2) {
                 Text("Theme").font(.system(size: 13, weight: .medium))
                 sectionNote("System follows macOS. Razer Green is always dark.")
-                Picker("Theme", selection: $appearance.theme) {
-                    ForEach(PopoverTheme.allCases) { Text($0.title).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .controlSize(.small)
-                .fixedSize()
-                .padding(.top, 6)
             }
-            Spacer(minLength: 0)
+            Spacer(minLength: 8)
+            themeSegments
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
+    }
+
+    private var themeSegments: some View {
+        HStack(spacing: 2) {
+            ForEach(PopoverTheme.allCases) { theme in
+                let on = appearance.theme == theme
+                Button { appearance.theme = theme } label: {
+                    Text(theme.title)
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(on ? Color.primary : Color.primary.opacity(0.75))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 3)
+                        .background(Color.primary.opacity(on ? 0.18 : 0), in: RoundedRectangle(cornerRadius: 5))
+                        .contentShape(RoundedRectangle(cornerRadius: 5))
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(on ? .isSelected : [])
+            }
+        }
+        .padding(2)
+        .background(Color.black.opacity(0.18), in: RoundedRectangle(cornerRadius: 7))
+        .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Color.primary.opacity(0.14)))
+        .fixedSize()
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Theme")
     }
 
     private var glassRow: some View {
