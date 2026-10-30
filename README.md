@@ -94,8 +94,11 @@ column is about who has actually seen it happen.
 **Have a mouse that isn't verified?** The quickest way to help is in the app. Right-click the
 menu bar icon and choose **Help Support This Mouse…**. It runs the same probes as the
 commands below, puts every setting back, and builds the report for you. **Send** emails it to
-the maintainer, or you can copy it or open a GitHub issue with it. On a verified mouse the item
-reads **Test This Mouse…**, and a report confirms it still works on your firmware. The full
+the maintainer, or you can copy it or open a GitHub issue with it. If part of your mouse is
+already verified, the test lists what works and offers to check only what's missing. It also
+says which of the mouse's other connections (cable, dongle, Bluetooth) still need a report. On
+a verified mouse the item reads **Test This Mouse…**. The window says no test is needed, but you
+can still run one to confirm it works on your firmware. The full
 test needs the dongle or a cable. A mouse on Bluetooth gets a shorter test that only reads.
 
 You don't have to find the menu item. When an unverified mouse connects by cable or dongle,

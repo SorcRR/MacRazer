@@ -12,6 +12,12 @@ expect rough edges until 1.0.
   support it. It asks once, reminds you once a week later, and stops for good after a report
   or "Don't ask for this mouse". A card in the popover offers the same test until then. Turn it
   off in Settings › General › Ask me to test unsupported mice.
+- **The device test knows what's already verified.** On a fully supported mouse it says no
+  test is needed. On a partly supported one it lists what works and offers to test only
+  what's missing. Both name the mouse's other connections that still need a report.
+- **Seven more mice from your reports.** Naga V3 Pro on its cable and Naga Trinity are fully
+  supported. Basilisk V4 Pro, DeathAdder V2 Pro, DeathAdder V3 HyperSpeed, Mouse Dock Pro and
+  Naga Chroma are partly supported.
 
 ### Changed
 - **Settings has a new layout.** A wider window with a sidebar for General, Privacy,

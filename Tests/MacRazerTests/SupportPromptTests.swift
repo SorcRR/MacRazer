@@ -111,7 +111,7 @@ final class SupportPromptStoreTests: XCTestCase {
     private func reviewedTest() -> DeviceTestModel {
         let model = DeviceTestModel(controller: MouseController(), permissions: PermissionsModel(),
                                     reportEndpoint: nil)
-        model.loadPreview(.review, known: false, ranSteps: true)
+        model.loadPreview(.review, pid: 0x00DB, ranSteps: true)
         return model
     }
 
