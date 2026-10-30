@@ -198,10 +198,11 @@ case "render-ui":
     if args.contains("downloading") { updateChecker.loadPreviewState(phase: .downloading(0.42)) }
     let launchAtLogin = LaunchAtLogin()
     launchAtLogin.loadPreviewState()
-    // `keyboard`, plus `follow` or `synapse`: a Razer keyboard under the mouse.
+    // `keyboard`, plus `follow`, `synapse` or `wave`: a Razer keyboard under the mouse.
     if args.contains("keyboard") {
         KeyboardController.shared.loadPreviewState(followsMouse: args.contains("follow"),
-                                                   synapse: args.contains("synapse"))
+                                                   synapse: args.contains("synapse"),
+                                                   wave: args.contains("wave"))
     }
     // The notes page is its own render: it is a scroll view, so it needs the hosted path,
     // and it is sized to the height the main page renders at — the whole point of checking
@@ -687,11 +688,18 @@ case "rgb":
         case "spectrum":
             print("Setting spectrum cycle …"); report = RazerCommands.setSpectrum()
         case "wave":
-            print("Setting wave …"); report = RazerCommands.setWave()
+            // Optional speed byte in hex, lower is faster (`WaveSpeed`): `rgb wave c8` is the
+            // slider's slowest, `rgb wave 08` its fastest.
+            let speedArg = args.dropFirst(2).first
+            guard let speed = speedArg.map({ UInt8($0, radix: 16) }) ?? WaveSpeed.standard else {
+                print("Usage: rgb wave [speed]   speed is a hex byte, lower is faster, e.g. `rgb wave c8` (slow)")
+                exit(64)
+            }
+            print(String(format: "Setting wave at speed 0x%02x …", speed)); report = RazerCommands.setWave(speed: speed)
         case "off":
             print("Turning lighting off …"); report = RazerCommands.setNone()
         default:
-            print("Usage: rgb <static rrggbb | spectrum | wave | off>")
+            print("Usage: rgb <static rrggbb | spectrum | wave [speed] | off>")
             exit(64)
         }
         let resp = try DeviceProbe.applyLighting(dev, report)

@@ -39,6 +39,42 @@ struct RGB: Codable, Equatable, Sendable {
     var r: UInt8, g: UInt8, b: UInt8
 }
 
+/// The wave effect's speed byte, `args[4]` of the wave command. Lower is faster
+/// (`razerchromacommon.c`): OpenRazer always sends 0x28, and Razer's own "Fast Wave" uses 0x10.
+/// The slider spans 0xC8 to 0x08. A wave's speed goes with 1 / byte, so the slider is
+/// geometric: each step multiplies the byte by the same factor, and the standard 0x28
+/// (200 / 40 = 40 / 8) sits exactly in the middle. Verified on the Cynosa Chroma (the
+/// slider's range) and the Cobra HyperSpeed (0xC8 answered and ran slower).
+enum WaveSpeed {
+    static let standard: UInt8 = 0x28
+    static let slowest: UInt8 = 0xC8
+    static let fastest: UInt8 = 0x08
+
+    /// The speed byte for a slider position, 0 (slowest) to 1 (fastest).
+    static func byte(fromFraction fraction: Double) -> UInt8 {
+        let f = max(0, min(fraction, 1))
+        return UInt8((Double(slowest) * pow(Double(fastest) / Double(slowest), f)).rounded())
+    }
+
+    /// What VoiceOver says for a slider position: the slider runs 0 to 1, and a bare
+    /// percentage there reads like a brightness ("0%" sounds like off).
+    static func spokenValue(fromFraction fraction: Double) -> String {
+        switch fraction {
+        case ..<0.15: return "Slowest"
+        case ..<0.4: return "Slow"
+        case ..<0.6: return "Standard"
+        case ..<0.85: return "Fast"
+        default: return "Fastest"
+        }
+    }
+
+    /// The slider position for a speed byte; bytes outside the range pin to its ends.
+    static func fraction(fromByte byte: UInt8) -> Double {
+        let b = Double(max(fastest, min(byte, slowest)))
+        return log(Double(slowest) / b) / log(Double(slowest) / Double(fastest))
+    }
+}
+
 /// Command builders — direct ports of razerchromacommon.c. The per-model transaction id is
 /// stamped later by `HIDDevice.send` (see `RazerDevices.transactionId`).
 enum RazerCommands {
@@ -236,7 +272,7 @@ enum RazerCommands {
     }
 
     /// Wave. base(0x06, …, 0x04); args[3]=direction (0..2), args[4]=speed (0x28 default).
-    static func setWave(led: UInt8 = zeroLed, direction: UInt8 = 0x01, speed: UInt8 = 0x28) -> RazerReport {
+    static func setWave(led: UInt8 = zeroLed, direction: UInt8 = 0x01, speed: UInt8 = WaveSpeed.standard) -> RazerReport {
         var r = effectBase(argSize: 0x06, led: led, effect: 0x04)
         r.arguments[3] = min(direction, 0x02)
         r.arguments[4] = speed
@@ -249,11 +285,13 @@ enum RazerCommands {
     }
 
     /// The command for a `LightingEffect` on one LED group, mouse or keyboard alike.
-    static func effect(_ effect: LightingEffect, color: RGB, led: UInt8 = zeroLed) -> RazerReport {
+    /// `waveSpeed` is the wave's speed byte (see `WaveSpeed`); the other effects have none.
+    static func effect(_ effect: LightingEffect, color: RGB, led: UInt8 = zeroLed,
+                       waveSpeed: UInt8 = WaveSpeed.standard) -> RazerReport {
         switch effect {
         case .staticColor: return setStatic(led: led, rgb: color)
         case .spectrum: return setSpectrum(led: led)
-        case .wave: return setWave(led: led)
+        case .wave: return setWave(led: led, speed: waveSpeed)
         case .off: return setNone(led: led)
         }
     }

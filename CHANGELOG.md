@@ -7,6 +7,9 @@ expect rough edges until 1.0.
 ## [Unreleased]
 
 ### Added
+- **Wave speed.** Picking Wave shows a speed slider, from slow to fast, for the mouse and for a
+  Razer keyboard alike. The speed is kept for the next time you pick Wave, saved in profiles,
+  and carried over when the keyboard follows the mouse.
 - **Lighting for a Razer keyboard next to the mouse.** A plugged-in Razer keyboard shows up
   under "Other Razer devices" in the popover, with its own colour, effect and brightness. Turn
   on "Also light the keyboard" under the mouse's Lighting to keep both the same. While Razer

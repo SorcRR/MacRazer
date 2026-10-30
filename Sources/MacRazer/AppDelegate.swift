@@ -260,7 +260,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         // the default, and following that would repaint the keyboard on every start.
         let ctrl2 = controller
         keyboard.mouseLighting = { [weak ctrl2] in
-            ctrl2.map { KeyboardLighting(effect: $0.effect, color: $0.lightingColor, brightness: $0.brightness) }
+            ctrl2.map { KeyboardLighting(effect: $0.effect, color: $0.lightingColor, brightness: $0.brightness,
+                                         waveSpeed: $0.waveSpeed) }
         }
         keyboard.start()
         let kb = keyboard

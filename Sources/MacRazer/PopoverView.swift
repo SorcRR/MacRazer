@@ -85,6 +85,9 @@ struct PopoverView: View {
     enum ColorTarget { case mouse, keyboard }
     @State private var keyboardBrightnessValue: Double = 100
     @State private var keyboardColor: Color = .razerGreen
+    /// Wave speed sliders, 0 (slowest) to 1 (fastest); see `WaveSpeed`.
+    @State private var waveSpeedValue = 0.5
+    @State private var keyboardWaveSpeedValue = 0.5
     /// Recallable custom DPI — persisted per-mouse, and never above the mouse's max.
     @State private var customDPI: Int = 8000
     @State private var editingDpiStage: Int?
@@ -275,17 +278,22 @@ struct PopoverView: View {
             if let timeout = controller.sleepTimeout { sleepTimeoutValue = Double(timeout) }
             loadCustomDPI()
             color = controller.lightingColor.swiftUIColor
+            waveSpeedValue = WaveSpeed.fraction(fromByte: controller.waveSpeed)
+            keyboardWaveSpeedValue = WaveSpeed.fraction(fromByte: keyboard.lighting.waveSpeed ?? WaveSpeed.standard)
             keyboardBrightnessValue = Double(keyboard.lighting.brightness)
             keyboardColor = keyboard.lighting.color.swiftUIColor
         }
         .onChange(of: controller.lightingColor) { _, new in color = new.swiftUIColor }
+        .onChange(of: controller.waveSpeed) { _, new in waveSpeedValue = WaveSpeed.fraction(fromByte: new) }
         .onChange(of: keyboard.lighting) { _, new in
             keyboardBrightnessValue = Double(new.brightness)
             keyboardColor = new.color.swiftUIColor
+            keyboardWaveSpeedValue = WaveSpeed.fraction(fromByte: new.waveSpeed ?? WaveSpeed.standard)
         }
         // A failed write leaves `lighting` as it was, so snap the slider back explicitly.
         .onChange(of: keyboard.lastWriteFailure) { _, _ in
             keyboardBrightnessValue = Double(keyboard.lighting.brightness)
+            keyboardWaveSpeedValue = WaveSpeed.fraction(fromByte: keyboard.lighting.waveSpeed ?? WaveSpeed.standard)
         }
         .onChange(of: controller.dpi) { _, new in if new != 0 { dpiValue = Double(new) } }
         .onChange(of: controller.brightness) { _, new in brightnessValue = Double(new) }
@@ -295,6 +303,7 @@ struct PopoverView: View {
             if controller.dpi != 0 { dpiValue = Double(controller.dpi) }
             brightnessValue = Double(controller.brightness)
             if let timeout = controller.sleepTimeout { sleepTimeoutValue = Double(timeout) }
+            waveSpeedValue = WaveSpeed.fraction(fromByte: controller.waveSpeed)
         }
         // A half-typed profile name shouldn't survive its row closing and reappear later.
         .onChange(of: expandedSections.contains(.profiles)) { _, open in
@@ -1315,6 +1324,10 @@ struct PopoverView: View {
                 .pickerStyle(.segmented)
                 .controlSize(.small)
                 .labelsHidden()
+                if controller.effect == .wave {
+                    waveSpeedSlider($waveSpeedValue) { controller.setWaveSpeed(WaveSpeed.byte(fromFraction: $0)) }
+                        .transition(.opacity)
+                }
             }
 
             if controller.effect == .staticColor || !controller.supportsLightingEffects {
@@ -1375,6 +1388,22 @@ struct PopoverView: View {
         controller.deviceHasBattery && !controller.charging
             && (controller.effect != .off || !controller.supportsLightingEffects)
             && Int(brightnessValue) > Battery.lightingHintBrightnessPercent
+    }
+
+    /// Wave speed, slow on the left and fast on the right, shown only while Wave runs. Sent
+    /// when the drag ends, like brightness.
+    private func waveSpeedSlider(_ value: Binding<Double>, onCommit: @escaping (Double) -> Void) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "tortoise.fill").font(.system(size: 10)).foregroundStyle(.secondary)
+            Slider(value: value, in: 0...1) { editing in
+                if !editing { onCommit(value.wrappedValue) }
+            }
+            .tint(.razerGreen)
+            .controlSize(.small)
+            .accessibilityLabel("Wave speed")
+            .accessibilityValue(WaveSpeed.spokenValue(fromFraction: value.wrappedValue))
+            Image(systemName: "hare.fill").font(.system(size: 11)).foregroundStyle(.secondary)
+        }
     }
 
     /// A real button rather than a tap gesture on a circle, so it reaches VoiceOver and
@@ -1544,6 +1573,10 @@ struct PopoverView: View {
             .pickerStyle(.segmented)
             .controlSize(.small)
             .labelsHidden()
+            if keyboard.lighting.effect == .wave {
+                waveSpeedSlider($keyboardWaveSpeedValue) { keyboard.setWaveSpeed(WaveSpeed.byte(fromFraction: $0)) }
+                    .transition(.opacity)
+            }
             // Always there, unlike the mouse's: picking a colour under Spectrum or Wave switches
             // to Static, so the colours are one click away whatever the keyboard is running.
             // Only a static colour shows as picked.
