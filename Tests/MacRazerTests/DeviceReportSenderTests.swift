@@ -34,7 +34,8 @@ final class DeviceReportSenderTests: XCTestCase {
             registry: RazerDevices.info(pid: 0x00DB).map(DeviceReport.Registry.init),
             identify: .init(outcome: .passed,
                             data: .init(firmware: "v1.0", standardAttempts: attempts(0x1F), dpiAttempts: attempts(0x1F),
-                                        lightingAttempts: attempts(0x1F), standardId: 0x1F, lightingId: 0x1F),
+                                        lightingAttempts: attempts(0x1F), standardId: 0x1F, lightingId: 0x1F,
+                                        otherInterfaces: [.init(usagePage: 0x01, usage: 0x06, attempts: attempts(0x1F))]),
                             error: nil, exchanges: [exchange, failed]),
             battery: .init(outcome: .passed, data: .init(raw: 92, percent: 36, charging: false), exchanges: [exchange]),
             dpi: .init(outcome: .passed,
@@ -57,7 +58,8 @@ final class DeviceReportSenderTests: XCTestCase {
                              led: read.report.commandClass == 0x0F ? read.report.arguments[1] : nil, answer: answer,
                              response: answer == .answered
                                  ? Array(read.report.arguments.prefix(DeviceTestSteps.capabilityResponseBytes)) : nil)
-            }),
+            }, buttonTable: [.init(id: 0x04, block: [0x01, 0x01, 0x04, 0, 0, 0, 0]),
+                             .init(id: 0x80, block: [0x00, 0x01, 0x00, 0, 0, 0, 0])]),
             verdict: nil, comment: "Works on my Mac.\nSide buttons too.", credit: "@someone",
             replyEmail: "person@example.com", exchangesDropped: ["lighting"])
         report.polling.error = "an example error"

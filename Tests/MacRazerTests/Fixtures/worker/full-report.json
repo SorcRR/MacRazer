@@ -43,6 +43,32 @@
     "outcome" : "passed"
   },
   "capabilities" : {
+    "buttonTable" : [
+      {
+        "block" : [
+          1,
+          1,
+          4,
+          0,
+          0,
+          0,
+          0
+        ],
+        "id" : 4
+      },
+      {
+        "block" : [
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "id" : 128
+      }
+    ],
     "reads" : [
       {
         "answer" : "answered",
@@ -513,6 +539,58 @@
         }
       ],
       "lightingId" : 31,
+      "otherInterfaces" : [
+        {
+          "attempts" : [
+            {
+              "answered" : true,
+              "groups" : [
+                "LOGO"
+              ],
+              "id" : 31,
+              "refused" : false
+            },
+            {
+              "answered" : false,
+              "error" : "Device command timed out",
+              "groups" : [
+
+              ],
+              "id" : 63,
+              "refused" : false
+            },
+            {
+              "answered" : false,
+              "error" : "Device command timed out",
+              "groups" : [
+
+              ],
+              "id" : 255,
+              "refused" : false
+            },
+            {
+              "answered" : false,
+              "error" : "Device command timed out",
+              "groups" : [
+
+              ],
+              "id" : 8,
+              "refused" : false
+            },
+            {
+              "answered" : false,
+              "error" : "Device command timed out",
+              "groups" : [
+
+              ],
+              "id" : 128,
+              "refused" : false
+            }
+          ],
+          "usage" : 6,
+          "usagePage" : 1
+        }
+      ],
       "standardAttempts" : [
         {
           "answered" : true,
@@ -633,7 +711,7 @@
     "transactionId" : 31
   },
   "replyEmail" : "person@example.com",
-  "schemaVersion" : 2,
+  "schemaVersion" : 3,
   "verdict" : {
     "failed" : [
 

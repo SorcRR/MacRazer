@@ -130,6 +130,17 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(refusing.sent.map { $0.arguments[1] }, [Razer.logoLed, Razer.scrollLed])
     }
 
+    /// Which link is still worth a report: the Naga Pro is verified over its dongle only.
+    func testFullySupportedOnAnotherLink() {
+        XCTAssertEqual(RazerDevices.modelName("Razer Naga Pro (Wired)"), "Razer Naga Pro")
+        XCTAssertEqual(RazerDevices.modelName("Razer Cobra HyperSpeed"), "Razer Cobra HyperSpeed")
+        XCTAssertTrue(RazerDevices.fullySupported(modelOf: 0x008F, on: .wirelessDongle))
+        XCTAssertFalse(RazerDevices.fullySupported(modelOf: 0x0090, on: .wired))
+        XCTAssertTrue(RazerDevices.fullySupported(modelOf: 0x00DB, on: .wired), "Cobra HyperSpeed (Wired)")
+        XCTAssertFalse(RazerDevices.fullySupported(modelOf: 0x00E8, on: .wired), "no cable row at all")
+        XCTAssertFalse(RazerDevices.fullySupported(modelOf: 0x9999, on: .wired))
+    }
+
     func testConnectionKind() {
         XCTAssertEqual(RazerDevices.connection(pid: 0x00DB), .wirelessDongle)
         XCTAssertEqual(RazerDevices.connection(pid: 0x00DA), .wired)

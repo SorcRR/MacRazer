@@ -175,6 +175,16 @@ enum RazerDevices {
             .map { $0.name.replacingOccurrences(of: " (Bluetooth)", with: "") }
     }
     static func fullySupported(pid: Int) -> Bool { info(pid: pid)?.fullySupported ?? false }
+    /// A row's name without the link in brackets: "Razer Naga Pro (Wired)" is "Razer Naga Pro".
+    static func modelName(_ name: String) -> String {
+        name.replacingOccurrences(of: #" \((Wired|Wireless|Bluetooth)\)$"#, with: "", options: .regularExpression)
+    }
+    /// Whether the registry fully supports the model `pid` is on another link, `connection`:
+    /// a row with the same model name on that link. False when `pid` isn't known.
+    static func fullySupported(modelOf pid: Int, on connection: RazerConnection) -> Bool {
+        guard let name = info(pid: pid).map({ modelName($0.name) }) else { return false }
+        return known.contains { $0.connection == connection && $0.fullySupported && modelName($0.name) == name }
+    }
     /// Defaults assume a full-featured mouse for unknown models (so we still attempt controls).
     static func hasBattery(pid: Int) -> Bool { info(pid: pid)?.hasBattery ?? true }
     static func hasLighting(pid: Int) -> Bool { info(pid: pid)?.hasLighting ?? true }

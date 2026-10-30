@@ -111,6 +111,9 @@ You can read the whole report on the last screen before it goes anywhere.
   timer, scroll wheel settings, profiles stored in the mouse, saved button functions and each
   lighting zone. These only read, so nothing on the mouse changes. They show which features
   are worth adding for it.
+- If the mouse keeps a button function table, every entry in it. With the buttons you press,
+  that is most of what's needed to remap them.
+- If no transaction id answers, whether the mouse's other interfaces do.
 - Which extra buttons you pressed during the button step, not when.
 - The app and macOS versions.
 - Only if you fill them in: a comment, a name to credit, and an email address for a reply.

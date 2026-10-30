@@ -78,6 +78,9 @@ enum DeviceReportOutput {
             }
             let leds = reads.filter { $0.answer == .answered }.compactMap(\.led).map { String(format: "0x%02X", $0) }
             if !leds.isEmpty { answered.append("lighting zones " + leds.joined(separator: " ")) }
+            if let table = report.capabilities?.buttonTable, !table.isEmpty {
+                answered.append("button table (\(table.count) \(table.count == 1 ? "entry" : "entries"))")
+            }
             lines.append("Also answers: " + (answered.isEmpty ? "none of the extra reads" : answered.joined(separator: ", ")))
         }
         if withComment, let comment = report.comment, !comment.isEmpty {

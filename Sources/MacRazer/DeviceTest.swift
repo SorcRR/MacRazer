@@ -11,7 +11,7 @@ import Foundation
 /// Never in here: the serial number (the app keys a mouse by it, and it names one physical
 /// unit), USB locations, or anything about the Mac beyond its OS version.
 struct DeviceReport: Codable, Equatable {
-    static let currentSchema = 2
+    static let currentSchema = 3
 
     var schemaVersion = DeviceReport.currentSchema
     var appVersion: String
@@ -112,6 +112,16 @@ struct DeviceReport: Codable, Equatable {
         var lightingAttempts: [TransactionResult]
         var standardId: UInt8?
         var lightingId: UInt8?
+        /// When no id got an answer on the interface MacRazer picked: the firmware read tried
+        /// on the mouse's other interfaces that can carry the control report. An answer here
+        /// means the app picks the wrong interface for this mouse.
+        var otherInterfaces: [InterfaceAttempt]?
+    }
+
+    struct InterfaceAttempt: Codable, Equatable {
+        var usagePage: Int
+        var usage: Int
+        var attempts: [TransactionResult]
     }
 
     struct BatteryData: Codable, Equatable {
@@ -168,6 +178,17 @@ struct DeviceReport: Codable, Equatable {
     /// One answer per read in `DeviceTestSteps.capabilityReads`, in that order.
     struct CapabilitiesData: Codable, Equatable {
         var reads: [CapabilityRead] = []
+        /// Every entry of the mouse's button function table that answered, read when one of
+        /// the `buttonFunction` reads did (`DeviceTestSteps.readButtonTable`). Nil when the
+        /// mouse has no table.
+        var buttonTable: [ButtonEntry]?
+    }
+
+    /// One entry of a button function table: its id and the seven-byte block it holds (a
+    /// function type, the data's length, then the data, e.g. 01 01 04 for mouse button 4).
+    struct ButtonEntry: Codable, Equatable {
+        var id: UInt8
+        var block: [UInt8]
     }
 
     struct CapabilityRead: Codable, Equatable {
@@ -298,8 +319,19 @@ enum DeviceTestSteps {
         return record
     }
 
-    /// Tries every transaction id, then reads the firmware with the one chosen.
-    static func identify(_ device: TransactionChannel, registry: RazerDeviceInfo?)
+    /// `identify` on a real mouse, which can also try its other interfaces
+    /// (`tryInterfaces`) when no id answers on the one MacRazer picked.
+    static func identifyMouse(_ device: HIDDevice, registry: RazerDeviceInfo?)
+        -> (record: DeviceReport.StepRecord<DeviceReport.IdentifyData>, sweep: [DeviceProbe.LEDAnswer]?) {
+        identify(device, registry: registry, others: {
+            device.withOtherControlInterfaces { tryInterfaces($0, preferred: registry?.transactionId) }
+        })
+    }
+
+    /// Tries every transaction id, then reads the firmware with the one chosen. `others` is
+    /// asked only when no id got any reply, answer or refusal.
+    static func identify(_ device: TransactionChannel, registry: RazerDeviceInfo?,
+                         others: () -> [DeviceReport.InterfaceAttempt] = { [] })
         -> (record: DeviceReport.StepRecord<DeviceReport.IdentifyData>, sweep: [DeviceProbe.LEDAnswer]?) {
         let recording = RecordingChannel(base: device)
         let firmware = DeviceProbe.discoverTransactionIds(recording, read: RazerCommands.getFirmwareVersion(),
@@ -313,12 +345,6 @@ enum DeviceTestSteps {
                                                                 preferred: registry?.matrixTransactionId)
         let lightingId = DeviceProbe.chosenId(lighting)
 
-        func results(_ attempts: [DeviceProbe.TransactionAttempt]) -> [DeviceReport.TransactionResult] {
-            attempts.map {
-                .init(id: $0.id, answered: $0.answered, refused: $0.refused, groups: nil,
-                      error: { if case .failure(let e) = $0.result { return String(describing: e) }; return nil }($0))
-            }
-        }
         var data = DeviceReport.IdentifyData(
             standardAttempts: results(firmware), dpiAttempts: dpi.map(results),
             lightingAttempts: lighting.map {
@@ -328,6 +354,10 @@ enum DeviceTestSteps {
         // The chosen id's own firmware answer, so the version costs no extra read.
         if let answer = firmware.first(where: { $0.id == standardId && $0.answered }), case .success(let r) = answer.result {
             data.firmware = RazerCommands.parseFirmwareVersion(r)
+        }
+        if standardId == nil {
+            let tried = others()
+            if !tried.isEmpty { data.otherInterfaces = tried }
         }
 
         // Passed only when some read got a real answer. On a known model, the ids on record
@@ -342,6 +372,26 @@ enum DeviceTestSteps {
         }
         let sweep = lighting.first(where: { $0.id == lightingId })?.sweep
         return (.init(outcome: outcome, data: data, exchanges: recording.exchanges), sweep)
+    }
+
+    /// The firmware read with every id, on each of `interfaces`: other interfaces of the
+    /// mouse, for when the one MacRazer picked didn't answer. One attempt per id: it only has
+    /// to show whether an interface answers at all, and the mouse already timed out on every
+    /// id once, so retries would add seconds per interface for nothing.
+    static func tryInterfaces(_ interfaces: [(usagePage: Int, usage: Int, channel: TransactionChannel)],
+                              preferred: UInt8?) -> [DeviceReport.InterfaceAttempt] {
+        interfaces.map { usagePage, usage, channel in
+            .init(usagePage: usagePage, usage: usage,
+                  attempts: results(DeviceProbe.discoverTransactionIds(channel, read: RazerCommands.getFirmwareVersion(),
+                                                                       preferred: preferred, attempts: 1)))
+        }
+    }
+
+    private static func results(_ attempts: [DeviceProbe.TransactionAttempt]) -> [DeviceReport.TransactionResult] {
+        attempts.map {
+            .init(id: $0.id, answered: $0.answered, refused: $0.refused, groups: nil,
+                  error: { if case .failure(let e) = $0.result { return String(describing: e) }; return nil }($0))
+        }
     }
 
     /// The ids the other steps use: what Identify found, else the registry's, else 0x1F.
@@ -374,8 +424,8 @@ enum DeviceTestSteps {
             ("wheelMode", read(0x02, 0xB0, 0x02, [Razer.varstore])),
             ("profileSlots", read(0x05, 0x81, 0x0A)),
             ("activeProfileSlot", read(0x05, 0x84, 0x0A)),
-            ("buttonFunction", read(0x02, 0x8C, 0x0A, [Razer.varstore, 0x04, 0x00])),
-            ("buttonFunction", read(0x02, 0x8C, 0x0A, [Razer.varstore, 0x05, 0x00])),
+            ("buttonFunction", buttonFunctionRead(0x04)),
+            ("buttonFunction", buttonFunctionRead(0x05)),
         ]
         // Every LED id OpenRazer names, and a few past them.
         for led in UInt8(0x00)...0x11 {
@@ -395,8 +445,63 @@ enum DeviceTestSteps {
                              registry: RazerDeviceInfo?) -> DeviceReport.CapabilitiesData? {
         guard identify.data?.standardId != nil else { return nil }
         let ids = chosenIds(identify, registry: registry)
-        return readCapabilities(FixedTransactionChannel(base: device, standard: ids.standard, matrix: ids.matrix,
-                                                        overrides: registry?.transactionOverrides ?? [:]))
+        let channel = FixedTransactionChannel(base: device, standard: ids.standard, matrix: ids.matrix,
+                                              overrides: registry?.transactionOverrides ?? [:])
+        var data = readCapabilities(channel)
+        let probes = data.reads.filter { $0.name == "buttonFunction" && $0.answer == .answered }
+        if !probes.isEmpty {
+            data.buttonTable = readButtonTable(channel, answered: probes.compactMap(\.response))
+        }
+        return data
+    }
+
+    /// A button function table entry on the base layer: args [VARSTORE, id, layer 0], and
+    /// the answer's args 3-9 hold the entry's block. Read from the Basilisk V4 Pro (#55).
+    static func buttonFunctionRead(_ id: UInt8) -> RazerReport {
+        var r = RazerReport(commandClass: 0x02, commandId: 0x8C, dataSize: 0x0A)
+        r.arguments[0] = Razer.varstore
+        r.arguments[1] = id
+        return r
+    }
+
+    /// The entry ids `readButtonTable` asks for. The Basilisk V4 Pro's table (#55) runs from
+    /// 0x02 to 0x80 with gaps, so this goes some way past it for mice with more buttons.
+    static let buttonTableIds = UInt8(0x01)...0x9F
+
+    /// Reads each of `buttonTableIds` on the base layer and keeps the entries that answer:
+    /// with the buttons the person pressed, enough to work out a new mouse's table. A read
+    /// only, like the rest. `answered` holds replies already read (the `buttonFunction`
+    /// probes), whose ids aren't asked again. Stops after a few timeouts in a row, as a mouse
+    /// that stopped answering would otherwise cost a third of a second per id.
+    static func readButtonTable(_ channel: DeviceProbeChannel, answered: [[UInt8]] = []) -> [DeviceReport.ButtonEntry] {
+        // Every read here is the same command, so a reply left over from the last id would
+        // pass `send`'s check. The id it echoes is what tells them apart. An all-zero block
+        // isn't a function (even Disabled is 00 01 00): no entry.
+        func entry(_ id: UInt8, _ arguments: [UInt8]) -> DeviceReport.ButtonEntry? {
+            guard arguments.count >= 10, arguments[1] == id else { return nil }
+            let block = Array(arguments[3..<10])
+            return block.contains(where: { $0 != 0 }) ? .init(id: id, block: block) : nil
+        }
+        let known = Dictionary(answered.filter { $0.count >= 2 }.map { ($0[1], $0) }, uniquingKeysWith: { a, _ in a })
+        var entries: [DeviceReport.ButtonEntry] = []
+        var timeouts = 0
+        for id in buttonTableIds {
+            if let arguments = known[id] {
+                if let found = entry(id, arguments) { entries.append(found) }
+                continue
+            }
+            do {
+                let answer = try channel.sendWithRetry(buttonFunctionRead(id), attempts: 1)
+                timeouts = 0
+                if let found = entry(id, Array(answer.arguments)) { entries.append(found) }
+            } catch HIDDevice.HIDError.commandFailed, HIDDevice.HIDError.notSupported {
+                timeouts = 0
+            } catch {
+                timeouts += 1
+                if timeouts == 4 { break }
+            }
+        }
+        return entries
     }
 
     /// Asks each of `capabilityReads` once and keeps the answer. No retry: a refusal or a
