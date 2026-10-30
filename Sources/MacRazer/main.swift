@@ -638,8 +638,9 @@ case "bluetoothtest":
     // The running app's own connection to the mouse leaves every read here unanswered, and
     // only the app can let go of it (the in-app test does).
     let me = ProcessInfo.processInfo.processIdentifier
-    guard !NSRunningApplication.runningApplications(withBundleIdentifier: "com.macrazer.menubar")
-        .contains(where: { $0.processIdentifier != me }) else {
+    guard let bundleID = Bundle.main.bundleIdentifier,
+          !NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+            .contains(where: { $0.processIdentifier != me }) else {
         status("✗ Quit MacRazer first: its own Bluetooth connection keeps the mouse from answering. Or run the test from its menu.")
         exit(1)
     }
