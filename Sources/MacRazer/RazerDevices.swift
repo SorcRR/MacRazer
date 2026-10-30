@@ -193,6 +193,11 @@ enum RazerDevices {
         // stages and polling passed with 0x1f. It has no lighting (every group answers 0x05).
         // The battery read timed out, so the row stays unverified until it answers.
         .init(pid: 0x00C5, name: "Razer DeathAdder V3 HyperSpeed", fullySupported: false, hasBattery: true, hasLighting: false, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
+        // DeathAdder V2 Pro over the dongle (in-app report, no credit given): battery answered
+        // with 0x1f (0x3f and 0x08 answer too; 0xFF and 0x80 time out). DPI, polling and
+        // lighting were skipped, so the row stays unverified. Only LOGO answers brightness;
+        // the rest return 0x03. 20000 is the vendor spec.
+        .init(pid: 0x007D, name: "Razer DeathAdder V2 Pro (Wireless)", fullySupported: false, hasBattery: true, hasLighting: true, maxDPI: 20000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
     ]
 
     static func info(pid: Int) -> RazerDeviceInfo? { known.first { $0.pid == pid } }

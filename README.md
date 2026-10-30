@@ -76,6 +76,7 @@ says so.
 | Razer Basilisk V4 HyperSpeed | Battery, DPI; polling not working yet | anonymous report |
 | Razer Basilisk V4 Pro (Wireless) | Battery, DPI, DPI stages, lighting, brightness; polling not working yet | anonymous report |
 | Razer DeathAdder V3 HyperSpeed | DPI, DPI stages, polling; battery not answering yet | anonymous report |
+| Razer DeathAdder V2 Pro (Wireless) | Battery; DPI, polling and lighting not tested yet | anonymous report |
 | Razer Mouse Dock Pro (with a Naga V3 Pro) | Battery, DPI, lighting, brightness; polling not working yet | anonymous report |
 | Razer Naga Chroma | DPI, polling; lighting not working yet | anonymous report |
 | Razer Orochi 2013 | DPI only | [@raphaelchenouard](https://github.com/raphaelchenouard) |
