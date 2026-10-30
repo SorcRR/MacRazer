@@ -57,7 +57,7 @@ final class PopoverThemeTests: XCTestCase {
 
         let settings = AppearanceSettings(defaults: defaults)
         XCTAssertEqual(settings.theme, .system)
-        XCTAssertTrue(settings.glass)
+        XCTAssertFalse(settings.glass)
 
         settings.theme = .razerGreen
         settings.glass = false

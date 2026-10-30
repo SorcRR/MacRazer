@@ -11,7 +11,15 @@ expect rough edges until 1.0.
   offers the short device test, which shows us what the mouse can do so a later release can
   support it. It asks once, reminds you once a week later, and stops for good after a report
   or "Don't ask for this mouse". A card in the popover offers the same test until then. Turn it
-  off in Settings › Ask me to test unsupported mice.
+  off in Settings › General › Ask me to test unsupported mice.
+
+### Changed
+- **Settings has a new layout.** A wider window with a sidebar for General, Privacy,
+  Appearance and Updates, so it no longer runs off the bottom of a small screen. Each setting
+  has an icon, and the version and update status sit at the bottom of the sidebar.
+- **The glass effect is off by default.** The popover and windows start with a solid
+  background, which is easier to read. Turn it back on in Settings › Appearance › Glass effect.
+  If you never changed the switch, you'll see the solid look after updating.
 
 ### Fixed
 - **A Razer keyboard is no longer taken for a mouse.** With no mouse plugged in, the app could

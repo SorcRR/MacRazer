@@ -94,7 +94,7 @@ final class AppearanceSettings: ObservableObject {
         // An unknown stored value (a theme removed in a later version) falls back to System
         // rather than failing.
         theme = defaults.string(forKey: Self.themeKey).flatMap(PopoverTheme.init(rawValue:)) ?? .system
-        glass = defaults.object(forKey: Self.glassKey) as? Bool ?? true
+        glass = defaults.object(forKey: Self.glassKey) as? Bool ?? false
     }
 
     func look(systemIsDark: Bool) -> PopoverLook {

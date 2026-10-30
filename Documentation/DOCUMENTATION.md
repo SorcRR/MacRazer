@@ -264,7 +264,7 @@ page is a `ScrollView` (so long content scrolls without resizing the popover):
  - Swatches, chips and the icon buttons carry VoiceOver labels and tooltips; chips and
  rows get a hover highlight.
 - **Appearance**, `PopoverTheme.swift`: Settings › Appearance has a **Theme** (System, Dark,
- Light, Razer Green) and a **Glass effect** switch, stored as `appearance.theme` and
+ Light, Razer Green) and a **Glass effect** switch (off by default), stored as `appearance.theme` and
  `appearance.glass` in UserDefaults. `PopoverLook.resolve` turns theme, glass and the system's
  light or dark mode into one of six looks (light, dark or green glass; solid light #F5F5F7,
  dark #1C1C1E or green #0F1A11). Razer Green is always dark.
@@ -330,7 +330,7 @@ model) runs a guided test and builds a report a maintainer can turn into a regis
 
 ### 6.5 Usage stats, `UsageStats.swift` + the Worker
 Opt-in only. Nothing is sent until the person clicks Share. In a build without the Worker (see
-`WorkerEndpoint` above) nothing is asked, Settings has no Privacy section, and nothing is sent.
+`WorkerEndpoint` above) nothing is asked, Settings has no Privacy page, and nothing is sent.
 
 - **Asking.** A new install gets `UsageStatsConsentView` in its own window, once nothing else is
  on screen (the setup window comes first). Someone updating gets `UsageStatsCard` in the
