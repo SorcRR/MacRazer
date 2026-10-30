@@ -34,7 +34,10 @@ Razer mice that use the same HID protocol family, but those are untested, so tre
   keyboard shortcuts (presets or a custom recorder), mouse clicks, and media keys. Saved per
   device.
 - **Any Razer mouse is detected and named.** Controls a model lacks are hidden automatically
-  (no lighting on the Atheris, no battery UI on wired-only mice).
+  (no lighting on the Atheris, no battery UI on wired-only mice). A Razer keyboard or other
+  product that is never a mouse is not taken for one.
+- **Asks for help with a new mouse.** When a mouse MacRazer doesn't fully support connects, a
+  small window offers the device test (see below). It can be turned off in Settings.
 - Settings are written to the mouse's **onboard memory** where supported, so they persist when
   the app is not running.
 - **Starts at login** (on by default, switchable in the popover and in System Settings ›
@@ -81,6 +84,13 @@ commands below, puts every setting back, and builds the report for you. **Send**
 the maintainer, or you can copy it or open a GitHub issue with it. On a verified mouse the item
 reads **Test This Mouse…**, and a report confirms it still works on your firmware. The test
 needs the dongle or a cable, even on a mouse that also works over Bluetooth.
+
+You don't have to find the menu item. When an unverified mouse connects by cable or dongle,
+MacRazer asks once, when no other window is open. If you say Not Now, it reminds you once a
+week later and then stops. A card at the top of the popover offers the same test until you send
+a report or hide it. "Don't ask for this mouse" stops both for that model. If the mouse is
+plugged in before Input Monitoring is allowed, the window starts with that permission. To turn
+all of this off, use Settings › General › **Ask me to test unsupported mice**.
 
 ### What a device report contains
 

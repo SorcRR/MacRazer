@@ -120,10 +120,18 @@ Built in [`RazerCommands.swift`](../Sources/MacRazer/RazerCommands.swift). VID `
 - `matchingDevices(vendorId:)` enumerates all HID interfaces for a vendor **without opening
  the manager** (opening the manager grabs the keyboard/mouse interfaces and yields
  `kIOReturnNotOpen` on SetReport, a bug we hit and fixed).
-- `open(vendorId:)` picks the **control interface** by score: it must carry a 90-byte feature
- report (`MaxFeatureReportSize >= 90`); we prefer a vendor usage page and the Mouse usage
- (`0x01`/`0x02`) so we don't grab a connected Razer keyboard. Exposes the device's
- `productID` and `productName` (from the USB product string).
+- `open(vendorId:)` picks the **control interface** with `HIDDeviceSelection`. It must carry a
+ 90-byte feature report (`MaxFeatureReportSize >= 90`). Devices are ranked first: a PID in the
+ registry wins, then a device with a Mouse usage interface (`0x01`/`0x02`), then the lowest
+ location. A device the registry doesn't know is skipped when its product string names a line
+ that is never a mouse (`HIDDeviceSelection.nonMouseProductLines`: BlackWidow, Huntsman,
+ Tartarus, Blade, Kraken and so on), so a Razer keyboard on its own isn't opened as the mouse.
+ Within the winning device, a vendor usage page and the Mouse usage score highest. Exposes the
+ device's `productID` and `productName` (from the USB product string).
+- `razerMice()` lists the Razer mice plugged in by cable or dongle without opening anything, so
+ it works before Input Monitoring. It matches interfaces whose *primary* usage is Mouse, then
+ applies the same name filter. The device test and the support prompt use it to find a mouse
+ the app can't open yet.
 - `send()` / `sendWithRetry()` implement the request/response with the 31 ms wait, BUSY
  re-reads, and retry/backoff for the finicky wireless link.
 
@@ -328,7 +336,35 @@ model) runs a guided test and builds a report a maintainer can turn into a regis
  `Tests/MacRazerTests/Fixtures/worker/`: the app's tests write them, and the Worker's CI fetches
  them from this repository and tests against them.
 
-### 6.5 Usage stats, `UsageStats.swift` + the Worker
+### 6.5 Support prompt, `SupportPrompt.swift` + `SupportPromptView.swift`
+Asks someone with a mouse that isn't `fullySupported` to run the device test (§6.4), instead of
+relying on them finding the menu item.
+
+- **Which mouse.** The connected mouse when it isn't verified and isn't on Bluetooth (the test
+ needs USB). With no mouse connected, an unverified one from `HIDDevice.razerMice()` when Input
+ Monitoring is missing. The window then reads "We found a new Razer mouse" and leads with the
+ permission. That list is refreshed from the plug monitor (`HIDMonitor`), a second after each
+ burst of events, and only while it can matter: the prompt is on and the permission is missing.
+ Turning the setting on refreshes it too.
+- **When.** `SupportPromptPolicy`, keyed by PID: the cable, dongle and Bluetooth PIDs of one
+ mouse are separate links that each need testing, while a second unit of the same model is not.
+ The first ask, one reminder after 7 days, then no more windows. Never again after a report is
+ sent, or after "Don't ask for this mouse" or Hide. A model later promoted to `fullySupported`
+ stops asking without anything clearing its record. Records live in `UserDefaults`
+ (`supportPrompt.records`).
+- **The moment.** A 5 s timer in `AppDelegate` checks that no window, popover or menu is open,
+ starting 10 s after launch so the setup window can come first. It asks only when the same
+ mouse is read on two ticks in a row: the controller publishes a new mouse's fields one at a
+ time, and a tick in between could pair one mouse's id with another's name.
+- **What counts as reported.** `trackReports` watches the device test's Send. Opening the GitHub
+ issue counts only in a build that can't send (no `WorkerEndpoint`), since nothing says the issue
+ was filed.
+- **The popover card.** At the top of the main page while `showsCard` holds. It stays after the
+ window has stopped asking, because it only shows when the person opens the popover anyway.
+- **Turning it off.** Settings › General › Ask me to test unsupported mice (`supportPrompt.enabled`,
+ on by default) silences both the window and the card.
+
+### 6.6 Usage stats, `UsageStats.swift` + the Worker
 Opt-in only. Nothing is sent until the person clicks Share. In a build without the Worker (see
 `WorkerEndpoint` above) nothing is asked, Settings has no Privacy section, and nothing is sent.
 
@@ -413,6 +449,7 @@ swift run MacRazer render-ui [offline|color|update|updated|whatsnew|…] out.png
 swift run MacRazer render-ui whatsnew installed out.png # the notes without an update to install
 swift run MacRazer render-about [notes] out.png
 swift run MacRazer render-remap out.png
+swift run MacRazer render-support-prompt [noaccess] out.png # the support prompt window
 ```
 
 (The `render-*` commands use SwiftUI `ImageRenderer`, which can't rasterize native controls —
@@ -430,6 +467,7 @@ that path draws the content but needs an explicit size, since there is no window
 | `AppDelegate.swift` | `NSStatusItem`, popover, right-click menu, HIDMonitor wiring, permission request. |
 | `MouseController.swift` | Orchestrator: poll loop, connection logic, writes, battery, published state. |
 | `HIDDevice.swift` | IOKit HID open/enumerate + request/response send. |
+| `HIDDeviceSelection.swift` | Which device and interface to open; tells mice from keyboards. |
 | `HIDMonitor.swift` | IOKit service notifications for plug/unplug. |
 | `RazerTransport.swift` | Transport protocol shared by USB and Bluetooth, plus the shared retry ladder. |
 | `BLEProtocol.swift` | Bluetooth LE framing and `RazerReport` translation. |
@@ -451,6 +489,8 @@ that path draws the content but needs an explicit size, since there is no window
 | `DeviceTestWindowController.swift` | Window host for the device test. |
 | `DeviceReportOutput.swift` | Copy, GitHub issue, size fitting and text limits for reports. |
 | `DeviceReportSender.swift` | Send: posts a report to the Worker. |
+| `SupportPrompt.swift` | When to ask for a device test, and the per-model records. |
+| `SupportPromptView.swift` | The support prompt window and its controller. |
 | `UsageStats.swift` | Opt-in usage stats: the ID, when to ping, Delete My Data. |
 | `UsageStatsView.swift` | The consent window, the Updated window's card, the shared summary. |
 | `ButtonCapture.swift` | Listens to the Razer device's buttons during the test. |
