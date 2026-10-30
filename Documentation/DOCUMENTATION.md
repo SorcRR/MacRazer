@@ -586,6 +586,7 @@ swift run MacRazer icon-models [dir] # each model's header silhouette
 swift run MacRazer appicon [dir] / iconset [dir] # app icon concepts / the .iconset for iconutil
 swift run MacRazer render-ui [offline|color|update|updated|whatsnew|…] out.png # popover (dev)
 swift run MacRazer render-ui whatsnew installed out.png # the notes without an update to install
+swift run MacRazer render-ui keyboard [follow|synapse] out.png # a Razer keyboard under the mouse
 swift run MacRazer render-about [notes] out.png
 swift run MacRazer render-remap out.png
 swift run MacRazer render-support-prompt [noaccess] out.png # the support prompt window
@@ -613,6 +614,8 @@ that path draws the content but needs an explicit size, since there is no window
 | `HIDDevice.swift` | IOKit HID open/enumerate + request/response send. |
 | `HIDDeviceSelection.swift` | Which device and interface to open; tells mice from keyboards. |
 | `HIDMonitor.swift` | IOKit service notifications for plug/unplug. |
+| `RazerKeyboards.swift` | Keyboards whose backlight MacRazer sets (PID, transaction id), their interface pick, Synapse detection. |
+| `KeyboardController.swift` | The keyboard's lighting: its own device and queue, follow-the-mouse, who sets colours while Synapse runs. |
 | `RazerTransport.swift` | Transport protocol shared by USB and Bluetooth, plus the shared retry ladder. |
 | `BLEProtocol.swift` | Bluetooth LE framing and `RazerReport` translation. |
 | `BluetoothDevice.swift` | CoreBluetooth connection to Razer's vendor GATT service. |

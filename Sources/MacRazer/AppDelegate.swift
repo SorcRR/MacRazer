@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     private var statusItem: NSStatusItem!
     private let popover = NSPopover()
     private let controller = MouseController()
+    private let keyboard = KeyboardController.shared
     private var cancellables = Set<AnyCancellable>()
     private var monitor: HIDMonitor?
     private var bluetoothMonitor: HIDMonitor?
@@ -215,10 +216,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
             // (avoids a transient 0% right after reconnect).
             onAppear: { [weak self] _ in
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { ctrl.forceCheck(immediateOffline: false) }
-                MainActor.assumeIsolated { self?.relistRazerMice() }
+                MainActor.assumeIsolated {
+                    self?.relistRazerMice()
+                    self?.keyboard.rescan()
+                }
             },
             onRemove: { [weak self] pids in
-                MainActor.assumeIsolated { self?.relistRazerMice() }
+                MainActor.assumeIsolated {
+                    self?.relistRazerMice()
+                    self?.keyboard.rescan()
+                }
                 // Only the connected device's removal is definitive. Matching is vendor-wide,
                 // so unplugging a Razer keyboard (or a different-model mouse) fires this too —
                 // that must not bypass the offline debounce, or a coincidental wireless
@@ -247,6 +254,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
                 DispatchQueue.main.async { ctrl.beginBluetoothWakeRecovery(discardBluetoothSession: true) }
             }
         )
+
+        // "Also light the keyboard" follows lighting the person sets on the mouse, never the
+        // values read from it: the mouse's effect can't be read back, so at launch it is only
+        // the default, and following that would repaint the keyboard on every start.
+        let ctrl2 = controller
+        keyboard.mouseLighting = { [weak ctrl2] in
+            ctrl2.map { KeyboardLighting(effect: $0.effect, color: $0.lightingColor, brightness: $0.brightness) }
+        }
+        keyboard.start()
+        let kb = keyboard
+        // After `receive(on:)` because @Published emits before the property is set.
+        controller.$lightingChanges
+            .dropFirst()
+            .receive(on: RunLoop.main)
+            .sink { _ in kb.followMouse() }
+            .store(in: &cancellables)
+        // Turning it on matches the keyboard to the mouse straight away.
+        keyboard.$followsMouse
+            .dropFirst()
+            .filter { $0 }
+            .receive(on: RunLoop.main)
+            .sink { _ in kb.followMouse() }
+            .store(in: &cancellables)
 
         remapper.start()
         remapper.observeDpiCycle(controller: controller)

@@ -198,6 +198,11 @@ case "render-ui":
     if args.contains("downloading") { updateChecker.loadPreviewState(phase: .downloading(0.42)) }
     let launchAtLogin = LaunchAtLogin()
     launchAtLogin.loadPreviewState()
+    // `keyboard`, plus `follow` or `synapse`: a Razer keyboard under the mouse.
+    if args.contains("keyboard") {
+        KeyboardController.shared.loadPreviewState(followsMouse: args.contains("follow"),
+                                                   synapse: args.contains("synapse"))
+    }
     // The notes page is its own render: it is a scroll view, so it needs the hosted path,
     // and it is sized to the height the main page renders at — the whole point of checking
     // it is whether the notes fit there.
