@@ -375,13 +375,15 @@ enum DeviceTestSteps {
     }
 
     /// The firmware read with every id, on each of `interfaces`: other interfaces of the
-    /// mouse, for when the one MacRazer picked didn't answer.
+    /// mouse, for when the one MacRazer picked didn't answer. One attempt per id: it only has
+    /// to show whether an interface answers at all, and the mouse already timed out on every
+    /// id once, so retries would add seconds per interface for nothing.
     static func tryInterfaces(_ interfaces: [(usagePage: Int, usage: Int, channel: TransactionChannel)],
                               preferred: UInt8?) -> [DeviceReport.InterfaceAttempt] {
         interfaces.map { usagePage, usage, channel in
             .init(usagePage: usagePage, usage: usage,
                   attempts: results(DeviceProbe.discoverTransactionIds(channel, read: RazerCommands.getFirmwareVersion(),
-                                                                       preferred: preferred)))
+                                                                       preferred: preferred, attempts: 1)))
         }
     }
 
@@ -446,8 +448,9 @@ enum DeviceTestSteps {
         let channel = FixedTransactionChannel(base: device, standard: ids.standard, matrix: ids.matrix,
                                               overrides: registry?.transactionOverrides ?? [:])
         var data = readCapabilities(channel)
-        if data.reads.contains(where: { $0.name == "buttonFunction" && $0.answer == .answered }) {
-            data.buttonTable = readButtonTable(channel)
+        let probes = data.reads.filter { $0.name == "buttonFunction" && $0.answer == .answered }
+        if !probes.isEmpty {
+            data.buttonTable = readButtonTable(channel, answered: probes.compactMap(\.response))
         }
         return data
     }
@@ -467,21 +470,30 @@ enum DeviceTestSteps {
 
     /// Reads each of `buttonTableIds` on the base layer and keeps the entries that answer:
     /// with the buttons the person pressed, enough to work out a new mouse's table. A read
-    /// only, like the rest. Stops after a few timeouts in a row, as a mouse that stopped
-    /// answering would otherwise cost a third of a second per id.
-    static func readButtonTable(_ channel: DeviceProbeChannel) -> [DeviceReport.ButtonEntry] {
+    /// only, like the rest. `answered` holds replies already read (the `buttonFunction`
+    /// probes), whose ids aren't asked again. Stops after a few timeouts in a row, as a mouse
+    /// that stopped answering would otherwise cost a third of a second per id.
+    static func readButtonTable(_ channel: DeviceProbeChannel, answered: [[UInt8]] = []) -> [DeviceReport.ButtonEntry] {
+        // Every read here is the same command, so a reply left over from the last id would
+        // pass `send`'s check. The id it echoes is what tells them apart. An all-zero block
+        // isn't a function (even Disabled is 00 01 00): no entry.
+        func entry(_ id: UInt8, _ arguments: [UInt8]) -> DeviceReport.ButtonEntry? {
+            guard arguments.count >= 10, arguments[1] == id else { return nil }
+            let block = Array(arguments[3..<10])
+            return block.contains(where: { $0 != 0 }) ? .init(id: id, block: block) : nil
+        }
+        let known = Dictionary(answered.filter { $0.count >= 2 }.map { ($0[1], $0) }, uniquingKeysWith: { a, _ in a })
         var entries: [DeviceReport.ButtonEntry] = []
         var timeouts = 0
         for id in buttonTableIds {
+            if let arguments = known[id] {
+                if let found = entry(id, arguments) { entries.append(found) }
+                continue
+            }
             do {
                 let answer = try channel.sendWithRetry(buttonFunctionRead(id), attempts: 1)
                 timeouts = 0
-                // Every read here is the same command, so a reply left over from the last id
-                // would pass `send`'s check. The id it echoes is what tells them apart. An
-                // all-zero block isn't a function (even Disabled is 00 01 00): no entry.
-                let block = Array(answer.arguments[3..<10])
-                guard answer.arguments[1] == id, block.contains(where: { $0 != 0 }) else { continue }
-                entries.append(.init(id: id, block: block))
+                if let found = entry(id, Array(answer.arguments)) { entries.append(found) }
             } catch HIDDevice.HIDError.commandFailed, HIDDevice.HIDError.notSupported {
                 timeouts = 0
             } catch {

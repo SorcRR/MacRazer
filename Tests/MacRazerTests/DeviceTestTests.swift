@@ -388,6 +388,17 @@ final class DeviceTestTests: XCTestCase {
         XCTAssertEqual(mouse.asked, Array(DeviceTestSteps.buttonTableIds), "a refusal doesn't stop the sweep")
     }
 
+    /// The probe reads' answers count, so their ids aren't asked twice.
+    func testTheButtonTableUsesTheProbeAnswers() {
+        let mouse = ButtonTableMouse()
+        mouse.table = [0x02: [1, 1, 2, 0, 0, 0, 0]]
+        var probe = DeviceTestSteps.buttonFunctionRead(0x04).arguments
+        probe.replaceSubrange(3..<10, with: [1, 1, 4, 0, 0, 0, 0])
+        let entries = DeviceTestSteps.readButtonTable(mouse, answered: [Array(probe.prefix(DeviceTestSteps.capabilityResponseBytes))])
+        XCTAssertEqual(entries.map(\.id), [0x02, 0x04])
+        XCTAssertFalse(mouse.asked.contains(0x04))
+    }
+
     func testTheButtonTableStopsWhenTheMouseStopsAnswering() {
         let mouse = ButtonTableMouse()
         mouse.table = [0x02: [1, 1, 2, 0, 0, 0, 0]]
@@ -443,7 +454,7 @@ final class DeviceTestTests: XCTestCase {
         XCTAssertTrue(DeviceReportOutput.summary(report).contains(
             "Also answers: pollingRate2, buttonFunction, lighting zones 0x04 0x0A"))
         report.capabilities?.buttonTable = [.init(id: 0x02, block: [1, 1, 2, 0, 0, 0, 0])]
-        XCTAssertTrue(DeviceReportOutput.summary(report).contains("lighting zones 0x04 0x0A, button table (1 entries)"))
+        XCTAssertTrue(DeviceReportOutput.summary(report).contains("lighting zones 0x04 0x0A, button table (1 entry)"))
         report.capabilities = .init(reads: [])
         XCTAssertTrue(DeviceReportOutput.summary(report).contains("Also answers: none of the extra reads"))
         report.capabilities = nil

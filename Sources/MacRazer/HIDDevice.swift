@@ -249,17 +249,18 @@ final class HIDDevice {
                   HIDDevice.productID(of: dev) == productID,
                   (HIDDevice.intProp(dev, kIOHIDLocationIDKey) ?? 0) == locationID,
                   (HIDDevice.intProp(dev, kIOHIDMaxFeatureReportSizeKey) ?? 0) >= HIDDeviceSelection.controlReportSize,
-                  let other = try? HIDDevice.open(dev) else { return nil }
+                  let other = try? HIDDevice.open(dev, as: "fallback interface") else { return nil }
             return (HIDDevice.intProp(dev, kIOHIDPrimaryUsagePageKey) ?? 0, HIDDevice.intProp(dev, kIOHIDPrimaryUsageKey) ?? 0, other)
         }
         defer { opened.forEach { $0.device.close() } }
         return body(opened.map { ($0.usagePage, $0.usage, $0.device) })
     }
 
-    static func open(_ chosen: IOHIDDevice) throws -> HIDDevice {
+    /// `role` names the interface in the log: the device test also opens others to try.
+    static func open(_ chosen: IOHIDDevice, as role: String = "control interface") throws -> HIDDevice {
         // stderr, not stdout: this fires on every (re)open inside the GUI app too, and the
         // CLI's actual output goes to stdout.
-        FileHandle.standardError.write(Data("[MacRazer] control interface: \(describe(chosen))\n".utf8))
+        FileHandle.standardError.write(Data("[MacRazer] \(role): \(describe(chosen))\n".utf8))
         let openResult = IOHIDDeviceOpen(chosen, IOOptionBits(kIOHIDOptionsTypeNone))
         guard openResult == kIOReturnSuccess else { throw HIDError.openFailed(openResult) }
         return HIDDevice(device: chosen)

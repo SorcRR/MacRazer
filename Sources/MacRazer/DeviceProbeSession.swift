@@ -164,10 +164,10 @@ extension DeviceProbe {
     /// maintainer needs to choose a new model's entry; "the first one worked" is not. About
     /// two seconds on that mouse, once per test.
     static func discoverTransactionIds(_ channel: TransactionChannel, read: RazerReport,
-                                       preferred: UInt8?) -> [TransactionAttempt] {
+                                       preferred: UInt8?, attempts: Int = DeviceProbe.attempts) -> [TransactionAttempt] {
         transactionCandidates(preferred: preferred).map { id in
             TransactionAttempt(id: id, result: Result {
-                try channel.sendWithRetry(read, attempts: DeviceProbe.attempts, transactionId: id)
+                try channel.sendWithRetry(read, attempts: attempts, transactionId: id)
             })
         }
     }

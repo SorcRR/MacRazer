@@ -103,7 +103,7 @@ struct DeviceTestView: View {
             stepTitle("Identify", changes: false)
             note("What macOS reports, and which settings your mouse understands.")
             if model.running {
-                running("Asking your mouse which settings it understands…")
+                running("Asking your mouse which settings it understands. This can take up to half a minute.")
             } else if let report = model.report {
                 card {
                     VStack(spacing: 4) {
