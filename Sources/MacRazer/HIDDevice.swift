@@ -253,6 +253,13 @@ final class HIDDevice {
         return devices[idx]
     }
 
+    /// The control interface of a keyboard `RazerKeyboards` knows, without opening it, or nil
+    /// when none is plugged in. Picked by `RazerKeyboards.controlInterfaceIndex`.
+    static func keyboardControlInterface() -> IOHIDDevice? {
+        let devices = matchingDevices(vendorId: Razer.vendorId)
+        return RazerKeyboards.controlInterfaceIndex(interfaces: interfaceInfos(devices)).map { devices[$0] }
+    }
+
     /// What `HIDDeviceSelection` ranks each interface by.
     private static func interfaceInfos(_ devices: [IOHIDDevice]) -> [HIDInterfaceInfo] {
         devices.map { dev in
@@ -266,6 +273,7 @@ final class HIDDevice {
     }
 
     static func productID(of dev: IOHIDDevice) -> Int { intProp(dev, kIOHIDProductIDKey) ?? 0 }
+    static func locationID(of dev: IOHIDDevice) -> Int { intProp(dev, kIOHIDLocationIDKey) ?? 0 }
 
     /// Runs `body` with this mouse's other interfaces that can carry the control report,
     /// opened, and closes them after. For the device test, when the interface picked doesn't

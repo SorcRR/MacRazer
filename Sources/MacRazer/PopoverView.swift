@@ -54,6 +54,8 @@ struct PopoverView: View {
     @ObservedObject var appearance: AppearanceSettings
     /// Whether to show the card asking for a device test; see `SupportPromptPolicy`.
     @ObservedObject var supportPrompt: SupportPrompt = .shared
+    /// A Razer keyboard's backlight, shown under the mouse when one is plugged in.
+    @ObservedObject var keyboard: KeyboardController = .shared
     @Environment(\.colorScheme) private var colorScheme
     /// Opening a window is the owner's job — the popover doesn't know about window controllers.
     /// Deliberately not defaulted: a no-op default would let a future call site forget the
@@ -78,6 +80,11 @@ struct PopoverView: View {
     /// `Binding<Color>`. The controller's published value is the source of truth (lighting
     /// state is device-confirmed there); this follows it via `onChange`.
     @State private var color: Color = .razerGreen
+    /// Which device the colour page sets: the mouse, or the keyboard's own colour.
+    @State private var colorTarget: ColorTarget = .mouse
+    enum ColorTarget { case mouse, keyboard }
+    @State private var keyboardBrightnessValue: Double = 100
+    @State private var keyboardColor: Color = .razerGreen
     /// Recallable custom DPI — persisted per-mouse, and never above the mouse's max.
     @State private var customDPI: Int = 8000
     @State private var editingDpiStage: Int?
@@ -159,8 +166,11 @@ struct PopoverView: View {
     private var colorPage: some View {
         VStack(spacing: 0) {
             Spacer(minLength: 0)
-            ColorPickerPage(color: $color, onBack: { page = .main }) { rgb in
-                controller.setColor(rgb)
+            ColorPickerPage(color: colorTarget == .mouse ? $color : $keyboardColor, onBack: { page = .main }) { rgb in
+                switch colorTarget {
+                case .mouse: controller.setColor(rgb)
+                case .keyboard: keyboard.setColor(rgb)
+                }
             }
             .frame(maxWidth: .infinity)
             Spacer(minLength: 0)
@@ -251,6 +261,8 @@ struct PopoverView: View {
                 settingsGroup
                     .opacity(controller.connected ? 1 : 0.45)
             }
+            // Not tied to the mouse: it shows, and works, with the mouse asleep or unplugged.
+            if let kb = keyboard.keyboard { keyboardSection(kb) }
             footer
         }
         .padding(12)
@@ -263,8 +275,18 @@ struct PopoverView: View {
             if let timeout = controller.sleepTimeout { sleepTimeoutValue = Double(timeout) }
             loadCustomDPI()
             color = controller.lightingColor.swiftUIColor
+            keyboardBrightnessValue = Double(keyboard.lighting.brightness)
+            keyboardColor = keyboard.lighting.color.swiftUIColor
         }
         .onChange(of: controller.lightingColor) { _, new in color = new.swiftUIColor }
+        .onChange(of: keyboard.lighting) { _, new in
+            keyboardBrightnessValue = Double(new.brightness)
+            keyboardColor = new.color.swiftUIColor
+        }
+        // A failed write leaves `lighting` as it was, so snap the slider back explicitly.
+        .onChange(of: keyboard.lastWriteFailure) { _, _ in
+            keyboardBrightnessValue = Double(keyboard.lighting.brightness)
+        }
         .onChange(of: controller.dpi) { _, new in if new != 0 { dpiValue = Double(new) } }
         .onChange(of: controller.brightness) { _, new in brightnessValue = Double(new) }
         // A failed device write leaves the controller's values unchanged, so no value-driven
@@ -1300,10 +1322,26 @@ struct PopoverView: View {
                     ForEach(swatches.indices, id: \.self) { i in
                         swatch(swatches[i].color, name: swatches[i].name)
                     }
-                    customColorWell
+                    customColorWell()
                     Spacer(minLength: 0)
                 }
                 .transition(.opacity)
+            }
+
+            if keyboard.keyboard != nil && keyboard.canWrite {
+                Divider().opacity(0.6)
+                HStack(spacing: 8) {
+                    Image(systemName: "keyboard")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                    Text("Also light the keyboard").font(.system(size: 11.5))
+                    Spacer(minLength: 6)
+                    Toggle("Also light the keyboard", isOn: $keyboard.followsMouse)
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                        .tint(.razerGreen)
+                        .controlSize(.mini)
+                }
             }
 
             if showsLightingBatteryHint {
@@ -1341,26 +1379,33 @@ struct PopoverView: View {
 
     /// A real button rather than a tap gesture on a circle, so it reaches VoiceOver and
     /// keyboard navigation, and greys out with the rest of the card while disconnected.
-    private func swatch(_ sw: Color, name: String) -> some View {
-        Button { controller.setColor(sw.rgb) } label: {
+    private func swatch(_ sw: Color, name: String, for target: ColorTarget = .mouse) -> some View {
+        let selected = isSelected(sw, for: target)
+        return Button {
+            switch target {
+            case .mouse: controller.setColor(sw.rgb)
+            case .keyboard: keyboard.setColor(sw.rgb)
+            }
+        } label: {
             Circle()
                 .fill(sw)
                 .frame(width: 18, height: 18)
                 .overlay(Circle().strokeBorder(Color.primary.opacity(0.15), lineWidth: 0.5))
-                .overlay(Circle().inset(by: -2.5).stroke(Color.primary, lineWidth: isSelected(sw) ? 1.5 : 0))
+                .overlay(Circle().inset(by: -2.5).stroke(Color.primary, lineWidth: selected ? 1.5 : 0))
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
         .help(name)
         .accessibilityLabel(name)
-        .accessibilityAddTraits(isSelected(sw) ? .isSelected : [])
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     /// Circular "custom colour" well — a rainbow ring that opens the system colour panel.
     /// Uses a real button + NSColorPanel bridge (the hidden-ColorPicker trick didn't register
     /// clicks).
-    private var customColorWell: some View {
+    private func customColorWell(for target: ColorTarget = .mouse) -> some View {
         Button {
+            colorTarget = target
             page = .color
         } label: {
             ZStack {
@@ -1379,9 +1424,161 @@ struct PopoverView: View {
         .accessibilityLabel("Custom colour")
     }
 
-    private func isSelected(_ sw: Color) -> Bool {
-        let a = sw.rgb, b = color.rgb
-        return a.r == b.r && a.g == b.g && a.b == b.b
+    private func isSelected(_ sw: Color, for target: ColorTarget = .mouse) -> Bool {
+        switch target {
+        case .mouse: return sw.rgb == color.rgb
+        // Only Static and Breathing show a colour as picked: Spectrum and Wave have none.
+        case .keyboard: return keyboard.lighting.effect?.usesColor == true && sw.rgb == keyboard.lighting.color
+        }
+    }
+
+    // MARK: Keyboard
+
+    /// Whether the keyboard's Lighting row is open, remembered like the mouse's sections.
+    @AppStorage("popoverKeyboardLightingExpanded") private var keyboardLightingExpanded = true
+
+    /// A Razer keyboard plugged in next to the mouse: its name, then its own lighting, a line
+    /// saying it follows the mouse, or the question of who sets its colours while Synapse runs.
+    private func keyboardSection(_ kb: KeyboardController.Keyboard) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Other Razer devices")
+                .font(.system(size: 10.5, weight: .semibold))
+                .textCase(.uppercase)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 4)
+                .padding(.top, 2)
+            cardSurface(VStack(alignment: .leading, spacing: 0) {
+                keyboardHeader(kb)
+                if keyboard.synapseRunning { synapseToggleRow }
+                if keyboard.canWrite && !keyboardFollowing { keyboardLightingRow }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading))
+        }
+    }
+
+    private func keyboardHeader(_ kb: KeyboardController.Keyboard) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "keyboard")
+                .font(.system(size: 15))
+                .foregroundStyle(.primary.opacity(0.85))
+                .frame(width: 34, height: 34)
+                .background(Color.primary.opacity(0.10), in: RoundedRectangle(cornerRadius: 9))
+            VStack(alignment: .leading, spacing: 1) {
+                Text(kb.name).font(.system(size: 13, weight: .semibold)).lineLimit(1)
+                HStack(spacing: 5) {
+                    if keyboardFollowing, keyboard.lighting.effect?.usesColor == true {
+                        Circle().fill(keyboard.lighting.color.swiftUIColor).frame(width: 9, height: 9)
+                    }
+                    Text(keyboardSubtitle(kb))
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            Spacer(minLength: 0)
+            Circle().fill(Color.green).frame(width: 8, height: 8)
+                .accessibilityLabel("Connected")
+        }
+        .padding(12)
+    }
+
+    private func keyboardSubtitle(_ kb: KeyboardController.Keyboard) -> String {
+        if keyboard.leftToSynapse { return "Colours set by Synapse" }
+        if keyboardFollowing { return "Following mouse · \(keyboardLightingSummary)" }
+        return kb.verified ? "Keyboard · lighting only" : "Keyboard · lighting only, untested"
+    }
+
+    /// "Also light the keyboard" is on and there is a mouse to follow. With none, the
+    /// keyboard's own controls come back: the switch lives on the mouse's Lighting row,
+    /// which isn't there to turn it off.
+    private var keyboardFollowing: Bool { keyboard.followsMouse && keyboard.canWrite && !noMouse }
+
+    /// Like `lightingSummary`, for the keyboard. Before MacRazer has set an effect it can only
+    /// say the brightness: the keyboard's own effect can't be read.
+    private var keyboardLightingSummary: String {
+        let pct = Int(keyboardBrightnessValue)
+        guard let effect = keyboard.lighting.effect else { return "\(pct)%" }
+        if pct == 0 || effect == .off { return "Off" }
+        return "\(effect.rawValue) · \(pct)%"
+    }
+
+    private var keyboardLightingRow: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) { keyboardLightingExpanded.toggle() }
+            } label: {
+                groupRowLabel(title: "Lighting", symbol: "light.max", tint: .orange,
+                              value: keyboardLightingSummary, valueColor: .secondary,
+                              expanded: keyboardLightingExpanded)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Keyboard lighting")
+            .accessibilityValue(keyboardLightingSummary)
+            if keyboardLightingExpanded {
+                keyboardLightingContent
+                    .padding(.horizontal, 12)
+                    .padding(.top, 6)
+                    .padding(.bottom, 12)
+                    .transition(.opacity)
+            }
+        }
+    }
+
+    /// The mouse's lighting controls, pointed at the keyboard.
+    private var keyboardLightingContent: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: "sun.min.fill").font(.system(size: 10)).foregroundStyle(.secondary)
+                Slider(value: $keyboardBrightnessValue, in: 0...100, step: 1) { editing in
+                    if !editing { keyboard.setBrightness(Int(keyboardBrightnessValue)) }
+                }
+                .tint(.razerGreen)
+                .controlSize(.small)
+                Image(systemName: "sun.max.fill").font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+            // nil (never set from MacRazer) shows no segment picked rather than a guess.
+            Picker("", selection: Binding(get: { keyboard.lighting.effect },
+                                          set: { if let e = $0 { keyboard.setEffect(e) } })) {
+                ForEach(LightingEffect.allCases) { Text($0.rawValue).tag(Optional($0)) }
+            }
+            .pickerStyle(.segmented)
+            .controlSize(.small)
+            .labelsHidden()
+            // Always there, unlike the mouse's: picking a colour under Spectrum or Wave switches
+            // to Static, so the colours are one click away whatever the keyboard is running.
+            // Only Static and Breathing show a colour as picked.
+            HStack(spacing: 7) {
+                ForEach(swatches.indices, id: \.self) { i in
+                    swatch(swatches[i].color, name: swatches[i].name, for: .keyboard)
+                }
+                customColorWell(for: .keyboard)
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    /// Shown only while Synapse runs: who sets the keyboard's colours, either way at any
+    /// time. Off, the default, leaves them to Synapse and hides MacRazer's controls; on,
+    /// MacRazer's colours go back on, and again after a wake or reconnect.
+    private var synapseToggleRow: some View {
+        HStack(alignment: .top, spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Use MacRazer").font(.system(size: 11.5, weight: .medium))
+                Text("Razer Synapse is running and may change this keyboard's colours.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 6)
+            Toggle("Use MacRazer", isOn: Binding(get: { keyboard.owner == .macRazer },
+                                                 set: { keyboard.choose($0 ? .macRazer : .synapse) }))
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .tint(.razerGreen)
+                .controlSize(.mini)
+        }
+        .padding(.horizontal, 12)
+        .padding(.bottom, 12)
     }
 
     // MARK: Grouped settings

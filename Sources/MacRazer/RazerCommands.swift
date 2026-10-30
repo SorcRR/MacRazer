@@ -281,6 +281,17 @@ enum RazerCommands {
         effectBase(argSize: 0x06, led: led, effect: 0x00)
     }
 
+    /// The command for a `LightingEffect` on one LED group, mouse or keyboard alike.
+    static func effect(_ effect: LightingEffect, color: RGB, led: UInt8 = zeroLed) -> RazerReport {
+        switch effect {
+        case .staticColor: return setStatic(led: led, rgb: color)
+        case .breathing: return setBreathingSingle(led: led, rgb: color)
+        case .spectrum: return setSpectrum(led: led)
+        case .wave: return setWave(led: led)
+        case .off: return setNone(led: led)
+        }
+    }
+
     // --- LED brightness (extended matrix, class 0x0F) ---
 
     /// razer_chroma_extended_matrix_brightness(VARSTORE, led, brightness)

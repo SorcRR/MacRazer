@@ -254,7 +254,8 @@ the popover is open, `setPopoverVisible(true)` polls DPI/poll every 2 s so on-mo
  to decode.
 
 ### `RazerDevices.swift`, device registry
-Maps PID to a `RazerDeviceInfo`: name, `fullySupported`, `hasBattery`, `hasLighting`,
+Maps PID to a `RazerDeviceInfo`: name, `unverified` (the features still waiting for a
+report; empty means `fullySupported`), `hasBattery`, `hasLighting`,
 `maxDPI`, transaction ids, the link (`connection`), the header silhouette, and the discharge
 curve key. The connected device's **name comes from its own USB product string** (works for
 any Razer mouse); the registry adds what has been verified about the model. Unknown mice show their name +
@@ -318,6 +319,20 @@ long content scrolls without resizing the popover):
  firmware and tells the app nothing, so switching is done from the popover
  (`MouseController.applyProfile`). The Profiles page (`ProfilesView.swift`) renames, sets
  active and deletes.
+ - **Other Razer devices** (`KeyboardController.swift`, `RazerKeyboards.swift`): a card for a
+ Razer keyboard MacRazer knows, under the mouse's sections and independent of the mouse being
+ connected. Its Lighting row has the mouse's brightness slider and effect picker; its colour
+ swatches stay on screen under every effect (picking one switches to Static). The effect
+ can't be read back from the keyboard, so what MacRazer sets is saved per model
+ (`keyboardLighting.<pid>`) and none is shown picked until it has set one. The brightness is
+ re-read whenever the popover opens, and a colour or effect change never resends it, so the
+ keyboard's own brightness keys stick.
+ - **Also light the keyboard** (in the mouse's Lighting row): the keyboard follows lighting the
+ person sets on the mouse (`MouseController.lightingChanges`), never values read from it. The
+ card then shrinks to one line.
+ - **Use MacRazer** (only while Razer Synapse runs): off by default, so Synapse keeps the
+ keyboard and MacRazer writes nothing. On, MacRazer puts its lighting on, and back on after a
+ wake or reconnect.
  - **Update card**: when a newer release is found, "Update & Restart" (or the DMG download)
  and a row that opens the **What's new** page (`WhatsNewPage.swift`). After an update, an
  "Updated to …" card until dismissed. See §6.7.
@@ -387,6 +402,14 @@ model) runs a guided test and builds a report a maintainer can turn into a regis
 - `DeviceTestModel.swift` / `DeviceTestView.swift` / `DeviceTestWindowController.swift`: the
  window. Steps run on `MouseController`'s device queue with the app's own reads paused. Quit
  waits for a running step. The test needs USB; a mouse on Bluetooth is told to switch.
+- The intro follows the registry row for the connected link (`DeviceTestModel.Support`). Fully
+ supported: no test needed, with Test anyway for after a firmware update. Partly supported:
+ what works, what still needs testing, and **Test what's missing**, which runs Identify and
+ only those steps (`DeviceTestFlow.skipped`). The steps it passes over are recorded as skipped
+ with "Already verified", so the report keeps the Worker's format and its verdict reads
+ "Partly tested". Both intros also name the mouse's other links still worth a report
+ (`RazerDevices.linksToTest`): any row for another link that isn't fully supported, and a
+ cable or dongle without a row for a mouse with a battery. Bluetooth only from a row.
 - `DeviceReportOutput.swift`: Copy, the GitHub issue, size fitting, and text limits.
  `DeviceReportSender.swift`: Send, a POST to the Worker.
 - `WorkerEndpoint` (`AppInfo.swift`): the Worker's address, from the bundle's Info.plist, where
@@ -554,7 +577,8 @@ right-click->Open). A clean install needs Developer ID + notarization (paid Appl
 Detection + name display already work for any Razer mouse (read-only, via the USB product
 string). The device test (§6.4, or `devicetest` in §9) gathers what the steps below need
 in one run. To make the **controls** verified for another model:
-1. Add its PID/name to `RazerDevices.known` with `fullySupported: true` and the right
+1. Add its PID/name to `RazerDevices.known` with `unverified: []` (or the features a report
+ hasn't shown working yet) and the right
  `hasBattery` / `hasLighting` / `maxDPI`. If its brightness answers on a group other than
  `LOGO_LED`, set `brightnessLed` too.
 2. Confirm its command dialect matches the Cobra Pro set (transaction id, command variants,
@@ -590,6 +614,7 @@ swift run MacRazer icon-models [dir] # each model's header silhouette
 swift run MacRazer appicon [dir] / iconset [dir] # app icon concepts / the .iconset for iconutil
 swift run MacRazer render-ui [offline|color|update|updated|whatsnew|…] out.png # popover (dev)
 swift run MacRazer render-ui whatsnew installed out.png # the notes without an update to install
+swift run MacRazer render-ui keyboard [follow|synapse] out.png # a Razer keyboard under the mouse
 swift run MacRazer render-about [notes] out.png
 swift run MacRazer render-remap out.png
 swift run MacRazer render-support-prompt [noaccess] out.png # the support prompt window
@@ -617,6 +642,8 @@ that path draws the content but needs an explicit size, since there is no window
 | `HIDDevice.swift` | IOKit HID open/enumerate + request/response send. |
 | `HIDDeviceSelection.swift` | Which device and interface to open; tells mice from keyboards. |
 | `HIDMonitor.swift` | IOKit service notifications for plug/unplug. |
+| `RazerKeyboards.swift` | Keyboards whose backlight MacRazer sets (PID, transaction id), their interface pick, Synapse detection. |
+| `KeyboardController.swift` | The keyboard's lighting: its own device and queue, follow-the-mouse, who sets colours while Synapse runs. |
 | `RazerTransport.swift` | Transport protocol shared by USB and Bluetooth, plus the shared retry ladder. |
 | `BLEProtocol.swift` | Bluetooth LE framing and `RazerReport` translation. |
 | `BluetoothDevice.swift` | CoreBluetooth connection to Razer's vendor GATT service. |

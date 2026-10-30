@@ -309,6 +309,21 @@ struct DeviceTestVerdict: Codable, Equatable {
         }
     }
 
+    /// `thankYou` for a run limited to what was still missing. `leftOut` are the steps it
+    /// passed over as already verified, which don't make the report partial.
+    static func focusedThankYou(_ verdict: DeviceTestVerdict, leftOut: [String]) -> String {
+        func names(_ steps: [String]) -> String {
+            steps.count < 2 ? steps.joined() : steps.dropLast().joined(separator: ", ") + " and " + steps.last!
+        }
+        if !verdict.failed.isEmpty {
+            return "\(names(verdict.failed)) still didn't work, so your report shows us exactly what to fix."
+        }
+        if verdict.skipped.contains(where: { !leftOut.contains($0) }) {
+            return "Some steps were skipped, so this is a partial report. It still helps."
+        }
+        return "Everything that was still missing worked. Once we've looked at your report, your mouse moves to the supported list."
+    }
+
     /// The email subject's prefix, so the maintainer's inbox sorts itself.
     var subjectPrefix: String {
         let ran = passed.count + failed.count
@@ -675,8 +690,13 @@ enum DeviceTestSteps {
             data.percent = RazerCommands.batteryPercent(fromRaw: level.value)
             data.charging = try? DeviceProbe.charging(channel).value
             // Raw 0 is the protocol's "not ready" (just woken, or refusing around sleep), not
-            // an empty battery, so it doesn't pass.
-            record.outcome = level.value == 0 ? .failed : .passed
+            // an empty battery, so it doesn't pass. A wired-only mouse the registry knows
+            // answers zeros too (the Naga Chroma does), and that is no battery, not a fault.
+            if level.value != 0 {
+                record.outcome = .passed
+            } else {
+                record.outcome = expectsBattery == false && data.charging != true ? .notSupported : .failed
+            }
         } catch {
             record.error = String(describing: error)
             record.outcome = DeviceProbe.isRefusal(error) && expectsBattery != true ? .notSupported : .failed

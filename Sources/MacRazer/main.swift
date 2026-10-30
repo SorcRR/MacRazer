@@ -198,6 +198,11 @@ case "render-ui":
     if args.contains("downloading") { updateChecker.loadPreviewState(phase: .downloading(0.42)) }
     let launchAtLogin = LaunchAtLogin()
     launchAtLogin.loadPreviewState()
+    // `keyboard`, plus `follow` or `synapse`: a Razer keyboard under the mouse.
+    if args.contains("keyboard") {
+        KeyboardController.shared.loadPreviewState(followsMouse: args.contains("follow"),
+                                                   synapse: args.contains("synapse"))
+    }
     // The notes page is its own render: it is a scroll view, so it needs the hosted path,
     // and it is sized to the height the main page renders at — the whole point of checking
     // it is whether the notes fit there.
@@ -304,7 +309,7 @@ case "render-about":
 
 case "render-device-test":
     // One screen of the device test, for checking layout and wording without a mouse:
-    // `render-device-test <stage> [unknown] [ran] [sent|failed] [path.png]`, stage one of
+    // `render-device-test <stage> [unknown|partly] [ran] [sent|failed] [path.png]`, stage one of
     // intro, permission, identify, battery, dpi, polling, lighting, buttons, review.
     _ = NSApplication.shared
     let path = outputPath(args.dropFirst(), default: "device-test-preview.png")
@@ -318,7 +323,10 @@ case "render-device-test":
     // `noworker` shows the review as a build without the Worker has it: no Send, no reply email.
     let model = DeviceTestModel(controller: controller, permissions: PermissionsModel(),
                                 reportEndpoint: args.contains("noworker") ? nil : URL(string: "https://reports.example/"))
-    model.loadPreview(stage, known: !args.contains("unknown"), ranSteps: args.contains("ran"))
+    // `unknown` and `partly` pick the intro: a model off the registry, and the Basilisk V4 Pro,
+    // whose polling rate is still unverified.
+    let pid = args.contains("unknown") ? 0x9999 : args.contains("partly") ? 0x00E3 : 0x00DB
+    model.loadPreview(stage, pid: pid, ranSteps: args.contains("ran"))
     if args.contains("sent") { model.previewSendState(.sent) }
     if args.contains("failed") { model.previewSendState(.failed(.tooMany)) }
     writeViewPNG(DeviceTestView(model: model, onClose: {}), to: path)

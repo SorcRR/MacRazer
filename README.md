@@ -42,6 +42,9 @@ Razer mice that use the same HID protocol family, but those are untested, so tre
 - **Any Razer mouse is detected and named.** Controls a model lacks are hidden automatically
   (no lighting on the Atheris, no battery UI on wired-only mice). A Razer keyboard or other
   product that is never a mouse is not taken for one.
+- **Razer keyboard lighting.** A Razer keyboard next to the mouse gets its own colour, effect
+  and brightness in the popover, or can follow the mouse's lighting. Tested on the Cynosa
+  Chroma; the Cynosa Chroma Pro, Cynosa Lite and Ornata V3 family should work too.
 - **Asks for help with a new mouse.** When a mouse MacRazer doesn't fully support connects, a
   small window offers the device test (see below). It can be turned off in Settings.
 - Settings are written to the mouse's **onboard memory** where supported, so they persist when
@@ -71,7 +74,14 @@ says so.
 | Razer Viper Ultimate (Wireless) | Battery, DPI, polling, brightness | [@raphaelchenouard](https://github.com/raphaelchenouard) |
 | Razer Naga Pro (Wireless) | Battery, DPI, DPI stages, polling, lighting, brightness | [@sidneylopes](https://github.com/sidneylopes) |
 | Razer Naga V3 Pro (Wireless) | Battery, DPI, DPI stages, polling, lighting, brightness | [@chris-agnew](https://github.com/chris-agnew) |
+| Razer Naga V3 Pro (Wired) | Battery, DPI, DPI stages, polling, lighting, brightness | [@chris-agnew](https://github.com/chris-agnew) |
+| Razer Naga Trinity | DPI, DPI stages, polling, lighting, brightness | anonymous report |
 | Razer Basilisk V4 HyperSpeed | Battery, DPI; polling not working yet | anonymous report |
+| Razer Basilisk V4 Pro (Wireless) | Battery, DPI, DPI stages, lighting, brightness; polling not working yet | anonymous report |
+| Razer DeathAdder V3 HyperSpeed | DPI, DPI stages, polling; battery not answering yet | anonymous report |
+| Razer DeathAdder V2 Pro (Wireless) | Battery; DPI, polling and lighting not tested yet | anonymous report |
+| Razer Mouse Dock Pro (with a Naga V3 Pro) | Battery, DPI, lighting, brightness; polling not working yet | anonymous report |
+| Razer Naga Chroma | DPI, polling; lighting not working yet | anonymous report |
 | Razer Orochi 2013 | DPI only | [@raphaelchenouard](https://github.com/raphaelchenouard) |
 | Razer Basilisk V3 | Nothing; reported working by a user | — |
 | Razer Cobra, Cobra Pro (wired + wireless) | Nothing; same protocol family, values from OpenRazer | — |
@@ -87,8 +97,11 @@ column is about who has actually seen it happen.
 **Have a mouse that isn't verified?** The quickest way to help is in the app. Right-click the
 menu bar icon and choose **Help Support This Mouse…**. It runs the same probes as the
 commands below, puts every setting back, and builds the report for you. **Send** emails it to
-the maintainer, or you can copy it or open a GitHub issue with it. On a verified mouse the item
-reads **Test This Mouse…**, and a report confirms it still works on your firmware. The full
+the maintainer, or you can copy it or open a GitHub issue with it. If part of your mouse is
+already verified, the test lists what works and offers to check only what's missing. It also
+says which of the mouse's other connections (cable, dongle, Bluetooth) still need a report. On
+a verified mouse the item reads **Test This Mouse…**. The window says no test is needed, but you
+can still run one to confirm it works on your firmware. The full
 test needs the dongle or a cable. A mouse on Bluetooth gets a shorter test that only reads.
 
 You don't have to find the menu item. When an unverified mouse connects by cable or dongle,

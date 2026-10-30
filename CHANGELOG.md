@@ -7,15 +7,28 @@ expect rough edges until 1.0.
 ## [Unreleased]
 
 ### Added
+- **Lighting for a Razer keyboard next to the mouse.** A plugged-in Razer keyboard shows up
+  under "Other Razer devices" in the popover, with its own colour, effect and brightness. Turn
+  on "Also light the keyboard" under the mouse's Lighting to keep both the same. While Razer
+  Synapse runs, Synapse keeps the keyboard's colours unless you turn on "Use MacRazer" in its card.
+  Tested on the Cynosa Chroma; the Cynosa Chroma Pro, Cynosa Lite and Ornata V3 family use the
+  same commands but are untested. Lighting only: no keys, macros or per-key colour.
 - **MacRazer asks for help when it meets a mouse it doesn't fully support.** A small window
   offers the short device test, which shows us what the mouse can do so a later release can
   support it. It asks once, reminds you once a week later, and stops for good after a report
   or "Don't ask for this mouse". A card in the popover offers the same test until then. Turn it
   off in Settings › General › Ask me to test unsupported mice.
+- **The device test knows what's already verified.** On a fully supported mouse it says no
+  test is needed. On a partly supported one it lists what works and offers to test only
+  what's missing. Both name the mouse's other connections that still need a report.
+- **Seven more mice from your reports.** Naga V3 Pro on its cable and Naga Trinity are fully
+  supported. Basilisk V4 Pro, DeathAdder V2 Pro, DeathAdder V3 HyperSpeed, Mouse Dock Pro and
+  Naga Chroma are partly supported.
 - **Breathing lighting.** The Lighting card has a new Breathing effect. The lights fade in
   and out in the colour you pick from the swatches or the colour wheel. It works over USB and
-  the 2.4 GHz dongle. Over Bluetooth only a static colour is available, as before. From the
-  command line, `rgb breathing` also takes two colours, or none for random ones.
+  the 2.4 GHz dongle, and on a Razer keyboard too. Over Bluetooth only a static colour is
+  available, as before. From the command line, `rgb breathing` also takes two colours, or none
+  for random ones.
 
 ### Changed
 - **Settings has a new layout.** A wider window with a sidebar for General, Privacy,
