@@ -10,19 +10,25 @@ import SwiftUI
 final class RemapWindowController: AppWindowPresenter {
     private var window: NSWindow?
     private let remapper: ButtonRemapper
+    private let controller: MouseController
 
-    init(remapper: ButtonRemapper) { self.remapper = remapper }
+    init(remapper: ButtonRemapper, controller: MouseController) {
+        self.remapper = remapper
+        self.controller = controller
+    }
 
     var isVisible: Bool { window?.isVisible ?? false }
 
     func show() {
         if window == nil {
-            let hosting = NSHostingController(rootView: RemapView(remapper: remapper))
+            let hosting = NSHostingController(rootView: RemapView(remapper: remapper, controller: controller))
             hosting.sizingOptions = [.preferredContentSize]
             let w = NSWindow(contentViewController: hosting)
             w.title = "Configure Buttons"
             w.styleMask = [.titled, .closable, .miniaturizable]
             w.isReleasedWhenClosed = false
+            // Themed like the popover per Settings › Appearance, kept up to date when it changes.
+            AppearanceSettings.shared.track(w)
             w.center()
             window = w
         }

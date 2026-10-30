@@ -27,6 +27,14 @@ final class UpdateCheckerStateTests: XCTestCase {
 
     private var running: String { AppInfo.comparableVersion }
 
+    func testMouseModelsAreSentUntilTurnedOff() {
+        withDefaults { defaults in
+            XCTAssertTrue(UpdateChecker(defaults: defaults).sendsMouseModels)
+            UpdateChecker(defaults: defaults).sendsMouseModels = false
+            XCTAssertFalse(UpdateChecker(defaults: defaults).sendsMouseModels)
+        }
+    }
+
     func testAFirstRunAnnouncesNothingAndRecordsTheVersion() {
         withDefaults { defaults in
             let checker = UpdateChecker(defaults: defaults)

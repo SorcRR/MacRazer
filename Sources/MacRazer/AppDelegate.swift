@@ -16,20 +16,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     private let controller = MouseController()
     private var cancellables = Set<AnyCancellable>()
     private var monitor: HIDMonitor?
+    private var bluetoothMonitor: HIDMonitor?
     private let remapper = ButtonRemapper()
-    private lazy var remapWindow = RemapWindowController(remapper: remapper)
+    private lazy var remapWindow = RemapWindowController(remapper: remapper, controller: controller)
     private lazy var permissions = PermissionsModel(remapper: remapper, controller: controller)
     private lazy var permissionsWindow = PermissionsWindowController(model: permissions, controller: controller)
+    private lazy var deviceTestWindow = DeviceTestWindowController(
+        model: DeviceTestModel(controller: controller, permissions: permissions))
     private let updateChecker = UpdateChecker()
     private let launchAtLogin = LaunchAtLogin()
+    private let appearance = AppearanceSettings.shared
+    /// The solid colour or green tint behind the popover; see `PopoverBackdropView`.
+    private let popoverBackdrop = PopoverBackdropView()
     private lazy var aboutWindow = AboutWindowController()
     /// Closing it re-asks the auto-install gate. This window opens unfocused after an
     /// automatic install and can sit unnoticed for days, and while it is open it holds back
     /// any release found in the meantime. Without the re-ask, that release stayed held until
     /// the popover next opened and closed.
     private lazy var updatedWindow = UpdatedWindowController(
-        updateChecker: updateChecker,
+        updateChecker: updateChecker, usageStats: usageStats,
         onClosed: { [weak self] in self?.autoInstallIfEnabled() })
+    /// Closing it re-asks the auto-install gate, for the same reason as `updatedWindow`.
+    private lazy var crashReportWindow = CrashReportWindowController(
+        onClosed: { [weak self] in self?.autoInstallIfEnabled() })
+    private let usageStats = UsageStats.shared
+    /// Closing it re-asks the auto-install gate, for the same reason as `updatedWindow`.
+    private lazy var usageStatsWindow = UsageStatsWindowController(
+        stats: usageStats, onClosed: { [weak self] in self?.autoInstallIfEnabled() })
+    /// Waits for a clear moment to ask about usage stats; see `askAboutUsageStats`.
+    private var usageStatsAskTimer: Timer?
     private lazy var settingsWindow = SettingsWindowController(
         controller: controller, launchAtLogin: launchAtLogin, updateChecker: updateChecker,
         onAutoInstallChanged: { [weak self] in self?.autoInstallSettingChanged() })
@@ -61,6 +76,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         // whenever that required permission is missing (and stop the moment it's granted), so a
         // user without it is always walked through it rather than left with a silently-dead app.
         // Button remapping additionally needs Accessibility (optional; surfaced in the same window).
+        // A mouse MacRazer controls over Bluetooth needs neither, so it doesn't trigger the window.
         permissions.recheck()
         // Explicit, not a side effect of constructing the model — see the doc comment there.
         launchAtLogin.applyDefaultOnFirstRun()
@@ -69,7 +85,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         // longer matches whichever profile was last applied — let MouseController know so it
         // can drop the stale "active" highlight.
         remapper.onManualChange = { [weak controller] in controller?.clearActiveProfileIfManuallyChanged() }
-        if !permissions.inputMonitoring {
+        if DeviceTestModel.takeResumeRequest() {
+            // Relaunched from the device test to apply Input Monitoring: pick the test back up
+            // rather than showing the general setup window it was already past.
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.present(self.deviceTestWindow)
+            }
+        } else if !permissions.allRequiredGranted {
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 self.present(self.permissionsWindow)
@@ -89,13 +112,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         popover.behavior = .transient
         popover.delegate = self
         popover.animates = false // open immediately, no slide animation
-        // Force a dark popover regardless of system appearance — the Razer-green accent and
-        // logo have poor contrast on the light-mode grey material; dark is also the gaming
-        // aesthetic and makes the green pop.
-        popover.appearance = NSAppearance(named: .darkAqua)
+        // Light or dark, glass or solid, per Settings › Appearance. Re-applied whenever the
+        // setting changes or macOS switches between light and dark, including while the
+        // popover is open. The popover's appearance is always set explicitly, never left nil:
+        // a nil one would follow the menu bar, which macOS tints from the wallpaper rather
+        // than the system's light or dark mode.
+        Publishers.CombineLatest3(appearance.$theme, appearance.$glass,
+                                  NSApp.publisher(for: \.effectiveAppearance))
+            .sink { [weak self] theme, glass, system in
+                self?.applyAppearance(theme: theme, glass: glass, systemIsDark: system.isDark)
+            }
+            .store(in: &cancellables)
         let hosting = NSHostingController(rootView: PopoverView(
             controller: controller, remapper: remapper, updateChecker: updateChecker,
-            launchAtLogin: launchAtLogin,
+            launchAtLogin: launchAtLogin, appearance: appearance,
             onOpenSettings: { [weak self] in
                 // Close first: the popover is transient and would dismiss itself the moment
                 // the window takes focus, which looks like the click did two things.
@@ -106,6 +136,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
                 guard let self else { return }
                 self.popover.performClose(nil)
                 self.present(self.settingsWindow)
+            },
+            onOpenDeviceTest: { [weak self] in
+                // Closed first for the same reasons as Settings above.
+                guard let self else { return }
+                self.popover.performClose(nil)
+                self.present(self.deviceTestWindow)
             }))
         hosting.sizingOptions = [.preferredContentSize] // popover auto-fits the SwiftUI content
         popover.contentViewController = hosting
@@ -173,7 +209,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
             }
         )
 
+        // A Basilisk on Bluetooth enumerates under Razer's BLE vendor id (0x068E), not the
+        // USB id above. An appearance starts recovery but keeps a healthy GATT session;
+        // only an observed removal invalidates it before the next probe.
+        bluetoothMonitor = HIDMonitor(
+            vendorId: BLEProtocol.vendorId,
+            onAppear: { pids in
+                guard pids.isEmpty || pids.contains(where: RazerDevices.bluetoothPIDs.contains) else { return }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                    ctrl.beginBluetoothWakeRecovery()
+                }
+            },
+            onRemove: { pids in
+                guard pids.contains(where: RazerDevices.bluetoothPIDs.contains) else { return }
+                DispatchQueue.main.async { ctrl.beginBluetoothWakeRecovery(discardBluetoothSession: true) }
+            }
+        )
+
         remapper.start()
+        remapper.observeDpiCycle(controller: controller)
 
         // Load the connected mouse's own button mappings when the device changes (per-unit key).
         controller.$deviceKey
@@ -220,8 +274,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         if updateChecker.justUpdatedTo != nil {
             updatedWindow.show(activating: !updateChecker.autoInstallEnabled)
         }
+        startUsageStats()
+        // A crash since the last launch, offered once. Looked for again a little later
+        // because the crash most likely to be waiting is the one in the instance that just
+        // handed over to this one, during a relaunch: macOS writes its report a few seconds
+        // after this instance has already started.
+        crashReportWindow.offerNewCrash()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in
+            self?.crashReportWindow.offerNewCrash()
+        }
         // Unthrottled: a launch is rare, and it is when someone who just installed or reopened
         // the app most expects it to know about the latest release.
+        updateChecker.connectedMice = { [weak self] in self?.usageStats.connectedMice ?? [] }
         Task { await updateChecker.checkForUpdatesNow() }
         startUpdateTriggers()
     }
@@ -321,6 +385,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
             windowsBeforePopover = Set(NSApp.windows.filter(\.isVisible).map(ObjectIdentifier.init))
             // Show first (instant), then kick off the refresh so the open never waits on IO.
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+            // The frame view the backdrop lives in only exists once the popover is shown.
+            installPopoverBackdrop()
             // Activate, not just make key. This app has no Dock icon, so clicking the menu bar
             // item does not make it the active application, and a control in an inactive app's
             // window does not respond to the first click the way it looks like it should. Every
@@ -372,6 +438,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         configure.isEnabled = controller.connected // remapping is for a connected mouse
         menu.addItem(configure)
 
+        // Every connected mouse gets it: on an unverified one it gathers what's needed to
+        // support it, on a verified one it confirms it still works. Enabled whenever a Razer
+        // device is plugged in rather than only once connected, so someone missing Input
+        // Monitoring can still reach the screen that asks for it.
+        let verified = controller.connected && controller.deviceSupported
+        let test = NSMenuItem(title: verified ? "Test This Mouse…" : "Help Support This Mouse…",
+                              action: #selector(openDeviceTest), keyEquivalent: "")
+        test.target = self
+        test.isEnabled = controller.connected || DeviceTestModel.razerMousePresent
+        menu.addItem(test)
+
         let setup = NSMenuItem(title: "Setup & Permissions…", action: #selector(openPermissions), keyEquivalent: "")
         setup.target = self
         menu.addItem(setup)
@@ -387,6 +464,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         menu.addItem(update)
 
         menu.addItem(.separator())
+
+        let tip = NSMenuItem(title: "Leave a Tip…", action: #selector(openTip), keyEquivalent: "")
+        tip.target = self
+        tip.image = NSImage(systemSymbolName: "heart", accessibilityDescription: nil)
+        menu.addItem(tip)
 
         let quit = NSMenuItem(title: "Quit MacRazer", action: #selector(quit), keyEquivalent: "q")
         quit.target = self
@@ -438,8 +520,71 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     /// initializer only stores a few references, and the `NSWindow` is still created on the
     /// first `show()`. So the laziness that matters is intact.
     private var isShowingAWindow: Bool {
-        let windows: [AppWindowPresenter] = [remapWindow, permissionsWindow, aboutWindow, settingsWindow, updatedWindow]
+        // The device test in particular: an install ends in a relaunch, and that must never
+        // happen while a step has a test value on someone's mouse.
+        let windows: [AppWindowPresenter] = [remapWindow, permissionsWindow, aboutWindow, settingsWindow,
+                                             updatedWindow, deviceTestWindow, crashReportWindow,
+                                             usageStatsWindow]
         return windows.contains { $0.isVisible }
+    }
+
+    // MARK: - Usage stats
+
+    /// Feeds the connected mouse to `UsageStats`, sends whatever is due, and asks once if
+    /// nobody has been asked yet. Nothing goes anywhere without a yes; see `UsageStats`.
+    private func startUsageStats() {
+        // Debounced: the controller publishes a new mouse's fields one at a time, and the
+        // ping should see them all.
+        Publishers.CombineLatest4(controller.$connected, controller.$deviceID,
+                                  controller.$deviceName, controller.$deviceIsBluetooth)
+            .combineLatest(controller.$deviceSupported)
+            .debounce(for: .seconds(2), scheduler: RunLoop.main)
+            .sink { [weak self] device, supported in
+                let (connected, pid, name, bluetooth) = device
+                let mice = connected ? pid.map {
+                    [UsageStatsPolicy.mouse(pid: $0, productName: name, isBluetooth: bluetooth, supported: supported)]
+                } ?? [] : []
+                self?.usageStats.setConnectedMice(mice)
+            }
+            .store(in: &cancellables)
+        // A mouse usually connects within a few seconds of launch and goes with the first
+        // ping. Without one, the ping goes anyway after this, and the mouse follows later.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak self] in
+            guard let self else { return }
+            Task { await self.usageStats.sendIfDue() }
+        }
+        // Someone who just updated is asked in the Updated window instead. A `swift run`
+        // build has no version and a build without the Worker has nowhere to send, so
+        // neither of them asks.
+        if usageStats.isAvailable, usageStats.consent == .undecided, updateChecker.justUpdatedTo == nil,
+           AppInfo.version != nil {
+            askAboutUsageStats()
+        }
+    }
+
+    /// The consent window, once nothing else is in the way: not over the setup window, the
+    /// device test, a crash report or the popover. A new install opens onto the setup window,
+    /// and stats are the last thing anyone wants to be asked before the app even works.
+    private func askAboutUsageStats() {
+        let timer = Timer(timeInterval: 3, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.askAboutUsageStatsIfClear() }
+        }
+        // Not straight away even when clear: the menu bar item has only just appeared.
+        timer.fireDate = Date().addingTimeInterval(5)
+        RunLoop.main.add(timer, forMode: .common)
+        usageStatsAskTimer = timer
+    }
+
+    private func askAboutUsageStatsIfClear() {
+        guard usageStats.consent == .undecided else { return stopAskingAboutUsageStats() }
+        guard !isShowingAWindow, !popover.isShown, !appMenuOpen else { return }
+        stopAskingAboutUsageStats()
+        usageStatsWindow.show(activating: false)
+    }
+
+    private func stopAskingAboutUsageStats() {
+        usageStatsAskTimer?.invalidate()
+        usageStatsAskTimer = nil
     }
 
     /// Turning the setting on with an update already found is the one moment a user is
@@ -447,7 +592,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     /// hasn't changed (so the deduplicated sink stays quiet) and the popover was never open.
     private func autoInstallSettingChanged() { autoInstallIfEnabled() }
     @objc private func openPermissions() { present(permissionsWindow) }
+    @objc private func openDeviceTest() { present(deviceTestWindow) }
+    @objc private func openTip() { NSWorkspace.shared.open(ProjectLinks.tip) }
     @objc private func quit() { NSApplication.shared.terminate(nil) }
+
+    // MARK: - Appearance
+
+    private func applyAppearance(theme: PopoverTheme, glass: Bool, systemIsDark: Bool) {
+        let look = PopoverLook.resolve(theme: theme, glass: glass, systemIsDark: systemIsDark)
+        popover.appearance = NSAppearance(named: look.appearanceName)
+        popoverBackdrop.fill = look.backdropColor
+        appearance.applyToWindows(look)
+    }
+
+    /// Puts the backdrop into the popover's frame view, just under the content: above the
+    /// native material, so a solid colour hides it, and filling the arrow too. NSPopover
+    /// keeps its frame view between shows, so this only does work the first time.
+    private func installPopoverBackdrop() {
+        guard let content = popover.contentViewController?.view,
+              let frameView = content.superview,
+              popoverBackdrop.superview !== frameView else { return }
+        popoverBackdrop.frame = frameView.bounds
+        popoverBackdrop.autoresizingMask = [.width, .height]
+        frameView.addSubview(popoverBackdrop, positioned: .below, relativeTo: content)
+    }
 
     // MARK: - NSPopoverDelegate
 
@@ -554,6 +722,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     /// back: whatever the user just moved to wins.
     func applicationDidResignActive(_ notification: Notification) {
         appBeforePopover = nil
+    }
+
+    /// A device test step may have the mouse dark, red, or at a test DPI, and puts it back when
+    /// it finishes, a few seconds at most. Quitting first would leave it that way: the history
+    /// flush below only waits two seconds for the device queue, less than the lighting step.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        let model = deviceTestWindow.model
+        guard model.running else { return .terminateNow }
+        model.whenIdle { NSApp.reply(toApplicationShouldTerminate: true) }
+        return .terminateLater
     }
 
     func applicationWillTerminate(_ notification: Notification) {

@@ -6,19 +6,141 @@ expect rough edges until 1.0.
 
 ## [Unreleased]
 
+## [0.6.1] — 2026-10-29
+
 ### Changed
+- **The update check now says which mouse model is connected.** Nothing in it identifies
+  your Mac, and it lets me see which mice people use without asking everyone to share stats. Turn it off in Settings › Privacy › Count my mouse model.
+  The detailed usage stats still only go if you say yes.
+
+## [0.6.0] — 2026-10-29
+
+### Changed
+- **The popover follows your Mac's light or dark mode.** It used to be dark all the time. On a
+  light Mac it is now light glass, with a darker green for text so it stays readable. Settings,
+  About and the other windows follow too, with the same glass or solid background. Selected chips now use dark text on the green
+  instead of white, which was hard to read. If you liked it dark, pick Dark in Settings ›
+  Appearance.
+
+- **Green buttons have dark text.** Install Now, Send Report, Grant, Relaunch and the update
+  buttons used white on the green, which was hard to read. They now use the same dark text as
+  the selected chips. The main button in Settings, About and the device test was system blue;
+  it is green now too.
+
+- **The popover is shorter: settings below DPI collapse.** Polling rate, Lighting, Power
+  Management, Buttons and Profiles are now compact cards of one row each, each showing
+  its current value ("1000 Hz", "Static · 80%", the active profile). Click a row to open its
+  controls in place; open as many as you like, and the popover remembers which. Battery and DPI
+  stay open at the top, since they're what you check most. The battery and lighting tips now
+  appear only inside their open section, not on the main page all the time.
+
+- **The popover behaves more like a native Mac panel.** Esc on a sub-page (Colour, Buttons,
+  Battery Usage, Profiles, What's New) now goes back one level instead of closing the whole
+  popover, and every sub-page uses the same Back button, What's New included. ⌘R refreshes and
+  ⌘, opens Settings, matching the right-click menu. Chips and rows highlight on hover, the
+  colour swatches are real buttons with names, and the icon-only buttons have VoiceOver labels
+  and tooltips. A DPI chip that can be edited says so in its tooltip, since the editor is only
+  reachable by right-click. The sleep timer reads "5 min" instead of "5m 00s".
+  With no mouse plugged in, the popover shows one card explaining how to connect and a
+  "Look Again" button, instead of a column of greyed-out controls for a mouse that isn't there.
+
 - **Updates are found within hours, not a day.** The app used to ask GitHub once a day. Now
  it asks every time it starts, and again whenever its last answer is more than three hours
  old. A Mac that slept longer than that asks as soon as it wakes. If the network isn't back
  yet, it asks again the moment a connection appears, instead of waiting for the next
  round. Opening the popover also asks, if a check is due.
 
+- **Update checks and downloads are counted.** The update check now goes through my server
+ first, which passes on GitHub's answer and counts how many copies are in use each day, by app
+ version. Downloads from the website's buttons and the app's updater pass through it too on
+ their way to GitHub, counted per day and country. Only the app version is sent. The server
+ keeps a scrambled form of the IP address that changes every day (every month for the monthly
+ count), so no Mac can be named or followed over time. If the server doesn't answer, the app
+ asks GitHub directly, so this can never stop an update. Builds made from the source without
+ the server's address ask GitHub only, as before.
+
+- **The CLI probes run on shared code.** `battery`, `dpi`, `stages`, `poll`, `brightness` and
+ `rgb` now go through `DeviceProbe`, which the coming in-app device test will use too, so what
+ a contributor pastes from a terminal and what the app reports can't describe different
+ commands. The output is unchanged: each command was run against a Cobra HyperSpeed before and
+ after, including writing DPI, polling rate and brightness back to their current values, and
+ printed the same lines. `DeviceProbeTests` cover what each probe sends, in what order, and how
+ it reads the answers, using a fake mouse instead of hardware.
+
 ### Added
+- **Runs on Intel Macs.** The app is now a universal build, native on both Apple Silicon and
+ Intel. It still needs macOS 14 or later.
+
+- **Optional usage stats, off until you say yes.** MacRazer asks once whether you'd like to
+  share your mouse model, the app and macOS versions, and a scrambled ID so each Mac counts
+  once. New installs get a small window after setup. If you're updating, it's a card in the
+  Updated window. Say no, or just close it, and it never asks again. Nothing is sent before
+  you agree. It tells me which mice people use, so I know what to support next.
+  Settings › Privacy turns it off, shows the exact data that's sent, and has Delete My Data.
+  That removes your Mac's ID from the server straight away. The anonymous counts stay.
+
+- **Settings › Appearance.** Choose the theme for the popover and the app's windows: System
+  (the default), Dark, Light or Razer Green, a dark look with a faint green tint. The popover
+  also gets a thin green edge. Turn off "Glass effect"
+  for a solid background instead of the see-through one. It's easier to read over busy windows.
+  Changes apply straight away, even with the popover open.
+
+- **The Cobra HyperSpeed works over Bluetooth.** Battery, DPI, brightness and lighting
+ colour all work with the mouse in Bluetooth mode, so you no longer need the dongle or a
+ cable. The battery history carries over too, because the mouse reports the same serial on
+ both links. Polling rate, lighting effects other than a static colour, custom DPI values
+ and profiles still need the dongle or a cable, so the popover hides them on Bluetooth. The
+ app asks for Bluetooth access the first time it finds the mouse there. If the dongle stays
+ plugged in while the mouse is on Bluetooth, the app uses Bluetooth. A cable still wins,
+ since it can do more. The Bluetooth protocol was worked out by
+ [@ungrav](https://github.com/ungrav) in #32.
+
+- **The Basilisk V3 X HyperSpeed works over Bluetooth too.** Battery, DPI stages, brightness
+ and a static lighting colour work in Bluetooth mode. You can also edit each DPI stage
+ (right-click a DPI chip), set how long the mouse waits before it sleeps, and reassign its
+ DPI button to a mouse button, a keyboard shortcut or a media key. Media keys and other
+ actions only the app can perform need MacRazer running, and they use F20 as the signal,
+ so F20 from a keyboard is taken over while one is set. Choose "DPI Cycle (default)" to
+ give the button back. Contributed by [@ungrav](https://github.com/ungrav) in #32.
+
+- **The last battery reading stays visible while the mouse is away.** When the mouse is
+ asleep, switched off or out of range, the popover keeps showing its last percentage and
+ estimate, with how long ago it was read, for example "~1d 15h left · 2 min ago". Each mouse
+ keeps its own. Contributed by [@ungrav](https://github.com/ungrav) in #42.
+
+- **The connect and disconnect sounds can be turned off.** Settings → General → Connection
+ sounds. Contributed by [@ungrav](https://github.com/ungrav) in #43.
+
+- **Test your mouse from the app.** Right-click the menu bar icon and choose "Help Support
+ This Mouse…". A mouse that's already verified shows "Test This Mouse…" instead. The test
+ takes a couple of minutes. It finds which transaction ids the mouse answers to, reads the
+ battery and firmware, and changes DPI, polling rate and lighting for a moment. It also
+ listens for the side buttons. Everything it changes goes back before the next step, and
+ quitting waits for a step to finish. Every step can be skipped. At the end, **Send** emails
+ the report to the maintainer, with an optional comment, a name to credit, and an address for a
+ reply. You can also copy it or open a GitHub issue with it, which leave the address out. If
+ your mouse is already fully supported, a sent report confirms it on your firmware. The
+ report never includes the mouse's serial number. The test needs the dongle or a cable,
+ even on a mouse that also works over Bluetooth. If Input Monitoring isn't granted yet, the
+ test asks for it first. A mouse the app doesn't know yet also gets a "Help test it" link in
+ the popover.
+
+- **DPI stages have their own colours.** Each stage chip gets a hue (red, green, blue, cyan,
+  yellow, then round again), so stages are easier to tell apart at a glance. The active stage is
+  a solid fill, the others an outline. Thanks @ungrav.
+
+- **Two new CLI commands for contributors.** `discover` shows which transaction ids a mouse
+ answers to, and `devicetest` runs the whole test without the window and prints the report.
+
 - **A window confirms an update worked.** After "Update & Restart", the first launch on the
  new version opens a window saying it updated successfully, with the release notes for
  everything you gained. Closing it clears the "Updated to …" card in the popover too, so the
  news isn't repeated. After an automatic install it comes to the front without taking your
  keyboard focus.
+
+### Fixed
+- **The add-profile plus button works anywhere in its circle.** Only the plus sign itself took
+  the click. The rest of the circle did nothing.
 
 ## [0.5.0] — 2026-09-23
 

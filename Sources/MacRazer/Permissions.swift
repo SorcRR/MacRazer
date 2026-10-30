@@ -47,8 +47,12 @@ final class PermissionsModel: ObservableObject {
         self.controller = controller
     }
 
+    /// A mouse MacRazer controls over Bluetooth is connected. It needs no Input Monitoring.
+    @Published private(set) var bluetoothControllable = false
+
     /// Both required permissions satisfied (Accessibility is optional, so it doesn't gate this).
-    var allRequiredGranted: Bool { inputMonitoring }
+    /// A Bluetooth-controlled mouse needs neither.
+    var allRequiredGranted: Bool { inputMonitoring || bluetoothControllable }
 
     // MARK: - Status
 
@@ -56,6 +60,7 @@ final class PermissionsModel: ObservableObject {
     /// and whenever the app returns to the foreground (e.g. back from System Settings).
     func recheck() {
         inputMonitoring = IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) == kIOHIDAccessTypeGranted
+        bluetoothControllable = HIDDevice.bluetoothRazerMouse()?.controllablePID != nil
         // refreshAccessibility also (re)installs the event tap once granted.
         remapper?.refreshAccessibility(prompt: false)
         accessibility = remapper?.accessibilityGranted ?? accessibility
@@ -93,20 +98,15 @@ final class PermissionsModel: ObservableObject {
     /// the packaged `.app` (a no-op shape under `swift run`, which has no bundle to relaunch).
     func relaunch() {
         relaunchFailed = false
-        let url = Bundle.main.bundleURL
-        let config = NSWorkspace.OpenConfiguration()
-        config.createsNewApplicationInstance = true
-        NSWorkspace.shared.openApplication(at: url, configuration: config) { app, error in
+        AppRelaunch.openNewInstance(of: Bundle.main.bundleURL) { [weak self] launched in
             // Only quit once the replacement instance actually launched — terminating on a
             // failed open (no bundle under `swift run`, app translocation) would turn
             // "Quit & Relaunch" into plain "Quit". But don't fail silently either: say so,
             // so the user quits and reopens manually instead of concluding the button is broken.
-            Task { @MainActor in
-                if app != nil, error == nil {
-                    NSApp.terminate(nil)
-                } else {
-                    self.relaunchFailed = true
-                }
+            if launched {
+                NSApp.terminate(nil)
+            } else {
+                self?.relaunchFailed = true
             }
         }
     }

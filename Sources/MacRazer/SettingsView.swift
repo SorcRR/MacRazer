@@ -21,15 +21,35 @@ struct SettingsView: View {
     /// is *already* known — the one moment the user is watching for the setting to do
     /// something, and the moment none of the other triggers fire.
     var onAutoInstallChanged: (() -> Void)?
+    /// The crash window's "Don't Ask Again" writes the same key, so this is how to undo it.
+    @AppStorage(CrashLogScanner.offerKey) private var offerCrashReports = true
+    @ObservedObject var appearance: AppearanceSettings = .shared
+    @ObservedObject var usageStats: UsageStats = .shared
+    @State private var confirmingDelete = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             header
             titledSection("General") {
                 launchAtLoginRow
+                connectionSoundsRow
                 // Hidden rather than disabled for a mouse with no battery: there is no
                 // percentage to show, so the switch would be a promise about nothing.
                 if controller.deviceHasBattery { batteryPercentRow }
+                // Hidden while there's nowhere to send a report; see `CrashReporting`.
+                if CrashReporting.isAvailable { crashReportsRow }
+            }
+            // Only in a build that can send stats: see `WorkerEndpoint`.
+            if usageStats.isAvailable {
+                titledSection("Privacy") {
+                    mouseModelsRow
+                    usageStatsRow
+                    deleteDataRow
+                }
+            }
+            titledSection("Appearance") {
+                themeRow
+                glassRow
             }
             titledSection("Updates") {
                 autoInstallRow
@@ -83,9 +103,18 @@ struct SettingsView: View {
             } else if launchAtLogin.needsApproval {
                 Button("Approve MacRazer in Login Items…") { launchAtLogin.openLoginItemsSettings() }
                     .buttonStyle(.plain).font(.system(size: 11))
-                    .foregroundStyle(Color.razerGreen)
+                    .foregroundStyle(Color.razerGreenText)
             }
         }
+    }
+
+    private var connectionSoundsRow: some View {
+        settingRow(
+            title: "Connection sounds",
+            detail: "Play a sound when the mouse connects or disconnects.",
+            isOn: Binding(get: { controller.connectionSoundsEnabled },
+                          set: { controller.connectionSoundsEnabled = $0 })
+        )
     }
 
     private var batteryPercentRow: some View {
@@ -95,6 +124,110 @@ struct SettingsView: View {
             isOn: Binding(get: { controller.showPercentInMenuBar },
                           set: { controller.showPercentInMenuBar = $0 })
         )
+    }
+
+    private var themeRow: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("Theme").font(.system(size: 12.5, weight: .medium))
+                Spacer(minLength: 12)
+                Picker("Theme", selection: $appearance.theme) {
+                    ForEach(PopoverTheme.allCases) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .controlSize(.small)
+                .fixedSize()
+            }
+            sectionNote("System follows macOS. Razer Green is always dark.")
+        }
+    }
+
+    private var glassRow: some View {
+        settingRow(
+            title: "Glass effect",
+            detail: "The popover and windows let the desktop show through. Turn it off for a solid "
+                + "background, which is easier to read over busy windows.",
+            isOn: $appearance.glass
+        )
+    }
+
+    private var crashReportsRow: some View {
+        settingRow(
+            title: "Offer to send crash reports",
+            detail: "If MacRazer quits unexpectedly, ask next time whether to send a report. "
+                + "You see exactly what's in it first.",
+            isOn: $offerCrashReports
+        )
+    }
+
+    private var mouseModelsRow: some View {
+        settingRow(
+            title: "Count my mouse model",
+            detail: "The update check also says which mouse model is connected, so I can see which "
+                + "mice people use. It's counted with nothing that identifies this Mac.",
+            isOn: $updateChecker.sendsMouseModels
+        )
+    }
+
+    private var usageStatsRow: some View {
+        settingRow(
+            title: "Share anonymous usage stats",
+            detail: "Your mouse model, app version and macOS version, sent when you install, update or "
+                + "plug in a new mouse. It helps me decide which mice to support next.",
+            isOn: Binding(get: { usageStats.consent == .granted }, set: { usageStats.setConsent($0) })
+        ) {
+            DisclosureGroup("What's sent") {
+                UsageStatsJSON(ping: usageStats.preview)
+                    .padding(.top, 4)
+            }
+            .font(.system(size: 11.5, weight: .medium))
+            if let status = usageStatsStatus {
+                sectionNote(status)
+            }
+        }
+    }
+
+    private var usageStatsStatus: String? {
+        guard usageStats.consent == .granted else { return nil }
+        guard let sent = usageStats.lastSentAt else { return "Nothing sent yet. It goes with the next launch or mouse." }
+        // The formatter says "in 0 seconds" for a moment ago.
+        let when = Date().timeIntervalSince(sent) < 60
+            ? "just now" : Self.relativeDate.localizedString(for: sent, relativeTo: Date())
+        return "Last sent \(when)" + (usageStats.lastSentVersion.map { ", for version \($0)." } ?? ".")
+    }
+
+    /// Always offered, even with nothing sent from this install: a reinstall keeps the same ID,
+    /// so the server may still have this Mac from before.
+    private var deleteDataRow: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Delete what's stored").font(.system(size: 12.5, weight: .medium))
+                sectionNote(deletionNote)
+            }
+            Spacer(minLength: 0)
+            Button("Delete My Data…") { confirmingDelete = true }
+                .controlSize(.small)
+                .disabled(usageStats.deletion == .deleting)
+        }
+        .confirmationDialog("Delete this Mac's usage stats?", isPresented: $confirmingDelete,
+                            titleVisibility: .visible) {
+            Button("Delete", role: .destructive) { Task { await usageStats.deleteMyData() } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This Mac's ID is removed from the server and sharing turns off. "
+                + "The anonymous counts stay, with nothing that links them to you.")
+        }
+    }
+
+    private var deletionNote: String {
+        switch usageStats.deletion {
+        case .deleting: return "Deleting…"
+        case .deleted: return "Done. This Mac's ID is gone from the server."
+        case .willRetry: return "Couldn't reach the server. MacRazer will keep trying, at each launch and when a mouse connects."
+        case .idle: return "Removes this Mac's ID from the server and turns sharing off. "
+            + "The anonymous counts stay, with nothing that links them to you."
+        }
     }
 
     private var autoInstallRow: some View {
@@ -136,8 +269,7 @@ struct SettingsView: View {
                     Task { await updateChecker.downloadAndInstall() }
                 }
                 .controlSize(.small)
-                .buttonStyle(.borderedProminent)
-                .tint(.razerGreen)
+                .buttonStyle(RazerProminentButtonStyle())
             }
             Button {
                 Task { await updateChecker.checkForUpdatesNow(userRequested: true) }
@@ -208,6 +340,7 @@ struct SettingsView: View {
             Spacer()
             Button("Done") { onDone() }
                 .keyboardShortcut(.defaultAction)
+                .buttonStyle(RazerProminentButtonStyle())
         }
     }
 }

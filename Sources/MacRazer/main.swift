@@ -27,6 +27,13 @@ if args.isEmpty {
 
 let command = args.first!
 
+/// Status and diagnostics: which device opened, why it didn't, how to fix that. They go to
+/// stderr so stdout carries only a command's results, and `devicetest > report.json` (or
+/// any other redirect) gets the results alone while the person still sees the rest.
+func status(_ line: String) {
+    FileHandle.standardError.write(Data((line + "\n").utf8))
+}
+
 /// Turn a permission-denied failure into the fix, instead of leaving a bare hex code on
 /// screen. The GUI already does this (PopoverView / PermissionsModel); every CLI catch
 /// routes through here so it does too. Returns whether the error was a permission problem,
@@ -34,23 +41,29 @@ let command = args.first!
 @discardableResult
 func printPermissionHintIfDenied(_ error: Error) -> Bool {
     guard HIDDevice.errorLooksPermissionDenied(String(describing: error)) else { return false }
-    print("  → macOS is refusing HID access (Input Monitoring).")
-    print("    Running via `swift run MacRazer …`? The grant belongs to the terminal that")
-    print("    launched it, not to the SwiftPM binary — grant Terminal (or iTerm/your IDE) in")
-    print("    System Settings › Privacy & Security › Input Monitoring, then start a new")
-    print("    terminal session and retry.")
-    print("    Running MacRazer.app? Grant MacRazer itself there, then relaunch it — macOS")
-    print("    only applies the grant to a freshly-launched app.")
+    status("  → macOS is refusing HID access (Input Monitoring).")
+    status("    Running via `swift run MacRazer …`? The grant belongs to the terminal that")
+    status("    launched it, not to the SwiftPM binary — grant Terminal (or iTerm/your IDE) in")
+    status("    System Settings › Privacy & Security › Input Monitoring, then start a new")
+    status("    terminal session and retry.")
+    status("    Running MacRazer.app? Grant MacRazer itself there, then relaunch it — macOS")
+    status("    only applies the grant to a freshly-launched app.")
     return true
 }
 
 func openDevice() -> HIDDevice? {
+    // These commands only speak USB. With the mouse on Bluetooth and the dongle still plugged
+    // in, they would open the idle dongle and every read would time out with no hint why.
+    if let bt = HIDDevice.bluetoothRazerMouse() {
+        status("Note: \(bt.name) is connected over Bluetooth, which these commands can't reach.")
+        status("      If that's the mouse to probe, switch it to the dongle or plug in the cable.")
+    }
     do {
         let dev = try HIDDevice.open(vendorId: Razer.vendorId)
-        print("✓ Opened \(dev.productName) (VID 0x1532, PID 0x\(String(format: "%04x", dev.productID)))")
+        status("✓ Opened \(dev.productName) (VID 0x1532, PID 0x\(String(format: "%04x", dev.productID)))")
         return dev
     } catch {
-        print("✗ \(error)")
+        status("✗ \(error)")
         printPermissionHintIfDenied(error)
         return nil
     }
@@ -59,11 +72,10 @@ func openDevice() -> HIDDevice? {
 /// Shared by the render-* commands: draw a SwiftUI view at 2x on the app's dark backdrop
 /// and write it to a PNG.
 @MainActor func writeViewPNG<V: View>(_ view: V, to path: String) {
-    // Force dark, because every surface these previews stand in for does: the popover sets
-    // `.darkAqua`, and so do the Settings, Permissions and About windows. Without it
-    // `.secondary`/`.tertiary` resolve for light mode and render as near-black text on the
-    // dark backdrop below — which made every preview look like it had a contrast bug it
-    // doesn't have.
+    // Rendered in the Dark theme, to match the dark backdrop below. The app itself follows
+    // Settings › Appearance; without this `.secondary`/`.tertiary` resolve for light mode and
+    // render as near-black text on that backdrop, which made every preview look like it had
+    // a contrast bug it doesn't have.
     let renderer = ImageRenderer(
         content: view.environment(\.colorScheme, .dark).padding(1).background(Color(white: 0.13)))
     renderer.scale = 2
@@ -179,6 +191,7 @@ case "render-ui":
     controller.loadPreviewState()
     if args.contains("offline") { controller.setPreviewOffline() }
     if args.contains("bluetooth") { controller.setPreviewBluetooth() }
+    if args.contains("bluetooth-connected") { controller.setPreviewBluetoothConnected() }
     let updateChecker = UpdateChecker()
     if args.contains("update") { updateChecker.loadPreviewState(notes: PreviewNotes.releaseBody) }
     if args.contains("updated") { updateChecker.loadPreviewUpdated(notes: PreviewNotes.releaseBody) }
@@ -215,7 +228,9 @@ case "render-ui":
         : args.contains("profiles")
         ? AnyView(ProfilesView(controller: controller, remapper: ButtonRemapper(), onBack: {}))
         : AnyView(PopoverView(controller: controller, remapper: ButtonRemapper(), updateChecker: updateChecker,
-                              launchAtLogin: launchAtLogin, onOpenSettings: {})) // no windows in a render
+                              launchAtLogin: launchAtLogin, appearance: AppearanceSettings.shared,
+                              onOpenSettings: {},
+                              onOpenDeviceTest: {})) // no windows in a render
     writeViewPNG(rootView, to: path)
 
 case "render-settings":
@@ -229,7 +244,8 @@ case "render-settings":
     // `update` shows the Updates section in its available state, which is the only way to see
     // the Install Now button without waiting for a real release.
     if args.contains("update") { su.loadPreviewState() }
-    writeViewPNG(SettingsView(controller: sc, launchAtLogin: sl, updateChecker: su, onDone: {}),
+    writeViewPNG(SettingsView(controller: sc, launchAtLogin: sl, updateChecker: su, onDone: {},
+                              usageStats: .preview(consent: args.contains("notsharing") ? .declined : .granted)),
                  to: settingsPath)
 
 case "render-updated":
@@ -246,7 +262,16 @@ case "render-updated":
             RemoteRelease(version: "0.4.0", body: PreviewNotes.releaseBody),
         ])
     }
-    writeHostedPNG(UpdatedView(updateChecker: uc, onDone: {}), to: updatedPath)
+    // `asked` leaves out the usage stats card, as for someone who already answered.
+    writeHostedPNG(UpdatedView(updateChecker: uc, onDone: {},
+                               usageStats: .preview(consent: args.contains("asked") ? .granted : .undecided)),
+                   to: updatedPath)
+
+case "render-usage-consent":
+    // The one-time usage stats question a new install gets.
+    _ = NSApplication.shared
+    writeHostedPNG(UsageStatsConsentView(stats: .preview(consent: .undecided), onDone: {}),
+                   to: outputPath(args.dropFirst(), default: "usage-consent-preview.png"))
 
 case "render-about":
     _ = NSApplication.shared
@@ -263,6 +288,35 @@ case "render-about":
                                                    notes: ReleaseNotes.parse(PreviewNotes.releaseBody))]
                                  : []),
                    to: aboutPath)
+
+case "render-device-test":
+    // One screen of the device test, for checking layout and wording without a mouse:
+    // `render-device-test <stage> [unknown] [ran] [sent|failed] [path.png]`, stage one of
+    // intro, permission, identify, battery, dpi, polling, lighting, buttons, review.
+    _ = NSApplication.shared
+    let path = outputPath(args.dropFirst(), default: "device-test-preview.png")
+    let stages: [String: DeviceTestModel.Stage] = [
+        "intro": .intro, "permission": .permission, "identify": .identify, "battery": .battery,
+        "dpi": .dpi, "polling": .polling, "lighting": .lighting, "buttons": .buttons, "review": .review,
+    ]
+    let stage = args.dropFirst().compactMap { stages[$0] }.first ?? .intro
+    let controller = MouseController()
+    controller.loadPreviewState()
+    // `noworker` shows the review as a build without the Worker has it: no Send, no reply email.
+    let model = DeviceTestModel(controller: controller, permissions: PermissionsModel(),
+                                reportEndpoint: args.contains("noworker") ? nil : URL(string: "https://reports.example/"))
+    model.loadPreview(stage, known: !args.contains("unknown"), ranSteps: args.contains("ran"))
+    if args.contains("sent") { model.previewSendState(.sent) }
+    if args.contains("failed") { model.previewSendState(.failed(.tooMany)) }
+    writeViewPNG(DeviceTestView(model: model, onClose: {}), to: path)
+
+case "render-crash-report":
+    // The window shown on the launch after a crash. `sent` shows the thank-you.
+    _ = NSApplication.shared
+    let crashPath = outputPath(args.dropFirst(), default: "crash-report-preview.png")
+    let crashModel = CrashReportModel.preview()
+    if args.contains("sent") { crashModel.loadPreviewSent() }
+    writeHostedPNG(CrashReportView(model: crashModel, onDone: {}, onDontAskAgain: {}), to: crashPath)
 
 case "render-remap":
     _ = NSApplication.shared
@@ -347,9 +401,9 @@ case "battery":
     guard let dev = openDevice() else { exit(1) }
     defer { dev.close() }
     do {
-        let resp = try dev.sendWithRetry(RazerCommands.getBatteryLevel())
-        // arguments[1] holds the 0-255 level (arguments[0] is typically the var-store echo).
-        let raw = resp.arguments[1]
+        let battery = try DeviceProbe.battery(dev)
+        let resp = battery.response
+        let raw = battery.value
         let pct = RazerCommands.batteryPercent(fromRaw: raw)
         print("Battery: \(pct)%  (raw byte = \(raw), status = 0x\(String(resp.status, radix: 16)))")
         print("Full response args[0..8]: \(resp.arguments[0..<9].map { String(format: "%02x", $0) }.joined(separator: " "))")
@@ -369,18 +423,18 @@ case "dpi":
     defer { dev.close() }
     do {
         // Read current DPI first.
-        let before = RazerCommands.parseDPI(try dev.sendWithRetry(RazerCommands.getDPI()))
+        let before = try DeviceProbe.readDPI(dev).value
         print("Current DPI: x=\(before.x) y=\(before.y)")
 
         // If a value was given, set it and read back to confirm it persisted.
         if let arg = args.dropFirst().first, let x = UInt16(arg) {
             let y = args.dropFirst(2).first.flatMap { UInt16($0) } ?? x
             print("Setting DPI to x=\(x) y=\(y) …")
-            let resp = try dev.sendWithRetry(RazerCommands.setDPI(x: x, y: y))
-            print("  set status = 0x\(String(resp.status, radix: 16))")
-            let after = RazerCommands.parseDPI(try dev.sendWithRetry(RazerCommands.getDPI()))
+            let check = try DeviceProbe.writeDPI(dev, DeviceProbe.DPI(x: x, y: y))
+            print("  set status = 0x\(String(check.setResponse.status, radix: 16))")
+            let after = check.readBack.value
             print("Read-back DPI: x=\(after.x) y=\(after.y)")
-            if after.x == x && after.y == y {
+            if check.confirmed {
                 print("✓ DPI write confirmed (persisted to onboard memory)")
             } else {
                 print("⚠︎ Read-back doesn't match requested value — investigate.")
@@ -399,8 +453,8 @@ case "stages":
     guard let dev = openDevice() else { exit(1) }
     defer { dev.close() }
     do {
-        let before = try dev.sendWithRetry(RazerCommands.getDPIStages())
-        print("Current stages: \(RazerCommands.parseDPIStages(before)) (active byte = \(RazerCommands.parseActiveDPIStage(before)))")
+        let before = try DeviceProbe.readStages(dev).value
+        print("Current stages: \(before.stages) (active byte = \(before.activeByte))")
         if let arg = args.dropFirst().first {
             let tokens = arg.split(separator: ",")
             let stages = tokens.compactMap { Int($0) }
@@ -413,10 +467,10 @@ case "stages":
             }
             let active = args.dropFirst(2).first.flatMap { Int($0) } ?? 0
             print("Setting stages \(stages) (active \(active)) …")
-            let resp = try dev.sendWithRetry(RazerCommands.setDPIStages(stages, activeStage: active))
-            print("  set status = 0x\(String(resp.status, radix: 16))")
-            let after = try dev.sendWithRetry(RazerCommands.getDPIStages())
-            print("Read-back: \(RazerCommands.parseDPIStages(after)) (active byte = \(RazerCommands.parseActiveDPIStage(after)))")
+            let write = try DeviceProbe.writeStages(dev, stages: stages, activeStage: active)
+            print("  set status = 0x\(String(write.setResponse.status, radix: 16))")
+            let after = write.readBack.value
+            print("Read-back: \(after.stages) (active byte = \(after.activeByte))")
         } else {
             print("(pass values to set, e.g. `stages 400,800,1600 1` — last number is the active stage index)")
         }
@@ -430,7 +484,7 @@ case "poll":
     guard let dev = openDevice() else { exit(1) }
     defer { dev.close() }
     do {
-        let before = RazerCommands.parsePollingRate(try dev.sendWithRetry(RazerCommands.getPollingRate()))
+        let before = try DeviceProbe.readPollingRate(dev).value
         print("Current polling rate: \(before)Hz")
         if let arg = args.dropFirst().first, let hz = Int(arg) {
             guard RazerCommands.supportedPollingRates.contains(hz) else {
@@ -438,11 +492,10 @@ case "poll":
                 exit(64)
             }
             print("Setting polling rate to \(hz)Hz …")
-            let resp = try dev.sendWithRetry(RazerCommands.setPollingRate(hz))
-            print("  set status = 0x\(String(resp.status, radix: 16))")
-            let after = RazerCommands.parsePollingRate(try dev.sendWithRetry(RazerCommands.getPollingRate()))
-            print("Read-back: \(after)Hz")
-            print(after == hz ? "✓ Polling rate write confirmed" : "⚠︎ Read-back doesn't match.")
+            let check = try DeviceProbe.writePollingRate(dev, hz: hz)
+            print("  set status = 0x\(String(check.setResponse.status, radix: 16))")
+            print("Read-back: \(check.readBack.value)Hz")
+            print(check.confirmed ? "✓ Polling rate write confirmed" : "⚠︎ Read-back doesn't match.")
         } else {
             print("(pass a value to set: \(RazerCommands.supportedPollingRates.map { "\($0)" }.joined(separator: "/"))Hz, e.g. `poll 1000`)")
         }
@@ -459,35 +512,30 @@ case "brightness":
         "status=0x\(String(r.status, radix: 16)) args[0..5]=" + r.arguments[0..<6].map { String(format: "%02x", $0) }.joined(separator: " ")
     }
     do {
-        // Probe every LED group, LOGO first. A refusal on any one of them — including
-        // LOGO — is expected on some models (the Basilisk V3 X HyperSpeed lights only its
-        // scroll wheel and answers 0x03 for LOGO), so this must not abort the sweep: the
-        // whole point is to discover which LEDs answer on a model we don't know yet.
-        for (name, led) in [("LOGO", Razer.logoLed), ("SCROLL", Razer.scrollLed),
-                            ("ZERO", Razer.zeroLed), ("BACKLIGHT", Razer.backlightLed)] {
-            do {
-                // `send`, not `sendWithRetry`: a FAILURE (0x03) for a given model and LED is
-                // deterministic — the same answer three times, 150ms apart. Retrying it turns
-                // a four-group sweep on a model where three refuse into nine round trips and
-                // most of a second of pure backoff, in a diagnostic whose whole job is to
-                // report which group answered.
-                let rr = try dev.send(RazerCommands.getBrightness(led: led))
-                print("GET brightness (led \(name)=0x\(String(format: "%02x", led))): \(dump(rr))"
-                      + " → \(RazerCommands.brightnessPercent(fromRaw: rr.arguments[2]))%")
-            } catch {
-                print("GET brightness (led \(name)=0x\(String(format: "%02x", led))): refused — \(error)")
+        // Every LED group, LOGO first. A refusal on any one of them, LOGO included, is
+        // expected on some models (the Basilisk V3 X HyperSpeed lights only its scroll wheel
+        // and answers 0x03 for LOGO), so the sweep reports it and carries on: the whole point
+        // is to discover which LEDs answer on a model we don't know yet.
+        for answer in DeviceProbe.brightnessSweep(dev) {
+            let label = "GET brightness (led \(answer.name)=0x\(String(format: "%02x", answer.led)))"
+            switch answer.result {
+            case .success(let reading):
+                print("\(label): \(dump(reading.response))"
+                      + " → \(RazerCommands.brightnessPercent(fromRaw: reading.value))%")
+            case .failure(let error):
+                print("\(label): refused — \(error)")
             }
         }
         if let arg = args.dropFirst().first, let pct = Int(arg) {
             let led = RazerDevices.brightnessLed(pid: dev.productID)
-            // Deliberately outside the sweep's per-LED catch: a refusal here is a real
-            // failure to report, not a group that simply doesn't answer.
+            // The sweep records a refusal per group and carries on; this write throws on one
+            // instead, because here it is a real failure to report, not a group that simply
+            // doesn't answer.
             let raw = RazerCommands.brightnessRaw(fromPercent: pct)
             print("SET brightness \(pct)% (raw \(raw)) on led 0x\(String(format: "%02x", led)) …")
-            let sr = try dev.sendWithRetry(RazerCommands.setBrightness(raw, led: led))
-            print("  set: \(dump(sr))")
-            let back = try dev.sendWithRetry(RazerCommands.getBrightness(led: led))
-            print("  read-back: \(dump(back)) → \(RazerCommands.brightnessPercent(fromRaw: back.arguments[2]))%")
+            let check = try DeviceProbe.writeBrightness(dev, raw: raw, led: led)
+            print("  set: \(dump(check.setResponse))")
+            print("  read-back: \(dump(check.readBack.response)) → \(RazerCommands.brightnessPercent(fromRaw: check.readBack.value))%")
         }
     } catch {
         // The sweep above handles its own refusals per LED, so only the optional write can
@@ -496,6 +544,71 @@ case "brightness":
         printPermissionHintIfDenied(error)
         exit(2)
     }
+
+case "discover":
+    // Which transaction ids the mouse answers to: the first thing to find out about a model
+    // the registry doesn't know, since a wrong id makes every other probe fail.
+    guard let dev = openDevice() else { exit(1) }
+    defer { dev.close() }
+    // The device test's own Identify step, so this can't choose differently from it.
+    let registry = RazerDevices.info(pid: dev.productID)
+    let (identify, _) = DeviceTestSteps.identify(dev, registry: registry)
+    guard let found = identify.data else { exit(2) }
+    func hex(_ id: UInt8?) -> String { id.map { String(format: "0x%02x", $0) } ?? "none" }
+    func show(_ results: [DeviceReport.TransactionResult]) {
+        for r in results {
+            let groups = r.groups.map { $0.isEmpty ? "" : " on " + $0.joined(separator: ", ") } ?? ""
+            print("  \(hex(r.id)): " + (r.answered ? "answered" + groups
+                                        : r.refused ? "heard, but refused" : r.error ?? "no group answered"))
+        }
+    }
+    print("Standard commands (firmware read). Registry says \(registry.map { hex($0.transactionId) } ?? "nothing"):")
+    show(found.standardAttempts)
+    if let dpi = found.dpiAttempts {
+        print("No id answered the firmware read, so again with a DPI read:")
+        show(dpi)
+    }
+    print("Lighting (brightness sweep). Registry says \(registry.map { hex($0.matrixTransactionId) } ?? "nothing"):")
+    show(found.lightingAttempts)
+    print("Firmware: \(found.firmware ?? "unknown")")
+    print("Would use: \(hex(found.standardId)) for standard commands, \(hex(found.lightingId)) for lighting")
+
+case "devicetest":
+    // The in-app device test without its window, for contributors running from source. Every
+    // step puts back what it changes. Lighting only dims for a moment: the colour check needs
+    // the app's own lighting setting to return to, which only the app knows.
+    guard let dev = openDevice() else { exit(1) }
+    defer { dev.close() }
+    let info = RazerDevices.info(pid: dev.productID)
+    let (identify, lightSweep) = DeviceTestSteps.identify(dev, registry: info)
+    let (standardId, matrixId) = DeviceTestSteps.chosenIds(identify, registry: info)
+    func step<T>(_ body: (DeviceProbeChannel) -> DeviceReport.StepRecord<T>) -> DeviceReport.StepRecord<T> {
+        DeviceTestSteps.recorded(dev, standard: standardId, matrix: matrixId,
+                                 overrides: info?.transactionOverrides ?? [:], body)
+    }
+    status("Running. The mouse's lights will go dark for two seconds.")
+    let (interfaces, control) = HIDDevice.interfaceSummaries(vendorId: Razer.vendorId)
+    var report = DeviceReport(
+        appVersion: AppInfo.displayVersion,
+        macOSVersion: DeviceReport.currentMacOSVersion,
+        device: .init(vendorID: Razer.vendorId, productID: dev.productID, name: dev.productName,
+                      connection: nil, interfaces: interfaces, controlInterface: control),
+        registry: info.map(DeviceReport.Registry.init),
+        identify: identify,
+        battery: step { DeviceTestSteps.battery($0, expectsBattery: info?.hasBattery) },
+        dpi: step { DeviceTestSteps.dpi($0, maxProbe: false) },
+        polling: step { DeviceTestSteps.polling($0) },
+        lighting: step { DeviceTestSteps.lighting($0, sweep: lightSweep, restoreEffect: nil, seconds: 2) },
+        buttons: .init(),
+        capabilities: DeviceTestSteps.capabilities(dev, identify: identify, registry: info))
+    report.verdict = report.currentVerdict()
+    // Encoded as the app encodes it, so a pasted CLI report reads like an in-app one.
+    let json = DeviceReportOutput.json(report, forPublic: true)
+    guard !json.isEmpty else {
+        status("✗ The report couldn't be encoded.")
+        exit(2)
+    }
+    print(json)
 
 case "rgb":
     guard let dev = openDevice() else { exit(1) }
@@ -526,7 +639,7 @@ case "rgb":
             print("Usage: rgb <static rrggbb | spectrum | wave | off>")
             exit(64)
         }
-        let resp = try dev.sendWithRetry(report)
+        let resp = try DeviceProbe.applyLighting(dev, report)
         let ok = resp.status == RazerStatus.successful.rawValue
         print("  status = 0x\(String(resp.status, radix: 16)) \(ok ? "✓" : "⚠︎")")
     } catch {
@@ -537,6 +650,6 @@ case "rgb":
 
 default:
     print("Unknown command: \(command)")
-    print("Available: info, battery, dpi [x] [y], poll [hz], stages [d1,d2,…] [active], rgb <static rrggbb|spectrum|wave|off>, brightness [pct], login-item [on|off]")
+    print("Available: info, discover, devicetest, battery, dpi [x] [y], poll [hz], stages [d1,d2,…] [active], rgb <static rrggbb|spectrum|wave|off>, brightness [pct], login-item [on|off]")
     exit(64)
 }

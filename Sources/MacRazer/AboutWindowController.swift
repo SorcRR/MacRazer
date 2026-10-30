@@ -31,8 +31,8 @@ final class AboutWindowController: AppWindowPresenter {
             w.title = "About MacRazer"
             w.styleMask = [.titled, .closable]
             w.isReleasedWhenClosed = false
-            // Match the popover and the other windows: the green accent needs a dark ground.
-            w.appearance = NSAppearance(named: .darkAqua)
+            // Themed like the popover per Settings › Appearance, kept up to date when it changes.
+            AppearanceSettings.shared.track(w)
             w.center()
             hosting = controller
             window = w

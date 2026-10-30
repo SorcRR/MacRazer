@@ -40,9 +40,14 @@ enum ElsewhereLinks {
 
 enum ProjectLinks {
     static let repo = URL(string: "https://github.com/SorcRR/MacRazer")!
-    static let site = URL(string: "https://sorcrr.github.io/MacRazer/")!
+    /// The homepage, served by Cloudflare from the private Worker repository. GitHub Pages still
+    /// serves docs/, which only redirects the old sorcrr.github.io/MacRazer/ address here, so
+    /// older builds' links keep working.
+    static let site = URL(string: "https://macrazer.com/")!
     static let tip = URL(string: "https://ko-fi.com/sorcrr")!
     static let developer = URL(string: "https://github.com/SorcRR")!
+    /// The homepage's section on usage stats: what's sent, and how to delete it.
+    static let privacy = URL(string: "https://macrazer.com/#privacy")!
 
     static let issues = repo.appendingPathComponent("issues")
     /// Where "Full release notes" goes: the popover shows a parsed summary, this is the
@@ -78,4 +83,72 @@ enum ProjectLinks {
     // Upstream, credited in the About window and NOTICE.md.
     static let openRazer = URL(string: "https://github.com/openrazer/openrazer")!
     static let cobraHyperSpeedPR = URL(string: "https://github.com/openrazer/openrazer/pull/2583")!
+}
+
+/// The Worker behind the device test's Send and the usage stats. It lives in the private
+/// SorcRR/macrazer-worker repository. Nil in any
+/// build that wasn't given one: a clone, a fork, CI, `swift run`. Those builds hide and switch
+/// off everything that would talk to it, so a build from someone else's checkout never
+/// sends anything to the maintainer's Worker, or anywhere.
+///
+/// `Scripts/build-app.sh` writes the address into the bundle's Info.plist from DOMAIN in the
+/// maintainer's private settings file (see that repository's README). It is never in the repository.
+enum WorkerEndpoint {
+    static let infoKey = "MacRazerWorkerURL"
+    /// For pointing a development build at `wrangler dev`: `MACRAZER_WORKER_URL=http://127.0.0.1:8787`.
+    /// Only a `swift run` build reads it. A packaged app ignores it, so nothing in its launch
+    /// environment can send reports, reply addresses included, somewhere else.
+    static let environmentKey = "MACRAZER_WORKER_URL"
+
+    static let base: URL? = resolve(environment: ProcessInfo.processInfo.environment[environmentKey],
+                                    bundled: Bundle.main.object(forInfoDictionaryKey: infoKey) as? String,
+                                    isPackaged: AppInfo.version != nil)
+
+    static func resolve(environment: String?, bundled: String?, isPackaged: Bool) -> URL? {
+        isPackaged ? parse(bundled) : parse(environment) ?? parse(bundled)
+    }
+
+    static var deviceReports: URL? { base?.appendingPathComponent("v1/device-report") }
+    static var usageStats: URL? { base?.appendingPathComponent("v1/stats") }
+    /// The updater's download of one release, through the Worker so it's counted. The Worker
+    /// redirects to the same file as `ProjectLinks.dmg(forVersion:tag:)`, and the updater goes
+    /// there itself if this fails.
+    static func download(tag: String, base: URL? = base) -> URL? {
+        guard let base else { return nil }
+        var components = URLComponents(url: base.appendingPathComponent("v1/download"), resolvingAgainstBaseURL: false)
+        components?.queryItems = [URLQueryItem(name: "via", value: "update"), URLQueryItem(name: "tag", value: tag)]
+        return components?.url
+    }
+    /// The update check. It says which app version this is (nil, for a `swift run` build, goes
+    /// as "dev") and, unless the owner turned it off, which mouse models are connected. The
+    /// Worker counts those per day with no ID for the Mac, so they need no consent the way the
+    /// usage stats do; the homepage's privacy section says so.
+    static func releases(appVersion: String?, mice: [UsagePing.Mouse] = [], base: URL? = base) -> URL? {
+        guard let base else { return nil }
+        var components = URLComponents(url: base.appendingPathComponent("v1/releases"), resolvingAgainstBaseURL: false)
+        components?.queryItems = [URLQueryItem(name: "app", value: appVersion ?? "dev")]
+            + mice.prefix(4).map { URLQueryItem(name: "mouse", value: mouseValue($0)) }
+        return components?.url
+    }
+
+    /// `<pid>.<link>.<0|1>.<name>`: four hex digits, the link, whether it's supported, and the
+    /// name last, since only the name can hold a dot.
+    static func mouseValue(_ mouse: UsagePing.Mouse) -> String {
+        String(format: "%04x", mouse.pid & 0xFFFF) + ".\(mouse.link).\(mouse.supported ? 1 : 0).\(mouse.name)"
+    }
+
+    /// An origin and nothing else: https, or plain http only to this Mac for `wrangler dev`.
+    /// Anything else counts as not configured rather than as somewhere to send reports.
+    static func parse(_ value: String?) -> URL? {
+        guard let value, let components = URLComponents(string: value),
+              let host = components.host, !host.isEmpty,
+              components.user == nil, components.password == nil,
+              components.query == nil, components.fragment == nil,
+              components.path.isEmpty || components.path == "/" else { return nil }
+        let local = host == "127.0.0.1" || host == "localhost"
+        guard components.scheme == "https" || (components.scheme == "http" && local) else { return nil }
+        var origin = components
+        origin.path = ""
+        return origin.url
+    }
 }

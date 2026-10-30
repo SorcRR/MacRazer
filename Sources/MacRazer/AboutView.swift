@@ -65,7 +65,7 @@ struct AboutView: View {
                     Text("by").font(.system(size: 12)).foregroundStyle(.secondary)
                     Link("SorcRR", destination: ProjectLinks.developer)
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(Color.razerGreen)
+                        .foregroundStyle(Color.razerGreenText)
                 }
                 whatsNewRow
             }
@@ -100,7 +100,7 @@ struct AboutView: View {
                 Link("PR #2583", destination: ProjectLinks.cobraHyperSpeedPR)
             }
             .font(.system(size: 11.5, weight: .medium))
-            .foregroundStyle(Color.razerGreen)
+            .foregroundStyle(Color.razerGreenText)
         }
     }
 
@@ -113,7 +113,7 @@ struct AboutView: View {
                         + "but you run it at your own risk.")
             Link("View the source", destination: ProjectLinks.repo)
                 .font(.system(size: 11.5, weight: .medium))
-                .foregroundStyle(Color.razerGreen)
+                .foregroundStyle(Color.razerGreenText)
         }
     }
 
@@ -131,7 +131,7 @@ struct AboutView: View {
                     Image(systemName: "chevron.right").font(.system(size: 8, weight: .semibold))
                 }
                 .font(.system(size: 11.5, weight: .medium))
-                .foregroundStyle(Color.razerGreen)
+                .foregroundStyle(Color.razerGreenText)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -177,10 +177,11 @@ struct AboutView: View {
                 Label("Leave a Tip", systemImage: "heart")
             }
             .buttonStyle(.bordered)
-            .tint(.razerGreen)
+            .tint(.razerGreenText)
             Spacer(minLength: 0)
             Button("Done") { onDone() }
                 .keyboardShortcut(.defaultAction)
+                .buttonStyle(RazerProminentButtonStyle())
         }
         .controlSize(.small)
         .font(.system(size: 11.5))

@@ -13,9 +13,9 @@ Razer mice that use the same HID protocol family, but those are untested, so tre
 
 > Unofficial. Not affiliated with, authorized by, or endorsed by Razer Inc. See [NOTICE.md](NOTICE.md).
 > 
-> <img width="324" height="624" alt="image" src="https://github.com/user-attachments/assets/a7632668-2d12-4d2f-aa84-7b234bad31dc" />
-> <img width="323" height="290" alt="image" src="https://github.com/user-attachments/assets/c1cf4013-9c1e-40df-ac09-c3e36756df69" />
-> <img width="323" height="520" alt="image" src="docs/assets/battery-usage.png" />
+> <img width="324" height="713" alt="MacRazer popover: battery, DPI stages, polling rate, lighting, buttons and profiles" src=".github/screenshots/popover.png" />
+> <img width="326" height="718" alt="Configure Buttons: Back and Forward mapped to Copy and Paste" src=".github/screenshots/buttons.png" />
+> <img width="325" height="711" alt="Battery Usage: discharge curve, rate, time left and past charges" src=".github/screenshots/battery-usage.png" />
 
 
 ## Features
@@ -50,8 +50,9 @@ the mouse connects, disconnects, or sleeps.
 
 ## Supported mice
 
-"Verified" below means someone ran the CLI probes against the mouse and posted the output,
-not that the protocol tables say it should work. Where nobody has, the row says so.
+"Verified" below means someone ran the CLI probes or the in-app test against the mouse and
+posted the output, not that the protocol tables say it should work. Where nobody has, the row
+says so.
 
 | Mouse | Verified on hardware | By |
 |---|---|---|
@@ -59,16 +60,52 @@ not that the protocol tables say it should work. Where nobody has, the row says 
 | Razer Atheris | Battery, DPI, polling | maintainer |
 | Razer Basilisk V3 X HyperSpeed | Battery, DPI, DPI stages, polling, lighting, brightness | [@joelday](https://github.com/joelday) |
 | Razer Viper Ultimate (Wireless) | Battery, DPI, polling, brightness | [@raphaelchenouard](https://github.com/raphaelchenouard) |
+| Razer Naga Pro (Wireless) | Battery, DPI, DPI stages, polling, lighting, brightness | [@sidneylopes](https://github.com/sidneylopes) |
+| Razer Naga V3 Pro (Wireless) | Battery, DPI, DPI stages, polling, lighting, brightness | [@chris-agnew](https://github.com/chris-agnew) |
+| Razer Basilisk V4 HyperSpeed | Battery, DPI; polling not working yet | anonymous report |
 | Razer Orochi 2013 | DPI only | [@raphaelchenouard](https://github.com/raphaelchenouard) |
 | Razer Basilisk V3 | Nothing; reported working by a user | — |
 | Razer Cobra, Cobra Pro (wired + wireless) | Nothing; same protocol family, values from OpenRazer | — |
 | Razer Basilisk X HyperSpeed | Nothing; values from OpenRazer | — |
 | Razer Viper Ultimate (Wired) | Nothing; its wireless sibling is verified | — |
+| Razer Naga Pro (Wired) | Nothing; its wireless sibling is verified | — |
 | Any other Razer mouse | Nothing; detected and named, controls attempted | — |
 
 An unverified mouse is not a broken one. Detection and naming work for any Razer mouse, and
 the controls are attempted with values taken from OpenRazer's tables — they usually work. The
 column is about who has actually seen it happen.
+
+**Have a mouse that isn't verified?** The quickest way to help is in the app. Right-click the
+menu bar icon and choose **Help Support This Mouse…**. It runs the same probes as the
+commands below, puts every setting back, and builds the report for you. **Send** emails it to
+the maintainer, or you can copy it or open a GitHub issue with it. On a verified mouse the item
+reads **Test This Mouse…**, and a report confirms it still works on your firmware. The test
+needs the dongle or a cable, even on a mouse that also works over Bluetooth.
+
+### What a device report contains
+
+You can read the whole report on the last screen before it goes anywhere.
+
+- The mouse's name, product ID and firmware version, and whether it's on a cable or the dongle.
+- Its USB interfaces: product IDs, usage pages and report sizes.
+- What each step found: which transaction ids the mouse answered to, the battery level, the
+  DPI and polling rate it read and wrote back, and the lighting brightness. Every command the
+  test sent is listed, with the first 8 bytes of each answer.
+- Whether the mouse answers about 30 more read-only commands: newer polling rates, the sleep
+  timer, scroll wheel settings, profiles stored in the mouse, saved button functions and each
+  lighting zone. These only read, so nothing on the mouse changes. They show which features
+  are worth adding for it.
+- Which extra buttons you pressed during the button step, not when.
+- The app and macOS versions.
+- Only if you fill them in: a comment, a name to credit, and an email address for a reply.
+
+Never in it: the mouse's serial number, or anything else about your Mac.
+
+Where it goes depends on the button. **Copy** puts it on your clipboard. **Open GitHub issue**
+makes it public, so it leaves out your email address. **Send** emails it to the maintainer
+through a small Cloudflare Worker, which keeps nothing but a count of reports per day. Its code
+is in a private repository, and builds from this repository don't have Send: they offer Copy
+and the GitHub issue instead.
 
 Adding a model is a small change to a registry plus on-hardware verification. See
 [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -102,12 +139,17 @@ a serial).
 
 ## Requirements
 
-macOS 14 or later (Apple Silicon).
+macOS 14 or later, on Apple Silicon or Intel.
 
-**Connect over the 2.4 GHz dongle or a USB-C cable, not Bluetooth.** Razer only exposes its
-control protocol (battery, DPI, lighting) over USB; over Bluetooth the mouse is just a plain
-pointer, so MacRazer can't read or change anything. If your mouse has a mode switch, set it to
-2.4 GHz. (MacRazer will tell you when it sees your mouse on Bluetooth.)
+**Connect over the 2.4 GHz dongle or a USB-C cable.** That's where Razer exposes its full
+control protocol. The **Cobra HyperSpeed also works over Bluetooth**: battery, DPI stages,
+brightness and a static lighting colour. Polling rate, other lighting effects, custom DPI
+values and profiles still need the dongle or a cable. MacRazer asks for Bluetooth access the
+first time it finds the mouse there.
+
+Other models are a plain pointer over Bluetooth, so MacRazer can't read or change anything.
+If your mouse has a mode switch, set it to 2.4 GHz. MacRazer tells you when it sees your
+mouse on Bluetooth.
 
 ## Install
 
@@ -172,6 +214,8 @@ swift run MacRazer dpi [x] [y]          # read or set DPI
 swift run MacRazer poll [125|500|1000]  # read or set polling rate
 swift run MacRazer rgb static ff0000    # static colour (or: spectrum | wave | off)
 swift run MacRazer brightness [0-100]   # read or set LED brightness
+swift run MacRazer discover             # which transaction ids the mouse answers to
+swift run MacRazer devicetest           # the in-app device test, printed as JSON
 ```
 
 ## How it works
@@ -182,7 +226,7 @@ Manager. No kernel extension is needed because Razer mice respond to standard US
 reports that any userspace process can send.
 
 Full details, including the protocol, the per-device hardware quirks, and a file-by-file map,
-are in [docs/DOCUMENTATION.md](docs/DOCUMENTATION.md). The complete feature history is in
+are in [Documentation/DOCUMENTATION.md](Documentation/DOCUMENTATION.md). The complete feature history is in
 [CHANGELOG.md](CHANGELOG.md).
 
 ## Built with

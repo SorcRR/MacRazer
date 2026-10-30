@@ -134,6 +134,32 @@ interfere with the control-interface open. Fires `onAppear` / `onRemove` callbac
 main queue. (Polling, §5, is the fallback for the wireless-sleep case where the dongle stays
 plugged in.)
 
+### Bluetooth LE: `BLEProtocol.swift` + `BluetoothDevice.swift`
+Over Bluetooth the mouse is a plain HID pointer (feature report size 1, no control
+interface). Razer's control protocol lives in a separate **vendor GATT service**
+(`52401523-F97C-7F90-0E7F-6C6F4E36DB1C`), reverse-engineered by @ungrav in #32 and confirmed
+on the Cobra HyperSpeed (Bluetooth PID `0x00DC`, vendor `0x068E`).
+
+- **Framing.** A request is a header `[id, payloadLength, 0, 0, class, command, arg, arg]`
+ written to `…1524`, then the payload in 20-byte writes. The reply arrives as notifications
+ on `…1525`: a header `[id, length, 0, 0, 0, 0, 0, status]` (status `02` ok, `03` failure,
+ `05` not supported) followed by `length` payload bytes. The mouse also sends an
+ unsolicited `01 … 03` frame when notifications are enabled, which the assembler skips.
+- **Commands (verified on the Cobra HyperSpeed):** battery `05 81 00 01` (0-255, same scale
+ as USB), serial `01 83 00 00` (the same serial as over the dongle), DPI stages get/set
+ `0B 84 01 00` / `0B 04 01 00`, brightness get/set `10 85 01 <led>` / `10 05 01 <led>` (LOGO
+ `04` on the Cobra, like USB), static colour `10 04 00 00`.
+- **Stage table.** `[activeID, count]` then per stage `[id, x_lo, x_hi, y_lo, y_hi, 0, 0]`,
+ ids from 1, little-endian. Replies drop the last reserved byte. There is no direct "set
+ DPI", so selecting a DPI rewrites the table with a new active stage, then reads it back.
+- `BLEProtocol` translates `RazerReport` requests and replies, so `MouseController` and the
+ `RazerCommands` parsers are shared with USB. Commands without a BLE equivalent (polling
+ rate, effects other than static) throw `notSupported`, and the popover hides them.
+- **Link choice** (`MouseController.openTransport`): a cable wins. An idle dongle loses to a
+ supported mouse on Bluetooth, because the mouse is on one wireless link at a time and the
+ dongle would only time out. Detection runs on IOHID (`HIDDevice.bluetoothRazerMouse`), so
+ CoreBluetooth and its permission prompt only appear for someone who has such a mouse.
+
 ---
 
 ## 5. The controller, `MouseController.swift`
@@ -204,20 +230,59 @@ A fixed **320*620** navigable container with three pages and a push/pop slide an
 page is a `ScrollView` (so long content scrolls without resizing the popover):
 
 - **Main page**, Control-Center-style frosted cards, each section its own tile:
- - **Header card**: Razer logo (bright green) in a tinted tile + detected device name +
+ - **Header card**: Razer logo (green) in a tinted tile + detected device name +
  connection state + status dot. Shows "No mouse connected" when none.
  - **Battery card**: a custom proportional **battery gauge** (fill tracks the exact %,
  colored green >=40% / orange <40% / red <15%), the big % number, a state-colored level
  bar, the time estimate, and a spinner-animated refresh button. Dims when offline.
  - **DPI card**: green slider (100-26000) + preset chips (400/800/1600/3200/6400) + a
  persisted **custom chip** (drag the slider to any value to save it; green-outlined).
- - **Polling card**: segmented 125/500/1000 Hz.
- - **Lighting card**: brightness slider (☀︎) + effect segmented (Static/Spectrum/Wave/Off)
+ - **Settings sections**: the rest, each a compact card of its own, Control-Center style. Each
+ shows its current value ("1000 Hz", "Static · 80%", "5 min", the active profile) and the
+ settings rows expand in place, each on its own; which are open is remembered
+ (`popoverExpandedSections` in UserDefaults). Rows a mouse can't use are left out.
+ - **Polling rate**: segmented 125/500/1000 Hz, plus what the rate is good for.
+ - **Lighting**: brightness slider (☀︎) + effect segmented (Static/Spectrum/Wave/Off)
  + colour swatches (true red...pink) + a rainbow "custom" well that opens the colour wheel.
- - **Configure Buttons** card-button to buttons page.
+ - **Power Management** (Basilisk V3 X over Bluetooth): the sleep timer.
+ - **Buttons**: opens the buttons page; shows how many buttons are remapped, or "Needs access"
+ when saved remaps can't fire without Accessibility permission.
+ - Offline, the section rows still open to show last-known settings; their controls and the
+ Buttons page are disabled. A failed write turns that row's value red.
+ - **Profiles**: quick-switch chips, "+" to save, "Manage Profiles…".
+ - Sub-pages that scroll are at least 560 pt tall, so a short (collapsed) main page doesn't squeeze
+ them; the colour page keeps the main page's height.
  - **Settings card**: a switch toggle for "Show battery % in menu bar".
  - Live mouse-config sections **grey out + disable when disconnected** (battery stays
  readable; refresh stays active).
+ - With **no mouse known at all** (none seen yet, or unplugged), the controls are replaced
+ by one card that says how to connect and offers "Look Again" (or the Input Monitoring
+ grant, when that's what is missing). A last battery reading is still shown if there is one.
+ - Keyboard: **⌘R** refreshes, **⌘,** opens Settings, and **Esc** on any sub-page goes back
+ one level instead of closing the popover (except while a key recording or a rename is in
+ progress, where Esc cancels that).
+ - Swatches, chips and the icon buttons carry VoiceOver labels and tooltips; chips and
+ rows get a hover highlight.
+- **Appearance**, `PopoverTheme.swift`: Settings › Appearance has a **Theme** (System, Dark,
+ Light, Razer Green) and a **Glass effect** switch, stored as `appearance.theme` and
+ `appearance.glass` in UserDefaults. `PopoverLook.resolve` turns theme, glass and the system's
+ light or dark mode into one of six looks (light, dark or green glass; solid light #F5F5F7,
+ dark #1C1C1E or green #0F1A11). Razer Green is always dark.
+ - `AppDelegate` re-applies the look when the setting changes or macOS switches mode, including
+ while the popover is open. The popover's appearance is always set explicitly: a nil one would
+ follow the menu bar, which macOS tints from the wallpaper.
+ - Solid colours and the green tint are painted by `PopoverBackdropView`, which sits in
+ NSPopover's frame view just under the content. That view clips to the popover's outline, so
+ the fill covers the arrow too. A SwiftUI background would leave the arrow glass. The green
+ edge is a SwiftUI overlay on the body (radius 10, measured on macOS 26).
+ - Windows get the same look (`AppearanceSettings.track`, `WindowBackdrop`): glass is an
+ `NSVisualEffectView` with the popover's material, plus the same tint view, both in the
+ window's frame view so the title bar matches; solid looks set the window's background colour.
+ The title bar is transparent in every look. Only the popover gets the green edge.
+ - Colours: `razerGreen` is the fill (the same in both modes); text and icons use
+ `razerGreenText` (#23891A on light). Anything on a green fill uses `onRazerGreen`, a dark green,
+ because white on #44D62C is only about 1.9:1. `razerGreenBright` (logo) and `bluetoothBlue`
+ also adapt.
 - **Colour page**, `ColorPickerPage.swift`: an inline **hue/saturation colour wheel** +
  brightness slider + live preview, applied to the mouse live (throttled). Replaces the old
  system `NSColorPanel`.
@@ -237,6 +302,55 @@ buttons are handled onboard and never reach macOS.
  Settings / Re-check in the UI).
 - Available both inline (popover buttons page) and as a standalone window
  (`RemapWindowController.swift`, opened from the right-click menu).
+
+### 6.4 Device test, `DeviceTest*.swift` + the Worker
+The right-click menu's **Help Support This Mouse…** (or **Test This Mouse…** on a verified
+model) runs a guided test and builds a report a maintainer can turn into a registry entry.
+
+- `DeviceTest.swift`: the steps (Identify, Battery, DPI, Polling rate, Lighting) as plain
+ functions over a channel, the report, and the verdict. Each step puts back what it changes
+ before it returns, on every path. Tests drive them against a fake mouse.
+- `DeviceProbeSession.swift`: transaction id discovery (every id OpenRazer uses is tried, and
+ each result recorded) and the channel that records every command for the report.
+- `DeviceTestModel.swift` / `DeviceTestView.swift` / `DeviceTestWindowController.swift`: the
+ window. Steps run on `MouseController`'s device queue with the app's own reads paused. Quit
+ waits for a running step. The test needs USB; a mouse on Bluetooth is told to switch.
+- `DeviceReportOutput.swift`: Copy, the GitHub issue, size fitting, and text limits.
+ `DeviceReportSender.swift`: Send, a POST to the Worker.
+- `WorkerEndpoint` (`AppInfo.swift`): the Worker's address, from the bundle's Info.plist, where
+ `Scripts/build-app.sh` writes it from DOMAIN in the maintainer's private settings file. It is
+ never in the repository. A build without it (a clone, a fork, CI, `swift run`) hides Send and
+ the reply address, and has no usage stats at all. `MACRAZER_WORKER_URL=http://127.0.0.1:8787`
+ points a development build at `wrangler dev`.
+- The Worker: a Cloudflare Worker that checks a report against the app's exact format, emails it
+ to the maintainer, and keeps only daily counters. Its code and setup are in the private
+ SorcRR/macrazer-worker repository. The contract between the two is the fixtures in
+ `Tests/MacRazerTests/Fixtures/worker/`: the app's tests write them, and the Worker's CI fetches
+ them from this repository and tests against them.
+
+### 6.5 Usage stats, `UsageStats.swift` + the Worker
+Opt-in only. Nothing is sent until the person clicks Share. In a build without the Worker (see
+`WorkerEndpoint` above) nothing is asked, Settings has no Privacy section, and nothing is sent.
+
+- **Asking.** A new install gets `UsageStatsConsentView` in its own window, once nothing else is
+ on screen (the setup window comes first). Someone updating gets `UsageStatsCard` in the
+ Updated window instead. Closing either without answering counts as no, and it isn't asked again.
+- **The ID.** An HMAC-SHA256 of the hardware UUID (`IOPlatformUUID`) with a fixed app key,
+ cut to 16 bytes of hex. The same Mac gets the same ID after a reinstall, the UUID never leaves
+ it, and the result can't be matched with what another app gets from the same UUID. It's saved
+ in the preferences once worked out, so a UUID that changes in a macOS upgrade doesn't make a
+ new Mac.
+- **When.** `UsageStatsPolicy`: a `first` ping when nothing was reported yet, `update` when the
+ version changed, `mouse` when a mouse connects that this Mac hasn't reported. Launch waits 15 s
+ for a mouse, then sends anyway. A failed ping is simply due again, at the next launch or mouse. `swift run` builds never
+ send.
+- **What.** `UsagePing`: the ID, the event, app and macOS versions, the chip (from
+ `hw.optional.arm64`, so Rosetta still counts as Apple Silicon), and the connected mouse with its
+ product ID, link and whether it's supported. Settings › Privacy shows this exact JSON.
+- **Delete My Data.** Turns sharing off and sends `DELETE /v1/stats/<id>`. The Worker moves the
+ row to tables without the ID. If the server can't be reached, the delete is kept and retried at
+ every launch and whenever a mouse connects, and no ping goes before it succeeds.
+- **Seeing the numbers.** `npm run stats` in the Worker's repository prints a summary.
 
 ---
 
@@ -264,7 +378,8 @@ right-click->Open). A clean install needs Developer ID + notarization (paid Appl
 ## 8. Extending to other Razer mice
 
 Detection + name display already work for any Razer mouse (read-only, via the USB product
-string). To make the **controls** verified for another model:
+string). The device test (§6.4, or `devicetest` in §9) gathers what the steps below need
+in one run. To make the **controls** verified for another model:
 1. Add its PID/name to `RazerDevices.known` with `fullySupported: true` and the right
  `hasBattery` / `hasLighting` / `maxDPI`. If its brightness answers on a group other than
  `LOGO_LED`, set `brightnessLed` too.
@@ -290,6 +405,9 @@ swift run MacRazer dpi [x] [y] # read / set DPI
 swift run MacRazer poll [125|500|1000]
 swift run MacRazer rgb static ff0000 # or: spectrum | wave | off
 swift run MacRazer brightness [0-100] # sweeps LOGO/SCROLL/ZERO/BACKLIGHT LEDs
+swift run MacRazer discover # which transaction ids the mouse answers to
+swift run MacRazer devicetest # the device test without its window, as JSON on stdout
+swift run MacRazer render-device-test review ran sent out.png # one test screen (dev)
 swift run MacRazer icon out.png # render the menu bar icon
 swift run MacRazer render-ui [offline|color|update|updated|whatsnew|…] out.png # popover (dev)
 swift run MacRazer render-ui whatsnew installed out.png # the notes without an update to install
@@ -313,17 +431,34 @@ that path draws the content but needs an explicit size, since there is no window
 | `MouseController.swift` | Orchestrator: poll loop, connection logic, writes, battery, published state. |
 | `HIDDevice.swift` | IOKit HID open/enumerate + request/response send. |
 | `HIDMonitor.swift` | IOKit service notifications for plug/unplug. |
+| `RazerTransport.swift` | Transport protocol shared by USB and Bluetooth, plus the shared retry ladder. |
+| `BLEProtocol.swift` | Bluetooth LE framing and `RazerReport` translation. |
+| `BluetoothDevice.swift` | CoreBluetooth connection to Razer's vendor GATT service. |
 | `RazerReport.swift` | 90-byte `razer_report` struct + CRC. |
 | `RazerCommands.swift` | Command-byte builders (battery/DPI/poll/RGB/brightness) + Razer constants. |
 | `RazerDevices.swift` | PID to {name, supported, hasBattery} registry. |
 | `BatteryHistory.swift` | Sample log + learned discharge rate + time estimate. |
 | `PopoverView.swift` | Main popover UI + page navigation. |
+| `PopoverTheme.swift` | Settings › Appearance: theme, glass, the resolved look, the popover and window backdrops. |
 | `ColorPickerPage.swift` | Inline hue/sat colour wheel page + shared `BackButton`. |
 | `ButtonRemapper.swift` | CGEvent tap, action model, presets, persistence, Accessibility. |
 | `RemapView.swift` | Button-config UI (inline + window), key recorder. |
 | `RemapWindowController.swift` | Standalone window host for the remap UI. |
+| `DeviceProbe.swift` | The probes shared by the CLI and the device test. |
+| `DeviceProbeSession.swift` | Transaction id discovery and the recording channel. |
+| `DeviceTest.swift` | Device test steps, report and verdict. |
+| `DeviceTestModel.swift` / `DeviceTestView.swift` | Device test window: flow and screens. |
+| `DeviceTestWindowController.swift` | Window host for the device test. |
+| `DeviceReportOutput.swift` | Copy, GitHub issue, size fitting and text limits for reports. |
+| `DeviceReportSender.swift` | Send: posts a report to the Worker. |
+| `UsageStats.swift` | Opt-in usage stats: the ID, when to ping, Delete My Data. |
+| `UsageStatsView.swift` | The consent window, the Updated window's card, the shared summary. |
+| `ButtonCapture.swift` | Listens to the Razer device's buttons during the test. |
 | `MenuBarIcon.swift` | Vector-drawn menu bar mouse icon (+ triskelion). |
 | `RazerLogo.swift` | Embedded official Razer logo (vector PDF, base64) for the header. |
+
+The Cloudflare Worker behind Send and the usage stats is in the private SorcRR/macrazer-worker
+repository. `Tests/MacRazerTests/Fixtures/worker/` holds the fixtures it tests against.
 
 External: `reference/openrazer/` (cloned driver source, the protocol reference, gitignored)
 and `reference/openrazer-pr-2583.diff` (the Cobra HyperSpeed PR).

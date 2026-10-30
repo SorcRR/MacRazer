@@ -20,6 +20,10 @@ final class RazerDevicesTests: XCTestCase {
             XCTAssertEqual(txn(0x00AF, cls), 0x1f) // Cobra Pro (OpenRazer)
             XCTAssertEqual(txn(0x00B0, cls), 0x1f)
             XCTAssertEqual(txn(0x0062, cls), 0x1f) // Atheris (hardware-verified)
+            XCTAssertEqual(txn(0x0090, cls), 0x1f) // Naga Pro dongle (hardware-verified, #69)
+            XCTAssertEqual(txn(0x008F, cls), 0x1f)
+            XCTAssertEqual(txn(0x00E8, cls), 0x1f) // Naga V3 Pro dongle (hardware-verified, #33)
+            XCTAssertEqual(txn(0x00EA, cls), 0x1f) // Basilisk V4 HyperSpeed dongle (hardware-verified)
             XCTAssertEqual(txn(0x9999, cls), 0x1f) // unknown → Cobra default
         }
         // Plain Cobra: 0xFF for standard/misc, but 0x1f for extended-matrix (lighting) —
@@ -102,12 +106,74 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(setLed(nil), Razer.logoLed)
     }
 
+    /// The Nagas light three zones and each takes its own brightness. Every other model
+    /// writes just its one `brightnessLed`.
+    func testBrightnessLedsCoverEveryZone() {
+        let naga = [Razer.logoLed, Razer.scrollLed, Razer.backlightLed]
+        for pid in [0x0090, 0x008F, 0x00E8] {
+            XCTAssertEqual(RazerDevices.brightnessLeds(pid: pid), naga)
+        }
+        XCTAssertEqual(RazerDevices.brightnessLeds(pid: 0x00DB), [Razer.logoLed])
+        XCTAssertEqual(RazerDevices.brightnessLeds(pid: 0x00B9), [Razer.scrollLed])
+        XCTAssertEqual(RazerDevices.brightnessLeds(pid: 0x9999), [Razer.logoLed])
+        XCTAssertEqual(RazerDevices.brightnessLeds(pid: nil), [Razer.logoLed])
+    }
+
+    func testWriteBrightnessSetsEveryZoneAndStopsOnARefusal() throws {
+        let naga = RecordingTransport(productID: 0x00E8)
+        try MouseController.writeBrightness(128, to: naga)
+        XCTAssertEqual(naga.sent.map { $0.arguments[1] }, [Razer.logoLed, Razer.scrollLed, Razer.backlightLed])
+        XCTAssertTrue(naga.sent.allSatisfy { $0.commandId == 0x04 && $0.arguments[2] == 128 })
+
+        let refusing = RecordingTransport(productID: 0x00E8, refuses: Razer.scrollLed)
+        XCTAssertThrowsError(try MouseController.writeBrightness(128, to: refusing))
+        XCTAssertEqual(refusing.sent.map { $0.arguments[1] }, [Razer.logoLed, Razer.scrollLed])
+    }
+
     func testConnectionKind() {
         XCTAssertEqual(RazerDevices.connection(pid: 0x00DB), .wirelessDongle)
         XCTAssertEqual(RazerDevices.connection(pid: 0x00DA), .wired)
         XCTAssertEqual(RazerDevices.connection(pid: 0x0099), .wired) // Basilisk V3: wired-only
+        XCTAssertEqual(RazerDevices.connection(pid: 0x00DC), .bluetooth)
         XCTAssertNil(RazerDevices.connection(pid: 0x9999), "unknown models show the neutral USB chip")
         XCTAssertNil(RazerDevices.connection(pid: nil))
+    }
+
+    /// Bluetooth PIDs come from Razer's Bluetooth vendor id (0x068E), USB ones from 0x1532,
+    /// but the registry is keyed by PID alone. A clash would hand one model's capabilities
+    /// to the other, so keep every row's PID unique.
+    func testPIDsAreUnique() {
+        let pids = RazerDevices.known.map(\.pid)
+        XCTAssertEqual(pids.count, Set(pids).count)
+    }
+
+    /// The Bluetooth Cobra HyperSpeed is the same mouse as the dongle one: same LED for
+    /// brightness (verified over BLE: LOGO answers, SCROLL refuses) and same discharge curve.
+    func testBluetoothCobraHyperSpeed() {
+        XCTAssertEqual(RazerDevices.bluetoothPIDs, [0x00BA, 0x00DC])
+        XCTAssertEqual(RazerDevices.bluetoothModelNames, ["Razer Cobra HyperSpeed", "Razer Basilisk V3 X HyperSpeed"],
+                       "user-facing text names the model, not the link")
+        XCTAssertEqual(RazerDevices.brightnessLed(pid: 0x00DC), Razer.logoLed)
+        XCTAssertEqual(RazerDevices.dischargeCurveModelKey(pid: 0x00DC),
+                       RazerDevices.dischargeCurveModelKey(pid: 0x00DB))
+        XCTAssertEqual(RazerDevices.maxDPI(pid: 0x00DC), RazerDevices.maxDPI(pid: 0x00DB))
+    }
+
+    func testBluetoothBasiliskHyperSpeed() {
+        XCTAssertEqual(RazerDevices.connection(pid: 0x00BA), .bluetooth)
+        XCTAssertTrue(RazerDevices.hasBattery(pid: 0x00BA))
+        XCTAssertTrue(RazerDevices.hasLighting(pid: 0x00BA))
+        XCTAssertEqual(RazerDevices.brightnessLed(pid: 0x00BA), Razer.scrollLed)
+        XCTAssertEqual(RazerDevices.maxDPI(pid: 0x00BA), 18000)
+        XCTAssertTrue(RazerDevices.supportsDpiButtonBinding(pid: 0x00BA))
+        XCTAssertTrue(RazerDevices.supportsSleepTimeout(pid: 0x00BA))
+        XCTAssertTrue(RazerDevices.supportsStageEditing(pid: 0x00BA))
+        XCTAssertFalse(RazerDevices.supportsDpiButtonBinding(pid: 0x00DC))
+        XCTAssertFalse(RazerDevices.supportsSleepTimeout(pid: 0x00DC))
+        XCTAssertFalse(RazerDevices.supportsStageEditing(pid: 0x00DC))
+        XCTAssertTrue(RazerDevices.verifiesBrightnessWrite(pid: 0x00BA))
+        XCTAssertFalse(RazerDevices.verifiesBrightnessWrite(pid: 0x00DC),
+                       "the Cobra's brightness isn't read back after writing")
     }
 
     func testCapabilityDefaultsForUnknownModels() {
@@ -143,4 +209,27 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(LightingEffect.wave.rawValue, "Wave")
         XCTAssertEqual(LightingEffect.off.rawValue, "Off")
     }
+}
+
+/// Records every report and answers it, or throws for one LED group.
+private final class RecordingTransport: RazerTransport {
+    let productID: Int
+    let productName = "Test mouse"
+    let locationID = 1
+    let isBluetooth = false
+    let refuses: UInt8?
+    private(set) var sent: [RazerReport] = []
+
+    init(productID: Int, refuses: UInt8? = nil) {
+        self.productID = productID
+        self.refuses = refuses
+    }
+
+    func sendWithRetry(_ report: RazerReport) throws -> RazerReport {
+        sent.append(report)
+        if report.arguments[1] == refuses { throw HIDDevice.HIDError.commandFailed }
+        return report
+    }
+
+    func close() {}
 }

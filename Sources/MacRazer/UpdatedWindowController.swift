@@ -12,12 +12,15 @@ import SwiftUI
 @MainActor
 final class UpdatedWindowController: NSObject, AppWindowPresenter, NSWindowDelegate {
     private let updateChecker: UpdateChecker
+    /// The usage stats question shows as a card in this window.
+    private let usageStats: UsageStats
     /// Called a turn after the window closes, once it no longer counts as open.
     private let onClosed: () -> Void
     private var window: NSWindow?
 
-    init(updateChecker: UpdateChecker, onClosed: @escaping () -> Void) {
+    init(updateChecker: UpdateChecker, usageStats: UsageStats, onClosed: @escaping () -> Void) {
         self.updateChecker = updateChecker
+        self.usageStats = usageStats
         self.onClosed = onClosed
     }
 
@@ -32,14 +35,15 @@ final class UpdatedWindowController: NSObject, AppWindowPresenter, NSWindowDeleg
         if window == nil {
             let controller = NSHostingController(rootView: UpdatedView(
                 updateChecker: updateChecker,
-                onDone: { [weak self] in self?.window?.close() }))
+                onDone: { [weak self] in self?.window?.close() },
+                usageStats: usageStats))
             controller.sizingOptions = [.preferredContentSize]
             let w = NSWindow(contentViewController: controller)
             w.title = "MacRazer Updated"
             w.styleMask = [.titled, .closable]
             w.isReleasedWhenClosed = false
-            // Match the other windows: the green accent needs a dark ground.
-            w.appearance = NSAppearance(named: .darkAqua)
+            // Themed like the popover per Settings › Appearance, kept up to date when it changes.
+            AppearanceSettings.shared.track(w)
             w.delegate = self
             w.center()
             window = w
@@ -54,6 +58,8 @@ final class UpdatedWindowController: NSObject, AppWindowPresenter, NSWindowDeleg
 
     func windowWillClose(_ notification: Notification) {
         updateChecker.dismissAnnouncement()
+        // The usage stats card was in it. Closing without answering is a no.
+        usageStats.dismissUnanswered()
         // Deferred: the window is still visible during `windowWillClose`, and anything that
         // asks "is a window open?" from here would get the wrong answer.
         DispatchQueue.main.async { [weak self] in self?.onClosed() }
