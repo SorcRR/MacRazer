@@ -340,7 +340,7 @@ struct DeviceTestView: View {
                 .inputBox()
             // Only Send carries it, so without the Worker there's nowhere for it to go.
             if model.canSend {
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 6) {
                 TextField("Your email, if you'd like a reply (optional)", text: $model.replyEmail)
                     .inputBox()
                 if let problem = model.emailProblem {
