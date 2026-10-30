@@ -629,6 +629,12 @@ case "bluetoothtest":
         status("✗ No Razer mouse is connected over Bluetooth.")
         exit(1)
     }
+    // macOS ends a process that touches Bluetooth without saying why in its Info.plist, which
+    // only the app bundle has. Built with `swift build`, the binary has none.
+    guard Bundle.main.object(forInfoDictionaryKey: "NSBluetoothAlwaysUsageDescription") != nil else {
+        status("✗ Bluetooth needs the app's Info.plist. Run it from the app: MacRazer.app/Contents/MacOS/MacRazer bluetoothtest")
+        exit(1)
+    }
     status("Reading \(mouse.name) over Bluetooth. macOS may ask to allow Bluetooth first.")
     let report = DeviceTestSteps.bluetoothTest(name: mouse.name)
     let json = DeviceReportOutput.json(report, forPublic: true)

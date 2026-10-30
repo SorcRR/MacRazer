@@ -33,8 +33,9 @@ final class BluetoothProbe: NSObject, BluetoothReadChannel, @unchecked Sendable 
     private var peripheral: CBPeripheral?
     private var writeCharacteristic: CBCharacteristic?
     private var notifyReady = false
-    /// Discoveries, subscriptions and reads asked for and not yet answered.
-    private var outstanding = 0
+    /// Discoveries, subscriptions and reads asked for and not yet answered, by what they're
+    /// for, so a value the mouse pushes unasked can't count as an answer.
+    private var outstanding: Set<CBUUID> = []
     private var onChange: (() -> Void)?
     private var data = DeviceReport.BluetoothData()
     private var pending: Exchange?
@@ -163,9 +164,9 @@ final class BluetoothProbe: NSObject, BluetoothReadChannel, @unchecked Sendable 
         exchange.done.signal()
     }
 
-    private func answered() {
-        outstanding -= 1
-        if outstanding == 0 { onChange?() }
+    private func answered(_ uuid: CBUUID) {
+        guard outstanding.remove(uuid) != nil else { return }
+        if outstanding.isEmpty { onChange?() }
     }
 }
 
@@ -199,7 +200,7 @@ extension BluetoothProbe: CBCentralManagerDelegate, CBPeripheralDelegate {
         ]
         let asked = services.filter { wanted[$0.uuid] != nil }
         guard !asked.isEmpty else { onChange?(); return }
-        outstanding += asked.count
+        outstanding.formUnion(asked.map(\.uuid))
         for service in asked { peripheral.discoverCharacteristics(wanted[service.uuid], for: service) }
     }
 
@@ -207,18 +208,18 @@ extension BluetoothProbe: CBCentralManagerDelegate, CBPeripheralDelegate {
         for c in service.characteristics ?? [] {
             switch c.uuid {
             case writeUUID: writeCharacteristic = c
-            case notifyUUID: outstanding += 1; peripheral.setNotifyValue(true, for: c)
-            case batteryLevelUUID, pnpIDUUID: outstanding += 1; peripheral.readValue(for: c)
+            case notifyUUID: outstanding.insert(c.uuid); peripheral.setNotifyValue(true, for: c)
+            case batteryLevelUUID, pnpIDUUID: outstanding.insert(c.uuid); peripheral.readValue(for: c)
             default: break
             }
         }
-        answered()
+        answered(service.uuid)
     }
 
     func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic, error: Error?) {
         guard characteristic.uuid == notifyUUID else { return }
         notifyReady = error == nil && characteristic.isNotifying
-        answered()
+        answered(characteristic.uuid)
     }
 
     func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
@@ -234,7 +235,7 @@ extension BluetoothProbe: CBCentralManagerDelegate, CBPeripheralDelegate {
         switch characteristic.uuid {
         case batteryLevelUUID:
             if error == nil, let level = bytes.first, level <= 100 { data.batteryLevel = Int(level) }
-            answered()
+            answered(characteristic.uuid)
         case pnpIDUUID:
             // [vendorIdSource, vid_lo, vid_hi, pid_lo, pid_hi, ver_lo, ver_hi]
             if error == nil, bytes.count >= 7 {
@@ -242,7 +243,7 @@ extension BluetoothProbe: CBCentralManagerDelegate, CBPeripheralDelegate {
                 data.pnpProductID = Int(bytes[3]) | Int(bytes[4]) << 8
                 data.pnpVersion = Int(bytes[5]) | Int(bytes[6]) << 8
             }
-            answered()
+            answered(characteristic.uuid)
         case notifyUUID:
             guard let pending, let value = characteristic.value else { return }
             pending.assembler.add(value)

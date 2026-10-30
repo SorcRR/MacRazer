@@ -203,6 +203,13 @@ final class DeviceTestModel: ObservableObject {
         Task { await runIdentify() }
     }
 
+    /// Whether to offer the Bluetooth test: the full test found the mouse on Bluetooth, or
+    /// there's no mouse on a cable or dongle and there is one on Bluetooth.
+    var offersBluetoothTest: Bool {
+        if case .bluetoothOnly? = blocker { return true }
+        return blocker == nil && !Self.razerMousePresent && HIDDevice.bluetoothRazerMouse() != nil
+    }
+
     /// The shorter, read-only test for a mouse on Bluetooth (`DeviceTestSteps.bluetoothTest`).
     /// Needs no Input Monitoring: nothing goes through IOHID but the interface list.
     func startBluetooth() {

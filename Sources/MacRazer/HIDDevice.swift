@@ -195,8 +195,11 @@ final class HIDDevice {
             (strProp($0, kIOHIDTransportKey) ?? "").localizedCaseInsensitiveContains("Bluetooth")
         }
         let interfaces = devices.map(interfaceSummary).sorted { ($0.usagePage, $0.usage, $0.maxFeatureReportSize) < ($1.usagePage, $1.usage, $1.maxFeatureReportSize) }
-        return BluetoothHID(vendorID: devices.first.flatMap { intProp($0, kIOHIDVendorIDKey) },
-                            productID: devices.first.flatMap { intProp($0, kIOHIDProductIDKey) },
+        // The ids from the mouse interface, when there's one.
+        let mouse = devices.first { intProp($0, kIOHIDPrimaryUsagePageKey) == 0x01 && intProp($0, kIOHIDPrimaryUsageKey) == 0x02 }
+            ?? devices.first
+        return BluetoothHID(vendorID: mouse.flatMap { intProp($0, kIOHIDVendorIDKey) },
+                            productID: mouse.flatMap { intProp($0, kIOHIDProductIDKey) },
                             interfaces: interfaces)
     }
 

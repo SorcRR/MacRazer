@@ -399,7 +399,7 @@ struct DeviceTestView: View {
             case .intro:
                 Button("Cancel", action: onClose)
                 Spacer()
-                if case .bluetoothOnly? = model.blocker {
+                if model.offersBluetoothTest {
                     Button("Bluetooth test") { model.startBluetooth() }
                 }
                 Button("Start") { model.start() }.keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())

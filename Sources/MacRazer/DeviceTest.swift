@@ -631,11 +631,12 @@ enum DeviceTestSteps {
 
     /// The report for a mouse on Bluetooth, from what `BluetoothProbe` found and the reads
     /// it ran. Identify passes when Razer's service answered a read; with no such service it's
-    /// not on this mouse (#35's Pro Click V2 has none). Battery comes from the standard
-    /// service. The other steps need the USB protocol and stay skipped.
+    /// not on this mouse (#35's Pro Click V2 has none). Battery comes from Razer's battery
+    /// read, on the USB scale, else the standard service. The other steps need the USB
+    /// protocol and stay skipped. The ids are IOHID's, else the PnP ID's: the Worker takes
+    /// only Razer's vendor ids, so a report must not go out with none.
     static func bluetoothReport(name: String, hid: HIDDevice.BluetoothHID, probe: DeviceReport.BluetoothData,
                                 capabilities: DeviceReport.CapabilitiesData?) -> DeviceReport {
-        let registry = hid.productID.flatMap { RazerDevices.info(pid: $0) }
         var identify = DeviceReport.StepRecord<DeviceReport.IdentifyData>()
         if !probe.razerService {
             identify.outcome = .notSupported
@@ -645,14 +646,19 @@ enum DeviceTestSteps {
             identify.error = probe.error
         }
         var battery = DeviceReport.StepRecord<DeviceReport.BatteryData>()
-        if let level = probe.batteryLevel {
+        let raw = capabilities?.reads.first { $0.name == "battery" && $0.answer == .answered }?.response?.first
+        if let raw, raw != 0 {
+            battery = .init(outcome: .passed, data: .init(raw: raw, percent: RazerCommands.batteryPercent(fromRaw: raw)))
+        } else if let level = probe.batteryLevel {
             battery = .init(outcome: .passed, data: .init(percent: level))
         }
+        let vendorID = hid.vendorID ?? probe.pnpVendorID ?? BLEProtocol.vendorId
+        let productID = hid.productID ?? probe.pnpProductID ?? 0
         var report = DeviceReport(
             appVersion: AppInfo.displayVersion, macOSVersion: DeviceReport.currentMacOSVersion,
-            device: .init(vendorID: hid.vendorID ?? 0, productID: hid.productID ?? 0, name: name,
+            device: .init(vendorID: vendorID, productID: productID, name: name,
                           connection: .bluetooth, interfaces: hid.interfaces, controlInterface: nil),
-            registry: registry.map(DeviceReport.Registry.init),
+            registry: RazerDevices.info(pid: productID).map(DeviceReport.Registry.init),
             identify: identify, battery: battery, dpi: .init(), polling: .init(), lighting: .init(), buttons: .init(),
             capabilities: capabilities, bluetooth: probe)
         report.verdict = report.currentVerdict()

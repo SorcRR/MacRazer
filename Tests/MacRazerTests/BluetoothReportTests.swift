@@ -80,6 +80,23 @@ final class BluetoothReportTests: XCTestCase {
         XCTAssertEqual(report.bluetooth, probe)
     }
 
+    /// Razer's own battery read wins, on the USB scale. Ids fall back to the PnP ID, so a
+    /// report never goes out with a vendor the Worker refuses.
+    func testBatteryAndIdsFallBack() {
+        let probe = DeviceReport.BluetoothData(razerService: true, pnpVendorID: 0x068E, pnpProductID: 0x00E4, batteryLevel: 39)
+        let reads = DeviceReport.CapabilitiesData(reads: [
+            .init(name: "battery", commandClass: 0x05, commandId: 0x81, answer: .answered, response: [0x61]),
+        ])
+        let none = HIDDevice.BluetoothHID(vendorID: nil, productID: nil, interfaces: [])
+        let report = DeviceTestSteps.bluetoothReport(name: "x", hid: none, probe: probe, capabilities: reads)
+        XCTAssertEqual(report.battery.data?.raw, 0x61)
+        XCTAssertEqual(report.battery.data?.percent, RazerCommands.batteryPercent(fromRaw: 0x61))
+        XCTAssertEqual(report.device.vendorID, 0x068E)
+        XCTAssertEqual(report.device.productID, 0x00E4)
+        XCTAssertEqual(DeviceTestSteps.bluetoothReport(name: "x", hid: none, probe: .init(), capabilities: nil)
+            .device.vendorID, BLEProtocol.vendorId)
+    }
+
     func testIdentifyPassesWhenRazersServiceAnswers() {
         let probe = DeviceReport.BluetoothData(services: [BLEProtocol.serviceUUID], razerService: true)
         let answered = DeviceReport.CapabilitiesData(reads: [
