@@ -60,14 +60,9 @@ struct SupportPromptView: View {
         }
     }
 
-    /// The popover's chip wording. Unknown models say "USB", true for a cable and a dongle.
+    /// The popover's chip wording.
     private var connectionLabel: String {
-        switch RazerDevices.connection(pid: mouse.pid) {
-        case .wired: return "Wired"
-        case .wirelessDongle: return "2.4 GHz"
-        case .bluetooth: return "Bluetooth"
-        case nil: return "USB"
-        }
+        RazerDevices.connection(pid: mouse.pid)?.label ?? RazerConnection.unknownLabel
     }
 
     private var readyBody: some View {

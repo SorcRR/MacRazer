@@ -13,6 +13,11 @@ expect rough edges until 1.0.
   or "Don't ask for this mouse". A card in the popover offers the same test until then. Turn it
   off in Settings › Ask me to test unsupported mice.
 
+### Fixed
+- **A Razer keyboard is no longer taken for a mouse.** With no mouse plugged in, the app could
+  open a Razer keyboard and show it as the mouse. It now skips keyboards, keypads and other
+  products that are never mice.
+
 ## [0.6.1] — 2026-10-29
 
 ### Changed

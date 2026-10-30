@@ -23,6 +23,18 @@ enum RazerConnection {
     /// Razer's vendor GATT service (`BLEProtocol`). These PIDs come from the Bluetooth
     /// vendor id 0x068E, not USB's 0x1532.
     case bluetooth
+
+    /// The link's chip wording, in the popover and the support prompt.
+    var label: String {
+        switch self {
+        case .wired: return "Wired"
+        case .wirelessDongle: return "2.4 GHz"
+        case .bluetooth: return "Bluetooth"
+        }
+    }
+
+    /// The chip for a model the registry doesn't know: true for both a cable and a dongle.
+    static let unknownLabel = "USB"
 }
 
 /// Minimal registry of Razer mice. The connected device reports its own name via the USB

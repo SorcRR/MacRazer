@@ -477,19 +477,19 @@ struct PopoverView: View {
             // Blue, the colour macOS and the mouse itself use for Bluetooth, so the link
             // reads at a glance as different from the green USB ones. A stronger fill than
             // theirs, or the blue is hard to read on the dark background.
-            return ConnectionChip(symbol: "dot.radiowaves.left.and.right", label: "Bluetooth",
+            return ConnectionChip(symbol: "dot.radiowaves.left.and.right", label: RazerConnection.bluetooth.label,
                                   tint: .bluetoothBlue, fillOpacity: 0.3)
         case .wired:
-            return ConnectionChip(symbol: "cable.connector", label: "Wired")
+            return ConnectionChip(symbol: "cable.connector", label: RazerConnection.wired.label)
         case .wirelessDongle:
             // `charging` implies a USB-C cable is attached, even though control still
             // flows through the dongle's PID.
             return controller.charging
-                ? ConnectionChip(symbol: "cable.connector", label: "Wired")
-                : ConnectionChip(symbol: "antenna.radiowaves.left.and.right", label: "2.4 GHz")
+                ? ConnectionChip(symbol: "cable.connector", label: RazerConnection.wired.label)
+                : ConnectionChip(symbol: "antenna.radiowaves.left.and.right",
+                                 label: RazerConnection.wirelessDongle.label)
         case nil:
-            // Unknown model: "USB" is true for both a cable and a dongle.
-            return ConnectionChip(symbol: "cable.connector", label: "USB")
+            return ConnectionChip(symbol: "cable.connector", label: RazerConnection.unknownLabel)
         }
     }
 

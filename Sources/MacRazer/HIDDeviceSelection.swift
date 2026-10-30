@@ -12,6 +12,8 @@ struct HIDInterfaceInfo: Equatable {
     let usagePage: Int
     let usage: Int
     let maxFeatureReportSize: Int
+    /// The USB product string, to tell a keyboard from a mouse the registry doesn't know.
+    var productName = ""
 }
 
 /// Picks which physical device — and which of its interfaces — to bind as the Razer control
@@ -24,6 +26,9 @@ enum HIDDeviceSelection {
 
     /// Index into `interfaces` of the control interface to open, or nil if no interface can
     /// carry the control report.
+    ///
+    /// A device the registry doesn't know is skipped when its product string names a line that
+    /// is never a mouse (`couldBeMouse`): a Razer keyboard alone must not be taken for the mouse.
     ///
     /// Devices (interfaces grouped by pid+location) are ranked:
     /// 1. a PID in the `RazerDevices` registry — a known mouse — always wins;
@@ -48,6 +53,8 @@ enum HIDDeviceSelection {
 
         var best: (rank: Int, locationID: Int, score: Int, index: Int)?
         for (key, members) in groups {
+            let first = interfaces[members[0]]
+            if RazerDevices.info(pid: first.pid) == nil, !couldBeMouse(productName: first.productName) { continue }
             let candidates = members.filter { interfaces[$0].maxFeatureReportSize >= controlReportSize }
             guard let top = candidates.max(by: { controlScore(interfaces[$0]) < controlScore(interfaces[$1]) })
             else { continue } // this device has no interface that can carry the control report
@@ -72,11 +79,12 @@ enum HIDDeviceSelection {
     /// Razer product lines that are not mice but may expose a pointer interface: keyboards,
     /// keypads, laptops, and accessories. Lower case, matched as substrings of the product
     /// string. Only families whose names no mouse shares: "Chroma", for one, is in mouse names
-    /// too (the DeathAdder Chroma).
+    /// too (the DeathAdder Chroma). Not "mouse dock" either: a mouse charging on the Mouse Dock
+    /// Pro, which doubles as its dongle, might show up under the dock's name.
     static let nonMouseProductLines = [
         "keyboard", "keypad", "blackwidow", "huntsman", "ornata", "cynosa", "deathstalker",
         "anansi", "lycosa", "tartarus", "orbweaver", "nostromo", "pro type", "blade",
-        "kraken", "seiren", "firefly", "goliathus", "base station", "mouse dock",
+        "kraken", "seiren", "firefly", "goliathus", "base station",
     ]
 
     /// False for a product string naming one of `nonMouseProductLines`.

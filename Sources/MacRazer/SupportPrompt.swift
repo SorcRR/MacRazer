@@ -21,7 +21,8 @@ struct SupportPromptRecord: Codable, Equatable {
     var lastAsked: Date?
     /// "Don't ask for this mouse" in the window, or Hide on the popover card.
     var declined = false
-    /// A report for this PID went out, by Send or by opening the GitHub issue.
+    /// A report for this PID was sent. Opening the GitHub issue counts only in a build that
+    /// can't send, where it is the one way to report.
     var reported = false
 }
 
@@ -99,15 +100,16 @@ final class SupportPrompt: ObservableObject {
         if let data = try? JSONEncoder().encode(records) { defaults.set(data, forKey: Self.recordsKey) }
     }
 
-    /// Marks a model reported once a test's report goes out, by Send or by opening the GitHub
-    /// issue, from wherever the test was opened.
+    /// Marks a model reported once a test's report is sent, from wherever the test was opened.
+    /// Opening the GitHub issue counts only where Send isn't offered: nothing says the issue was
+    /// filed, but without it a build that can't send could never stop asking.
     func trackReports(from model: DeviceTestModel) -> AnyCancellable {
         model.$sendState.combineLatest(model.$issueOpened)
             .sink { [weak self, weak model] state, issueOpened in
                 // `report` is read off the model, not from the publishers: it is set before
                 // either of these changes and cleared by `reset` before they go back.
-                guard state == .sent || issueOpened,
-                      let pid = model?.report?.device.productID else { return }
+                guard let model, state == .sent || (issueOpened && !model.canSend),
+                      let pid = model.report?.device.productID else { return }
                 self?.markReported(pid: pid)
             }
     }

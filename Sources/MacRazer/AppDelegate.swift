@@ -616,6 +616,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     private func startSupportPrompt() {
         supportPrompt.trackReports(from: deviceTestWindow.model).store(in: &cancellables)
         razerMiceOnUSB = listRazerMiceIfNeeded()
+        // The list is kept empty while the setting is off, so turning it on lists what is
+        // already plugged in instead of waiting for the next plug event.
+        supportPrompt.$isEnabled.dropFirst().removeDuplicates()
+            .sink { [weak self] _ in self?.relistRazerMice() }
+            .store(in: &cancellables)
         // A timer for the moment, not the mouse: "clear" (no window, popover or menu) changes
         // without any event this could hang off. Each tick is a few property reads; the
         // device list it needs is kept current by the plug monitor instead.
@@ -649,13 +654,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     }
 
     private func askForDeviceTestIfClear() {
-        guard supportPrompt.isEnabled, !isShowingAWindow, !popover.isShown, !appMenuOpen else { return }
+        guard supportPrompt.isEnabled else { return }
         // The same mouse on two ticks in a row. The controller publishes a new mouse's fields
         // one at a time, and a tick between them could pair its id with the last one's name
-        // or link, and spend the ask on that.
+        // or link, and spend the ask on that. Read on every tick, clear or not, so the last
+        // reading is never one from before a window was open.
         let mouse = unsupportedMouse
         defer { lastUnsupportedMouse = mouse }
-        guard let mouse, mouse == lastUnsupportedMouse, supportPrompt.shouldAsk(pid: mouse.pid) else { return }
+        guard let mouse, mouse == lastUnsupportedMouse,
+              !isShowingAWindow, !popover.isShown, !appMenuOpen,
+              supportPrompt.shouldAsk(pid: mouse.pid) else { return }
         supportPromptWindow.show(for: mouse)
     }
 

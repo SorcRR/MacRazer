@@ -233,7 +233,8 @@ final class HIDDevice {
                              locationID: intProp(dev, kIOHIDLocationIDKey) ?? 0,
                              usagePage: intProp(dev, kIOHIDPrimaryUsagePageKey) ?? 0,
                              usage: intProp(dev, kIOHIDPrimaryUsageKey) ?? 0,
-                             maxFeatureReportSize: intProp(dev, kIOHIDMaxFeatureReportSizeKey) ?? 0)
+                             maxFeatureReportSize: intProp(dev, kIOHIDMaxFeatureReportSizeKey) ?? 0,
+                             productName: productName(of: dev))
         }
     }
 
