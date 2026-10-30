@@ -36,7 +36,10 @@ final class SettingsWindowController: AppWindowPresenter {
                                     onDone: { [weak self] in self?.window?.close() },
                                     onAutoInstallChanged: onAutoInstallChanged)
             let hosting = NSHostingController(rootView: root)
-            hosting.sizingOptions = [.preferredContentSize]
+            // No automatic sizing: the view is a fixed size, and the size the hosting
+            // controller asks for counts the title bar strip the view draws under, which
+            // would leave a 28pt empty band at the bottom.
+            hosting.sizingOptions = []
             let w = NSWindow(contentViewController: hosting)
             w.title = "MacRazer Settings"
             // The sidebar runs up under the traffic lights, as in System Settings, so the
@@ -44,6 +47,7 @@ final class SettingsWindowController: AppWindowPresenter {
             // and VoiceOver.
             w.styleMask = [.titled, .closable, .fullSizeContentView]
             w.titleVisibility = .hidden
+            w.setContentSize(SettingsView.size)
             // The content now covers the title bar strip, and a hosting view doesn't pass a
             // drag there on to the window. Controls still take their own clicks.
             w.isMovableByWindowBackground = true
