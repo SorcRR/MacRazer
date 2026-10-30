@@ -304,6 +304,10 @@ long content scrolls without resizing the popover):
  - **Polling rate**: segmented 125/500/1000 Hz, plus what the rate is good for.
  - **Lighting**: brightness slider (☀︎) + effect segmented (Static/Spectrum/Wave/Off)
  + colour swatches (true red...pink) + a rainbow "custom" well that opens the colour wheel.
+ Under Wave, a speed slider (tortoise to hare). The speed byte is `args[4]` of the wave
+ command, lower is faster; `WaveSpeed` maps the slider to 0x48...0x08 with the standard 0x28
+ in the middle. It can't be read back, so the last one set is kept (`mouseWaveSpeed`, and in
+ a profile). The keyboard card has the same slider.
  - **Power Management** (Basilisk V3 X over Bluetooth): the sleep timer.
  - **Buttons**: opens the buttons page; shows how many buttons are remapped, or "Needs access"
  when saved remaps can't fire without Accessibility permission.
@@ -600,7 +604,7 @@ swift run MacRazer icon-models [dir] # each model's header silhouette
 swift run MacRazer appicon [dir] / iconset [dir] # app icon concepts / the .iconset for iconutil
 swift run MacRazer render-ui [offline|color|update|updated|whatsnew|…] out.png # popover (dev)
 swift run MacRazer render-ui whatsnew installed out.png # the notes without an update to install
-swift run MacRazer render-ui keyboard [follow|synapse] out.png # a Razer keyboard under the mouse
+swift run MacRazer render-ui keyboard [follow|synapse|wave] out.png # a Razer keyboard under the mouse
 swift run MacRazer render-about [notes] out.png
 swift run MacRazer render-remap out.png
 swift run MacRazer render-support-prompt [noaccess] out.png # the support prompt window
