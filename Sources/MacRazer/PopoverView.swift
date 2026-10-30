@@ -1549,15 +1549,15 @@ struct PopoverView: View {
             .pickerStyle(.segmented)
             .controlSize(.small)
             .labelsHidden()
-            if keyboard.lighting.effect == .staticColor || keyboard.lighting.effect == nil {
-                HStack(spacing: 7) {
-                    ForEach(swatches.indices, id: \.self) { i in
-                        swatch(swatches[i].color, name: swatches[i].name, for: .keyboard)
-                    }
-                    customColorWell(for: .keyboard)
-                    Spacer(minLength: 0)
+            // Always there, unlike the mouse's: picking a colour under Spectrum or Wave switches
+            // to Static, so the colours are one click away whatever the keyboard is running.
+            // Only a static colour shows as picked.
+            HStack(spacing: 7) {
+                ForEach(swatches.indices, id: \.self) { i in
+                    swatch(swatches[i].color, name: swatches[i].name, for: .keyboard)
                 }
-                .transition(.opacity)
+                customColorWell(for: .keyboard)
+                Spacer(minLength: 0)
             }
         }
     }
