@@ -124,13 +124,42 @@ final class DeviceTestModel: ObservableObject {
         IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) == kIOHIDAccessTypeGranted
     }
 
-    /// Whether the connected model is already on the verified list. Decides the intro's wording
-    /// and, at the end, whether a clean run is a confirmation or a new mouse.
-    var isKnownSupported: Bool {
-        previewKnown ?? controller.deviceID.map { RazerDevices.fullySupported(pid: $0) } ?? false
+    /// How far the registry already supports the connected link. Decides which intro shows.
+    enum Support: Equatable {
+        /// Every control is verified on this link: no test needed.
+        case full
+        /// Some controls are verified and some aren't, so the test can ask for just those.
+        case partly(works: [RazerFeature], missing: [RazerFeature])
+        /// Not on record, or on record with nothing shown working yet: the full test.
+        case unknown
     }
-    /// Set only by `loadPreview`, to render both intros without a device.
-    private var previewKnown: Bool?
+
+    var support: Support {
+        guard let pid = previewPID ?? controller.deviceID, let missing = RazerDevices.unverified(pid: pid) else {
+            return .unknown
+        }
+        if missing.isEmpty { return .full }
+        let works = RazerDevices.verified(pid: pid)
+        return works.isEmpty ? .unknown : .partly(works: works, missing: missing)
+    }
+
+    /// Whether the connected model is already on the verified list. Decides the window title.
+    var isKnownSupported: Bool { support == .full }
+    /// The connected mouse's other links still worth a report, for the intro.
+    var linksToTest: [RazerDevices.LinkToTest] {
+        (previewPID ?? controller.deviceID).map { RazerDevices.linksToTest(besides: $0) } ?? []
+    }
+    /// Set only by `loadPreview`, to render each intro without a device.
+    private var previewPID: Int?
+    /// The steps this run is limited to, or nil for the full test. Set by "Test what's missing".
+    @Published private(set) var focus: [RazerFeature]?
+    /// The screens a focused run passes over.
+    var skippedStages: Set<Stage> { DeviceTestFlow.skipped(focus: focus) }
+    /// The stages the progress bar and the step count show for this run.
+    var visibleSteps: [Stage] { Self.steps.filter { !skippedStages.contains($0) } }
+    /// What a step left out of a focused run records, so the report doesn't read as if the
+    /// person skipped it.
+    static let alreadyVerified = "Already verified on this mouse, so this run left it out."
     var deviceName: String { report?.device.name ?? controller.deviceName ?? "your mouse" }
     var emailProblem: String? { DeviceReportOutput.emailProblem(replyEmail) }
 
@@ -145,10 +174,12 @@ final class DeviceTestModel: ObservableObject {
         HIDDevice.bluetoothRazerMouse().map { .bluetoothOnly($0.name) } ?? .noMouse
     }
 
-    func start() {
+    /// `missingOnly` limits the run to what the registry hasn't seen working on this link.
+    func start(missingOnly: Bool = false) {
         // A window closed mid-step and reopened: that step is still finishing on the device.
         guard !running else { return }
         blocker = nil
+        if missingOnly, case .partly(_, let missing) = support { focus = missing } else { focus = nil }
         // A mouse on Bluetooth with the dongle still plugged in gets this far. Identify finds
         // that out on the device queue, which knows the link for certain.
         guard Self.razerMousePresent else {
@@ -186,6 +217,8 @@ final class DeviceTestModel: ObservableObject {
     func continueWithoutAccess() {
         // Nothing more will touch the mouse, so the app's own reads can resume now.
         endSession()
+        // Nothing ran, so no step was left out as already verified.
+        focus = nil
         let (interfaces, control) = HIDDevice.interfaceSummaries(vendorId: Razer.vendorId)
         let product = control.map { interfaces[$0] } ?? interfaces.first
         let pid = product?.productID ?? 0
@@ -275,6 +308,11 @@ final class DeviceTestModel: ObservableObject {
             (standardId, matrixId) = DeviceTestSteps.chosenIds(result.record, registry: info)
             overrides = info?.transactionOverrides ?? [:]
             lightSweep = result.sweep
+            if let focus {
+                for feature in RazerFeature.allCases where !focus.contains(feature) {
+                    leaveOut(feature)
+                }
+            }
             // Known models say how they connect; only an unknown one needs asking.
             switch info?.connection {
             case .wired?: connection = .cable
@@ -357,6 +395,24 @@ final class DeviceTestModel: ObservableObject {
 
     // MARK: - Buttons
 
+    /// The steps in `verdict` that a focused run left out because they were already verified,
+    /// as opposed to ones the person chose to skip.
+    func leftOut(_ verdict: DeviceTestVerdict) -> [String] {
+        guard let focus else { return [] }
+        let labels = RazerFeature.allCases.filter { !focus.contains($0) }.map(\.label)
+        return verdict.skipped.filter(labels.contains)
+    }
+
+    /// Records a step a focused run doesn't visit.
+    private func leaveOut(_ feature: RazerFeature) {
+        switch feature {
+        case .battery: report?.battery = .init(outcome: .skipped, error: Self.alreadyVerified)
+        case .dpi: report?.dpi = .init(outcome: .skipped, error: Self.alreadyVerified)
+        case .polling: report?.polling = .init(outcome: .skipped, error: Self.alreadyVerified)
+        case .lighting: report?.lighting = .init(outcome: .skipped, error: Self.alreadyVerified)
+        }
+    }
+
     private func startListening() {
         buttonsSeen = []
         let capture = ButtonCapture { [weak self] label in
@@ -381,12 +437,13 @@ final class DeviceTestModel: ObservableObject {
     // MARK: - Moving between screens
 
     func next() {
-        guard !running, let target = DeviceTestFlow.next(from: stage) else { return }
+        guard !running, let target = DeviceTestFlow.next(from: stage, skipping: skippedStages) else { return }
         move(to: target)
     }
 
     func back() {
-        guard !running, let target = DeviceTestFlow.back(from: stage, identifyRan: report?.identify.data != nil)
+        guard !running, let target = DeviceTestFlow.back(from: stage, identifyRan: report?.identify.data != nil,
+                                                                 skipping: skippedStages)
         else { return }
         move(to: target)
     }
@@ -495,6 +552,7 @@ final class DeviceTestModel: ObservableObject {
     func reset() {
         endSession()
         stage = .intro
+        focus = nil
         report = nil
         blocker = nil
         needsRelaunch = false
@@ -521,15 +579,18 @@ extension DeviceTestModel {
         replyEmail = state == .sent ? "you@example.com" : replyEmail
     }
 
-    func loadPreview(_ stage: Stage, known: Bool, ranSteps: Bool) {
-        previewKnown = known
+    /// `pid` picks the intro: a fully supported model, a partly supported one, or one the
+    /// registry doesn't know.
+    func loadPreview(_ stage: Stage, pid: Int, ranSteps: Bool) {
+        previewPID = pid
         func attempts(_ answered: [UInt8]) -> [DeviceReport.TransactionResult] {
             DeviceProbe.knownTransactionIds.map { .init(id: $0, answered: answered.contains($0),
                                                         groups: nil, error: answered.contains($0) ? nil : "timed out") }
         }
+        let name = RazerDevices.info(pid: pid).map { RazerDevices.modelName($0.name) } ?? "Razer Mouse"
         var report = Self.emptyReport(
-            pid: 0x00DB, name: "Razer Cobra HyperSpeed",
-            interfaces: Array(repeating: DeviceProbe.Interface(productID: 0x00DB, product: "Razer Cobra HyperSpeed",
+            pid: pid, name: name,
+            interfaces: Array(repeating: DeviceProbe.Interface(productID: pid, product: name,
                                                                usagePage: 1, usage: 2, maxFeatureReportSize: 90,
                                                                maxInputReportSize: 8, transport: "USB"), count: 5),
             control: 2,
@@ -551,7 +612,7 @@ extension DeviceTestModel {
         listening = true
         connection = .dongle
         // A known model's verdict comes from its registry entry, as in a real run.
-        if known { report.registry = RazerDevices.info(pid: 0x00DB).map(DeviceReport.Registry.init) }
+        report.registry = RazerDevices.info(pid: pid).map(DeviceReport.Registry.init)
         self.report = report
         self.report?.device.connection = .dongle
         self.stage = stage
@@ -593,5 +654,37 @@ enum DeviceTestFlow {
         case .review: return identifyRan ? .buttons : nil
         case .intro, .permission, .bluetooth, .identify: return nil
         }
+    }
+
+    /// `next`, passing over the screens in `skipping`.
+    static func next(from stage: DeviceTestModel.Stage, skipping: Set<DeviceTestModel.Stage>) -> DeviceTestModel.Stage? {
+        var target = next(from: stage)
+        while let t = target, skipping.contains(t) { target = next(from: t) }
+        return target
+    }
+
+    /// `back`, passing over the screens in `skipping`. Identify is never skipped, so there is
+    /// always somewhere to land.
+    static func back(from stage: DeviceTestModel.Stage, identifyRan: Bool,
+                     skipping: Set<DeviceTestModel.Stage>) -> DeviceTestModel.Stage? {
+        var target = back(from: stage, identifyRan: identifyRan)
+        while let t = target, skipping.contains(t) { target = back(from: t, identifyRan: identifyRan) }
+        return target
+    }
+
+    static func stage(for feature: RazerFeature) -> DeviceTestModel.Stage {
+        switch feature {
+        case .battery: return .battery
+        case .dpi: return .dpi
+        case .polling: return .polling
+        case .lighting: return .lighting
+        }
+    }
+
+    /// The screens a run limited to `focus` passes over: every other feature's, and the
+    /// button step, which a report on a model already on record doesn't need. None for nil.
+    static func skipped(focus: [RazerFeature]?) -> Set<DeviceTestModel.Stage> {
+        guard let focus else { return [] }
+        return Set(RazerFeature.allCases.filter { !focus.contains($0) }.map(stage(for:))).union([.buttons])
     }
 }

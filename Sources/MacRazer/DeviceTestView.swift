@@ -10,7 +10,7 @@ struct DeviceTestView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if DeviceTestModel.steps.contains(model.stage) { progress.padding(.bottom, 14) }
+            if model.visibleSteps.contains(model.stage) { progress.padding(.bottom, 14) }
             content
                 .frame(maxWidth: .infinity, alignment: .topLeading)
                 .frame(minHeight: 330, alignment: .topLeading)
@@ -26,7 +26,7 @@ struct DeviceTestView: View {
     /// One segment per test step, matching the "Step 2 of 6" count; Review fills them all.
     private var progress: some View {
         HStack(spacing: 4) {
-            ForEach(Array(DeviceTestModel.steps.dropLast().enumerated()), id: \.offset) { _, step in
+            ForEach(Array(model.visibleSteps.dropLast().enumerated()), id: \.offset) { _, step in
                 Capsule()
                     .fill(step <= model.stage ? Color.razerGreen : Color.primary.opacity(0.15))
                     .frame(height: 4)
@@ -53,19 +53,30 @@ struct DeviceTestView: View {
 
     private var intro: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if model.isKnownSupported {
+            switch model.support {
+            case .full:
                 tag("Fully supported", color: .razerGreenText)
-                title("Your \(model.deviceName) is already supported")
-                note("The test checks it really works on your mouse and firmware. Reports like this keep the supported list honest, and catch it early if a firmware update breaks something.")
-            } else {
+                title("Your \(model.deviceName) doesn't need a test")
+                note("Everything MacRazer controls has already been tested on this mouse over this connection. There's nothing left to check.")
+                linkCards
+                note("You can still run the test. After a firmware update, a report shows whether anything stopped working.")
+            case .partly(let works, let missing):
+                tag("Partly supported", color: .batteryMid)
+                title("Help finish support for your \(model.deviceName)")
+                card {
+                    VStack(spacing: 4) {
+                        row("Already works", Self.list(works), color: .razerGreenText)
+                        row("Still needs testing", Self.list(missing), color: .batteryMid)
+                    }
+                }
+                note("The test can check just what's missing. Keep the mouse on and nearby.")
+                linkCards
+                privacyNotes
+            case .unknown:
                 title("Help support your \(model.deviceName)")
                 note("About two minutes. Keep the mouse on, nearby, and connected by cable or dongle.")
+                privacyNotes
             }
-            card {
-                Text("MacRazer talks to your mouse the way it does every day and records how it answers. It also asks, read-only, which other features the mouse has. Anything it changes is put back when each step ends, even if you stop half way.")
-                    .font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
-            }
-            note("Nothing is sent anywhere unless you choose to at the end, and you'll see all of it first. Your mouse's serial number is never included.")
             switch model.blocker {
             case .noMouse?:
                 warning("No Razer mouse is connected by cable or dongle right now. Connect it and press Start again.")
@@ -74,6 +85,49 @@ struct DeviceTestView: View {
             case nil:
                 EmptyView()
             }
+        }
+    }
+
+    private var privacyNotes: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            card {
+                Text("MacRazer talks to your mouse the way it does every day and records how it answers. It also asks, read-only, which other features the mouse has. Anything it changes is put back when each step ends, even if you stop half way.")
+                    .font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
+            }
+            note("Nothing is sent anywhere unless you choose to at the end, and you'll see all of it first. Your mouse's serial number is never included.")
+        }
+    }
+
+    /// One card per other link of this mouse that still needs a report.
+    @ViewBuilder private var linkCards: some View {
+        ForEach(model.linksToTest, id: \.connection) { link in
+            card {
+                Text(Self.linkText(link))
+                    .font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    static func list(_ features: [RazerFeature]) -> String {
+        features.map(\.label).joined(separator: ", ")
+    }
+
+    /// What to tell the person about another link. Without a row for it, the mouse may not
+    /// have that link at all, so the wording starts with "if".
+    static func linkText(_ link: RazerDevices.LinkToTest) -> String {
+        switch (link.connection, link.missing) {
+        case (.wired, nil):
+            return "If your mouse also works on its cable, that hasn't been tested yet. To help, plug the cable in, unplug the dongle, and run the test again."
+        case (.wirelessDongle, nil):
+            return "If your mouse also has a dongle, that hasn't been tested yet. To help, unplug the cable, switch the mouse to its dongle, and run the test again."
+        case (.bluetooth, nil):
+            return "If your mouse also works over Bluetooth, that hasn't been tested yet. To help, switch it to Bluetooth and run the Bluetooth test."
+        case (.wired, let missing?):
+            return "On its cable, this mouse still needs testing: \(list(missing)). To help, plug the cable in, unplug the dongle, and run the test again."
+        case (.wirelessDongle, let missing?):
+            return "On its dongle, this mouse still needs testing: \(list(missing)). To help, unplug the cable, switch the mouse to its dongle, and run the test again."
+        case (.bluetooth, let missing?):
+            return "Over Bluetooth, this mouse still needs testing: \(list(missing)). To help, switch it to Bluetooth and run the Bluetooth test."
         }
     }
 
@@ -286,7 +340,8 @@ struct DeviceTestView: View {
         VStack(alignment: .leading, spacing: 10) {
             title("Thank you")
             card {
-                Text(verdict.thankYou(firmware: report.identify.data?.firmware))
+                Text(model.focus == nil ? verdict.thankYou(firmware: report.identify.data?.firmware)
+                     : DeviceTestVerdict.focusedThankYou(verdict, leftOut: model.leftOut(verdict)))
                     .font(.system(size: 13)).fixedSize(horizontal: false, vertical: true)
             }
             note(report.replyEmail.map { "Your report is on its way to the maintainer, who can reply to \($0)." }
@@ -322,7 +377,10 @@ struct DeviceTestView: View {
                         if !verdict.passed.isEmpty { row("Worked", verdict.passed.joined(separator: ", "), color: .razerGreenText) }
                         if !verdict.failed.isEmpty { row("Didn't work", verdict.failed.joined(separator: ", "), color: .batteryMid) }
                         if !verdict.notSupported.isEmpty { row("Not on this mouse", verdict.notSupported.joined(separator: ", ")) }
-                        if !verdict.skipped.isEmpty { row("Skipped", verdict.skipped.joined(separator: ", ")) }
+                        let leftOut = model.leftOut(verdict)
+                        if !leftOut.isEmpty { row("Already verified", leftOut.joined(separator: ", ")) }
+                        let skipped = verdict.skipped.filter { !leftOut.contains($0) }
+                        if !skipped.isEmpty { row("Skipped", skipped.joined(separator: ", ")) }
                     }
                 }
                 DisclosureGroup("Show full report") {
@@ -383,13 +441,23 @@ struct DeviceTestView: View {
     @ViewBuilder private var footer: some View {
         HStack {
             switch model.stage {
+            case .intro where model.support == .full:
+                Button("Test anyway") { model.start() }
+                Spacer()
+                Button("Close", action: onClose).keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
             case .intro:
                 Button("Cancel", action: onClose)
                 Spacer()
                 if model.offersBluetoothTest {
                     Button("Bluetooth test") { model.startBluetooth() }
                 }
-                Button("Start") { model.start() }.keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
+                if case .partly = model.support {
+                    Button("Full test") { model.start() }
+                    Button("Test what's missing") { model.start(missingOnly: true) }
+                        .keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
+                } else {
+                    Button("Start") { model.start() }.keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
+                }
             case .permission:
                 Button("Continue without it") { model.continueWithoutAccess() }
                 Spacer()
@@ -422,8 +490,8 @@ struct DeviceTestView: View {
             default:
                 Button("Back") { model.back() }.disabled(model.running || model.stage == .identify)
                 Spacer()
-                if let index = DeviceTestModel.steps.firstIndex(of: model.stage) {
-                    Text("Step \(index + 1) of \(DeviceTestModel.steps.count - 1)")
+                if let index = model.visibleSteps.firstIndex(of: model.stage) {
+                    Text("Step \(index + 1) of \(model.visibleSteps.count - 1)")
                         .font(.system(size: 11)).foregroundStyle(.secondary)
                 }
                 Spacer()

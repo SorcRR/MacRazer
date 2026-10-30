@@ -254,7 +254,8 @@ the popover is open, `setPopoverVisible(true)` polls DPI/poll every 2 s so on-mo
  to decode.
 
 ### `RazerDevices.swift`, device registry
-Maps PID to a `RazerDeviceInfo`: name, `fullySupported`, `hasBattery`, `hasLighting`,
+Maps PID to a `RazerDeviceInfo`: name, `unverified` (the features still waiting for a
+report; empty means `fullySupported`), `hasBattery`, `hasLighting`,
 `maxDPI`, transaction ids, the link (`connection`), the header silhouette, and the discharge
 curve key. The connected device's **name comes from its own USB product string** (works for
 any Razer mouse); the registry adds what has been verified about the model. Unknown mice show their name +
@@ -398,6 +399,14 @@ model) runs a guided test and builds a report a maintainer can turn into a regis
 - `DeviceTestModel.swift` / `DeviceTestView.swift` / `DeviceTestWindowController.swift`: the
  window. Steps run on `MouseController`'s device queue with the app's own reads paused. Quit
  waits for a running step. The test needs USB; a mouse on Bluetooth is told to switch.
+- The intro follows the registry row for the connected link (`DeviceTestModel.Support`). Fully
+ supported: no test needed, with Test anyway for after a firmware update. Partly supported:
+ what works, what still needs testing, and **Test what's missing**, which runs Identify and
+ only those steps (`DeviceTestFlow.skipped`). The steps it passes over are recorded as skipped
+ with "Already verified", so the report keeps the Worker's format and its verdict reads
+ "Partly tested". Both intros also name the mouse's other links still worth a report
+ (`RazerDevices.linksToTest`): any row for another link that isn't fully supported, and a
+ cable or dongle without a row for a mouse with a battery. Bluetooth only from a row.
 - `DeviceReportOutput.swift`: Copy, the GitHub issue, size fitting, and text limits.
  `DeviceReportSender.swift`: Send, a POST to the Worker.
 - `WorkerEndpoint` (`AppInfo.swift`): the Worker's address, from the bundle's Info.plist, where
@@ -565,7 +574,8 @@ right-click->Open). A clean install needs Developer ID + notarization (paid Appl
 Detection + name display already work for any Razer mouse (read-only, via the USB product
 string). The device test (§6.4, or `devicetest` in §9) gathers what the steps below need
 in one run. To make the **controls** verified for another model:
-1. Add its PID/name to `RazerDevices.known` with `fullySupported: true` and the right
+1. Add its PID/name to `RazerDevices.known` with `unverified: []` (or the features a report
+ hasn't shown working yet) and the right
  `hasBattery` / `hasLighting` / `maxDPI`. If its brightness answers on a group other than
  `LOGO_LED`, set `brightnessLed` too.
 2. Confirm its command dialect matches the Cobra Pro set (transaction id, command variants,
