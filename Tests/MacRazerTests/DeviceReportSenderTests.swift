@@ -60,6 +60,9 @@ final class DeviceReportSenderTests: XCTestCase {
                                  ? Array(read.report.arguments.prefix(DeviceTestSteps.capabilityResponseBytes)) : nil)
             }, buttonTable: [.init(id: 0x04, block: [0x01, 0x01, 0x04, 0, 0, 0, 0]),
                              .init(id: 0x80, block: [0x00, 0x01, 0x00, 0, 0, 0, 0])]),
+            // A dongle report never has this; here so the Worker's schema sees every field.
+            bluetooth: .init(services: [BLEProtocol.serviceUUID, "180F"], razerService: true, pnpVendorID: 0x068E,
+                             pnpProductID: 0x00DC, pnpVersion: 0x0100, batteryLevel: 64, error: "an example error"),
             verdict: nil, comment: "Works on my Mac.\nSide buttons too.", credit: "@someone",
             replyEmail: "person@example.com", exchangesDropped: ["lighting"])
         report.polling.error = "an example error"

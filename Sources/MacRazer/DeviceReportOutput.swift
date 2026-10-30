@@ -64,7 +64,7 @@ enum DeviceReportOutput {
     static func summary(_ report: DeviceReport, withComment: Bool = true) -> String {
         var lines = ["**\(report.device.name)**, product ID \(String(format: "0x%04X", report.device.productID))"
                      + (report.identify.data?.firmware.map { ", firmware \($0)" } ?? "")
-                     + (report.device.connection.map { ", over the \($0.rawValue)" } ?? "")]
+                     + (report.device.connection.map { $0 == .bluetooth ? ", over Bluetooth" : ", over the \($0.rawValue)" } ?? "")]
         if let verdict = report.verdict {
             if !verdict.passed.isEmpty { lines.append("Passed: " + verdict.passed.joined(separator: ", ")) }
             if !verdict.failed.isEmpty { lines.append("Failed: " + verdict.failed.joined(separator: ", ")) }
@@ -76,7 +76,12 @@ enum DeviceReportOutput {
             for read in reads where read.answer == .answered && read.led == nil && !answered.contains(read.name) {
                 answered.append(read.name)
             }
-            let leds = reads.filter { $0.answer == .answered }.compactMap(\.led).map { String(format: "0x%02X", $0) }
+            // Unique: over Bluetooth, brightness and the zone effect both name an LED.
+            var leds: [String] = []
+            for led in reads.filter({ $0.answer == .answered }).compactMap(\.led) {
+                let hex = String(format: "0x%02X", led)
+                if !leds.contains(hex) { leds.append(hex) }
+            }
             if !leds.isEmpty { answered.append("lighting zones " + leds.joined(separator: " ")) }
             if let table = report.capabilities?.buttonTable, !table.isEmpty {
                 answered.append("button table (\(table.count) \(table.count == 1 ? "entry" : "entries"))")
