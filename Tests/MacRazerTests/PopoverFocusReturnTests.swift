@@ -26,6 +26,11 @@ final class PopoverFocusReturnTests: XCTestCase {
         XCTAssertEqual(verdict(menu: true), .wait)
         // "Open Controls" brought the popover back; its eventual close still needs the app.
         XCTAssertEqual(verdict(popover: true), .wait)
+        // A right-click held on the icon: the popover closed on the press, and the menu opens
+        // on the release. Handing focus away now would close that menu as it appears.
+        XCTAssertEqual(PopoverFocusReturn.verdict(.init(
+            appMenuOpen: false, menuClickHeld: true, popoverShown: false, windowOpened: false,
+            appIsActive: true, hasPreviousApp: true)), .wait)
         // Not final yet even when a later check would say stay.
         XCTAssertEqual(verdict(menu: true, window: true), .wait)
         XCTAssertEqual(verdict(popover: true, active: false), .wait)

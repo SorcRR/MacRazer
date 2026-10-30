@@ -14,6 +14,11 @@ enum PopoverFocusReturn {
     struct Conditions: Equatable {
         /// The right-click menu is being tracked. Activating another app now would dismiss it.
         var appMenuOpen: Bool
+        /// A right-click (or Control-click) is held on the menu bar icon: the menu opens when it
+        /// lets go. The popover closes on the press, so without this its close handed focus away
+        /// just as the menu came up, and the menu closed again at once. The menu decides when it
+        /// ends, as for `appMenuOpen`.
+        var menuClickHeld = false
         /// The popover is showing again, e.g. "Open Controls" from that menu.
         var popoverShown: Bool
         /// Something of the app's came up since the popover opened: one of its windows, or a
@@ -40,7 +45,7 @@ enum PopoverFocusReturn {
     static func verdict(_ c: Conditions) -> Verdict {
         // Checked first: deciding while the session is still going would spend the previous
         // app before the real end of it.
-        if c.appMenuOpen || c.popoverShown { return .wait }
+        if c.appMenuOpen || c.menuClickHeld || c.popoverShown { return .wait }
         guard c.hasPreviousApp, c.appIsActive, !c.windowOpened else { return .stay }
         return .returnFocus
     }

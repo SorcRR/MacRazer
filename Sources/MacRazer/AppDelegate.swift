@@ -735,6 +735,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     /// Hands keyboard focus back to the app the user was in, when the popover session is over
     /// and nothing says to stay. Called a turn after each way that session can end: the popover
     /// closing, and the right-click menu finishing. See `PopoverFocusReturn` for the rules.
+    /// A right-click, or a Control-click, held down on the menu bar icon right now.
+    private func menuClickHeldOnStatusItem() -> Bool {
+        let buttons = NSEvent.pressedMouseButtons
+        let held = buttons & 0b10 != 0 || (buttons & 0b1 != 0 && NSEvent.modifierFlags.contains(.control))
+        guard held, let window = statusItem.button?.window else { return false }
+        return window.frame.contains(NSEvent.mouseLocation)
+    }
+
     private func returnFocusAfterPopover() {
         let previous = appBeforePopover.flatMap { $0.isTerminated ? nil : $0 }
         let popoverWindow = popover.contentViewController?.view.window
@@ -743,6 +751,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         }
         let verdict = PopoverFocusReturn.verdict(.init(
             appMenuOpen: appMenuOpen,
+            menuClickHeld: menuClickHeldOnStatusItem(),
             popoverShown: popover.isShown,
             windowOpened: windowRequested || somethingNewOnScreen,
             appIsActive: NSApp.isActive,
