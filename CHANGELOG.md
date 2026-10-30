@@ -9,8 +9,8 @@ expect rough edges until 1.0.
 ### Added
 - **Lighting for a Razer keyboard next to the mouse.** A plugged-in Razer keyboard shows up
   under "Other Razer devices" in the popover, with its own colour, effect and brightness. Turn
-  on "Also light the keyboard" under the mouse's Lighting to keep both the same. If Razer
-  Synapse is running, MacRazer asks first whether it or Synapse sets the keyboard's colours.
+  on "Also light the keyboard" under the mouse's Lighting to keep both the same. While Razer
+  Synapse runs, Synapse keeps the keyboard's colours unless you turn on "Use MacRazer" in its card.
   Tested on the Cynosa Chroma; the Cynosa Chroma Pro, Cynosa Lite and Ornata V3 family use the
   same commands but are untested. Lighting only: no keys, macros or per-key colour.
 - **MacRazer asks for help when it meets a mouse it doesn't fully support.** A small window

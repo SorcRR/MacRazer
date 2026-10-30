@@ -1449,13 +1449,8 @@ struct PopoverView: View {
                 .padding(.top, 2)
             cardSurface(VStack(alignment: .leading, spacing: 0) {
                 keyboardHeader(kb)
-                if keyboard.needsOwnerChoice {
-                    synapseNotice
-                } else if keyboard.leftToSynapse {
-                    synapseOwnsRow
-                } else if !keyboardFollowing {
-                    keyboardLightingRow
-                }
+                if keyboard.synapseRunning { synapseToggleRow }
+                if keyboard.canWrite && !keyboardFollowing { keyboardLightingRow }
             }
             .frame(maxWidth: .infinity, alignment: .leading))
         }
@@ -1562,44 +1557,25 @@ struct PopoverView: View {
         }
     }
 
-    /// Synapse is running and nobody has said who sets the colours yet.
-    private var synapseNotice: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top, spacing: 8) {
-                Image(systemName: "exclamationmark.circle")
-                    .foregroundStyle(Color.batteryMid)
-                    .font(.system(size: 12, weight: .semibold))
-                Text("Razer Synapse is running. It may change this keyboard's colours back when it wakes or reconnects.")
+    /// Shown only while Synapse runs: who sets the keyboard's colours, either way at any
+    /// time. Off, the default, leaves them to Synapse and hides MacRazer's controls; on,
+    /// MacRazer's colours go back on, and again after a wake or reconnect.
+    private var synapseToggleRow: some View {
+        HStack(alignment: .top, spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Use MacRazer").font(.system(size: 11.5, weight: .medium))
+                Text("Razer Synapse is running and may change this keyboard's colours.")
                     .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            HStack(spacing: 6) {
-                Spacer(minLength: 0)
-                Button("Leave to Synapse") { keyboard.choose(.synapse) }
-                    .controlSize(.small)
-                Button("Use MacRazer") { keyboard.choose(.macRazer) }
-                    .controlSize(.small)
-                    .buttonStyle(.borderedProminent)
-                    .tint(.razerGreen)
-                    .foregroundStyle(Color.onRazerGreen)
-            }
-        }
-        .padding(10)
-        .background(Color.batteryMid.opacity(0.12), in: RoundedRectangle(cornerRadius: 9))
-        .padding(.horizontal, 10)
-        .padding(.bottom, 10)
-    }
-
-    /// The person left the colours to Synapse: say so, and keep the way back one click away.
-    private var synapseOwnsRow: some View {
-        HStack(spacing: 8) {
-            Text("MacRazer leaves this keyboard alone while Synapse runs.")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 6)
-            Button("Use MacRazer") { keyboard.choose(.macRazer) }
-                .controlSize(.small)
+            Toggle("Use MacRazer", isOn: Binding(get: { keyboard.owner == .macRazer },
+                                                 set: { keyboard.choose($0 ? .macRazer : .synapse) }))
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .tint(.razerGreen)
+                .controlSize(.mini)
         }
         .padding(.horizontal, 12)
         .padding(.bottom, 12)
