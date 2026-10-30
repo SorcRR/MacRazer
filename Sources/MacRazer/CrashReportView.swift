@@ -76,22 +76,9 @@ struct CrashReportView: View {
         VStack(alignment: .leading, spacing: 8) {
             TextEditor(text: Binding(get: { model.comment },
                                      set: { model.comment = String($0.prefix(DeviceReportOutput.maxComment)) }))
-                .font(.system(size: 12))
-                .frame(height: 54)
-                // The editor's own opaque background would sit as a flat box on a glass or tinted
-                // window; a faint fill like the cards keeps it readable on all of them.
-                .scrollContentBackground(.hidden)
-                .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 6))
-                .overlay(alignment: .topLeading) {
-                    if model.comment.isEmpty {
-                        Text("What were you doing when it quit? (optional)")
-                            .font(.system(size: 12)).foregroundStyle(.tertiary)
-                            .padding(.leading, 5).padding(.top, 1).allowsHitTesting(false)
-                    }
-                }
-                .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.primary.opacity(0.15)))
+                .editorBox(placeholder: "What were you doing when it quit? (optional)", isEmpty: model.comment.isEmpty)
             TextField("Email, if you'd like a reply (optional)", text: $model.replyEmail)
-                .textFieldStyle(.roundedBorder).controlSize(.small)
+                .inputBox()
             if let problem = model.emailProblem { warning(problem) }
             if case .failed(let message) = model.state { warning(message) }
         }
