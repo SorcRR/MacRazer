@@ -268,7 +268,7 @@ enum RazerCommands {
 
     /// Breathing in one colour. razer_chroma_extended_matrix_effect_breathing_single:
     /// base(0x09, …, 0x02); args[3]=0x01, args[5]=0x01 (colour count), args[6..8]=r,g,b.
-    /// No speed: wave's speed byte in args[4] changed nothing here on the Cobra HyperSpeed.
+    /// No speed: in a hardware test, wave's speed byte in args[4] changed nothing here.
     static func setBreathingSingle(led: UInt8 = zeroLed, rgb: RGB) -> RazerReport {
         var r = effectBase(argSize: 0x09, led: led, effect: 0x02)
         r.arguments[3] = 0x01

@@ -50,6 +50,17 @@ final class RazerKeyboardsTests: XCTestCase {
         XCTAssertEqual(Array(report.arguments[0..<9]), [0x01, 0x05, 0x02, 0x01, 0x00, 0x01, 0x90, 0xEE, 0x90])
     }
 
+    func testUnknownSavedEffectKeepsTheRestOfTheLighting() throws {
+        let json = #"{"effect":"Sparkle","color":{"r":1,"g":2,"b":3},"brightness":40,"waveSpeed":8}"#
+        let lighting = try JSONDecoder().decode(KeyboardLighting.self, from: Data(json.utf8))
+        XCTAssertNil(lighting.effect)
+        XCTAssertEqual(lighting.color, RGB(r: 1, g: 2, b: 3))
+        XCTAssertEqual(lighting.brightness, 40)
+        XCTAssertEqual(lighting.waveSpeed, 8)
+        let saved = KeyboardLighting(effect: .breathing, color: RGB(r: 1, g: 2, b: 3), brightness: 40)
+        XCTAssertEqual(try JSONDecoder().decode(KeyboardLighting.self, from: JSONEncoder().encode(saved)), saved)
+    }
+
     func testEveryEffectTargetsTheBacklight() {
         for effect in LightingEffect.allCases {
             XCTAssertEqual(RazerKeyboards.report(for: effect, color: RGB(r: 0, g: 0, b: 0)).arguments[1],

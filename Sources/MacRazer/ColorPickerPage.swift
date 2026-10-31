@@ -33,6 +33,9 @@ struct BackButton: View {
 struct ColorPickerPage: View {
     @Binding var color: Color
     var onBack: () -> Void
+    /// false sends the colour only when a drag ends. Breathing restarts its fade on every
+    /// write, so live updates would hold it still while dragging.
+    var live = true
     var onApply: (RGB) -> Void
 
     @State private var hue: Double = 0
@@ -110,7 +113,7 @@ struct ColorPickerPage: View {
     private func apply(force: Bool) {
         color = Color(hue: hue, saturation: sat, brightness: max(bri, 0.001))
         let now = Date()
-        if force || now.timeIntervalSince(lastApply) > 0.07 { // throttle live HID writes
+        if force || (live && now.timeIntervalSince(lastApply) > 0.07) { // throttle live HID writes
             lastApply = now
             onApply(color.rgb)
         }

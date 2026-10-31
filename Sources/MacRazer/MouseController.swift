@@ -58,6 +58,8 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// and profile snapshots all read it (a UI-local copy used to snapshot "phantom"
     /// lighting the mouse never took).
     @Published private(set) var effect: LightingEffect = .staticColor
+    /// An effect sent from the picker that the mouse hasn't confirmed yet. Main thread.
+    private var requestedEffect: LightingEffect?
     @Published private(set) var lightingColor = RGB(r: 0x44, g: 0xD6, b: 0x2C) // razer green
     /// The wave's speed byte (`WaveSpeed`). Like the effect it can't be read back, so the last
     /// one set is kept across launches.
@@ -1098,6 +1100,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         // segment; a no-change "set" must not resend the command or un-mark the active
         // profile (the config didn't change).
         guard newEffect != effect else { return }
+        requestedEffect = newEffect
         sendLighting(report(for: newEffect, color: lightingColor)) {
             self.effect = newEffect
         }
@@ -1107,7 +1110,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// switches to static. Bluetooth always gets static, the only effect it has a command for,
     /// whatever effect is left over from USB.
     func setColor(_ rgb: RGB) {
-        let target = Self.colorEffect(current: effect, effectsSupported: supportsLightingEffects)
+        // The effect just picked, not yet confirmed: a swatch tapped right after Breathing
+        // must breathe in that colour, not undo it with static.
+        let target = Self.colorEffect(current: requestedEffect ?? effect, effectsSupported: supportsLightingEffects)
         guard !(effect == target && lightingColor == rgb) else { return } // no-change re-click
         sendLighting(report(for: target, color: rgb)) {
             self.effect = target
@@ -1148,6 +1153,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 return true
             }()) != nil
             self.publish {
+                self.requestedEffect = nil
                 guard ok else { self.lastWriteFailure = Date(); return }
                 onSuccess()
                 self.clearActiveProfileIfNeeded()

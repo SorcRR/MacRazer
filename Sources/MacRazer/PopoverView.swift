@@ -166,10 +166,16 @@ struct PopoverView: View {
 
     // MARK: Sub-pages
 
+    /// The effect the colour page is picking for, mouse or keyboard.
+    private var colorTargetEffect: LightingEffect? {
+        colorTarget == .mouse ? controller.effect : keyboard.lighting.effect
+    }
+
     private var colorPage: some View {
         VStack(spacing: 0) {
             Spacer(minLength: 0)
-            ColorPickerPage(color: colorTarget == .mouse ? $color : $keyboardColor, onBack: { page = .main }) { rgb in
+            ColorPickerPage(color: colorTarget == .mouse ? $color : $keyboardColor, onBack: { page = .main },
+                            live: colorTargetEffect != .breathing) { rgb in
                 switch colorTarget {
                 case .mouse: controller.setColor(rgb)
                 case .keyboard: keyboard.setColor(rgb)
