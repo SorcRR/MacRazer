@@ -4,35 +4,167 @@
 import AppKit
 import SwiftUI
 
-/// Asks someone whose mouse isn't fully supported to run the device test. Opened by the app
-/// when such a mouse connects; see `SupportPromptPolicy` for how often.
+/// Asks someone whose mouse could use a report to run the device test: one that isn't on the
+/// verified list, one that is only partly verified, or one verified on this link whose other
+/// ways of connecting still need a test. Opened by the app when such a mouse connects; see
+/// `SupportPromptPolicy` for how often.
 struct SupportPromptView: View {
     let mouse: UnsupportedMouse
     var onRunTest: () -> Void
     var onNotNow: () -> Void
     var onDontAsk: () -> Void
+    /// Looked up once: the body reads both several times per render.
+    private let support: RazerDevices.LinkSupport
+    private let links: [RazerDevices.LinkToTest]
+
+    init(mouse: UnsupportedMouse, onRunTest: @escaping () -> Void, onNotNow: @escaping () -> Void,
+         onDontAsk: @escaping () -> Void) {
+        self.mouse = mouse
+        self.onRunTest = onRunTest
+        self.onNotNow = onNotNow
+        self.onDontAsk = onDontAsk
+        support = RazerDevices.support(pid: mouse.pid)
+        links = RazerDevices.linksToTest(besides: mouse.pid)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             header
             Divider()
-            if mouse.canControl { readyBody } else { needsAccessBody }
+            if !mouse.canControl {
+                needsAccessBody
+            } else {
+                switch support {
+                case .full: otherLinksBody
+                case .partly(let works, let missing): partlyBody(works: works, missing: missing)
+                case .unknown: readyBody
+                }
+            }
             HStack(spacing: 10) {
                 Button("Don't ask for this mouse", action: onDontAsk)
                     .buttonStyle(.plain)
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                 Spacer()
-                Button("Not Now", action: onNotNow)
-                    .keyboardShortcut(.cancelAction)
-                // Not the default action: the window opens on its own, and Return pressed for
-                // something else shouldn't start a test.
-                Button(mouse.canControl ? "Run the Test" : "Get Started", action: onRunTest)
-                    .buttonStyle(RazerProminentButtonStyle())
+                if mouse.canControl && support == .full {
+                    // Nothing to run on this link. Got It ends the ask, like "Don't ask", but
+                    // reads as the answer to a note rather than a refusal.
+                    Button("Got It", action: onDontAsk)
+                        .buttonStyle(RazerProminentButtonStyle())
+                } else {
+                    Button("Not Now", action: onNotNow)
+                        .keyboardShortcut(.cancelAction)
+                    // Not the default action: the window opens on its own, and Return pressed for
+                    // something else shouldn't start a test.
+                    Button(mouse.canControl ? "Run the Test" : "Get Started", action: onRunTest)
+                        .buttonStyle(RazerProminentButtonStyle())
+                }
             }
         }
         .padding(22)
         .frame(width: 440)
+    }
+
+    private var title: String {
+        guard mouse.canControl else { return "We found a new Razer mouse" }
+        switch support {
+        case .full: return links.count > 1 ? "Test your mouse's other connections" : "Test your mouse's other connection"
+        case .partly: return "Help finish support for your mouse"
+        case .unknown: return "Help us support your mouse"
+        }
+    }
+
+    /// The popover card's title and line, for the same three cases as the window.
+    static func cardText(pid: Int) -> (title: String, detail: String) {
+        switch RazerDevices.support(pid: pid) {
+        case .full:
+            return ("Test its other connection", linkSummary(RazerDevices.linksToTest(besides: pid)))
+        case .partly(_, let missing):
+            return ("Help finish support for this mouse",
+                    "\(DeviceTestView.list(missing)) still \(missing.count == 1 ? "needs" : "need") testing. A short test checks just that.")
+        case .unknown:
+            return ("Help us support this mouse", "A 2-minute test shows us what it can do. You review the report before it's sent.")
+        }
+    }
+
+    /// One line naming the links still to test, for the card.
+    static func linkSummary(_ links: [RazerDevices.LinkToTest]) -> String {
+        guard !links.isEmpty else { return "Verified on this connection." }
+        let names = links.map { link -> String in
+            switch link.connection {
+            case .wired: return "its cable"
+            case .wirelessDongle: return "its dongle"
+            case .bluetooth: return "Bluetooth"
+            }
+        }
+        let joined = names.count < 2 ? names.joined() : names.dropLast().joined(separator: ", ") + " and " + names.last!
+        return "Verified on this connection. If your mouse also uses \(joined), a test there helps."
+    }
+
+    private var otherLinksBody: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("MacRazer fully supports this mouse over \(connectionPhrase). Other ways it connects show up to MacRazer as a different mouse, so each needs its own test.")
+                .font(.system(size: 13))
+                .fixedSize(horizontal: false, vertical: true)
+            linkCards
+        }
+    }
+
+    private func partlyBody(works: [RazerFeature], missing: [RazerFeature]) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("MacRazer already supports part of this mouse. A short test checks only what's missing.")
+                VStack(alignment: .leading, spacing: 4) {
+                    labelled("Already works", DeviceTestView.list(works), color: .razerGreenText)
+                    labelled("Still needs testing", DeviceTestView.list(missing), color: .batteryMid)
+                }
+            }
+            .font(.system(size: 13))
+            .fixedSize(horizontal: false, vertical: true)
+            linkCards
+            VStack(alignment: .leading, spacing: 8) {
+                point("clock", "About a minute. You click a few buttons when asked.")
+                point("eye", "You see the full report before anything is sent.")
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 10))
+        }
+    }
+
+    /// One note per other link still worth a test, worded as the device test words them.
+    @ViewBuilder private var linkCards: some View {
+        ForEach(links, id: \.connection) { link in
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: link.connection == .bluetooth ? "dot.radiowaves.left.and.right" : "cable.connector")
+                    .foregroundStyle(Color.razerGreenText)
+                    .frame(width: 16)
+                Text(DeviceTestView.linkText(link)).fixedSize(horizontal: false, vertical: true)
+            }
+            .font(.system(size: 12))
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 10))
+        }
+    }
+
+    private func labelled(_ label: String, _ value: String, color: Color) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(label).foregroundStyle(.secondary)
+            Spacer()
+            Text(value).foregroundStyle(color).multilineTextAlignment(.trailing)
+        }
+        .font(.system(size: 12))
+    }
+
+    /// "the 2.4 GHz dongle", "its cable", "Bluetooth".
+    private var connectionPhrase: String {
+        switch RazerDevices.connection(pid: mouse.pid) {
+        case .wired?: return "its cable"
+        case .wirelessDongle?: return "the 2.4 GHz dongle"
+        case .bluetooth?: return "Bluetooth"
+        case nil: return "this connection"
+        }
     }
 
     private var header: some View {
@@ -45,7 +177,7 @@ struct SupportPromptView: View {
             }
             .frame(width: 56, height: 56)
             VStack(alignment: .leading, spacing: 4) {
-                Text(mouse.canControl ? "Help us support your mouse" : "We found a new Razer mouse")
+                Text(title)
                     .font(.system(size: 20, weight: .semibold))
                 HStack(spacing: 6) {
                     Text(mouse.name).font(.system(size: 12)).foregroundStyle(.secondary)

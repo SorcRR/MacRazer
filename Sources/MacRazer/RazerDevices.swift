@@ -113,6 +113,9 @@ struct RazerDeviceInfo {
     var supportsStageEditing = false
     /// Read brightness back after setting it, and treat a mismatch as a failed write.
     var verifiesBrightnessWrite = false
+    /// False for a wireless mouse that never connects by cable (the AA-cell ones), so the
+    /// device test and the support prompt don't ask for a cable test it can't have.
+    var hasCableLink = true
 }
 
 enum RazerDevices {
@@ -140,7 +143,7 @@ enum RazerDevices {
         .init(pid: 0x00B0, name: "Razer Cobra Pro (Wireless)", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobraPro, dischargeCurveModelKey: nil),
         // OpenRazer uses 0xFF for the Atheris, but 0x1f is what this app was hardware-tested
         // with (README) — verified behavior wins over the reference here.
-        .init(pid: 0x0062, name: "Razer Atheris", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 7200, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .atheris, dischargeCurveModelKey: nil),
+        .init(pid: 0x0062, name: "Razer Atheris", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 7200, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .atheris, dischargeCurveModelKey: nil, hasCableLink: false),
         // Basilisk V3 X HyperSpeed: AA-cell wireless (2.4 GHz dongle or Bluetooth — no
         // charging, so `is_charging` is always false). Scroll-wheel-only lighting. 0x1f
         // everywhere per razermouse_driver.c.
@@ -149,11 +152,11 @@ enum RazerDevices {
         // rate, lighting effects, and brightness on SCROLL_LED. The 18000 ceiling is the
         // vendor spec — the reporter exercised DPI at 6400, so the top of the range is the
         // one field here not demonstrated on a device.
-        .init(pid: 0x00B9, name: "Razer Basilisk V3 X HyperSpeed", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 18000, transactionId: 0x1f, matrixTransactionId: 0x1f, brightnessLed: Razer.scrollLed, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
+        .init(pid: 0x00B9, name: "Razer Basilisk V3 X HyperSpeed", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 18000, transactionId: 0x1f, matrixTransactionId: 0x1f, brightnessLed: Razer.scrollLed, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, hasCableLink: false),
         // Basilisk X HyperSpeed: the older AA-cell sibling — no lighting at all, and
         // razermouse_driver.c gives it 0xFF for every command it supports. Not verified
         // on hardware by us.
-        .init(pid: 0x0083, name: "Razer Basilisk X HyperSpeed", unverified: [.battery, .dpi, .polling], hasBattery: true, hasLighting: false, maxDPI: 16000, transactionId: 0xff, matrixTransactionId: 0xff, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
+        .init(pid: 0x0083, name: "Razer Basilisk X HyperSpeed", unverified: [.battery, .dpi, .polling], hasBattery: true, hasLighting: false, maxDPI: 16000, transactionId: 0xff, matrixTransactionId: 0xff, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, hasCableLink: false),
         // Basilisk V3 (user-reported working): wired-only, 11-zone lighting. Per
         // razermouse_driver.c it takes 0x1f everywhere except the DPI-stages pair, which it
         // shares with the plain Cobra's 0xFF group. Not yet re-verified on hardware by us.
@@ -255,6 +258,29 @@ enum RazerDevices {
         }
     }
 
+    /// How far the registry supports one link of a mouse.
+    enum LinkSupport: Equatable {
+        /// Every control is verified on this link.
+        case full
+        /// Some controls are verified and some aren't, so a test can ask for just those.
+        case partly(works: [RazerFeature], missing: [RazerFeature])
+        /// Not on record, or on record with nothing shown working yet.
+        case unknown
+    }
+
+    static func support(pid: Int) -> LinkSupport {
+        guard let missing = unverified(pid: pid) else { return .unknown }
+        if missing.isEmpty { return .full }
+        let works = verified(pid: pid)
+        return works.isEmpty ? .unknown : .partly(works: works, missing: missing)
+    }
+
+    /// Whether a report would still teach us something about this mouse: on this link, or on
+    /// another way the same model connects. What the support prompt asks about.
+    static func needsReport(pid: Int) -> Bool {
+        support(pid: pid) != .full || !linksToTest(besides: pid).isEmpty
+    }
+
     /// Another way the same model connects that is still worth a report.
     struct LinkToTest: Equatable {
         let connection: RazerConnection
@@ -265,8 +291,9 @@ enum RazerDevices {
     /// The other links of `pid`'s model worth testing. A link with a row is worth it when the
     /// row isn't fully supported. Bluetooth is only ever suggested from a row: nothing else
     /// says the mouse has it. A cable or dongle without a row is suggested for a mouse with a
-    /// battery on the other USB link, since a wired-only mouse has no dongle; whether it has
-    /// a cable is unknown, so the wording has to allow for "it doesn't".
+    /// battery on the other USB link, since a wired-only mouse has no dongle, unless the row
+    /// says it has no cable mode. Otherwise whether it has a cable is unknown, so the wording
+    /// has to allow for "it doesn't".
     static func linksToTest(besides pid: Int) -> [LinkToTest] {
         guard let info = info(pid: pid) else { return [] }
         let model = modelName(info.name)
@@ -275,7 +302,8 @@ enum RazerDevices {
         for link in [RazerConnection.wired, .wirelessDongle, .bluetooth] where link != info.connection {
             if let row = siblings.first(where: { $0.connection == link }) {
                 if !row.fullySupported { links.append(.init(connection: link, missing: row.unverified)) }
-            } else if link != .bluetooth, info.connection != .bluetooth, info.hasBattery {
+            } else if link != .bluetooth, info.connection != .bluetooth, info.hasBattery,
+                      link != .wired || info.hasCableLink {
                 links.append(.init(connection: link, missing: nil))
             }
         }

@@ -425,11 +425,12 @@ model) runs a guided test and builds a report a maintainer can turn into a regis
  them from this repository and tests against them.
 
 ### 6.5 Support prompt, `SupportPrompt.swift` + `SupportPromptView.swift`
-Asks someone with a mouse that isn't `fullySupported` to run the device test (§6.4), instead of
-relying on them finding the menu item.
+Asks someone whose mouse could still use a report (`RazerDevices.needsReport`) to run the
+device test (§6.4), instead of relying on them finding the menu item.
 
-- **Which mouse.** The connected mouse when it isn't verified and isn't on Bluetooth (the test
- needs USB). With no mouse connected, an unverified one from `HIDDevice.razerMice()` when Input
+- **Which mouse.** The connected mouse when a report would help: not on record, partly verified
+ on this link, or verified here while another way it connects isn't
+ (`RazerDevices.linksToTest`). On Bluetooth only the last kind, since the full test needs USB. With no mouse connected, an unverified one from `HIDDevice.razerMice()` when Input
  Monitoring is missing. The window then reads "We found a new Razer mouse" and leads with the
  permission. That list is refreshed from the plug monitor (`HIDMonitor`), a second after each
  burst of events, and only while it can matter: the prompt is on and the permission is missing.
@@ -447,6 +448,12 @@ relying on them finding the menu item.
 - **What counts as reported.** `trackReports` watches the device test's Send. Opening the GitHub
  issue counts only in a build that can't send (no `WorkerEndpoint`), since nothing says the issue
  was filed.
+- **What it says.** Three versions, from `RazerDevices.support`: the full test for an unknown
+ mouse; for a partly verified one, what works, what's missing and "Run the Test" (the test then
+ offers to check only what's missing); for one verified here, which other links still need a
+ test and how to switch, with "Got It" instead of a test, since there's nothing to run on this
+ link. Got It ends the ask like "Don't ask for this mouse". A row with `hasCableLink: false`
+ (the AA-cell mice) is never asked about a cable.
 - **The popover card.** At the top of the main page while `showsCard` holds. It stays after the
  window has stopped asking, because it only shows when the person opens the popover anyway.
 - **Turning it off.** Settings › General › Ask me to test unsupported mice (`supportPrompt.enabled`,

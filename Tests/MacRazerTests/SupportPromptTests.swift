@@ -28,6 +28,20 @@ final class SupportPromptPolicyTests: XCTestCase {
         XCTAssertFalse(SupportPromptPolicy.showsCard(pid: supported, record: .init(), enabled: true))
     }
 
+    /// Fully supported on this link isn't the end of it: a mouse whose other way of connecting
+    /// still needs a report is asked about too. One with every link verified isn't.
+    func testAsksAboutAnotherLinkStillToTest() throws {
+        // Any verified row with another link still to test, so verifying one link's row later
+        // doesn't break this.
+        guard let verifiedHere = RazerDevices.known.first(where: {
+            $0.fullySupported && !RazerDevices.linksToTest(besides: $0.pid).isEmpty
+        })?.pid else { throw XCTSkip("every verified row has all its links verified") }
+        XCTAssertTrue(ask(verifiedHere))
+        XCTAssertTrue(SupportPromptPolicy.showsCard(pid: verifiedHere, record: .init(), enabled: true))
+        XCTAssertFalse(ask(0x00DB), "the Cobra HyperSpeed is verified on every link")
+        XCTAssertFalse(ask(0x0062), "the Atheris has no cable mode to ask about")
+    }
+
     func testSettingOffSilencesBoth() {
         XCTAssertFalse(ask(unknown, enabled: false))
         XCTAssertFalse(SupportPromptPolicy.showsCard(pid: unknown, record: .init(), enabled: false))
@@ -51,6 +65,28 @@ final class SupportPromptPolicyTests: XCTestCase {
             XCTAssertFalse(ask(unknown, record))
             XCTAssertFalse(SupportPromptPolicy.showsCard(pid: unknown, record: record, enabled: true))
         }
+    }
+}
+
+/// What the prompt and the popover card say for each kind of mouse.
+@MainActor
+final class SupportPromptWordingTests: XCTestCase {
+    func testCardText() {
+        XCTAssertEqual(SupportPromptView.cardText(pid: 0xFFFE).title, "Help us support this mouse")
+        let partly = SupportPromptView.cardText(pid: 0x00E3)
+        XCTAssertEqual(partly.title, "Help finish support for this mouse")
+        XCTAssertTrue(partly.detail.hasPrefix("Polling rate still needs testing"), partly.detail)
+        let links = SupportPromptView.cardText(pid: 0x0090)
+        XCTAssertEqual(links.title, "Test its other connection")
+        XCTAssertTrue(links.detail.contains("its cable"), links.detail)
+    }
+
+    func testLinkSummaryNamesEveryLink() {
+        XCTAssertEqual(SupportPromptView.linkSummary([]), "Verified on this connection.")
+        typealias Link = RazerDevices.LinkToTest
+        XCTAssertEqual(SupportPromptView.linkSummary([Link(connection: .wired, missing: nil),
+                                                      Link(connection: .bluetooth, missing: [.dpi])]),
+                       "Verified on this connection. If your mouse also uses its cable and Bluetooth, a test there helps.")
     }
 }
 

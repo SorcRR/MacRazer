@@ -4,7 +4,8 @@
 import Combine
 import Foundation
 
-/// A Razer mouse that isn't on the verified list, as the support prompt needs to describe it.
+/// A Razer mouse the support prompt asks about: not on the verified list, partly verified, or
+/// verified here but not on another way it connects (`RazerDevices.needsReport`).
 struct UnsupportedMouse: Equatable {
     let pid: Int
     let name: String
@@ -37,8 +38,9 @@ enum SupportPromptPolicy {
 
     static func shouldAsk(pid: Int, record: SupportPromptRecord, enabled: Bool, now: Date) -> Bool {
         // Checked here and not only by the caller: a model promoted in a later release stops
-        // asking without anything having to clear its record.
-        guard enabled, !RazerDevices.fullySupported(pid: pid) else { return false }
+        // asking without anything having to clear its record. A mouse fully supported on this
+        // link is still asked about when another way it connects needs a report.
+        guard enabled, RazerDevices.needsReport(pid: pid) else { return false }
         guard !record.declined, !record.reported, record.timesAsked < maxAsks else { return false }
         guard let last = record.lastAsked else { return true }
         return now.timeIntervalSince(last) >= reminderAfter
@@ -47,7 +49,7 @@ enum SupportPromptPolicy {
     /// The card at the top of the popover. Stays until the person reports or hides it, unlike
     /// the window, because it only shows when they've opened the popover themselves.
     static func showsCard(pid: Int, record: SupportPromptRecord, enabled: Bool) -> Bool {
-        enabled && !RazerDevices.fullySupported(pid: pid) && !record.declined && !record.reported
+        enabled && RazerDevices.needsReport(pid: pid) && !record.declined && !record.reported
     }
 }
 

@@ -117,15 +117,15 @@ struct DeviceTestView: View {
     static func linkText(_ link: RazerDevices.LinkToTest) -> String {
         switch (link.connection, link.missing) {
         case (.wired, nil):
-            return "If your mouse also works on its cable, that hasn't been tested yet. To help, plug the cable in, unplug the dongle, and run the test again."
+            return "If your mouse also works on its cable, that hasn't been tested yet. To help, plug the cable in, unplug the dongle, and run the test."
         case (.wirelessDongle, nil):
-            return "If your mouse also has a dongle, that hasn't been tested yet. To help, unplug the cable, switch the mouse to its dongle, and run the test again."
+            return "If your mouse also has a dongle, that hasn't been tested yet. To help, unplug the cable, switch the mouse to its dongle, and run the test."
         case (.bluetooth, nil):
             return "If your mouse also works over Bluetooth, that hasn't been tested yet. To help, switch it to Bluetooth and run the Bluetooth test."
         case (.wired, let missing?):
-            return "On its cable, this mouse still needs testing: \(list(missing)). To help, plug the cable in, unplug the dongle, and run the test again."
+            return "On its cable, this mouse still needs testing: \(list(missing)). To help, plug the cable in, unplug the dongle, and run the test."
         case (.wirelessDongle, let missing?):
-            return "On its dongle, this mouse still needs testing: \(list(missing)). To help, unplug the cable, switch the mouse to its dongle, and run the test again."
+            return "On its dongle, this mouse still needs testing: \(list(missing)). To help, unplug the cable, switch the mouse to its dongle, and run the test."
         case (.bluetooth, let missing?):
             return "Over Bluetooth, this mouse still needs testing: \(list(missing)). To help, switch it to Bluetooth and run the Bluetooth test."
         }

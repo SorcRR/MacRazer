@@ -284,11 +284,15 @@ case "render-usage-consent":
                    to: outputPath(args.dropFirst(), default: "usage-consent-preview.png"))
 
 case "render-support-prompt":
-    // The window asking to test an unverified mouse. `noaccess` shows the Input Monitoring
-    // version. The mouse is made up.
+    // The window asking to test a mouse. `noaccess` shows the Input Monitoring version, with a
+    // made-up mouse. `partly` shows a partly verified one (the Basilisk V4 Pro), and `links` one
+    // verified on its dongle whose cable still needs a test (the Naga Pro).
     _ = NSApplication.shared
-    let mouse = UnsupportedMouse(pid: 0xFFFE, name: "Razer DeathAdder V3 Pro",
-                                 canControl: !args.contains("noaccess"))
+    let mouse = args.contains("partly")
+        ? UnsupportedMouse(pid: 0x00E3, name: "Razer Basilisk V4 Pro", canControl: true)
+        : args.contains("links")
+        ? UnsupportedMouse(pid: 0x0090, name: "Razer Naga Pro", canControl: true)
+        : UnsupportedMouse(pid: 0xFFFE, name: "Razer DeathAdder V3 Pro", canControl: !args.contains("noaccess"))
     writeHostedPNG(SupportPromptView(mouse: mouse, onRunTest: {}, onNotNow: {}, onDontAsk: {}),
                    to: outputPath(args.dropFirst(), default: "support-prompt-preview.png"))
 
