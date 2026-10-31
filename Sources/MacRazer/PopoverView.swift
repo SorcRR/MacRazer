@@ -166,9 +166,13 @@ struct PopoverView: View {
 
     // MARK: Sub-pages
 
-    /// The effect the colour page is picking for, mouse or keyboard.
-    private var colorTargetEffect: LightingEffect? {
-        colorTarget == .mouse ? controller.effect : keyboard.lighting.effect
+    /// The effect a pick on the colour page lands on, mouse or keyboard: the same rule the
+    /// controllers send by, so the wheel goes live exactly when the write won't be Breathing.
+    private var colorTargetEffect: LightingEffect {
+        switch colorTarget {
+        case .mouse: return controller.intendedEffect.afterColorPick(effectsSupported: controller.supportsLightingEffects)
+        case .keyboard: return (keyboard.latestLighting.effect ?? .staticColor).afterColorPick()
+        }
     }
 
     private var colorPage: some View {

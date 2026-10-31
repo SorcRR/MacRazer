@@ -50,6 +50,22 @@ final class RazerKeyboardsTests: XCTestCase {
         XCTAssertEqual(Array(report.arguments[0..<9]), [0x01, 0x05, 0x02, 0x01, 0x00, 0x01, 0x90, 0xEE, 0x90])
     }
 
+    func testColourPickRightAfterBreathingKeepsBreathing() {
+        // No keyboard plugged in here: start() never runs, so the writes go nowhere and fail.
+        let keyboard = KeyboardController()
+        keyboard.setEffect(.breathing)
+        keyboard.setColor(RGB(r: 1, g: 2, b: 3))
+        XCTAssertEqual(keyboard.latestLighting.effect, .breathing,
+                       "builds on the effect just picked, before the keyboard answers")
+        XCTAssertEqual(keyboard.latestLighting.color, RGB(r: 1, g: 2, b: 3))
+
+        let deadline = Date().addingTimeInterval(2)
+        while keyboard.latestLighting != keyboard.lighting, Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+        }
+        XCTAssertEqual(keyboard.latestLighting, .unknown, "failed writes leave nothing pending")
+    }
+
     func testUnknownSavedEffectKeepsTheRestOfTheLighting() throws {
         let json = #"{"effect":"Sparkle","color":{"r":1,"g":2,"b":3},"brightness":40,"waveSpeed":8}"#
         let lighting = try JSONDecoder().decode(KeyboardLighting.self, from: Data(json.utf8))

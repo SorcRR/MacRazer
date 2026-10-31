@@ -139,12 +139,24 @@ final class RazerCommandsTests: XCTestCase {
     }
 
     func testColourPickKeepsBreathingOnlyWhereEffectsWork() {
-        XCTAssertEqual(MouseController.colorEffect(current: .breathing, effectsSupported: true), .breathing)
-        XCTAssertEqual(MouseController.colorEffect(current: .breathing, effectsSupported: false), .staticColor,
+        XCTAssertEqual(LightingEffect.breathing.afterColorPick(effectsSupported: true), .breathing)
+        XCTAssertEqual(LightingEffect.breathing.afterColorPick(effectsSupported: false), .staticColor,
                        "Bluetooth has no breathing command")
         for other in [LightingEffect.staticColor, .spectrum, .wave, .off] {
-            XCTAssertEqual(MouseController.colorEffect(current: other, effectsSupported: true), .staticColor)
+            XCTAssertEqual(other.afterColorPick(effectsSupported: true), .staticColor)
         }
+    }
+
+    func testPendingRequestKeepsTheLatestUntilItAnswers() {
+        var pending = PendingRequest<LightingEffect>()
+        XCTAssertNil(pending.value)
+        let breathing = pending.begin(.breathing)
+        let wave = pending.begin(.wave)
+        XCTAssertEqual(pending.value, .wave)
+        pending.finish(breathing)
+        XCTAssertEqual(pending.value, .wave, "an older write answering must not hide a newer one still queued")
+        pending.finish(wave)
+        XCTAssertNil(pending.value)
     }
 
     func testBreathingProfileRoundTrips() throws {

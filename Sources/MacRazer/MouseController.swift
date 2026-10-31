@@ -58,8 +58,11 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// and profile snapshots all read it (a UI-local copy used to snapshot "phantom"
     /// lighting the mouse never took).
     @Published private(set) var effect: LightingEffect = .staticColor
-    /// An effect sent from the picker that the mouse hasn't confirmed yet. Main thread.
-    private var requestedEffect: LightingEffect?
+    /// An effect sent that the mouse hasn't answered yet. Main thread.
+    @Published private var pendingEffect = PendingRequest<LightingEffect>()
+    /// The effect the mouse will run once its queued writes land: what the next lighting
+    /// change builds on.
+    var intendedEffect: LightingEffect { pendingEffect.value ?? effect }
     @Published private(set) var lightingColor = RGB(r: 0x44, g: 0xD6, b: 0x2C) // razer green
     /// The wave's speed byte (`WaveSpeed`). Like the effect it can't be read back, so the last
     /// one set is kept across launches.
@@ -1099,9 +1102,8 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         // NSSegmentedControl can fire its action on a click of the already-selected
         // segment; a no-change "set" must not resend the command or un-mark the active
         // profile (the config didn't change).
-        guard newEffect != effect else { return }
-        requestedEffect = newEffect
-        sendLighting(report(for: newEffect, color: lightingColor)) {
+        guard newEffect != intendedEffect else { return }
+        sendLighting(report(for: newEffect, color: lightingColor), effect: newEffect) {
             self.effect = newEffect
         }
     }
@@ -1110,19 +1112,13 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// switches to static. Bluetooth always gets static, the only effect it has a command for,
     /// whatever effect is left over from USB.
     func setColor(_ rgb: RGB) {
-        // The effect just picked, not yet confirmed: a swatch tapped right after Breathing
-        // must breathe in that colour, not undo it with static.
-        let target = Self.colorEffect(current: requestedEffect ?? effect, effectsSupported: supportsLightingEffects)
-        guard !(effect == target && lightingColor == rgb) else { return } // no-change re-click
-        sendLighting(report(for: target, color: rgb)) {
+        let target = intendedEffect.afterColorPick(effectsSupported: supportsLightingEffects)
+        // No-change re-click. Not while a write is queued: what it lands on isn't known yet.
+        guard !(pendingEffect.value == nil && effect == target && lightingColor == rgb) else { return }
+        sendLighting(report(for: target, color: rgb), effect: target) {
             self.effect = target
             self.lightingColor = rgb
         }
-    }
-
-    /// The effect a colour pick lands on. Pure, for the tests.
-    static func colorEffect(current: LightingEffect, effectsSupported: Bool) -> LightingEffect {
-        current == .breathing && effectsSupported ? .breathing : .staticColor
     }
 
     private func report(for effect: LightingEffect, color: RGB, waveSpeed: UInt8? = nil) -> RazerReport {
@@ -1133,18 +1129,20 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// kept for the next time Wave is picked.
     func setWaveSpeed(_ speed: UInt8) {
         guard speed != waveSpeed else { return }
-        guard effect == .wave else {
+        guard intendedEffect == .wave else {
             waveSpeed = speed
             return
         }
-        sendLighting(report(for: .wave, color: lightingColor, waveSpeed: speed)) {
+        sendLighting(report(for: .wave, color: lightingColor, waveSpeed: speed), effect: .wave) {
             self.waveSpeed = speed
         }
     }
 
     /// Every lighting change the user makes goes through here, so it is the one place the
     /// effect and colour controls need to preempt a background read.
-    private func sendLighting(_ report: RazerReport, onSuccess: @escaping @Sendable () -> Void) {
+    private func sendLighting(_ report: RazerReport, effect: LightingEffect,
+                              onSuccess: @escaping @Sendable () -> Void) {
+        let token = pendingEffect.begin(effect)
         userCommand { [weak self] in
             guard let self else { return }
             let ok = (try? {
@@ -1153,7 +1151,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 return true
             }()) != nil
             self.publish {
-                self.requestedEffect = nil
+                self.pendingEffect.finish(token)
                 guard ok else { self.lastWriteFailure = Date(); return }
                 onSuccess()
                 self.clearActiveProfileIfNeeded()
@@ -1234,11 +1232,16 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             .map { max(100, min($0, 45000)) }
         let stagesReport = stages.isEmpty ? nil
             : RazerCommands.setDPIStages(stages, activeStage: stages.firstIndex(of: profile.dpi) ?? 0)
+        // A colour picked while the profile is still applying builds on the profile's effect.
+        let token = deviceHasLighting ? pendingEffect.begin(effect) : nil
 
         userCommand { [weak self] in
             guard let self else { return }
             guard let dev = try? self.ensureDevice() else {
-                self.publish { self.lastWriteFailure = Date(); self.profileApplyFailed = true }
+                self.publish {
+                    if let token { self.pendingEffect.finish(token) }
+                    self.lastWriteFailure = Date(); self.profileApplyFailed = true
+                }
                 return
             }
             let stagesOK = stagesReport.map { (try? dev.sendWithRetry($0)) != nil } ?? true
@@ -1254,6 +1257,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             let anyOK = dpiOK || pollOK || (hasLighting && (brightOK || lightOK))
                 || (stagesReport != nil && stagesOK)
             self.publish {
+                if let token { self.pendingEffect.finish(token) }
                 if stagesOK, !stages.isEmpty {
                     self.dpiStages = stages
                     self.activeDpiStage = stages.firstIndex(of: Int(dpi)) ?? 0

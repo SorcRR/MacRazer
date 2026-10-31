@@ -23,6 +23,10 @@ final class KeyboardController: ObservableObject, @unchecked Sendable {
     @Published private(set) var keyboard: Keyboard?
     /// What MacRazer last set, with the brightness as last read from the keyboard.
     @Published private(set) var lighting = KeyboardLighting.unknown
+    /// Lighting sent that the keyboard hasn't answered yet. Main thread.
+    @Published private var pending = PendingRequest<KeyboardLighting>()
+    /// What the keyboard will show once its queued writes land: what the next change builds on.
+    var latestLighting: KeyboardLighting { pending.value ?? lighting }
     /// Set on a failed write, like `MouseController.lastWriteFailure`, so the slider can snap back.
     @Published private(set) var lastWriteFailure: Date?
     @Published private(set) var synapseRunning = false
@@ -121,15 +125,15 @@ final class KeyboardController: ObservableObject, @unchecked Sendable {
     // MARK: Writes
 
     func setEffect(_ effect: LightingEffect) {
-        var next = lighting
+        var next = latestLighting
         next.effect = effect
         write(next, brightness: false)
     }
 
     /// Breathing keeps breathing in the new colour; any other effect switches to static.
     func setColor(_ rgb: RGB) {
-        var next = lighting
-        next.effect = next.effect == .breathing ? .breathing : .staticColor
+        var next = latestLighting
+        next.effect = (next.effect ?? .staticColor).afterColorPick()
         next.color = rgb
         write(next, brightness: false)
     }
@@ -137,14 +141,14 @@ final class KeyboardController: ObservableObject, @unchecked Sendable {
     /// Only while the keyboard runs Wave, where the slider is. Goes through `write` like
     /// every other change, so it can't race one already queued.
     func setWaveSpeed(_ speed: UInt8) {
-        guard lighting.effect == .wave else { return }
-        var next = lighting
+        guard latestLighting.effect == .wave else { return }
+        var next = latestLighting
         next.waveSpeed = speed
         write(next, brightness: false)
     }
 
     func setBrightness(_ percent: Int) {
-        var next = lighting
+        var next = latestLighting
         next.brightness = max(0, min(percent, 100))
         write(next, effect: false)
     }
@@ -152,15 +156,15 @@ final class KeyboardController: ObservableObject, @unchecked Sendable {
     /// The mouse's lighting, while `followsMouse` is on. The brightness comes along too, so
     /// the two read as one.
     func followMouse() {
-        guard followsMouse, let next = mouseLighting?(), next != lighting else { return }
-        write(next, brightness: next.brightness != lighting.brightness)
+        guard followsMouse, let next = mouseLighting?(), next != latestLighting else { return }
+        write(next, brightness: next.brightness != latestLighting.brightness)
     }
 
     /// What the keyboard should show now: the mouse's lighting while following it, else what
     /// MacRazer last set on the keyboard. nil when MacRazer has set nothing to put back.
     private var intendedLighting: KeyboardLighting? {
         if followsMouse, let mouse = mouseLighting?() { return mouse }
-        return lighting.effect == nil ? nil : lighting
+        return latestLighting.effect == nil ? nil : latestLighting
     }
 
     /// The person picked who sets the colours while Synapse runs. Picking MacRazer puts back
@@ -184,10 +188,11 @@ final class KeyboardController: ObservableObject, @unchecked Sendable {
     /// MacRazer's lighting back over Synapse sends both.
     private func write(_ next: KeyboardLighting, effect: Bool = true, brightness: Bool = true) {
         guard canWrite else { return }
+        let token = pending.begin(next)
         io.async { [weak self] in
             guard let self else { return }
             guard let device = self.device, let info = self.info else {
-                self.publish { self.lastWriteFailure = Date() }
+                self.publish { self.pending.finish(token); self.lastWriteFailure = Date() }
                 return
             }
             var failure: Error?
@@ -206,9 +211,10 @@ final class KeyboardController: ObservableObject, @unchecked Sendable {
                 failure = error
             }
             let ok = failure == nil
+            let pid = info.pid
             switch failure {
             case nil:
-                Self.store(next, pid: info.pid)
+                break
             case HIDDevice.HIDError.commandFailed?, HIDDevice.HIDError.notSupported?:
                 break // the keyboard answered and refused: the handle is fine
             default:
@@ -219,8 +225,18 @@ final class KeyboardController: ObservableObject, @unchecked Sendable {
                 self.rescanSync(reapply: false)
             }
             self.publish {
+                self.pending.finish(token)
                 guard ok else { self.lastWriteFailure = Date(); return }
-                self.lighting = next
+                // Only what this write sent: `next` builds on queued writes that may yet fail.
+                var landed = next
+                if !effect {
+                    landed.effect = self.lighting.effect
+                    landed.color = self.lighting.color
+                    landed.waveSpeed = self.lighting.waveSpeed
+                }
+                if !brightness { landed.brightness = self.lighting.brightness }
+                self.lighting = landed
+                Self.store(landed, pid: pid)
             }
         }
     }
