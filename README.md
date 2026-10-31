@@ -189,7 +189,8 @@ mouse on Bluetooth.
 
 ## Install
 
-Download `MacRazer.dmg` from the [latest release](../../releases/latest), open it, and drag
+Download [`MacRazer.dmg`](https://reports.macrazer.com/v1/download?via=site&page=readme)
+(release notes on the [latest release](../../releases/latest) page), open it, and drag
 **MacRazer** into Applications.
 
 This build is unsigned (no paid Apple Developer ID), so on first launch Gatekeeper will say
@@ -249,6 +250,7 @@ swift run MacRazer battery              # read battery %
 swift run MacRazer dpi [x] [y]          # read or set DPI
 swift run MacRazer poll [125|500|1000]  # read or set polling rate
 swift run MacRazer rgb static ff0000    # static colour (or: spectrum | wave [speed] | off)
+swift run MacRazer rgb breathing ff0000 # breathing (two colours for dual, none for random)
 swift run MacRazer brightness [0-100]   # read or set LED brightness
 swift run MacRazer discover             # which transaction ids the mouse answers to
 swift run MacRazer devicetest           # the in-app device test, printed as JSON
