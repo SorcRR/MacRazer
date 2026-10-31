@@ -527,13 +527,19 @@ final class DeviceTestModel: ObservableObject {
         guard let report, let connection = report.device.connection, connection != .bluetooth else { return nil }
         let pid = report.device.productID
         if RazerDevices.info(pid: pid) != nil {
-            return RazerDevices.linksToTest(besides: pid).lazy.compactMap { link -> DeviceReport.Connection? in
+            let next = RazerDevices.linksToTest(besides: pid).lazy.compactMap { link -> DeviceReport.Connection? in
                 switch link.connection {
                 case .wired: return .cable
                 case .wirelessDongle: return .dongle
                 case .bluetooth: return nil
                 }
             }.first
+            if let next { return next }
+            // A battery this run read means a dongle, even when the row says no battery: that
+            // report is what corrects the row.
+            if connection == .cable, report.battery.outcome == .passed,
+               !RazerDevices.fullySupported(modelOf: pid, on: .wirelessDongle) { return .dongle }
+            return nil
         }
         if connection == .cable, report.battery.outcome != .passed { return nil }
         return connection == .cable ? .dongle : .cable

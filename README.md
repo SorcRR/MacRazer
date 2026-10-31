@@ -111,7 +111,7 @@ the cable or Bluetooth) gets a note telling you which and how to switch. If you 
 week later and then stops. A card at the top of the popover offers the same test until you send
 a report or hide it. "Don't ask for this mouse" stops both for that model. If the mouse is
 plugged in before Input Monitoring is allowed, the window starts with that permission. To turn
-all of this off, use Settings › General › **Ask me to test unsupported mice**.
+all of this off, use Settings › General › **Ask me to help test my mouse**.
 
 ### What a device report contains
 

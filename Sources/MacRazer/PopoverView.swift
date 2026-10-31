@@ -245,7 +245,7 @@ struct PopoverView: View {
     private var mainPage: some View {
         VStack(alignment: .leading, spacing: 10) {
             headerCard
-            if let pid = supportCardPID { supportCard(pid) }
+            if let card = supportCard { supportCardView(card) }
             if let version = updateChecker.latestVersion { updateCard(version) }
             // Never both: an update waiting to be installed is the more useful thing to say
             // than one that already was.
@@ -433,7 +433,7 @@ struct PopoverView: View {
                     // test from the right-click menu, without the popover asking every time.
                     // The support card below says the same thing louder; once it's hidden or
                     // a report went out, this stays as the quiet way back.
-                    if controller.connected && !controller.deviceSupported && supportCardPID == nil {
+                    if controller.connected && !controller.deviceSupported && supportCard == nil {
                         Button(action: onOpenDeviceTest) {
                             HStack(spacing: 3) {
                                 Text("Help test it")
@@ -456,22 +456,23 @@ struct PopoverView: View {
 
     /// The mouse the support card is for, or nil when there's no card to show. Over Bluetooth
     /// only the card pointing at another link: the device test runs over the cable or dongle.
-    private var supportCardPID: Int? {
-        guard controller.connected, let pid = controller.deviceID, supportPrompt.showsCard(pid: pid),
-              !controller.deviceIsBluetooth || RazerDevices.support(pid: pid) == .full else { return nil }
-        return pid
+    private var supportCard: SupportPromptView.Card? {
+        guard controller.connected, let pid = controller.deviceID, supportPrompt.showsCard(pid: pid) else { return nil }
+        let card = SupportPromptView.card(pid: pid)
+        return !controller.deviceIsBluetooth || card.otherLinksOnly ? card : nil
     }
 
-    private func supportCard(_ pid: Int) -> some View {
+    private func supportCardView(_ card: SupportPromptView.Card) -> some View {
+        let pid = card.pid
+        return
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 8) {
                 Image(systemName: "checklist")
                     .foregroundStyle(Color.razerGreenText)
                     .font(.system(size: 14, weight: .semibold))
                 VStack(alignment: .leading, spacing: 2) {
-                    let (title, detail) = SupportPromptView.cardText(pid: pid)
-                    Text(title).font(.system(size: 12, weight: .semibold))
-                    Text(detail)
+                    Text(card.title).font(.system(size: 12, weight: .semibold))
+                    Text(card.detail)
                         .font(.system(size: 11)).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -479,7 +480,7 @@ struct PopoverView: View {
             }
             HStack(spacing: 8) {
                 Spacer(minLength: 0)
-                if RazerDevices.support(pid: pid) == .full {
+                if card.otherLinksOnly {
                     // Nothing to run on this link: the card only points at another one.
                     Button("Got It") { supportPrompt.markDeclined(pid: pid) }
                         .buttonStyle(RazerProminentButtonStyle())

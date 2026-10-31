@@ -81,6 +81,16 @@ final class SupportPromptWordingTests: XCTestCase {
         XCTAssertTrue(links.detail.contains("its cable"), links.detail)
     }
 
+    /// Over Bluetooth there's no cable or dongle in to unplug first.
+    func testLinkTextFromBluetooth() {
+        typealias Link = RazerDevices.LinkToTest
+        let dongle = DeviceTestView.linkText(Link(connection: .wirelessDongle, missing: [.dpi]), from: .bluetooth)
+        XCTAssertEqual(dongle, "On its dongle, this mouse still needs testing: DPI. To help, switch the mouse to its dongle and run the test.")
+        let cable = DeviceTestView.linkText(Link(connection: .wired, missing: nil), from: .bluetooth)
+        XCTAssertFalse(cable.contains("unplug"), cable)
+        XCTAssertTrue(DeviceTestView.linkText(Link(connection: .wirelessDongle, missing: nil)).contains("unplug the cable"))
+    }
+
     func testLinkSummaryNamesEveryLink() {
         XCTAssertEqual(SupportPromptView.linkSummary([]), "Verified on this connection.")
         typealias Link = RazerDevices.LinkToTest

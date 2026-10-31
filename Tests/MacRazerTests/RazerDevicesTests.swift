@@ -197,6 +197,15 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(RazerDevices.linksToTest(besides: 0x9999), [])
     }
 
+    /// A cable report from a Naga Pro answers the dongle row's ask for a cable test, whether
+    /// the cable's product id is on record or not. A report from the dongle answers nothing.
+    func testReportAnswersTheRowThatAskedForIt() {
+        XCTAssertEqual(RazerDevices.rowsAnswered(byReportFrom: 0x008F, name: "Razer Naga Pro", on: .wired), [0x0090])
+        XCTAssertEqual(RazerDevices.rowsAnswered(byReportFrom: 0xFFF0, name: "Razer Naga Pro", on: .wired), [0x0090])
+        XCTAssertEqual(RazerDevices.rowsAnswered(byReportFrom: 0x0090, name: "Razer Naga Pro", on: .wirelessDongle), [])
+        XCTAssertEqual(RazerDevices.rowsAnswered(byReportFrom: 0xFFF0, name: "Razer Something Else", on: .wired), [])
+    }
+
     func testConnectionKind() {
         XCTAssertEqual(RazerDevices.connection(pid: 0x00DB), .wirelessDongle)
         XCTAssertEqual(RazerDevices.connection(pid: 0x00DA), .wired)

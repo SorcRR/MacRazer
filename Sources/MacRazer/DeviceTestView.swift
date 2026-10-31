@@ -113,8 +113,18 @@ struct DeviceTestView: View {
     }
 
     /// What to tell the person about another link. Without a row for it, the mouse may not
-    /// have that link at all, so the wording starts with "if".
-    static func linkText(_ link: RazerDevices.LinkToTest) -> String {
+    /// have that link at all, so the wording starts with "if". From Bluetooth there's no cable
+    /// or dongle to unplug first.
+    static func linkText(_ link: RazerDevices.LinkToTest, from current: RazerConnection? = nil) -> String {
+        if current == .bluetooth, link.connection != .bluetooth {
+            let switchStep = link.connection == .wired ? "plug the cable in" : "switch the mouse to its dongle"
+            let opening = link.missing.map {
+                "On its \(link.connection == .wired ? "cable" : "dongle"), this mouse still needs testing: \(list($0))."
+            } ?? (link.connection == .wired
+                ? "If your mouse also works on its cable, that hasn't been tested yet."
+                : "If your mouse also has a dongle, that hasn't been tested yet.")
+            return "\(opening) To help, \(switchStep) and run the test."
+        }
         switch (link.connection, link.missing) {
         case (.wired, nil):
             return "If your mouse also works on its cable, that hasn't been tested yet. To help, plug the cable in, unplug the dongle, and run the test."

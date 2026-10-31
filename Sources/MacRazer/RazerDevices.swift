@@ -237,11 +237,15 @@ enum RazerDevices {
     static func modelName(_ name: String) -> String {
         name.replacingOccurrences(of: #" \((Wired|Wireless|Bluetooth)\)$"#, with: "", options: .regularExpression)
     }
+    /// Each row's `modelName`, worked out once: the popover asks on every redraw.
+    private static let modelNames: [Int: String] = Dictionary(
+        known.map { ($0.pid, modelName($0.name)) }, uniquingKeysWith: { first, _ in first })
+    private static func modelName(of row: RazerDeviceInfo) -> String { modelNames[row.pid] ?? modelName(row.name) }
     /// Whether the registry fully supports the model `pid` is on another link, `connection`:
     /// a row with the same model name on that link. False when `pid` isn't known.
     static func fullySupported(modelOf pid: Int, on connection: RazerConnection) -> Bool {
-        guard let name = info(pid: pid).map({ modelName($0.name) }) else { return false }
-        return known.contains { $0.connection == connection && $0.fullySupported && modelName($0.name) == name }
+        guard let name = info(pid: pid).map(modelName(of:)) else { return false }
+        return known.contains { $0.connection == connection && $0.fullySupported && modelName(of: $0) == name }
     }
     /// What the row for `pid` still needs a report for, or nil when the model isn't known.
     static func unverified(pid: Int) -> [RazerFeature]? { info(pid: pid)?.unverified }
@@ -281,6 +285,17 @@ enum RazerDevices {
         support(pid: pid) != .full || !linksToTest(besides: pid).isEmpty
     }
 
+    /// The other rows of a model whose only ask was a test on `connection`: fully supported
+    /// themselves, with `connection` among their links to test. A report from that link
+    /// answers them. `name` is the tested mouse's own name, for a product id not on record.
+    static func rowsAnswered(byReportFrom pid: Int, name: String, on connection: RazerConnection) -> [Int] {
+        let model = info(pid: pid).map(modelName(of:)) ?? modelName(name)
+        return known.filter {
+            $0.pid != pid && modelName(of: $0) == model && $0.fullySupported
+                && linksToTest(besides: $0.pid).contains { $0.connection == connection }
+        }.map(\.pid)
+    }
+
     /// Another way the same model connects that is still worth a report.
     struct LinkToTest: Equatable {
         let connection: RazerConnection
@@ -296,8 +311,8 @@ enum RazerDevices {
     /// has to allow for "it doesn't".
     static func linksToTest(besides pid: Int) -> [LinkToTest] {
         guard let info = info(pid: pid) else { return [] }
-        let model = modelName(info.name)
-        let siblings = known.filter { $0.pid != pid && modelName($0.name) == model }
+        let model = modelName(of: info)
+        let siblings = known.filter { $0.pid != pid && modelName(of: $0) == model }
         var links: [LinkToTest] = []
         for link in [RazerConnection.wired, .wirelessDongle, .bluetooth] where link != info.connection {
             if let row = siblings.first(where: { $0.connection == link }) {

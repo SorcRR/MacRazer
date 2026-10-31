@@ -459,7 +459,7 @@ device test (§6.4), instead of relying on them finding the menu item.
  (the AA-cell mice) is never asked about a cable.
 - **The popover card.** At the top of the main page while `showsCard` holds. It stays after the
  window has stopped asking, because it only shows when the person opens the popover anyway.
-- **Turning it off.** Settings › General › Ask me to test unsupported mice (`supportPrompt.enabled`,
+- **Turning it off.** Settings › General › Ask me to help test my mouse (`supportPrompt.enabled`,
  on by default) silences both the window and the card.
 
 ### 6.6 Usage stats, `UsageStats.swift` + the Worker
@@ -525,7 +525,7 @@ come from GitHub Releases.
  gear. Sections:
  - **General**: Start at login, connection sounds (`connectionSoundsEnabled`), battery % in the
  menu bar (hidden for mice without a battery), crash reports (hidden while crash reporting is
- off, §6.9), Ask me to test unsupported mice (§6.5).
+ off, §6.9), Ask me to help test my mouse (§6.5).
  - **Privacy** (only in a build with the Worker): mouse models in the update check, usage stats,
  and deleting what's stored (§6.6).
  - **Appearance**: Theme and Glass effect (§6.2).

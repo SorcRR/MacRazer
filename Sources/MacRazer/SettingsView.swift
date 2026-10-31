@@ -472,9 +472,10 @@ struct SettingsView: View {
     private var supportPromptRow: some View {
         settingRow(
             symbol: "computermouse.fill", tint: Color(nsColor: .systemBlue),
-            title: "Ask me to test unsupported mice",
-            detail: "When a Razer mouse MacRazer doesn't fully support connects, ask whether to run "
-                + "a short test that helps add it. Right-click the menu bar icon to run it any time.",
+            title: "Ask me to help test my mouse",
+            detail: "When a Razer mouse connects that MacRazer doesn't fully support, or that still "
+                + "needs a test on another connection, ask whether to run a short test that helps. "
+                + "Right-click the menu bar icon to run it any time.",
             isOn: $supportPrompt.isEnabled
         )
     }

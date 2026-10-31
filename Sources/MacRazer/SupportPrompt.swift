@@ -63,7 +63,7 @@ final class SupportPrompt: ObservableObject {
 
     private let defaults: UserDefaults
     @Published private(set) var records: [Int: SupportPromptRecord]
-    /// Settings › "Ask me to test unsupported mice".
+    /// Settings › "Ask me to help test my mouse".
     @Published var isEnabled: Bool {
         didSet { defaults.set(isEnabled, forKey: Self.enabledKey) }
     }
@@ -111,8 +111,14 @@ final class SupportPrompt: ObservableObject {
                 // `report` is read off the model, not from the publishers: it is set before
                 // either of these changes and cleared by `reset` before they go back.
                 guard let model, state == .sent || (issueOpened && !model.canSend),
-                      let pid = model.report?.device.productID else { return }
-                self?.markReported(pid: pid)
+                      let device = model.report?.device else { return }
+                self?.markReported(pid: device.productID)
+                // A link verified elsewhere asked for this one. The report answers it too, so
+                // its card doesn't keep asking for a test that has been done.
+                guard let link = device.connection.map(RazerConnection.init(reportConnection:)) else { return }
+                for pid in RazerDevices.rowsAnswered(byReportFrom: device.productID, name: device.name, on: link) {
+                    self?.markReported(pid: pid)
+                }
             }
     }
 
@@ -123,5 +129,16 @@ final class SupportPrompt: ObservableObject {
         guard !accessGranted,
               let mouse = mice.first(where: { !RazerDevices.fullySupported(pid: $0.pid) }) else { return nil }
         return UnsupportedMouse(pid: mouse.pid, name: mouse.name, canControl: false)
+    }
+}
+
+extension RazerConnection {
+    /// The registry's name for the link a device test report was run on.
+    init(reportConnection: DeviceReport.Connection) {
+        switch reportConnection {
+        case .cable: self = .wired
+        case .dongle: self = .wirelessDongle
+        case .bluetooth: self = .bluetooth
+        }
     }
 }

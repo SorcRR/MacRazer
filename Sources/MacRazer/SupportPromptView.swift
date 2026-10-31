@@ -50,6 +50,7 @@ struct SupportPromptView: View {
                     // Nothing to run on this link. Got It ends the ask, like "Don't ask", but
                     // reads as the answer to a note rather than a refusal.
                     Button("Got It", action: onDontAsk)
+                        .keyboardShortcut(.cancelAction)
                         .buttonStyle(RazerProminentButtonStyle())
                 } else {
                     Button("Not Now", action: onNotNow)
@@ -74,11 +75,31 @@ struct SupportPromptView: View {
         }
     }
 
-    /// The popover card's title and line, for the same three cases as the window.
+    /// The popover card for one mouse: its title and line, for the same three cases as the
+    /// window, and whether there's a test to run on this link. Worked out once per render.
+    struct Card {
+        let pid: Int
+        let title: String
+        let detail: String
+        /// Fully supported here, so the card only points at another link.
+        let otherLinksOnly: Bool
+    }
+
+    static func card(pid: Int) -> Card {
+        let support = RazerDevices.support(pid: pid)
+        let text = cardText(pid: pid, support: support)
+        return Card(pid: pid, title: text.title, detail: text.detail, otherLinksOnly: support == .full)
+    }
+
     static func cardText(pid: Int) -> (title: String, detail: String) {
-        switch RazerDevices.support(pid: pid) {
+        cardText(pid: pid, support: RazerDevices.support(pid: pid))
+    }
+
+    private static func cardText(pid: Int, support: RazerDevices.LinkSupport) -> (title: String, detail: String) {
+        switch support {
         case .full:
-            return ("Test its other connection", linkSummary(RazerDevices.linksToTest(besides: pid)))
+            let links = RazerDevices.linksToTest(besides: pid)
+            return (links.count > 1 ? "Test its other connections" : "Test its other connection", linkSummary(links))
         case .partly(_, let missing):
             return ("Help finish support for this mouse",
                     "\(DeviceTestView.list(missing)) still \(missing.count == 1 ? "needs" : "need") testing. A short test checks just that.")
@@ -139,7 +160,7 @@ struct SupportPromptView: View {
                 Image(systemName: link.connection == .bluetooth ? "dot.radiowaves.left.and.right" : "cable.connector")
                     .foregroundStyle(Color.razerGreenText)
                     .frame(width: 16)
-                Text(DeviceTestView.linkText(link)).fixedSize(horizontal: false, vertical: true)
+                Text(DeviceTestView.linkText(link, from: RazerDevices.connection(pid: mouse.pid))).fixedSize(horizontal: false, vertical: true)
             }
             .font(.system(size: 12))
             .padding(12)

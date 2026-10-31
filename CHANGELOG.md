@@ -20,7 +20,7 @@ expect rough edges until 1.0.
   offers the short device test, which shows us what the mouse can do so a later release can
   support it. It asks once, reminds you once a week later, and stops for good after a report
   or "Don't ask for this mouse". A card in the popover offers the same test until then. Turn it
-  off in Settings › General › Ask me to test unsupported mice. A partly verified mouse is asked
+  off in Settings › General › Ask me to help test my mouse. A partly verified mouse is asked
   about just what's missing, and one verified on its dongle but not on its cable or Bluetooth
   (or the other way round) gets a note saying which connection still needs a test.
 - **The device test knows what's already verified.** On a fully supported mouse it says no
