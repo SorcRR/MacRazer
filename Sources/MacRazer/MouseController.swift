@@ -599,18 +599,18 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         case .reading(let pct, let isCharging, let recordSample):
             if recordSample { history.record(percent: pct, charging: isCharging) }
             let productID = device?.productID ?? 0
-            let requiresTrustedCurve = RazerDevices.requiresTrustedDischargeCurve(pid: productID)
-            let estimateHours = isCharging ? nil : history.estimateHoursRemaining(
-                currentPercent: pct, curveModel: curveModel, requireTrustedCurve: requiresTrustedCurve)
+            let usesModelCurve = RazerDevices.usesModelSpecificDischargeCurve(pid: productID)
+            let batteryEstimate = isCharging ? nil : history.estimate(
+                currentPercent: pct, curveModel: curveModel, useProvisionalCurve: usesModelCurve)
             let snapshot = LastBatterySnapshot(
                 deviceKey: historyKey ?? String(format: "%04x", device?.productID ?? 0),
                 productID: productID,
                 deviceName: device?.productName ?? "Razer Mouse",
                 percent: pct,
                 observedAt: Date(),
-                estimatedHoursRemaining: estimateHours,
+                estimatedHoursRemaining: batteryEstimate?.hoursRemaining,
                 wasCharging: isCharging,
-                estimateBasis: estimateHours == nil ? nil : (requiresTrustedCurve ? .learnedCurve : .genericRate)
+                estimateBasis: batteryEstimate?.basis
             )
             let previousSnapshot = latestBatterySnapshotForIO?.deviceKey == snapshot.deviceKey
                 ? latestBatterySnapshotForIO : lastBatterySnapshotStore.load(snapshot.deviceKey)
@@ -1339,12 +1339,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// display. Shared by the poll path and the device-swap republish so the two can't
     /// drift (e.g. one of them forgetting the decimation).
     private func historySnapshot() -> (samples: [BatterySample], previous: [BatterySample], rate: Double?, cycleStart: Date?, cycleStartPct: Int?) {
-        let requiresTrustedCurve = device.map {
-            RazerDevices.requiresTrustedDischargeCurve(pid: $0.productID)
-        } ?? false
         return (BatteryHistory.decimatedForDisplay(history.samples),
          BatteryHistory.decimatedForDisplay(history.previousCycleSamples),
-         requiresTrustedCurve ? nil : history.currentRatePerHour,
+         history.currentRatePerHour,
          history.cycleStartedAt,
          history.cycleStartedPercent)
     }

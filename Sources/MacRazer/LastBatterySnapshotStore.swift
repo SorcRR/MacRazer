@@ -17,13 +17,14 @@ enum SnapshotDeviceTransition: Equatable {
     }
 }
 
-/// The last trusted battery reading, kept separately from the bounded discharge history so
-/// the popover can still show a useful, explicitly stale reference while the mouse is away.
 enum BatteryEstimateBasis: String, Codable {
     case genericRate
+    case provisional
     case learnedCurve
 }
 
+/// The last trusted battery reading, kept separately from the bounded discharge history so
+/// the popover can still show a useful, explicitly stale reference while the mouse is away.
 struct LastBatterySnapshot: Codable, Equatable {
     let deviceKey: String
     let productID: Int
@@ -32,26 +33,31 @@ struct LastBatterySnapshot: Codable, Equatable {
     let observedAt: Date
     let estimatedHoursRemaining: Double?
     let wasCharging: Bool
-    /// Old snapshots have no basis. Keep them readable, but only show a Basilisk estimate
-    /// when it came from the model-specific curve rather than the known-misleading rate fit.
+    /// Old snapshots have no basis. Keep them readable, but only show a Basilisk estimate when
+    /// it came from the model-specific curve or was explicitly stored as provisional.
     var estimateBasis: BatteryEstimateBasis? = nil
 
     private var hasPresentableEstimate: Bool {
         guard estimatedHoursRemaining != nil else { return false }
-        guard RazerDevices.requiresTrustedDischargeCurve(pid: productID) else { return true }
-        return estimateBasis == .learnedCurve
+        guard RazerDevices.usesModelSpecificDischargeCurve(pid: productID) else { return true }
+        return estimateBasis == .learnedCurve || estimateBasis == .provisional
     }
 
     var estimateText: String? {
         guard hasPresentableEstimate, let hours = estimatedHoursRemaining,
               hours.isFinite, hours >= 0 else { return nil }
-        return BatteryHistory.formatEstimate(hours: hours)
+        let estimate = BatteryHistory.formatEstimate(hours: hours)
+        if estimateBasis == .provisional {
+            return estimate.replacingOccurrences(of: " (est.)", with: "") + " (rough)"
+        }
+        return estimate
     }
 
     var shortEstimateText: String? {
         guard hasPresentableEstimate, let hours = estimatedHoursRemaining,
               hours.isFinite, hours >= 0 else { return nil }
-        return "~\(BatteryHistory.formatDuration(hours: hours)) left"
+        let estimate = "~\(BatteryHistory.formatDuration(hours: hours)) left"
+        return estimateBasis == .provisional ? "\(estimate) (rough)" : estimate
     }
 
     @MainActor static let relativeAgeFormatter: RelativeDateTimeFormatter = {

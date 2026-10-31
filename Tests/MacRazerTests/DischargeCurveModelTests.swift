@@ -61,21 +61,49 @@ final class DischargeCurveModelTests: XCTestCase {
         XCTAssertEqual(hours ?? 0, 5 * 615 / 3600, accuracy: 0.1)
     }
 
-    func testModelSpecificEstimateWaitsForTwoCompleteTraversals() {
+    func testModelSpecificEstimateIsProvisionalAfterOneTraversalAndTrustedAfterTwo() {
         let model = makeModel()
         for pass in 0..<2 {
             model.record(fromPercent: 4, toPercent: 3, duration: 15)
             for percent in stride(from: 3, through: 1, by: -1) {
                 traverse(model, percent: percent, dwell: 600)
             }
+            let estimate = model.estimate(currentPercent: 3, fallbackRatePerHour: nil,
+                                          allowProvisionalMeans: true)
+            XCTAssertNotNil(estimate)
             if pass == 0 {
-                XCTAssertNil(model.estimateHoursRemaining(currentPercent: 3, fallbackRatePerHour: nil),
-                             "one observed battery cycle is not enough to claim a model-specific ETA")
+                XCTAssertFalse(estimate?.isFullyTrusted ?? true,
+                               "one traversal is useful but remains provisional")
             }
             model.observationInterrupted()
         }
 
-        XCTAssertNotNil(model.estimateHoursRemaining(currentPercent: 3, fallbackRatePerHour: nil))
+        XCTAssertTrue(model.estimate(currentPercent: 3, fallbackRatePerHour: nil,
+                                     allowProvisionalMeans: true)?.isFullyTrusted ?? false)
+    }
+
+    func testProvisionalCurveUsesOnePassMeansAndRateForMissingBuckets() {
+        let model = makeModel()
+        model.record(fromPercent: 4, toPercent: 3, duration: 15)
+        for percent in stride(from: 3, through: 1, by: -1) {
+            traverse(model, percent: percent, dwell: 600)
+        }
+
+        // Percent 4 has no observed dwell; 3...1 use the one-pass means (~615s each).
+        let estimate = model.estimate(currentPercent: 4, fallbackRatePerHour: 2,
+                                      allowProvisionalMeans: true)
+        XCTAssertEqual(estimate?.hoursRemaining ?? 0, (3 * 615 + 1800) / 3600, accuracy: 0.01)
+        XCTAssertFalse(estimate?.isFullyTrusted ?? true)
+    }
+
+    func testCobraLegacyFallbackStillUsesAnUnderSampledMeanWithoutRate() {
+        let model = makeModel()
+        model.record(fromPercent: 2, toPercent: 1, duration: 15)
+        traverse(model, percent: 1, dwell: 600)
+
+        let estimate = model.estimate(currentPercent: 1, fallbackRatePerHour: nil)
+        XCTAssertEqual(estimate?.hoursRemaining ?? 0, (600 + 15) / 3600, accuracy: 0.01)
+        XCTAssertFalse(estimate?.isFullyTrusted ?? true)
     }
 
     func testUnwatchedEntryDoesNotCommit() {

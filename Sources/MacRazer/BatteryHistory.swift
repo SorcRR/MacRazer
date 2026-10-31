@@ -51,6 +51,11 @@ final class BatteryHistory {
     /// it sees next as a continuation of the dwell it was accumulating.
     var onObservationGap: (() -> Void)?
 
+    struct Estimate {
+        let hoursRemaining: Double
+        let basis: BatteryEstimateBasis
+    }
+
     /// Above this, a gap between two samples isn't real usage time — the mouse went to sleep,
     /// got disconnected, or the app was closed, none of which the device "remembers" as
     /// discharging once reconnected. Generous margin above both poll cadences (4-15s) so it
@@ -197,21 +202,16 @@ final class BatteryHistory {
         defaults.set(learnedRate, forKey: learnedRateKey)
     }
 
-    /// Hours remaining. Prefers a fresh per-session slope (and folds it into the learned rate);
-    /// otherwise falls back to the persisted learned rate. If `curveModel` is given (only for
-    /// models with a learned per-percent discharge curve — see `DischargeCurveModel`) and it
-    /// can produce an estimate, that wins over the plain `currentPercent / rate` projection,
-    /// since a single rate can't represent a non-linear discharge curve. Models marked
-    /// `requireTrustedCurve` neither learn nor fall back to the generic rate; an incomplete
-    /// model curve therefore has no ETA yet.
-    func estimateHoursRemaining(currentPercent: Int, curveModel: DischargeCurveModel? = nil,
-                                requireTrustedCurve: Bool = false) -> Double? {
+    /// Estimate with provenance for presentation and persistence. Basilisk callers opt into
+    /// provisional curve means and a clearly labeled scalar fallback; other devices retain the
+    /// generic rate and curve behavior.
+    func estimate(currentPercent: Int, curveModel: DischargeCurveModel? = nil,
+                  useProvisionalCurve: Bool = false) -> Estimate? {
         var rate: Double?
-        if requireTrustedCurve {
-            // This model's generic percent-per-hour history has produced visibly misleading
-            // estimates. Keep its historical data intact, but do not train or consult that
-            // scalar while a model-specific curve is required.
-            rate = nil
+        if useProvisionalCurve {
+            // Keep the historical Basilisk rate intact and available as a rough fallback, but
+            // do not blend potentially noisy Basilisk sessions into it as if it were trusted.
+            rate = sessionRatePerHour() ?? learnedRatePerHour
         } else if let session = sessionRatePerHour() {
             // Blend the observed rate into the long-term learned rate (EMA), then use it.
             let blended = learnedRatePerHour.map { 0.8 * $0 + 0.2 * session } ?? session
@@ -221,15 +221,27 @@ final class BatteryHistory {
             rate = learned
         }
         if let curveModel {
-            let estimate = curveModel.estimateHoursRemaining(
+            let curveEstimate = curveModel.estimate(
                 currentPercent: currentPercent,
-                fallbackRatePerHour: requireTrustedCurve ? nil : rate
+                fallbackRatePerHour: rate,
+                allowProvisionalMeans: useProvisionalCurve
             )
-            if requireTrustedCurve { return estimate }
-            if let estimate { return estimate }
+            if let curveEstimate {
+                let basis: BatteryEstimateBasis = useProvisionalCurve
+                    ? (curveEstimate.isFullyTrusted ? .learnedCurve : .provisional)
+                    : .genericRate
+                return Estimate(hoursRemaining: curveEstimate.hoursRemaining, basis: basis)
+            }
         }
         guard let rate else { return nil }
-        return Double(currentPercent) / rate
+        return Estimate(hoursRemaining: Double(currentPercent) / rate,
+                        basis: useProvisionalCurve ? .provisional : .genericRate)
+    }
+
+    func estimateHoursRemaining(currentPercent: Int, curveModel: DischargeCurveModel? = nil,
+                                useProvisionalCurve: Bool = false) -> Double? {
+        estimate(currentPercent: currentPercent, curveModel: curveModel,
+                 useProvisionalCurve: useProvisionalCurve)?.hoursRemaining
     }
 
     /// Linear least-squares fit of the current samples → discharge rate in %/hour (positive),

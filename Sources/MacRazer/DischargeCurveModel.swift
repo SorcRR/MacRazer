@@ -18,6 +18,11 @@ struct DischargeBucket: Codable {
     var mean: Double? { count > 0 ? totalSeconds / Double(count) : nil }
 }
 
+struct DischargeCurveEstimate {
+    let hoursRemaining: Double
+    let isFullyTrusted: Bool
+}
+
 final class DischargeCurveModel {
     /// Index 0...100 = percent. 101 buckets, always fully allocated (some just empty).
     private(set) var buckets: [DischargeBucket]
@@ -98,25 +103,39 @@ final class DischargeCurveModel {
     }
 
     /// Sum of learned (or rate-derived fallback) dwell time for every bucket from
-    /// `currentPercent` down to 1, in hours. nil if any bucket lacks two complete traversals
-    /// and there is no fallback rate.
-    func estimateHoursRemaining(currentPercent: Int, fallbackRatePerHour: Double?) -> Double? {
-        guard currentPercent > 0 else { return 0 }
+    /// `currentPercent` down to 1. A provisional caller may use one observed traversal for a
+    /// bucket; otherwise under-sampled means retain the legacy fallback behavior used by Cobra.
+    func estimate(currentPercent: Int, fallbackRatePerHour: Double?,
+                  allowProvisionalMeans: Bool = false) -> DischargeCurveEstimate? {
+        guard currentPercent > 0 else {
+            return DischargeCurveEstimate(hoursRemaining: 0, isFullyTrusted: true)
+        }
         let fallbackSecondsPerPercent = fallbackRatePerHour.map { 3600 / $0 }
         var totalSeconds = 0.0
-        var hasAnyData = false
+        var isFullyTrusted = true
         for pct in 1...min(currentPercent, 100) {
             let bucket = buckets[pct]
             if let mean = bucket.mean, bucket.count >= minSamplesToTrust {
                 totalSeconds += mean
-                hasAnyData = true
+            } else if allowProvisionalMeans, let mean = bucket.mean {
+                totalSeconds += mean
+                isFullyTrusted = false
             } else if let fallback = fallbackSecondsPerPercent {
                 totalSeconds += fallback
+                isFullyTrusted = false
+            } else if let mean = bucket.mean {
+                // Preserve the original under-sampled fallback when no scalar rate exists.
+                totalSeconds += mean
+                isFullyTrusted = false
             } else {
-                return nil // this bucket lacks trusted dwell data and a fallback rate
+                return nil // this bucket has neither learned dwell data nor a fallback
             }
         }
-        guard hasAnyData || fallbackSecondsPerPercent != nil else { return nil }
-        return totalSeconds / 3600
+        return DischargeCurveEstimate(hoursRemaining: totalSeconds / 3600,
+                                      isFullyTrusted: isFullyTrusted)
+    }
+
+    func estimateHoursRemaining(currentPercent: Int, fallbackRatePerHour: Double?) -> Double? {
+        estimate(currentPercent: currentPercent, fallbackRatePerHour: fallbackRatePerHour)?.hoursRemaining
     }
 }

@@ -70,12 +70,12 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(RazerDevices.maxDPI(pid: 0x0083), 16000)
 
         // Both link PIDs represent the same AA-cell model and share its own learned curve;
-        // neither borrows the Cobra's curve or generic scalar rate for an ETA.
+        // both use their shared model curve rather than borrowing the Cobra curve.
         XCTAssertEqual(RazerDevices.dischargeCurveModelKey(pid: 0x00B9), "basilisk-v3-x-hyperspeed")
         XCTAssertEqual(RazerDevices.dischargeCurveModelKey(pid: 0x00BA), "basilisk-v3-x-hyperspeed")
-        XCTAssertTrue(RazerDevices.requiresTrustedDischargeCurve(pid: 0x00B9))
-        XCTAssertTrue(RazerDevices.requiresTrustedDischargeCurve(pid: 0x00BA))
-        XCTAssertFalse(RazerDevices.requiresTrustedDischargeCurve(pid: 0x00DB))
+        XCTAssertTrue(RazerDevices.usesModelSpecificDischargeCurve(pid: 0x00B9))
+        XCTAssertTrue(RazerDevices.usesModelSpecificDischargeCurve(pid: 0x00BA))
+        XCTAssertFalse(RazerDevices.usesModelSpecificDischargeCurve(pid: 0x00DB))
         XCTAssertNil(RazerDevices.dischargeCurveModelKey(pid: 0x0083))
     }
 

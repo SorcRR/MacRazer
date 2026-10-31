@@ -70,6 +70,22 @@ final class LastBatterySnapshotStoreTests: XCTestCase {
         XCTAssertEqual(saved.observedAt, observedAt)
     }
 
+    func testProvisionalBasiliskSnapshotKeepsRoughLabelWhenOffline() throws {
+        let (store, defaults, suiteName) = try makeStore()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let provisional = LastBatterySnapshot(
+            deviceKey: "rough", productID: 0x00BA, deviceName: "Razer Basilisk V3 X HyperSpeed",
+            percent: 80, observedAt: Date(), estimatedHoursRemaining: 9,
+            wasCharging: false, estimateBasis: .provisional
+        )
+        store.save(provisional, force: true)
+        let restored = try XCTUnwrap(store.load("rough"))
+
+        XCTAssertEqual(restored.estimateBasis, .provisional)
+        XCTAssertEqual(restored.estimateText, "~9h 0m left (rough)")
+        XCTAssertEqual(restored.shortEstimateText, "~9h 0m left (rough)")
+    }
+
     func testLegacyBasiliskSnapshotHidesUnvalidatedRateEstimate() {
         let legacy = LastBatterySnapshot(
             deviceKey: "legacy", productID: 0x00BA, deviceName: "Razer Basilisk V3 X HyperSpeed",
