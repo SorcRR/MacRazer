@@ -218,6 +218,18 @@ enum RazerDevices {
         // lighting were skipped, so the row stays unverified. Only LOGO answers brightness;
         // the rest return 0x03. 20000 is the vendor spec.
         .init(pid: 0x007D, name: "Razer DeathAdder V2 Pro (Wireless)", unverified: [.dpi, .polling, .lighting], hasBattery: true, hasLighting: true, maxDPI: 20000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
+        // Viper V3 HyperSpeed over the dongle (in-app report, no credit given): battery, DPI and
+        // stages, and polling all passed with 0x1f (0x3f and 0x08 answer too; 0xFF and 0x80 time
+        // out). It has no lighting: every group answers 0x05. The firmware echoed a 45000 DPI
+        // write, so the echo can't bound it: 26000 is the ceiling of its Focus X 26K sensor.
+        .init(pid: 0x00B8, name: "Razer Viper V3 HyperSpeed", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
+        // Viper V4 Pro on the cable (in-app report, no credit given): battery and DPI and stages
+        // passed with 0x1f (every id tried answers on the cable). It has no lighting: every group
+        // answers 0x05. The classic polling command answers "not supported" (0x05), as on the
+        // Basilisk V4 models, so it likely needs the polling_rate2 pair and the row stays
+        // unverified. Its control interface is the fourth one. The firmware echoed a 45000 DPI
+        // write, so 26000 is the app's default, not a measured value.
+        .init(pid: 0x00E5, name: "Razer Viper V4 Pro (Wired)", unverified: [.polling], hasBattery: true, hasLighting: false, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
     ]
 
     static func info(pid: Int) -> RazerDeviceInfo? { known.first { $0.pid == pid } }
