@@ -76,6 +76,18 @@ struct KeyboardLighting: Codable, Equatable, Sendable {
 
 extension LightingEffect: Codable {}
 
+extension KeyboardLighting {
+    /// An effect this build doesn't know (one added later) reads as nil, "never set", rather
+    /// than failing the whole record and losing the colour and brightness with it.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        effect = (try? c.decodeIfPresent(String.self, forKey: .effect))?.flatMap(LightingEffect.init(rawValue:))
+        color = try c.decode(RGB.self, forKey: .color)
+        brightness = try c.decode(Int.self, forKey: .brightness)
+        waveSpeed = try c.decodeIfPresent(UInt8.self, forKey: .waveSpeed)
+    }
+}
+
 /// Who sets the keyboard's colours while Razer Synapse is running, as the person chose.
 enum KeyboardLightingOwner: String {
     case macRazer

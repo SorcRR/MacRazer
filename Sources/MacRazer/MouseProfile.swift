@@ -8,10 +8,42 @@ import Foundation
 /// effect (it decodes as a plain string and falls back to `.off`), so treat them as frozen.
 enum LightingEffect: String, CaseIterable, Identifiable {
     case staticColor = "Static"
+    case breathing = "Breathing"
     case spectrum = "Spectrum"
     case wave = "Wave"
     case off = "Off"
     var id: Self { self }
+
+    /// The effect takes the lighting colour, so the colour controls apply to it.
+    var usesColor: Bool { self == .staticColor || self == .breathing }
+
+    /// The effect a colour pick lands on: Breathing keeps breathing in the new colour, any
+    /// other effect switches to Static. Where effects can't be set (Bluetooth) it's always
+    /// Static, the only one with a command there.
+    func afterColorPick(effectsSupported: Bool = true) -> LightingEffect {
+        self == .breathing && effectsSupported ? .breathing : .staticColor
+    }
+}
+
+/// The latest value asked of a device that hasn't answered yet. Lighting is published only
+/// once the device takes it, so a second click that lands before the first write answers
+/// has to build on this, not on the published state. Only the latest request's answer
+/// clears it: an older one finishing must not hide a newer one still queued.
+struct PendingRequest<Value> {
+    private(set) var value: Value?
+    private var latest = 0
+
+    /// Call when queueing a write. Returns the token to hand to `finish`.
+    mutating func begin(_ value: Value) -> Int {
+        latest &+= 1
+        self.value = value
+        return latest
+    }
+
+    /// Call when a write answers, success or not.
+    mutating func finish(_ token: Int) {
+        if token == latest { value = nil }
+    }
 }
 
 /// A named, switchable snapshot of everything the popover lets you configure: DPI, polling rate,
@@ -27,7 +59,7 @@ struct MouseProfile: Codable, Identifiable, Equatable {
     /// Raw value of `LightingEffect` — stored as a string so one unrecognized value can't
     /// fail the whole profiles array's decode. Read through `lightingEffect`.
     var effect: String
-    /// Only meaningful when the effect is `.staticColor`.
+    /// Only meaningful when the effect `usesColor` (static or breathing).
     var color: RGB
 
     var lightingEffect: LightingEffect { LightingEffect(rawValue: effect) ?? .off }

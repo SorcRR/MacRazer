@@ -166,13 +166,23 @@ struct PopoverView: View {
 
     // MARK: Sub-pages
 
+    /// The effect a pick on the colour page lands on, mouse or keyboard: the same rule the
+    /// controllers send by, so the wheel goes live exactly when the write won't be Breathing.
+    private var colorTargetEffect: LightingEffect {
+        switch colorTarget {
+        case .mouse: return controller.intendedEffect.afterColorPick(effectsSupported: controller.supportsLightingEffects)
+        case .keyboard: return (keyboard.latestLighting.effect ?? .staticColor).afterColorPick()
+        }
+    }
+
     private var colorPage: some View {
         VStack(spacing: 0) {
             Spacer(minLength: 0)
-            ColorPickerPage(color: colorTarget == .mouse ? $color : $keyboardColor, onBack: { page = .main }) { rgb in
+            ColorPickerPage(color: colorTarget == .mouse ? $color : $keyboardColor, onBack: { page = .main },
+                            live: colorTargetEffect != .breathing) { rgb in
                 switch colorTarget {
-                case .mouse: controller.setStaticColor(rgb)
-                case .keyboard: keyboard.setStaticColor(rgb)
+                case .mouse: controller.setColor(rgb)
+                case .keyboard: keyboard.setColor(rgb)
                 }
             }
             .frame(maxWidth: .infinity)
@@ -1330,7 +1340,7 @@ struct PopoverView: View {
                 }
             }
 
-            if controller.effect == .staticColor || !controller.supportsLightingEffects {
+            if controller.effect.usesColor || !controller.supportsLightingEffects {
                 HStack(spacing: 7) {
                     ForEach(swatches.indices, id: \.self) { i in
                         swatch(swatches[i].color, name: swatches[i].name)
@@ -1412,8 +1422,8 @@ struct PopoverView: View {
         let selected = isSelected(sw, for: target)
         return Button {
             switch target {
-            case .mouse: controller.setStaticColor(sw.rgb)
-            case .keyboard: keyboard.setStaticColor(sw.rgb)
+            case .mouse: controller.setColor(sw.rgb)
+            case .keyboard: keyboard.setColor(sw.rgb)
             }
         } label: {
             Circle()
@@ -1456,8 +1466,8 @@ struct PopoverView: View {
     private func isSelected(_ sw: Color, for target: ColorTarget = .mouse) -> Bool {
         switch target {
         case .mouse: return sw.rgb == color.rgb
-        // Only a static colour shows as picked: Spectrum and Wave have none.
-        case .keyboard: return keyboard.lighting.effect == .staticColor && sw.rgb == keyboard.lighting.color
+        // Only Static and Breathing show a colour as picked: Spectrum and Wave have none.
+        case .keyboard: return keyboard.lighting.effect?.usesColor == true && sw.rgb == keyboard.lighting.color
         }
     }
 
@@ -1495,7 +1505,7 @@ struct PopoverView: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(kb.name).font(.system(size: 13, weight: .semibold)).lineLimit(1)
                 HStack(spacing: 5) {
-                    if keyboardFollowing, keyboard.lighting.effect == .staticColor {
+                    if keyboardFollowing, keyboard.lighting.effect?.usesColor == true {
                         Circle().fill(keyboard.lighting.color.swiftUIColor).frame(width: 9, height: 9)
                     }
                     Text(keyboardSubtitle(kb))
@@ -1579,7 +1589,7 @@ struct PopoverView: View {
             }
             // Always there, unlike the mouse's: picking a colour under Spectrum or Wave switches
             // to Static, so the colours are one click away whatever the keyboard is running.
-            // Only a static colour shows as picked.
+            // Only Static and Breathing show a colour as picked.
             HStack(spacing: 7) {
                 ForEach(swatches.indices, id: \.self) { i in
                     swatch(swatches[i].color, name: swatches[i].name, for: .keyboard)

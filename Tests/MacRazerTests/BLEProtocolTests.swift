@@ -186,6 +186,11 @@ final class BLEProtocolTests: XCTestCase {
         let req = BLEProtocol.request(for: RazerCommands.setStatic(rgb: RGB(r: 1, g: 2, b: 3)), stages: nil)
         XCTAssertEqual(req?.key, .staticColor)
         XCTAssertEqual(req?.payload, [0x04, 0, 0, 0, 0, 1, 2, 3])
+        XCTAssertNil(BLEProtocol.request(for: RazerCommands.setBreathingSingle(rgb: RGB(r: 1, g: 2, b: 3)), stages: nil),
+                     "no known BLE encoding for breathing; never sent as a guess")
+        XCTAssertNil(BLEProtocol.request(for: RazerCommands.setBreathingDual(rgb1: RGB(r: 1, g: 2, b: 3),
+                                                                              rgb2: RGB(r: 4, g: 5, b: 6)), stages: nil))
+        XCTAssertNil(BLEProtocol.request(for: RazerCommands.setBreathingRandom(), stages: nil))
         XCTAssertNil(BLEProtocol.request(for: RazerCommands.setSpectrum(), stages: nil))
         XCTAssertNil(BLEProtocol.request(for: RazerCommands.setWave(), stages: nil))
         XCTAssertNil(BLEProtocol.request(for: RazerCommands.setNone(), stages: nil))
