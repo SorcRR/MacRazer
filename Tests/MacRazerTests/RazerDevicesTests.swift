@@ -185,6 +185,16 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(RazerDevices.linksToTest(besides: 0x9999), [])
     }
 
+    /// The Viper V3 HyperSpeed has no lighting and a 26K sensor. Its firmware echoes DPI writes
+    /// far above that, so only the registry keeps the slider honest.
+    func testViperV3HyperSpeedCapabilities() {
+        XCTAssertTrue(RazerDevices.fullySupported(pid: 0x00B8))
+        XCTAssertTrue(RazerDevices.hasBattery(pid: 0x00B8))
+        XCTAssertFalse(RazerDevices.hasLighting(pid: 0x00B8))
+        XCTAssertEqual(RazerDevices.maxDPI(pid: 0x00B8), 26000)
+        XCTAssertEqual(RazerDevices.connection(pid: 0x00B8), .wirelessDongle)
+    }
+
     func testConnectionKind() {
         XCTAssertEqual(RazerDevices.connection(pid: 0x00DB), .wirelessDongle)
         XCTAssertEqual(RazerDevices.connection(pid: 0x00DA), .wired)

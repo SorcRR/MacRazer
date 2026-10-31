@@ -221,8 +221,8 @@ enum RazerDevices {
         // Viper V3 HyperSpeed over the dongle (in-app report, no credit given): battery, DPI and
         // stages, and polling all passed with 0x1f (0x3f and 0x08 answer too; 0xFF and 0x80 time
         // out). It has no lighting: every group answers 0x05. The firmware echoed a 45000 DPI
-        // write; 30000 is the vendor spec.
-        .init(pid: 0x00B8, name: "Razer Viper V3 HyperSpeed", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
+        // write, so the echo can't bound it: 26000 is the ceiling of its Focus X 26K sensor.
+        .init(pid: 0x00B8, name: "Razer Viper V3 HyperSpeed", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
     ]
 
     static func info(pid: Int) -> RazerDeviceInfo? { known.first { $0.pid == pid } }
