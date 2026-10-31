@@ -42,6 +42,10 @@ expect rough edges until 1.0.
   If you never changed the switch, you'll see the solid look after updating.
 
 ### Fixed
+- **No polling picker that can't work.** The Basilisk V4 models, the Mouse Dock Pro and the
+  Viper V4 Pro refuse the usual polling rate command, so the picker always failed on them. It
+  is hidden there until the newer command is added. Their profiles also apply again, instead
+  of failing on the polling rate.
 - **A Razer keyboard is no longer taken for a mouse.** With no mouse plugged in, the app could
   open a Razer keyboard and show it as the mouse. It now skips keyboards, keypads and other
   products that are never mice.

@@ -2,11 +2,11 @@
 
 A native macOS menu bar app to control Razer mice: battery, DPI, polling rate, RGB lighting,
 brightness, and software button remapping. Razer's Synapse does not support macOS, so this
-app talks to the mouse directly over USB HID. Four models have been verified on real
-hardware: the Razer Cobra HyperSpeed (the development mouse), the Razer Atheris, the Razer
-Basilisk V3 X HyperSpeed and the Razer Viper Ultimate. By design it detects and tries to
-control any Razer mouse in the same protocol family; the registry carries twelve product ids,
-and README's table says which of them anyone has actually run the probes against.
+app talks to the mouse directly over USB HID. The Razer Cobra HyperSpeed is the development
+mouse; others have been verified from user reports. By design it detects and tries to control
+any Razer mouse in the same protocol family. The registry (`RazerDevices.known`) lists every
+product id it knows, and README's table says which of them anyone has actually run the probes
+against, and how far.
 
 This document explains how the app is built and how every feature works, so a future Claude
 session or a human can pick it up cold. See also:

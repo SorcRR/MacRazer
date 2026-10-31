@@ -131,7 +131,10 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     // What the connected link can do. Bluetooth has no known command for polling rate or
     // effects other than static, and switches DPI only between the mouse's own stages
     // (`BLEProtocol`). A profile sets all of those, so applying one there would half-fail.
-    var supportsPollRate: Bool { !deviceIsBluetooth }
+    // The HyperPolling models refuse the classic polling command (`acceptsClassicPolling`).
+    var supportsPollRate: Bool {
+        !deviceIsBluetooth && deviceID.map { RazerDevices.acceptsClassicPolling(pid: $0) } != false
+    }
     var supportsLightingEffects: Bool { !deviceIsBluetooth }
     var supportsFreeDPI: Bool { !deviceIsBluetooth }
     var supportsProfiles: Bool { !deviceIsBluetooth }
@@ -1246,7 +1249,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             }
             let stagesOK = stagesReport.map { (try? dev.sendWithRetry($0)) != nil } ?? true
             let dpiOK = (try? dev.sendWithRetry(RazerCommands.setDPI(x: dpi, y: dpi))) != nil
-            let pollOK = (try? dev.sendWithRetry(RazerCommands.setPollingRate(hz))) != nil
+            // Like lighting below: a mouse that refuses the classic command can't fail it.
+            let polls = RazerDevices.acceptsClassicPolling(pid: dev.productID)
+            let pollOK = !polls || (try? dev.sendWithRetry(RazerCommands.setPollingRate(hz))) != nil
             // Lighting commands only count on models that have lighting — the Atheris
             // (correctly) refuses them, and that must not block its profiles from applying.
             let hasLighting = RazerDevices.hasLighting(pid: dev.productID)
@@ -1254,7 +1259,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 || (try? Self.writeBrightness(RazerCommands.brightnessRaw(fromPercent: brightnessPct), to: dev)) != nil
             let lightOK = !hasLighting || (try? dev.sendWithRetry(lighting)) != nil
             let allOK = stagesOK && dpiOK && pollOK && brightOK && lightOK
-            let anyOK = dpiOK || pollOK || (hasLighting && (brightOK || lightOK))
+            let anyOK = dpiOK || (polls && pollOK) || (hasLighting && (brightOK || lightOK))
                 || (stagesReport != nil && stagesOK)
             self.publish {
                 if let token { self.pendingEffect.finish(token) }
@@ -1263,7 +1268,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                     self.activeDpiStage = stages.firstIndex(of: Int(dpi)) ?? 0
                 }
                 if dpiOK { self.dpi = Int(dpi) }
-                if pollOK { self.pollRate = hz }
+                if polls && pollOK { self.pollRate = hz }
                 if hasLighting && brightOK { self.brightness = brightnessPct }
                 // The contains-check covers a profile deleted while the writes were in
                 // flight — marking it active would persist a dangling id.

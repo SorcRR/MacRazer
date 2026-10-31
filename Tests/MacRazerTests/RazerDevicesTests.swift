@@ -196,6 +196,25 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(RazerDevices.connection(pid: 0x00B8), .wirelessDongle)
     }
 
+    /// The Viper V4 Pro on its cable: no lighting, polling still to verify, and the classic
+    /// polling command refused, so the picker stays hidden.
+    func testViperV4ProWiredCapabilities() {
+        XCTAssertEqual(RazerDevices.unverified(pid: 0x00E5), [.polling])
+        XCTAssertTrue(RazerDevices.hasBattery(pid: 0x00E5))
+        XCTAssertFalse(RazerDevices.hasLighting(pid: 0x00E5))
+        XCTAssertEqual(RazerDevices.maxDPI(pid: 0x00E5), 45000)
+        XCTAssertEqual(RazerDevices.connection(pid: 0x00E5), .wired)
+    }
+
+    /// The models that answer the classic polling command with "not supported".
+    func testClassicPollingRefusals() {
+        for pid in [0x00A4, 0x00EA, 0x00E3, 0x00E5] {
+            XCTAssertFalse(RazerDevices.acceptsClassicPolling(pid: pid), String(pid, radix: 16))
+        }
+        XCTAssertTrue(RazerDevices.acceptsClassicPolling(pid: 0x00DB))
+        XCTAssertTrue(RazerDevices.acceptsClassicPolling(pid: 0x9999), "unknown models still try it")
+    }
+
     func testConnectionKind() {
         XCTAssertEqual(RazerDevices.connection(pid: 0x00DB), .wirelessDongle)
         XCTAssertEqual(RazerDevices.connection(pid: 0x00DA), .wired)
