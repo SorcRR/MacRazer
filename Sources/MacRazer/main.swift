@@ -689,6 +689,21 @@ case "rgb":
             }
             print("Setting static \(hex) …")
             report = RazerCommands.setStatic(rgb: rgb)
+        case "breathing":
+            // No colour: random. One: single. Two: dual.
+            let hexes = Array(args.dropFirst(2).prefix(2))
+            let colors = hexes.compactMap(parseHex)
+            guard colors.count == hexes.count else {
+                print("Usage: rgb breathing [rrggbb [rrggbb]]   e.g. `rgb breathing ff0000`")
+                exit(64)
+            }
+            switch colors.count {
+            case 0: print("Setting breathing, random colours …"); report = RazerCommands.setBreathingRandom()
+            case 1: print("Setting breathing \(hexes[0]) …"); report = RazerCommands.setBreathingSingle(rgb: colors[0])
+            default:
+                print("Setting breathing \(hexes[0]) / \(hexes[1]) …")
+                report = RazerCommands.setBreathingDual(rgb1: colors[0], rgb2: colors[1])
+            }
         case "spectrum":
             print("Setting spectrum cycle …"); report = RazerCommands.setSpectrum()
         case "wave":
@@ -703,7 +718,7 @@ case "rgb":
         case "off":
             print("Turning lighting off …"); report = RazerCommands.setNone()
         default:
-            print("Usage: rgb <static rrggbb | spectrum | wave [speed] | off>")
+            print("Usage: rgb <static rrggbb | breathing [rrggbb [rrggbb]] | spectrum | wave [speed] | off>")
             exit(64)
         }
         let resp = try DeviceProbe.applyLighting(dev, report)
@@ -717,6 +732,6 @@ case "rgb":
 
 default:
     print("Unknown command: \(command)")
-    print("Available: info, discover, devicetest, bluetoothtest, battery, dpi [x] [y], poll [hz], stages [d1,d2,…] [active], rgb <static rrggbb|spectrum|wave|off>, brightness [pct], login-item [on|off]")
+    print("Available: info, discover, devicetest, bluetoothtest, battery, dpi [x] [y], poll [hz], stages [d1,d2,…] [active], rgb <static rrggbb|breathing [rrggbb [rrggbb]]|spectrum|wave [speed]|off>, brightness [pct], login-item [on|off]")
     exit(64)
 }

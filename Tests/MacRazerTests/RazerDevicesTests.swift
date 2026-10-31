@@ -272,6 +272,7 @@ final class RazerDevicesTests: XCTestCase {
     func testLightingEffectRawValuesAreFrozen() {
         // Raw values are persisted in saved profiles — renaming a case orphans user data.
         XCTAssertEqual(LightingEffect.staticColor.rawValue, "Static")
+        XCTAssertEqual(LightingEffect.breathing.rawValue, "Breathing")
         XCTAssertEqual(LightingEffect.spectrum.rawValue, "Spectrum")
         XCTAssertEqual(LightingEffect.wave.rawValue, "Wave")
         XCTAssertEqual(LightingEffect.off.rawValue, "Off")

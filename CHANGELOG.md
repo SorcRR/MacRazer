@@ -29,6 +29,11 @@ expect rough edges until 1.0.
 - **Seven more mice from your reports.** Naga V3 Pro on its cable and Naga Trinity are fully
   supported. Basilisk V4 Pro, DeathAdder V2 Pro, DeathAdder V3 HyperSpeed, Mouse Dock Pro and
   Naga Chroma are partly supported.
+- **Breathing lighting.** The Lighting card has a new Breathing effect. The lights fade in
+  and out in the colour you pick from the swatches or the colour wheel. It works over USB and
+  the 2.4 GHz dongle. A Razer keyboard gets it too, but that is untested. Over Bluetooth only
+  a static colour is available, as before. From the command line, `rgb breathing` also takes two colours, or none
+  for random ones.
 
 ### Changed
 - **Settings has a new layout.** A wider window with a sidebar for General, Privacy,
