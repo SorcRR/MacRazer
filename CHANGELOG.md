@@ -24,9 +24,9 @@ expect rough edges until 1.0.
 - **The device test knows what's already verified.** On a fully supported mouse it says no
   test is needed. On a partly supported one it lists what works and offers to test only
   what's missing. Both name the mouse's other connections that still need a report.
-- **Seven more mice from your reports.** Naga V3 Pro on its cable and Naga Trinity are fully
-  supported. Basilisk V4 Pro, DeathAdder V2 Pro, DeathAdder V3 HyperSpeed, Mouse Dock Pro and
-  Naga Chroma are partly supported.
+- **Eight more mice from your reports.** Naga V3 Pro on its cable, Naga Trinity and Viper V3
+  HyperSpeed are fully supported. Basilisk V4 Pro, DeathAdder V2 Pro, DeathAdder V3
+  HyperSpeed, Mouse Dock Pro and Naga Chroma are partly supported.
 
 ### Changed
 - **Settings has a new layout.** A wider window with a sidebar for General, Privacy,
