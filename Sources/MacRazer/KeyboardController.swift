@@ -134,6 +134,15 @@ final class KeyboardController: ObservableObject, @unchecked Sendable {
         write(next, brightness: false)
     }
 
+    /// Only while the keyboard runs Wave, where the slider is. Goes through `write` like
+    /// every other change, so it can't race one already queued.
+    func setWaveSpeed(_ speed: UInt8) {
+        guard lighting.effect == .wave else { return }
+        var next = lighting
+        next.waveSpeed = speed
+        write(next, brightness: false)
+    }
+
     func setBrightness(_ percent: Int) {
         var next = lighting
         next.brightness = max(0, min(percent, 100))
@@ -184,7 +193,8 @@ final class KeyboardController: ObservableObject, @unchecked Sendable {
             var failure: Error?
             do {
                 if effect, let e = next.effect {
-                    _ = try device.sendWithRetry(RazerKeyboards.report(for: e, color: next.color),
+                    _ = try device.sendWithRetry(RazerKeyboards.report(for: e, color: next.color,
+                                                                       waveSpeed: next.waveSpeed ?? WaveSpeed.standard),
                                                  attempts: HIDDevice.defaultAttempts, transactionId: info.transactionId)
                 }
                 if brightness {
@@ -244,10 +254,11 @@ final class KeyboardController: ObservableObject, @unchecked Sendable {
     // MARK: Previews
 
     /// For `render-ui keyboard`: a keyboard on screen without one plugged in.
-    func loadPreviewState(followsMouse: Bool = false, synapse: Bool = false) {
+    func loadPreviewState(followsMouse: Bool = false, synapse: Bool = false, wave: Bool = false) {
         isPreview = true
         keyboard = Keyboard(pid: 0x022A, name: "Razer Cynosa Chroma", verified: true)
-        lighting = KeyboardLighting(effect: .staticColor, color: RGB(r: 0xFF, g: 0x00, b: 0x00), brightness: 100)
+        lighting = KeyboardLighting(effect: wave ? .wave : .staticColor, color: RGB(r: 0xFF, g: 0x00, b: 0x00),
+                                    brightness: 100)
         synapseRunning = synapse
         self.followsMouse = followsMouse
         owner = nil

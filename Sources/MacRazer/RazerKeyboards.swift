@@ -41,8 +41,8 @@ enum RazerKeyboards {
     static let led = Razer.backlightLed
 
     /// The effect command for `effect`, on the backlight. The same builders as the mouse's.
-    static func report(for effect: LightingEffect, color: RGB) -> RazerReport {
-        RazerCommands.effect(effect, color: color, led: led)
+    static func report(for effect: LightingEffect, color: RGB, waveSpeed: UInt8 = WaveSpeed.standard) -> RazerReport {
+        RazerCommands.effect(effect, color: color, led: led, waveSpeed: waveSpeed)
     }
 
     /// Index into `interfaces` of the keyboard control interface to open, or nil when no
@@ -67,6 +67,9 @@ struct KeyboardLighting: Codable, Equatable, Sendable {
     var effect: LightingEffect?
     var color: RGB
     var brightness: Int
+    /// The wave's speed byte (`WaveSpeed`). Optional so lighting saved before it existed
+    /// still decodes; nil is the standard speed.
+    var waveSpeed: UInt8?
 
     static let unknown = KeyboardLighting(effect: nil, color: RGB(r: 0x44, g: 0xD6, b: 0x2C), brightness: 100)
 }

@@ -59,6 +59,14 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// lighting the mouse never took).
     @Published private(set) var effect: LightingEffect = .staticColor
     @Published private(set) var lightingColor = RGB(r: 0x44, g: 0xD6, b: 0x2C) // razer green
+    /// The wave's speed byte (`WaveSpeed`). Like the effect it can't be read back, so the last
+    /// one set is kept across launches.
+    @Published private(set) var waveSpeed: UInt8 =
+        (UserDefaults.standard.object(forKey: MouseController.waveSpeedKey) as? Int).map { UInt8(clamping: $0) }
+        ?? WaveSpeed.standard {
+        didSet { UserDefaults.standard.set(Int(waveSpeed), forKey: Self.waveSpeedKey) }
+    }
+    static let waveSpeedKey = "mouseWaveSpeed"
     /// Counts lighting the app has set on the mouse: an effect, a colour, a brightness or a
     /// profile. Not reads: "Also light the keyboard" follows what the person sets, and the
     /// brightness read after launch would otherwise push the unread default effect along.
@@ -1112,8 +1120,21 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         current == .breathing && effectsSupported ? .breathing : .staticColor
     }
 
-    private func report(for effect: LightingEffect, color: RGB) -> RazerReport {
-        RazerCommands.effect(effect, color: color)
+    private func report(for effect: LightingEffect, color: RGB, waveSpeed: UInt8? = nil) -> RazerReport {
+        RazerCommands.effect(effect, color: color, waveSpeed: waveSpeed ?? self.waveSpeed)
+    }
+
+    /// Sets the wave's speed. Sent to the mouse straight away while it runs Wave; otherwise
+    /// kept for the next time Wave is picked.
+    func setWaveSpeed(_ speed: UInt8) {
+        guard speed != waveSpeed else { return }
+        guard effect == .wave else {
+            waveSpeed = speed
+            return
+        }
+        sendLighting(report(for: .wave, color: lightingColor, waveSpeed: speed)) {
+            self.waveSpeed = speed
+        }
     }
 
     /// Every lighting change the user makes goes through here, so it is the one place the
@@ -1169,7 +1190,8 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                                     color: lightingColor,
                                     buttonMappings: remapper.mappings,
                                     // The stage table the DPI button cycles is config too.
-                                    dpiStages: dpiStages.isEmpty ? nil : dpiStages)
+                                    dpiStages: dpiStages.isEmpty ? nil : dpiStages,
+                                    waveSpeed: deviceHasLighting && effect == .wave ? waveSpeed : nil)
         profiles.append(profile)
         ProfileStore.save(profiles, forDevice: key)
         activeProfileID = profile.id
@@ -1192,7 +1214,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         let hz = profile.pollRate == 0 ? 1000 : profile.pollRate
         let brightnessPct = max(0, min(profile.brightness, 100))
         let effect = profile.lightingEffect
-        let lighting = report(for: effect, color: profile.color)
+        // A profile saved before the speed existed keeps whatever speed the slider has.
+        let speed = profile.waveSpeed ?? waveSpeed
+        let lighting = report(for: effect, color: profile.color, waveSpeed: speed)
         let color = profile.color
         let mappings = profile.buttonMappings
         // Restore the onboard stage table (what the DPI button cycles) when the profile
@@ -1238,6 +1262,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                     if hasLighting {
                         self.effect = effect
                         self.lightingColor = color
+                        if effect == .wave { self.waveSpeed = speed }
                         self.lightingChanges &+= 1
                     }
                     self.activeProfileID = profile.id

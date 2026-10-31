@@ -40,9 +40,12 @@ struct MouseProfile: Codable, Identifiable, Equatable {
     /// profiles saved before this existed keep decoding (they apply without touching the
     /// stage table, exactly as they always did).
     var dpiStages: [Int]?
+    /// The wave's speed byte (`WaveSpeed`). Optional for the same reason: older profiles
+    /// apply at whatever speed the slider has.
+    var waveSpeed: UInt8?
 
     init(name: String, dpi: Int, pollRate: Int, brightness: Int, effect: String, color: RGB,
-         buttonMappings: [Int: RemapAction], dpiStages: [Int]? = nil) {
+         buttonMappings: [Int: RemapAction], dpiStages: [Int]? = nil, waveSpeed: UInt8? = nil) {
         self.id = UUID()
         self.name = name
         self.dpi = dpi
@@ -52,6 +55,7 @@ struct MouseProfile: Codable, Identifiable, Equatable {
         self.color = color
         self.buttonMappings = buttonMappings
         self.dpiStages = dpiStages
+        self.waveSpeed = waveSpeed
     }
 
     /// One-line summary shown under a profile's name in the manage page. `effect` is empty
