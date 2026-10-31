@@ -32,6 +32,7 @@ final class RazerDevicesTests: XCTestCase {
             XCTAssertEqual(txn(0x00C5, cls), 0x1f) // DeathAdder V3 HyperSpeed dongle (hardware-verified)
             XCTAssertEqual(txn(0x007D, cls), 0x1f) // DeathAdder V2 Pro dongle (hardware-verified)
             XCTAssertEqual(txn(0x00B8, cls), 0x1f) // Viper V3 HyperSpeed dongle (hardware-verified)
+            XCTAssertEqual(txn(0x00E5, cls), 0x1f) // Viper V4 Pro cable (hardware-verified)
             XCTAssertEqual(txn(0x9999, cls), 0x1f) // unknown → Cobra default
         }
         // Plain Cobra: 0xFF for standard/misc, but 0x1f for extended-matrix (lighting) —
