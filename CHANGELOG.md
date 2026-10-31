@@ -7,6 +7,10 @@ expect rough edges until 1.0.
 ## [Unreleased]
 
 ### Added
+- **Sliders follow the scroll wheel.** Scroll over any slider in the popover (DPI, brightness,
+  wave speed, sleep timer) to move it: up raises the value, whatever your natural-scrolling
+  setting. Each wheel notch moves 1% of the slider (250 for DPI, 15 seconds for the sleep
+  timer), and the change goes to the mouse or keyboard once you stop scrolling.
 - **Wave speed.** Picking Wave shows a speed slider, from slow to fast, for the mouse and for a
   Razer keyboard alike. The speed is kept for the next time you pick Wave, saved in profiles,
   and carried over when the keyboard follows the mouse.

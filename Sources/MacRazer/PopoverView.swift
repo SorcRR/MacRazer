@@ -381,6 +381,13 @@ struct PopoverView: View {
         controller.deviceKey.map { "customDPI-\($0)" }
     }
 
+    /// The DPI slider's value goes to the mouse: at the end of a drag, or once scrolling stops.
+    private func commitDPI(_ value: Double) {
+        let v = Int(value)
+        controller.setDPI(v)
+        if !displayedStages.contains(v) { saveCustomDPI(v) } // remember the manual value
+    }
+
     private func loadCustomDPI() {
         let stored = customDPIKey.flatMap { UserDefaults.standard.object(forKey: $0) as? Int }
             ?? min(8000, controller.deviceMaxDPI)
@@ -1054,14 +1061,11 @@ struct PopoverView: View {
             }
             if controller.supportsFreeDPI {
                 Slider(value: $dpiValue, in: 100...Double(controller.deviceMaxDPI), step: 50) { editing in
-                    if !editing {
-                        let v = Int(dpiValue)
-                        controller.setDPI(v)
-                        if !displayedStages.contains(v) { saveCustomDPI(v) } // remember the manual value
-                    }
+                    if !editing { commitDPI(dpiValue) }
                 }
                 .tint(.razerGreen)
                 .controlSize(.small)
+                .scrollAdjusts($dpiValue, in: 100...Double(controller.deviceMaxDPI), snap: 50, onCommit: commitDPI)
             }
             HStack(spacing: 6) {
                 ForEach(Array(displayedStages.enumerated()), id: \.offset) { index, value in
@@ -1169,6 +1173,7 @@ struct PopoverView: View {
                 }
                 .tint(.razerGreen)
                 .controlSize(.small)
+                .scrollAdjusts($sleepTimeoutValue, in: 60...900, snap: 15) { controller.setSleepTimeout(Int($0)) }
             }
             .disabled(controller.sleepTimeout == nil)
             HStack(spacing: 5) {
@@ -1311,6 +1316,7 @@ struct PopoverView: View {
                 }
                 .tint(.razerGreen)
                 .controlSize(.small)
+                .scrollAdjusts($brightnessValue, in: 0...100, snap: 1) { controller.setBrightness(Int($0)) }
                 Image(systemName: "sun.max.fill").font(.system(size: 11)).foregroundStyle(.secondary)
             }
             // Bound straight to the controller: setEffect publishes only on a successful
@@ -1402,6 +1408,7 @@ struct PopoverView: View {
             .controlSize(.small)
             .accessibilityLabel("Wave speed")
             .accessibilityValue(WaveSpeed.spokenValue(fromFraction: value.wrappedValue))
+            .scrollAdjusts(value, in: 0...1, onCommit: onCommit)
             Image(systemName: "hare.fill").font(.system(size: 11)).foregroundStyle(.secondary)
         }
     }
@@ -1563,6 +1570,7 @@ struct PopoverView: View {
                 }
                 .tint(.razerGreen)
                 .controlSize(.small)
+                .scrollAdjusts($keyboardBrightnessValue, in: 0...100, snap: 1) { keyboard.setBrightness(Int($0)) }
                 Image(systemName: "sun.max.fill").font(.system(size: 11)).foregroundStyle(.secondary)
             }
             // nil (never set from MacRazer) shows no segment picked rather than a guess.

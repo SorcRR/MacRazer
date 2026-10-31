@@ -351,6 +351,13 @@ long content scrolls without resizing the popover):
  progress, where Esc cancels that).
  - Swatches, chips and the icon buttons carry VoiceOver labels and tooltips; chips and
  rows get a hover highlight.
+ - **Scroll wheel on sliders** (`SliderScroll.swift`, `.scrollAdjusts`): while the pointer is
+ over a slider, a local `NSEvent` monitor takes vertical scrolls. Up raises the value with
+ the natural-scrolling inversion undone. A wheel notch is 1% of the range, rounded to the
+ slider's own step and never finer (`SliderScroll.notch`: DPI 250, sleep timer 15 s); a
+ trackpad moves in proportion (300 pt crosses the slider), momentum is ignored, and the value
+ lands on the slider's step grid. The write goes out 0.3 s after scrolling stops, or when the pointer
+ leaves.
 - **Appearance**, `PopoverTheme.swift`: Settings › Appearance has a **Theme** (System, Dark,
  Light, Razer Green) and a **Glass effect** switch (off by default), stored as `appearance.theme` and
  `appearance.glass` in UserDefaults. `PopoverLook.resolve` turns theme, glass and the system's
@@ -642,6 +649,7 @@ that path draws the content but needs an explicit size, since there is no window
 | `HIDDevice.swift` | IOKit HID open/enumerate + request/response send. |
 | `HIDDeviceSelection.swift` | Which device and interface to open; tells mice from keyboards. |
 | `HIDMonitor.swift` | IOKit service notifications for plug/unplug. |
+| `SliderScroll.swift` | Scroll wheel and trackpad scrolling on the popover's sliders. |
 | `RazerKeyboards.swift` | Keyboards whose backlight MacRazer sets (PID, transaction id), their interface pick, Synapse detection. |
 | `KeyboardController.swift` | The keyboard's lighting: its own device and queue, follow-the-mouse, who sets colours while Synapse runs. |
 | `RazerTransport.swift` | Transport protocol shared by USB and Bluetooth, plus the shared retry ladder. |
