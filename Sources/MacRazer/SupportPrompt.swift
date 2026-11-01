@@ -4,7 +4,8 @@
 import Combine
 import Foundation
 
-/// A Razer mouse that isn't on the verified list, as the support prompt needs to describe it.
+/// A Razer mouse the support prompt asks about: not on the verified list, partly verified, or
+/// verified here but not on another way it connects (`RazerDevices.needsReport`).
 struct UnsupportedMouse: Equatable {
     let pid: Int
     let name: String
@@ -37,8 +38,9 @@ enum SupportPromptPolicy {
 
     static func shouldAsk(pid: Int, record: SupportPromptRecord, enabled: Bool, now: Date) -> Bool {
         // Checked here and not only by the caller: a model promoted in a later release stops
-        // asking without anything having to clear its record.
-        guard enabled, !RazerDevices.fullySupported(pid: pid) else { return false }
+        // asking without anything having to clear its record. A mouse fully supported on this
+        // link is still asked about when another way it connects needs a report.
+        guard enabled, RazerDevices.needsReport(pid: pid) else { return false }
         guard !record.declined, !record.reported, record.timesAsked < maxAsks else { return false }
         guard let last = record.lastAsked else { return true }
         return now.timeIntervalSince(last) >= reminderAfter
@@ -47,7 +49,7 @@ enum SupportPromptPolicy {
     /// The card at the top of the popover. Stays until the person reports or hides it, unlike
     /// the window, because it only shows when they've opened the popover themselves.
     static func showsCard(pid: Int, record: SupportPromptRecord, enabled: Bool) -> Bool {
-        enabled && !RazerDevices.fullySupported(pid: pid) && !record.declined && !record.reported
+        enabled && RazerDevices.needsReport(pid: pid) && !record.declined && !record.reported
     }
 }
 
@@ -61,7 +63,7 @@ final class SupportPrompt: ObservableObject {
 
     private let defaults: UserDefaults
     @Published private(set) var records: [Int: SupportPromptRecord]
-    /// Settings › "Ask me to test unsupported mice".
+    /// Settings › "Ask me to help test my mouse".
     @Published var isEnabled: Bool {
         didSet { defaults.set(isEnabled, forKey: Self.enabledKey) }
     }
@@ -109,8 +111,14 @@ final class SupportPrompt: ObservableObject {
                 // `report` is read off the model, not from the publishers: it is set before
                 // either of these changes and cleared by `reset` before they go back.
                 guard let model, state == .sent || (issueOpened && !model.canSend),
-                      let pid = model.report?.device.productID else { return }
-                self?.markReported(pid: pid)
+                      let device = model.report?.device else { return }
+                self?.markReported(pid: device.productID)
+                // A link verified elsewhere asked for this one. The report answers it too, so
+                // its card doesn't keep asking for a test that has been done.
+                guard let link = device.connection.map(RazerConnection.init(reportConnection:)) else { return }
+                for pid in RazerDevices.rowsAnswered(byReportFrom: device.productID, name: device.name, on: link) {
+                    self?.markReported(pid: pid)
+                }
             }
     }
 
@@ -121,5 +129,16 @@ final class SupportPrompt: ObservableObject {
         guard !accessGranted,
               let mouse = mice.first(where: { !RazerDevices.fullySupported(pid: $0.pid) }) else { return nil }
         return UnsupportedMouse(pid: mouse.pid, name: mouse.name, canControl: false)
+    }
+}
+
+extension RazerConnection {
+    /// The registry's name for the link a device test report was run on.
+    init(reportConnection: DeviceReport.Connection) {
+        switch reportConnection {
+        case .cable: self = .wired
+        case .dongle: self = .wirelessDongle
+        case .bluetooth: self = .bluetooth
+        }
     }
 }

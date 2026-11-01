@@ -125,22 +125,10 @@ final class DeviceTestModel: ObservableObject {
     }
 
     /// How far the registry already supports the connected link. Decides which intro shows.
-    enum Support: Equatable {
-        /// Every control is verified on this link: no test needed.
-        case full
-        /// Some controls are verified and some aren't, so the test can ask for just those.
-        case partly(works: [RazerFeature], missing: [RazerFeature])
-        /// Not on record, or on record with nothing shown working yet: the full test.
-        case unknown
-    }
+    typealias Support = RazerDevices.LinkSupport
 
     var support: Support {
-        guard let pid = previewPID ?? controller.deviceID, let missing = RazerDevices.unverified(pid: pid) else {
-            return .unknown
-        }
-        if missing.isEmpty { return .full }
-        let works = RazerDevices.verified(pid: pid)
-        return works.isEmpty ? .unknown : .partly(works: works, missing: missing)
+        (previewPID ?? controller.deviceID).map { RazerDevices.support(pid: $0) } ?? .unknown
     }
 
     /// Whether the connected model is already on the verified list. Decides the window title.
@@ -532,14 +520,29 @@ final class DeviceTestModel: ObservableObject {
     }
 
     /// The link worth testing next, or nil. A mouse is a different product id on its cable and
-    /// its dongle, so each link needs its own report. A mouse on a cable with no battery is
-    /// wired only, and a link the registry already fully supports for this model needs none.
+    /// its dongle, so each link needs its own report. A known model asks the registry, which
+    /// the intro and the support prompt ask too (`RazerDevices.linksToTest`). For an unknown
+    /// one, a mouse on a cable with no battery is wired only; otherwise the other USB link.
     var otherLink: DeviceReport.Connection? {
         guard let report, let connection = report.device.connection, connection != .bluetooth else { return nil }
-        if connection == .cable, report.battery.outcome != .passed, report.registry?.hasBattery != true { return nil }
-        let other: DeviceReport.Connection = connection == .cable ? .dongle : .cable
-        let registryLink: RazerConnection = other == .cable ? .wired : .wirelessDongle
-        return RazerDevices.fullySupported(modelOf: report.device.productID, on: registryLink) ? nil : other
+        let pid = report.device.productID
+        if RazerDevices.info(pid: pid) != nil {
+            let next = RazerDevices.linksToTest(besides: pid).lazy.compactMap { link -> DeviceReport.Connection? in
+                switch link.connection {
+                case .wired: return .cable
+                case .wirelessDongle: return .dongle
+                case .bluetooth: return nil
+                }
+            }.first
+            if let next { return next }
+            // A battery this run read means a dongle, even when the row says no battery: that
+            // report is what corrects the row.
+            if connection == .cable, report.battery.outcome == .passed,
+               !RazerDevices.fullySupported(modelOf: pid, on: .wirelessDongle) { return .dongle }
+            return nil
+        }
+        if connection == .cable, report.battery.outcome != .passed { return nil }
+        return connection == .cable ? .dongle : .cable
     }
 
     /// From the start again, for the other link once the person has switched to it.

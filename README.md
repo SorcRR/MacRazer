@@ -107,11 +107,13 @@ can still run one to confirm it works on your firmware. The full
 test needs the dongle or a cable. A mouse on Bluetooth gets a shorter test that only reads.
 
 You don't have to find the menu item. When an unverified mouse connects by cable or dongle,
-MacRazer asks once, when no other window is open. If you say Not Now, it reminds you once a
+MacRazer asks once, when no other window is open. A partly verified mouse is asked about just
+what's missing. A mouse verified on one connection but not another (say, the dongle but not
+the cable or Bluetooth) gets a note telling you which and how to switch. If you say Not Now, it reminds you once a
 week later and then stops. A card at the top of the popover offers the same test until you send
 a report or hide it. "Don't ask for this mouse" stops both for that model. If the mouse is
 plugged in before Input Monitoring is allowed, the window starts with that permission. To turn
-all of this off, use Settings › General › **Ask me to test unsupported mice**.
+all of this off, use Settings › General › **Ask me to help test my mouse**.
 
 ### What a device report contains
 

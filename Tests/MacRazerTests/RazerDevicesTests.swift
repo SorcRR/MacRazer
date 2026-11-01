@@ -170,6 +170,16 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(RazerDevices.verified(pid: 0x9999), [])
     }
 
+    /// Whether a report would still help, on this link or another.
+    func testNeedsReport() {
+        XCTAssertFalse(RazerDevices.needsReport(pid: 0x00DB), "verified on every link")
+        XCTAssertTrue(RazerDevices.needsReport(pid: 0x0090), "verified, but the cable row isn't")
+        XCTAssertTrue(RazerDevices.needsReport(pid: 0x00E3), "partly verified")
+        XCTAssertTrue(RazerDevices.needsReport(pid: 0x9999), "unknown")
+        XCTAssertEqual(RazerDevices.support(pid: 0x0090), .full)
+        XCTAssertEqual(RazerDevices.support(pid: 0x008F), .unknown, "on record, nothing shown working")
+    }
+
     /// Which other links of a mouse the intro asks for.
     func testLinksToTest() {
         typealias Link = RazerDevices.LinkToTest
@@ -181,9 +191,21 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00DB), [])
         // No row for the cable, and a battery: worth asking, worded with an "if".
         XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00E3), [Link(connection: .wired, missing: nil)])
+        // AA-cell mice have no cable mode, so there's nothing to suggest.
+        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x0062), [], "Atheris")
+        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00B9), [], "Basilisk V3 X HyperSpeed")
         // Wired only, and Bluetooth never suggested without a row.
         XCTAssertEqual(RazerDevices.linksToTest(besides: 0x0067), [])
         XCTAssertEqual(RazerDevices.linksToTest(besides: 0x9999), [])
+    }
+
+    /// A cable report from a Naga Pro answers the dongle row's ask for a cable test, whether
+    /// the cable's product id is on record or not. A report from the dongle answers nothing.
+    func testReportAnswersTheRowThatAskedForIt() {
+        XCTAssertEqual(RazerDevices.rowsAnswered(byReportFrom: 0x008F, name: "Razer Naga Pro", on: .wired), [0x0090])
+        XCTAssertEqual(RazerDevices.rowsAnswered(byReportFrom: 0xFFF0, name: "Razer Naga Pro", on: .wired), [0x0090])
+        XCTAssertEqual(RazerDevices.rowsAnswered(byReportFrom: 0x0090, name: "Razer Naga Pro", on: .wirelessDongle), [])
+        XCTAssertEqual(RazerDevices.rowsAnswered(byReportFrom: 0xFFF0, name: "Razer Something Else", on: .wired), [])
     }
 
     /// The Viper V3 HyperSpeed has no lighting and a 26K sensor. Its firmware echoes DPI writes
@@ -194,6 +216,7 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertFalse(RazerDevices.hasLighting(pid: 0x00B8))
         XCTAssertEqual(RazerDevices.maxDPI(pid: 0x00B8), 26000)
         XCTAssertEqual(RazerDevices.connection(pid: 0x00B8), .wirelessDongle)
+        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00B8), [], "an AA-cell mouse has no cable mode")
     }
 
     /// The Viper V4 Pro on its cable: no lighting, polling still to verify, and the classic
