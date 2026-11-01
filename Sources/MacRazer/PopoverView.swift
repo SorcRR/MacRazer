@@ -1483,7 +1483,7 @@ struct PopoverView: View {
                 ForEach(devices) { accessory in
                     // Not a one-colour light: there'd be a colour to follow that nobody can set.
                     AccessoryCard(accessory: accessory, hasMouse: !noMouse && !controller.lightHasFixedColor,
-                                  mouseColor: controller.effect.usesColor ? controller.lightingColor.swiftUIColor : nil,
+                                  mouseGlow: mouseGlow,
                                   // A lone accessory starts open: there's nothing else to see.
                                   startsOpen: devices.count == 1) {
                         colorTarget = .accessory(accessory.id)
@@ -1497,6 +1497,14 @@ struct PopoverView: View {
                         in: RoundedRectangle(cornerRadius: 15))
             .overlay(RoundedRectangle(cornerRadius: 15).strokeBorder(Color.primary.opacity(0.10), lineWidth: 1))
         }
+    }
+
+    /// What the mouse's light shows, for an accessory following it. Over Bluetooth the
+    /// effect can't be set, so it's the colour.
+    private var mouseGlow: AccessoryIcon.Glow {
+        if Int(brightnessValue) == 0 { return .unlit }
+        if !controller.supportsLightingEffects { return .color(controller.lightingColor.swiftUIColor) }
+        return AccessoryIcon.Glow(effect: controller.effect, color: controller.lightingColor.swiftUIColor)
     }
 
     // MARK: Grouped settings

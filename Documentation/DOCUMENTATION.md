@@ -335,7 +335,9 @@ long content scrolls without resizing the popover):
  of the mouse being connected. They sit in a recessed tray (a shade darker than the popover,
  hairline edge, a count by the heading) so they read as their own group. `Accessories.shared` lists one `AccessoryController` per unit
  (PID and LocationID), each with its own device handle and queue; two of the same model are
- two cards. Closed, a card is one line: icon, name, an "Untested" tag for an untried model, a
+ two cards. Closed, a card is one line: a drawn keyboard or pad (`AccessoryIcon`, lit like
+ the device: keys or the pad's edge in its colour, a rainbow for Spectrum and Wave, plain when
+ off, unknown or left to Synapse, on a tile tinted the same), name, an "Untested" tag for an untried model, a
  colour dot and the effect. Clicking opens it; which are open is remembered per model
  (`popoverAccessoryExpanded.<pid>`), and a lone accessory starts open. Open, it has the mouse's
  brightness slider and an effect picker with the effects that model has (no Wave on the

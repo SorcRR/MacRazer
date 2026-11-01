@@ -130,8 +130,8 @@ struct AccessoryCard: View {
     /// A mouse is there to follow. Without one the switch goes and the card's own controls
     /// come back, so a "Follow mouse" left on can't hide them.
     let hasMouse: Bool
-    /// The mouse's colour, for the dot while following it; nil when its effect has no colour.
-    let mouseColor: Color?
+    /// What the mouse's light shows, for the icon and the dot while following it.
+    let mouseGlow: AccessoryIcon.Glow
     /// Opens the colour page for this accessory.
     let onPickColor: () -> Void
 
@@ -142,11 +142,11 @@ struct AccessoryCard: View {
     @State private var waveSpeed: Double
 
     /// `startsOpen` applies until the person opens or closes the card once.
-    init(accessory: AccessoryController, hasMouse: Bool, mouseColor: Color?, startsOpen: Bool,
+    init(accessory: AccessoryController, hasMouse: Bool, mouseGlow: AccessoryIcon.Glow, startsOpen: Bool,
          onPickColor: @escaping () -> Void) {
         self.accessory = accessory
         self.hasMouse = hasMouse
-        self.mouseColor = mouseColor
+        self.mouseGlow = mouseGlow
         self.onPickColor = onPickColor
         _expanded = AppStorage(wrappedValue: startsOpen, "popoverAccessoryExpanded.\(accessory.info.pid)")
         _brightness = State(initialValue: Double(accessory.lighting.brightness))
@@ -188,11 +188,7 @@ struct AccessoryCard: View {
 
     private var header: some View {
         HStack(spacing: 10) {
-            Image(systemName: info.kind.symbol)
-                .font(.system(size: 15))
-                .foregroundStyle(.primary.opacity(0.85))
-                .frame(width: 34, height: 34)
-                .background(Color.primary.opacity(0.10), in: RoundedRectangle(cornerRadius: 9))
+            AccessoryIcon(kind: info.kind, glow: glow)
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 6) {
                     Text(info.name).font(.system(size: 13, weight: .semibold)).lineLimit(1)
@@ -217,13 +213,19 @@ struct AccessoryCard: View {
         .contentShape(RoundedRectangle(cornerRadius: 13))
     }
 
-    /// The colour it shows: the mouse's while following, else its own, and none for an
-    /// effect without one (Spectrum, Wave, Off) or one MacRazer hasn't set.
+    /// What its light shows: the mouse's while following, else its own. Unlit while Synapse
+    /// has it or before MacRazer has set an effect: there's nothing known to draw.
+    private var glow: AccessoryIcon.Glow {
+        if accessory.leftToSynapse { return .unlit }
+        if following { return mouseGlow }
+        guard let effect = accessory.lighting.effect, accessory.lighting.brightness > 0 else { return .unlit }
+        return AccessoryIcon.Glow(effect: effect, color: accessory.lighting.color.swiftUIColor)
+    }
+
+    /// The colour by the subtitle, for an effect that has one.
     private var dot: Color? {
-        if accessory.leftToSynapse { return nil }
-        if following { return mouseColor }
-        guard let effect = accessory.lighting.effect, effect.usesColor else { return nil }
-        return accessory.lighting.color.swiftUIColor
+        if case .color(let color) = glow { return color }
+        return nil
     }
 
     private var subtitle: String {
@@ -320,5 +322,114 @@ struct AccessoryCard: View {
                 .tint(.razerGreen)
                 .controlSize(.mini)
         }
+    }
+}
+
+// MARK: Accessory icon
+
+/// A small drawing of the accessory in its card's tile, lit the way the real one is: keys or
+/// the pad's edge in its colour, a rainbow for Spectrum and Wave, plain while off or unknown.
+/// Tinted like the mouse's tile in the header, so the devices read as one family.
+struct AccessoryIcon: View {
+    enum Glow: Equatable {
+        case color(Color)
+        case rainbow
+        case unlit
+
+        init(effect: LightingEffect, color: Color) {
+            switch effect {
+            case .staticColor, .breathing: self = .color(color)
+            case .spectrum, .wave: self = .rainbow
+            case .off: self = .unlit
+            }
+        }
+    }
+
+    let kind: AccessoryKind
+    let glow: Glow
+
+    private static let rainbow = [Color.red, .orange, .yellow, .green, .cyan, .blue, .purple]
+
+    /// The tile behind the drawing: the light's colour, faint, or the plain grey tile.
+    private var tile: Color {
+        switch glow {
+        case .color(let color): return color.opacity(0.20)
+        case .rainbow: return Color.primary.opacity(0.12)
+        case .unlit: return Color.primary.opacity(0.10)
+        }
+    }
+
+    var body: some View {
+        Canvas { context, size in
+            switch kind {
+            case .keyboard: drawKeyboard(in: &context, size: size)
+            case .mousepad: drawMousepad(in: &context, size: size)
+            }
+        }
+        .frame(width: 24, height: 24)
+        .frame(width: 34, height: 34)
+        .background(tile, in: RoundedRectangle(cornerRadius: 9))
+        .accessibilityHidden(true)
+    }
+
+    private func shading(across rect: CGRect) -> GraphicsContext.Shading {
+        switch glow {
+        case .color(let color): return .color(color)
+        case .rainbow:
+            return .linearGradient(Gradient(colors: Self.rainbow),
+                                   startPoint: CGPoint(x: rect.minX, y: rect.midY),
+                                   endPoint: CGPoint(x: rect.maxX, y: rect.midY))
+        case .unlit: return .color(.primary.opacity(0.55))
+        }
+    }
+
+    /// A tenkeyless board seen from above: the case, three rows of keys and a space bar.
+    private func drawKeyboard(in context: inout GraphicsContext, size: CGSize) {
+        let body = CGRect(x: 0.5, y: 5, width: size.width - 1, height: 14)
+        context.fill(Path(roundedRect: body, cornerRadius: 2.5), with: .color(.primary.opacity(0.18)))
+        context.stroke(Path(roundedRect: body, cornerRadius: 2.5), with: .color(.primary.opacity(0.85)), lineWidth: 1)
+        let keys = shading(across: body)
+        // Seven keys to a row, sized to fit inside the case's 1.7 pt margins.
+        let gap: CGFloat = 0.8, inset: CGFloat = 1.7
+        let left = body.minX + inset, right = body.maxX - inset
+        let pitch = (right - left + gap) / 7, key = pitch - gap
+        func keyCap(_ x: CGFloat, _ y: CGFloat, width: CGFloat) {
+            context.fill(Path(roundedRect: CGRect(x: x, y: y, width: width, height: key), cornerRadius: 0.5), with: keys)
+        }
+        for (row, count) in [7, 7, 6].enumerated() {
+            let y = body.minY + 1.6 + CGFloat(row) * pitch
+            // The third row starts half a key in, the way a real board's rows step.
+            let indent = row == 2 ? pitch / 2 : 0
+            for i in 0..<count { keyCap(left + indent + CGFloat(i) * pitch, y, width: key) }
+        }
+        // Bottom row: a modifier each side of the space bar.
+        let bottom = body.minY + 1.6 + 3 * pitch
+        let modifier = key * 1.5
+        keyCap(left, bottom, width: modifier)
+        keyCap(left + modifier + gap, bottom, width: right - left - 2 * (modifier + gap))
+        keyCap(right - modifier, bottom, width: modifier)
+    }
+
+    /// A hard pad seen at a slight angle: its surface, the lit edge all round, the logo near
+    /// the top and the cable leaving the far corner.
+    private func drawMousepad(in context: inout GraphicsContext, size: CGSize) {
+        let pad = CGRect(x: 1, y: 5.5, width: size.width - 2, height: 15)
+        let outline = Path(roundedRect: pad, cornerRadius: 3)
+        context.fill(outline, with: .color(.primary.opacity(0.22)))
+        // The light: a soft halo, then the edge itself.
+        var halo = context
+        halo.addFilter(.blur(radius: 1.2))
+        halo.stroke(outline, with: shading(across: pad), lineWidth: 2.2)
+        context.stroke(outline, with: shading(across: pad), lineWidth: 1.3)
+        // Logo, near the top edge.
+        let logo = CGRect(x: pad.midX - 1.6, y: pad.minY + 2.2, width: 3.2, height: 3.2)
+        context.fill(Path(ellipseIn: logo), with: shading(across: pad))
+        // Cable, out of the top right corner.
+        var cable = Path()
+        cable.move(to: CGPoint(x: pad.maxX - 3, y: pad.minY))
+        cable.addCurve(to: CGPoint(x: pad.maxX + 0.5, y: 0.5),
+                       control1: CGPoint(x: pad.maxX - 3, y: pad.minY - 2.5),
+                       control2: CGPoint(x: pad.maxX, y: 2.5))
+        context.stroke(cable, with: .color(.primary.opacity(0.7)), style: StrokeStyle(lineWidth: 1, lineCap: .round))
     }
 }
