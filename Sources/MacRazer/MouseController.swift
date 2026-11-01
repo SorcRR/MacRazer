@@ -125,6 +125,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     @Published private(set) var isUpdatingDpiCycleButton = false
     /// A Razer mouse seen on Bluetooth while we aren't controlling one, and why.
     @Published private(set) var bluetoothMouse: BluetoothMouseStatus?
+    /// No mouse is known at all: never seen this session, or unplugged (which forgets its
+    /// name). Not a sleeping or out-of-range one, which keeps its name.
+    var noMouseKnown: Bool { !connected && deviceName == nil && bluetoothMouse == nil }
     @Published private(set) var bluetoothRecoveryState: BluetoothRecoveryState = .idle
     @Published private(set) var wakeRecoveryCounter = 0
 

@@ -260,9 +260,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         // and following that would repaint every accessory on each start. Turning the switch
         // on matches an accessory straight away (`AccessoryController.followsMouse`).
         let ctrl2 = controller
-        // Nothing to follow on a one-colour light: each accessory keeps its own lighting then.
+        // Nothing to follow on a one-colour light, or with no mouse at all: each accessory
+        // keeps its own lighting then, as its card shows.
         accessories.mouseLighting = { [weak ctrl2] in
-            ctrl2.flatMap { $0.lightHasFixedColor ? nil : $0 }
+            ctrl2.flatMap { $0.lightHasFixedColor || $0.noMouseKnown ? nil : $0 }
                 .map { AccessoryLighting(effect: $0.effect, color: $0.lightingColor, brightness: $0.brightness,
                                          waveSpeed: $0.waveSpeed) }
         }

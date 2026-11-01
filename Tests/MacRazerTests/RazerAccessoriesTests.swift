@@ -328,4 +328,13 @@ final class RazerAccessoriesTests: XCTestCase {
         XCTAssertFalse(SynapseDetector.isSynapse(bundleID: "com.apple.Safari", name: "Safari"))
         XCTAssertFalse(SynapseDetector.isSynapse(bundleID: nil, name: nil))
     }
+
+    /// "Follow mouse" has nothing to follow with no mouse known: the app gives accessories no
+    /// lighting then, so their own (which their cards show) is what goes back on.
+    func testNoMouseKnownUntilAMouseIsSeen() {
+        let mouse = MouseController()
+        XCTAssertTrue(mouse.noMouseKnown)
+        mouse.loadPreviewState()
+        XCTAssertFalse(mouse.noMouseKnown)
+    }
 }

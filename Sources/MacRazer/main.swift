@@ -247,7 +247,8 @@ case "render-ui":
         : args.contains("usage")
         ? AnyView(UsageGraphView(controller: controller, onBack: {}))
         : args.contains("profiles")
-        ? AnyView(ProfilesView(controller: controller, remapper: ButtonRemapper(), onBack: {}))
+        ? AnyView(ProfilesView(controller: controller, remapper: ButtonRemapper(), onBack: {},
+                                width: PopoverLayout.oneColumnWidth))
         : AnyView(PopoverView(controller: controller, remapper: ButtonRemapper(), updateChecker: updateChecker,
                               launchAtLogin: launchAtLogin, appearance: renderAppearance,
                               onOpenSettings: {},

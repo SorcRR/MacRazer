@@ -230,23 +230,51 @@ final class AccessoryController: ObservableObject, Identifiable, @unchecked Send
         let found = UncheckedDevice(device: chosen)
         io.async { [weak self] in
             guard let self else { return }
-            let isNew = self.device == nil
+            var isNew = self.device == nil
             if isNew { self.device = try? HIDDevice.open(found.device, as: "\(self.info.kind.rawValue) interface") }
-            guard let device = self.device else {
+            guard var device = self.device else {
                 self.publish { if self.isOpen { self.isOpen = false } }
                 return
             }
-            let brightness = try? device.sendWithRetry(RazerCommands.getBrightness(led: self.info.brightnessLed),
-                                                       attempts: HIDDevice.defaultAttempts,
-                                                       transactionId: self.info.transactionId).arguments[2]
+            var brightness: UInt8?
+            do {
+                brightness = try self.readBrightness(device)
+            } catch HIDDevice.HIDError.commandFailed, HIDDevice.HIDError.notSupported {
+                // It answered and refused: the handle is fine.
+            } catch where !isNew {
+                // A handle kept from before a quick unplug and replug on the same port: open
+                // the accessory afresh, as if it were new.
+                device.close()
+                self.device = try? HIDDevice.open(found.device, as: "\(self.info.kind.rawValue) interface")
+                guard let reopened = self.device else {
+                    self.publish { if self.isOpen { self.isOpen = false } }
+                    return
+                }
+                device = reopened
+                isNew = true
+                brightness = try? self.readBrightness(device)
+            } catch {
+                // Just opened and not answering yet: a later rescan reads it.
+            }
+            let reopenedAsNew = isNew, read = brightness
             self.publish {
                 if !self.isOpen { self.isOpen = true }
-                if let brightness {
-                    self.lighting.brightness = RazerCommands.brightnessPercent(fromRaw: brightness)
+                if let brightness = read {
+                    let percent = RazerCommands.brightnessPercent(fromRaw: brightness)
+                    // Only a change: every popover open rescans, and an unchanged value would
+                    // still redraw the whole popover.
+                    if self.lighting.brightness != percent { self.lighting.brightness = percent }
                 }
-                if isNew && reapply { self.reapplyOverSynapse() }
+                if reopenedAsNew && reapply { self.reapplyOverSynapse() }
             }
         }
+    }
+
+    /// `io` queue only.
+    private func readBrightness(_ device: HIDDevice) throws -> UInt8 {
+        try device.sendWithRetry(RazerCommands.getBrightness(led: info.brightnessLed),
+                                 attempts: HIDDevice.defaultAttempts,
+                                 transactionId: info.transactionId).arguments[2]
     }
 
     /// Unplugged: close the handle.

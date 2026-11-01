@@ -117,13 +117,12 @@ struct PopoverView: View {
         PopoverLayout.usesTwoColumns(preferred: appearance.twoColumns, hasMouse: !noMouse,
                                      accessories: accessories.available.count)
     }
-    private static let oneColumnWidth = PopoverLayout.oneColumnWidth
-    private var popoverWidth: CGFloat { twoColumns ? PopoverLayout.twoColumnWidth : Self.oneColumnWidth }
+    private var popoverWidth: CGFloat { twoColumns ? PopoverLayout.twoColumnWidth : PopoverLayout.oneColumnWidth }
     /// The page's 12 pt inset and the 10 pt gap between the columns.
     private var columnWidth: CGFloat { (popoverWidth - 24 - 10) / 2 }
     /// Sub-pages are one column of text and controls. In two columns they get the Buttons
     /// and Profiles windows' width, centred.
-    private var subPageWidth: CGFloat { twoColumns ? 440 : Self.oneColumnWidth }
+    private var subPageWidth: CGFloat { twoColumns ? 440 : PopoverLayout.oneColumnWidth }
     /// With its sections collapsed the main page can be short, and sub-pages that scroll (the
     /// usage charts, the button list) would be squeezed into it. Below this they grow instead.
     /// Not the colour page: it's a fixed-size picker, centred, and would only gain empty space.
@@ -164,7 +163,9 @@ struct PopoverView: View {
         // gating card may have been disabled in the meantime — e.g. Profiles after a
         // disconnect) is disorienting.
         // The accessory the colour page sets was unplugged: there's nothing left to set.
-        .onChange(of: accessories.available.map(\.id)) { _, ids in
+        // `connected`, not `available`: one failed write closes the device until the rescan
+        // reopens it, and that blip shouldn't throw the person off the page mid-drag.
+        .onChange(of: accessories.connected.map(\.id)) { _, ids in
             if page == .color, case .accessory(let id) = colorTarget, !ids.contains(id) { page = .main }
         }
         // Like the mouse's colour on the main page: the wheel shows what the accessory runs,
@@ -211,7 +212,7 @@ struct PopoverView: View {
                 if let accessory = colorTargetAccessory { accessory.setColor(rgb) } else { controller.setColor(rgb) }
             }
             // One column: the picker's own width. Two: the wheel and the rest side by side.
-            .frame(width: twoColumns ? popoverWidth : Self.oneColumnWidth)
+            .frame(width: twoColumns ? popoverWidth : PopoverLayout.oneColumnWidth)
             .frame(maxWidth: .infinity)
             Spacer(minLength: 0)
         }
@@ -382,9 +383,7 @@ struct PopoverView: View {
     /// that isn't there — every card disabled, the DPI chips showing defaults — so the page
     /// shows one card that says what to do, the way Control Center's Bluetooth module does
     /// with nothing paired.
-    private var noMouse: Bool {
-        !controller.connected && controller.deviceName == nil && controller.bluetoothMouse == nil
-    }
+    private var noMouse: Bool { controller.noMouseKnown }
 
     private var noMouseCard: some View {
         card {
@@ -1377,17 +1376,7 @@ struct PopoverView: View {
     /// The Lighting row's expanded content; the row itself shows the effect and brightness.
     private var lightingContent: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Brightness.
-            HStack(spacing: 6) {
-                Image(systemName: "sun.min.fill").font(.system(size: 10)).foregroundStyle(.secondary)
-                Slider(value: $brightnessValue, in: 0...100, step: 1) { editing in
-                    if !editing { controller.setBrightness(Int(brightnessValue)) }
-                }
-                .tint(.razerGreen)
-                .controlSize(.small)
-                .scrollAdjusts($brightnessValue, in: 0...100, snap: 1) { controller.setBrightness(Int($0)) }
-                Image(systemName: "sun.max.fill").font(.system(size: 11)).foregroundStyle(.secondary)
-            }
+            BrightnessSlider(value: $brightnessValue) { controller.setBrightness($0) }
             // Bound straight to the controller: setEffect publishes only on a successful
             // device write, so a failed change snaps the picker back by itself — no local
             // state, no suppression flags.
