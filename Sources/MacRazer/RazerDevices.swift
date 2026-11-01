@@ -161,10 +161,18 @@ enum RazerDevices {
         // razermouse_driver.c gives it 0xFF for every command it supports. Not verified
         // on hardware by us.
         .init(pid: 0x0083, name: "Razer Basilisk X HyperSpeed", unverified: [.battery, .dpi, .polling], hasBattery: true, hasLighting: false, maxDPI: 16000, transactionId: 0xff, matrixTransactionId: 0xff, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, hasCableLink: false),
-        // Basilisk V3 (user-reported working): wired-only, 11-zone lighting. Per
-        // razermouse_driver.c it takes 0x1f everywhere except the DPI-stages pair, which it
-        // shares with the plain Cobra's 0xFF group. Not yet re-verified on hardware by us.
-        .init(pid: 0x0099, name: "Razer Basilisk V3", unverified: [.dpi, .polling, .lighting], hasBattery: false, hasLighting: true, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, transactionOverrides: [0x0406: 0xff, 0x0486: 0xff], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
+        // Basilisk V3 on the cable (in-app report by SuperSpacer54376): DPI, the stage table,
+        // polling, static color and brightness all passed. It takes 0x1f everywhere except the
+        // DPI-stages pair, which answers on 0xFF as razermouse_driver.c says. Battery answers
+        // 0x05, as a wired-only mouse should. LOGO and SCROLL answer brightness; ZERO and
+        // BACKLIGHT return 0x03. The firmware echoed a 45000 DPI write; 26000 is its sensor's.
+        .init(pid: 0x0099, name: "Razer Basilisk V3", unverified: [], hasBattery: false, hasLighting: true, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, transactionOverrides: [0x0406: 0xff, 0x0486: 0xff], extraBrightnessLeds: [Razer.scrollLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
+        // DeathAdder Essential (two in-app reports, no credit given): wired only, battery 0x05.
+        // DPI, the stage table and polling passed with 0x1f (every id answers on the cable);
+        // it ships at 125 Hz. Its one light is green only: brightness on LOGO dims it, but a
+        // color can't show, so one run saw no red and lighting stays unverified. 6400 is the
+        // vendor spec.
+        .init(pid: 0x0098, name: "Razer DeathAdder Essential", unverified: [.lighting], hasBattery: false, hasLighting: true, maxDPI: 6400, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
         // Orochi2013
         .init(pid: 0x0039, name: "Razer Orochi 2013", unverified: [.polling], hasBattery: false, hasLighting: false, maxDPI: 6400, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
         // Viper Ultimate (Wireless)
@@ -188,7 +196,9 @@ enum RazerDevices {
         .init(pid: 0x00E7, name: "Razer Naga V3 Pro (Wired)", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed, Razer.backlightLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
         // Naga Trinity (in-app report, no credit given): wired only, so no battery (0x05).
         // DPI, polling, static color and brightness passed with 0x1f. LOGO and SCROLL answer
-        // brightness, ZERO and BACKLIGHT return 0x03. 16000 is OpenRazer's DPI_MAX.
+        // brightness, ZERO and BACKLIGHT return 0x03. 16000 is OpenRazer's DPI_MAX. A second
+        // report from another owner saw neither the dim nor the red, though every write
+        // succeeded; kept verified until a third report says which one is right.
         .init(pid: 0x0067, name: "Razer Naga Trinity", unverified: [], hasBattery: false, hasLighting: true, maxDPI: 16000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
         // Naga Chroma (in-app report, no credit given): an older wired-only Naga. DPI and
         // polling passed with 0x1f. Its battery read answers zeros. The extended-matrix
