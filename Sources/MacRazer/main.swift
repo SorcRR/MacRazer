@@ -231,7 +231,7 @@ case "render-ui":
                                                         : updateChecker.latestNotes,
                                     canInstallInPlace: updateChecker.canInstallInPlace,
                                     onBack: {}, onUpdate: installed ? nil : {}),
-                       size: CGSize(width: 320, height: 748), to: path)
+                       size: CGSize(width: PopoverLayout.oneColumnWidth, height: 748), to: path)
         break
     }
     // `twocolumns`: the two-column layout with only the mouse. Scratch defaults, so a render
@@ -243,7 +243,7 @@ case "render-ui":
                                   device: accessoryPIDs.isEmpty ? nil
                                       : .init(symbol: AccessoryKind.mousepad.symbol, name: "Razer Firefly V2", kind: "Mousepad"),
                                   onBack: {}, wide: args.contains("twocolumns"), onApply: { _ in })
-                    .frame(width: args.contains("twocolumns") ? PopoverLayout.twoColumnWidth : 320))
+                    .frame(width: args.contains("twocolumns") ? PopoverLayout.twoColumnWidth : PopoverLayout.oneColumnWidth))
         : args.contains("usage")
         ? AnyView(UsageGraphView(controller: controller, onBack: {}))
         : args.contains("profiles")

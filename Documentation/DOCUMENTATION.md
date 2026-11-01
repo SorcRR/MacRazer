@@ -286,7 +286,7 @@ any Razer mouse); the registry adds what has been verified about the model. Unkn
  is up. A new window only has to conform to be counted.
 
 ### 6.2 Popover, `PopoverView.swift`
-A **320 pt** wide navigable container (700 pt in two columns), as tall as its content, with a main page and sub-pages (colour, Buttons,
+A **350 pt** wide navigable container (700 pt in two columns), as tall as its content, with a main page and sub-pages (colour, Buttons,
 Usage, Profiles, What's new) and a push/pop slide animation; each page is a `ScrollView` (so
 long content scrolls without resizing the popover):
 

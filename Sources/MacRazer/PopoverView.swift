@@ -117,7 +117,7 @@ struct PopoverView: View {
         PopoverLayout.usesTwoColumns(preferred: appearance.twoColumns, hasMouse: !noMouse,
                                      accessories: accessories.available.count)
     }
-    private static let oneColumnWidth: CGFloat = 320
+    private static let oneColumnWidth = PopoverLayout.oneColumnWidth
     private var popoverWidth: CGFloat { twoColumns ? PopoverLayout.twoColumnWidth : Self.oneColumnWidth }
     /// The page's 12 pt inset and the 10 pt gap between the columns.
     private var columnWidth: CGFloat { (popoverWidth - 24 - 10) / 2 }
