@@ -136,6 +136,15 @@ final class HIDDeviceSelectionTests: XCTestCase {
                        "a known mouse is never dropped: its dongle and cable are the same mouse")
     }
 
+    /// A report names the interface the test opened, even when selection would pick another.
+    func testReportNamesTheOpenedInterface() {
+        let ids: [UInt64] = [11, 22, 33]
+        XCTAssertEqual(HIDDeviceSelection.reportedControlIndex(registryIDs: ids, opened: 33, selected: { 0 }), 2)
+        XCTAssertEqual(HIDDeviceSelection.reportedControlIndex(registryIDs: ids, opened: 99, selected: { 0 }), 0,
+                       "the opened one is gone: fall back to selection")
+        XCTAssertEqual(HIDDeviceSelection.reportedControlIndex(registryIDs: ids, opened: nil, selected: { 1 }), 1)
+    }
+
     func testMiceStayMice() {
         // The registry's names, plus older ones that share words with other product lines.
         let names = RazerDevices.known.map(\.name) + ["Razer DeathAdder Chroma", "Razer Mamba Chroma",

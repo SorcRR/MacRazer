@@ -1371,7 +1371,8 @@ struct PopoverView: View {
                 .transition(.opacity)
             }
 
-            if keyboard.keyboard != nil && keyboard.canWrite {
+            // Not for a one-colour light: the keyboard would follow a colour nobody can set.
+            if keyboard.keyboard != nil && keyboard.canWrite && !controller.lightHasFixedColor {
                 Divider().opacity(0.6)
                 HStack(spacing: 8) {
                     Image(systemName: "keyboard")
@@ -1551,7 +1552,9 @@ struct PopoverView: View {
     /// "Also light the keyboard" is on and there is a mouse to follow. With none, the
     /// keyboard's own controls come back: the switch lives on the mouse's Lighting row,
     /// which isn't there to turn it off.
-    private var keyboardFollowing: Bool { keyboard.followsMouse && keyboard.canWrite && !noMouse }
+    private var keyboardFollowing: Bool {
+        keyboard.followsMouse && keyboard.canWrite && !noMouse && !controller.lightHasFixedColor
+    }
 
     /// Like `lightingSummary`, for the keyboard. Before MacRazer has set an effect it can only
     /// say the brightness: the keyboard's own effect can't be read.

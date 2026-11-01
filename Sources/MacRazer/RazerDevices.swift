@@ -180,7 +180,10 @@ enum RazerDevices {
         // The older DeathAdder Essential and its White Edition (no reports yet): wired only,
         // 6400 DPI. razermouse_driver.c gives them 0xFF for DPI and polling. Their light uses
         // the older single-LED commands, not the extended matrix this app sends, so no
-        // lighting here until someone tries it.
+        // lighting here until someone tries it. The 2018 one reports the same product string
+        // as the 0x0098 row; its name here says the year so the two read apart in lists.
+        // Nothing matches rows by name across the same link, so the difference is harmless,
+        // but tell them apart by product id, not by name.
         .init(pid: 0x006E, name: "Razer DeathAdder Essential (2018)", unverified: [.dpi, .polling], hasBattery: false, hasLighting: false, maxDPI: 6400, transactionId: 0xff, matrixTransactionId: 0xff, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
         .init(pid: 0x0071, name: "Razer DeathAdder Essential White Edition", unverified: [.dpi, .polling], hasBattery: false, hasLighting: false, maxDPI: 6400, transactionId: 0xff, matrixTransactionId: 0xff, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
         // Orochi2013

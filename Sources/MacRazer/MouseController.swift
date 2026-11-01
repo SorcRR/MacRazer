@@ -498,14 +498,14 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// `immediateOffline` so the disconnect shows at once (bypassing the timeout debounce,
     /// since a USB termination is definitive). Also realigns the poll cadence.
     func forceCheck(immediateOffline: Bool) {
-        // Not mid-test: the steps must all talk to the device the test started on.
-        let testing = deviceTestActive
         io.async { [weak self] in
             guard let self else { return }
             // A plug event is the only way a different unit can turn up on an interface we
             // already know, so the cached serial is no longer evidence of which mouse it is.
             self.knownSerial = nil
-            if !testing { self.releaseDeviceIfOutranked() }
+            // Not mid-test: the steps must all talk to the device the test started on. Read
+            // here on `io`, not when the event came in, so a test that began in between counts.
+            if !self.deviceTestActiveForIO { self.releaseDeviceIfOutranked() }
         }
         checkNow(immediateOffline: immediateOffline)
     }
@@ -857,9 +857,12 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// anyway; this keeps the poll and the popover's settings reads from adding traffic and
     /// noise to the session, or publishing a half-way state between steps.
     private(set) var deviceTestActive = false
+    /// `deviceTestActive` as `io` sees it, set in queue order with the test's own steps.
+    private var deviceTestActiveForIO = false
 
     func beginDeviceTest() {
         deviceTestActive = true
+        io.async { [weak self] in self?.deviceTestActiveForIO = true }
         pollTimer?.invalidate()
         pollTimer = nil
         settingsTimer?.invalidate()
@@ -887,6 +890,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     func endDeviceTest() {
         guard deviceTestActive else { return }
         deviceTestActive = false
+        io.async { [weak self] in self?.deviceTestActiveForIO = false }
         refreshAll()
         scheduleNextPoll(after: BatteryPollStateMachine.Cadence.settling)
         // A popover opened during the test didn't start its live reads; start them now.

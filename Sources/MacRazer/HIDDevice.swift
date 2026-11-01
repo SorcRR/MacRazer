@@ -53,9 +53,13 @@ final class HIDDevice {
     let productName: String
     /// Where the device sits on the USB bus. Stable for as long as it stays plugged in.
     let locationID: Int
+    /// This interface's IORegistry entry ID. Each enumeration hands out new `IOHIDDevice`
+    /// objects that never compare equal, so this is how a later listing finds the open one.
+    let registryID: UInt64
 
     private init(device: IOHIDDevice) {
         self.device = device
+        self.registryID = HIDDevice.registryID(of: device)
         self.productID = HIDDevice.intProp(device, kIOHIDProductIDKey) ?? 0
         self.locationID = HIDDevice.intProp(device, kIOHIDLocationIDKey) ?? 0
         self.productName = HIDDevice.productName(of: device)
@@ -212,8 +216,10 @@ final class HIDDevice {
         let summaries = devices.map(interfaceSummary)
         // Selection's pick can differ from what is open: the app may have opened a device
         // before a better one was plugged in, and the report must name the one it probed.
-        let chosen = (opened.flatMap { o in devices.firstIndex { $0 == o.device } }
-            ?? HIDDeviceSelection.controlInterfaceIndex(interfaces: interfaceInfos(devices))).map { summaries[$0] }
+        let chosen = HIDDeviceSelection.reportedControlIndex(
+            registryIDs: devices.map(registryID(of:)), opened: opened?.registryID,
+            selected: { HIDDeviceSelection.controlInterfaceIndex(interfaces: interfaceInfos(devices)) }
+        ).map { summaries[$0] }
         let sorted = summaries.sorted {
             ($0.productID, $0.usagePage, $0.usage, $0.maxFeatureReportSize, $0.maxInputReportSize)
                 < ($1.productID, $1.usagePage, $1.usage, $1.maxFeatureReportSize, $1.maxInputReportSize)
@@ -277,6 +283,11 @@ final class HIDDevice {
 
     static func productID(of dev: IOHIDDevice) -> Int { intProp(dev, kIOHIDProductIDKey) ?? 0 }
     static func locationID(of dev: IOHIDDevice) -> Int { intProp(dev, kIOHIDLocationIDKey) ?? 0 }
+    static func registryID(of dev: IOHIDDevice) -> UInt64 {
+        var id: UInt64 = 0
+        IORegistryEntryGetRegistryEntryID(IOHIDDeviceGetService(dev), &id)
+        return id
+    }
 
     /// Runs `body` with this mouse's other interfaces that can carry the control report,
     /// opened, and closes them after. For the device test, when the interface picked doesn't
