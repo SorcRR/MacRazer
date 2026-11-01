@@ -159,8 +159,13 @@ struct PopoverView: View {
         // gating card may have been disabled in the meantime — e.g. Profiles after a
         // disconnect) is disorienting.
         // The accessory the colour page sets was unplugged: there's nothing left to set.
-        .onChange(of: accessories.connected.map(\.id)) { _, ids in
+        .onChange(of: accessories.available.map(\.id)) { _, ids in
             if page == .color, case .accessory(let id) = colorTarget, !ids.contains(id) { page = .main }
+        }
+        // Like the mouse's colour on the main page: the wheel shows what the accessory runs,
+        // after a failed write or a Follow mouse change too.
+        .onChange(of: colorTargetAccessory?.lighting.color) { _, new in
+            if let new { accessoryColor = new.swiftUIColor }
         }
         .onAppear { isShown = true }
         .onDisappear { page = .main; isShown = false }
@@ -188,7 +193,7 @@ struct PopoverView: View {
         if let accessory = colorTargetAccessory {
             return .init(symbol: accessory.info.kind.symbol, name: accessory.info.name, kind: accessory.info.kind.label)
         }
-        guard !accessories.connected.isEmpty else { return nil }
+        guard !accessories.available.isEmpty else { return nil }
         return .init(symbol: "computermouse", name: controller.deviceName ?? "Mouse", kind: "Mouse")
     }
 
@@ -270,41 +275,47 @@ struct PopoverView: View {
             // A Razer mouse on Bluetooth can't be controlled (no control protocol over BT) —
             // explain it instead of just showing "offline".
             if controller.bluetoothMouse != nil && !controller.connected { bluetoothNotice }
-            // Status on the left, settings on the right. Accessories go under the status,
-            // where there's room, or on the right when there's no mouse to fill it.
-            HStack(alignment: .top, spacing: 10) {
-                VStack(alignment: .leading, spacing: 10) {
-                    if noMouse {
-                        // A last reading is still worth showing (the snapshot is persisted, so most
-                        // returning users have one); the empty-state card still says what to do.
-                        if controller.lastBatterySnapshot != nil { batteryCard.opacity(0.55) }
-                        noMouseCard
-                    } else {
-                        // Battery stays readable (last-known) but dims when offline; its refresh
-                        // button stays active so you can retry.
-                        if controller.deviceHasBattery {
-                            batteryCard.opacity(controller.connected ? 1 : 0.55)
+            if noMouse && accessories.available.isEmpty {
+                // Nothing to put beside it: the one card says what to do, across the page.
+                if controller.lastBatterySnapshot != nil { batteryCard.opacity(0.55) }
+                noMouseCard
+            } else {
+                // Status on the left, settings on the right. Accessories go under the status,
+                // where there's room, or on the right when there's no mouse to fill it.
+                HStack(alignment: .top, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        if noMouse {
+                            // A last reading is still worth showing (the snapshot is persisted, so most
+                            // returning users have one); the empty-state card still says what to do.
+                            if controller.lastBatterySnapshot != nil { batteryCard.opacity(0.55) }
+                            noMouseCard
+                        } else {
+                            // Battery stays readable (last-known) but dims when offline; its refresh
+                            // button stays active so you can retry.
+                            if controller.deviceHasBattery {
+                                batteryCard.opacity(controller.connected ? 1 : 0.55)
+                            }
+                            // Live mouse-config sections: dim AND disable while disconnected.
+                            dpiCard
+                                .disabled(!controller.connected)
+                                .opacity(controller.connected ? 1 : 0.45)
+                            accessoriesSection
                         }
-                        // Live mouse-config sections: dim AND disable while disconnected.
-                        dpiCard
-                            .disabled(!controller.connected)
-                            .opacity(controller.connected ? 1 : 0.45)
-                        accessoriesSection
                     }
-                }
-                .frame(width: columnWidth, alignment: .top)
-                VStack(alignment: .leading, spacing: 10) {
-                    if noMouse {
-                        accessoriesSection
-                    } else {
-                        // Dims with DPI, but its rows still open and close offline so the last-known
-                        // settings stay readable; the controls inside them (and the Buttons page,
-                        // which needs the mouse) are what's disabled.
-                        settingsGroup
-                            .opacity(controller.connected ? 1 : 0.45)
+                    .frame(width: columnWidth, alignment: .top)
+                    VStack(alignment: .leading, spacing: 10) {
+                        if noMouse {
+                            accessoriesSection
+                        } else {
+                            // Dims with DPI, but its rows still open and close offline so the last-known
+                            // settings stay readable; the controls inside them (and the Buttons page,
+                            // which needs the mouse) are what's disabled.
+                            settingsGroup
+                                .opacity(controller.connected ? 1 : 0.45)
+                        }
                     }
+                    .frame(width: columnWidth, alignment: .top)
                 }
-                .frame(width: columnWidth, alignment: .top)
             }
             footer
         }
@@ -1429,7 +1440,7 @@ struct PopoverView: View {
     /// Razer keyboards and mousepads plugged in next to the mouse, a card each. Not tied to
     /// the mouse: they show, and work, with the mouse asleep or unplugged.
     @ViewBuilder private var accessoriesSection: some View {
-        if !accessories.connected.isEmpty {
+        if !accessories.available.isEmpty {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Other Razer devices")
                     .font(.system(size: 10.5, weight: .semibold))
@@ -1437,11 +1448,11 @@ struct PopoverView: View {
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 4)
                     .padding(.top, 2)
-                ForEach(accessories.connected) { accessory in
+                ForEach(accessories.available) { accessory in
                     AccessoryCard(accessory: accessory, hasMouse: !noMouse,
                                   mouseColor: controller.effect.usesColor ? controller.lightingColor.swiftUIColor : nil,
                                   // A lone accessory starts open: there's nothing else to see.
-                                  startsOpen: accessories.connected.count == 1) {
+                                  startsOpen: accessories.available.count == 1) {
                         colorTarget = .accessory(accessory.id)
                         accessoryColor = accessory.lighting.color.swiftUIColor
                         page = .color

@@ -208,10 +208,14 @@ final class RazerAccessoriesTests: XCTestCase {
     func testKeyboardsKeepTheOldSingleSettings() {
         defaults.set(true, forKey: AccessoryController.legacyFollowsMouseKey)
         defaults.set("macRazer", forKey: AccessoryController.legacyOwnerKey)
-        XCTAssertTrue(controller(0x022A).followsMouse)
-        XCTAssertEqual(controller(0x022A).owner, .macRazer)
         XCTAssertFalse(controller(0x0C04).followsMouse)
         XCTAssertNil(controller(0x0C04).owner)
+        XCTAssertTrue(controller(0x022A).followsMouse)
+        XCTAssertEqual(controller(0x022A).owner, .macRazer)
+        // Taken over once: a keyboard seen later starts fresh.
+        XCTAssertFalse(controller(0x02A1).followsMouse)
+        XCTAssertNil(controller(0x02A1).owner)
+        XCTAssertTrue(controller(0x022A).followsMouse, "the first keyboard keeps them")
         // Turned off on the new switch, it stays off.
         controller(0x022A).followsMouse = false
         XCTAssertFalse(controller(0x022A).followsMouse)
@@ -233,6 +237,11 @@ final class RazerAccessoriesTests: XCTestCase {
             RunLoop.current.run(until: Date().addingTimeInterval(0.01))
         }
         XCTAssertEqual(keyboard.latestLighting, .unknown, "failed writes leave nothing pending")
+    }
+
+    /// Nothing opened yet: no card, rather than controls that never work.
+    func testAnAccessoryThatHasntOpenedIsNotShown() {
+        XCTAssertFalse(controller(0x022A).isOpen)
     }
 
     func testAnEffectThePadLacksIsIgnored() {
@@ -309,6 +318,7 @@ final class RazerAccessoriesTests: XCTestCase {
         XCTAssertEqual(list.connected.map(\.canWrite), [false, true, false])
         XCTAssertEqual(list.connected.map(\.followsMouse), [true, false, false])
         XCTAssertNotNil(list.accessory(.init(pid: 0x0C04, locationID: 1)))
+        XCTAssertEqual(list.available.count, 3)
     }
 
     func testSynapseDetection() {

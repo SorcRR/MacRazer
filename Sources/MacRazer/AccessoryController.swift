@@ -15,7 +15,11 @@ final class Accessories: ObservableObject, @unchecked Sendable {
     static let shared = Accessories()
 
     /// The accessories plugged in, in a stable order (`RazerAccessories.controlInterfaceIndices`).
+    /// Some may not have opened yet; `available` is the ones to show.
     @Published private(set) var connected: [AccessoryController] = []
+    /// The ones MacRazer could open. A card for one it can't (no Input Monitoring yet, say)
+    /// would only be controls that never work.
+    var available: [AccessoryController] { connected.filter(\.isOpen) }
     @Published private(set) var synapseRunning = false {
         didSet { for accessory in connected { accessory.synapseRunning = synapseRunning } }
     }
@@ -152,6 +156,8 @@ final class AccessoryController: ObservableObject, Identifiable, @unchecked Send
     @Published private(set) var lastWriteFailure: Date?
     /// Kept by `Accessories`.
     @Published fileprivate(set) var synapseRunning = false
+    /// Its device is open. Main thread.
+    @Published private(set) var isOpen = false
 
     /// The accessory takes whatever the mouse's lighting is set to. Turning it on matches the
     /// two straight away.
@@ -199,13 +205,23 @@ final class AccessoryController: ObservableObject, Identifiable, @unchecked Send
         self.info = info
         self.defaults = defaults
         io = DispatchQueue(label: "MacRazer.accessory.\(info.pid).\(id.locationID)")
-        let legacy = info.kind == .keyboard
-        followsMouse = defaults.object(forKey: Self.followsMouseKey(pid: info.pid)) as? Bool
-            ?? (legacy && defaults.bool(forKey: Self.legacyFollowsMouseKey))
-        owner = (defaults.string(forKey: Self.ownerKey(pid: info.pid))
-            ?? (legacy ? defaults.string(forKey: Self.legacyOwnerKey) : nil))
-            .flatMap(AccessoryLightingOwner.init)
+        if info.kind == .keyboard { Self.adoptLegacySettings(pid: info.pid, defaults: defaults) }
+        followsMouse = defaults.bool(forKey: Self.followsMouseKey(pid: info.pid))
+        owner = defaults.string(forKey: Self.ownerKey(pid: info.pid)).flatMap(AccessoryLightingOwner.init)
         lighting = Self.storedLighting(pid: info.pid, defaults: defaults) ?? .unknown
+    }
+
+    /// Before each accessory had its own switches there was one keyboard, with one of each.
+    /// The first keyboard seen takes them over, once, so a keyboard bought later starts fresh.
+    private static func adoptLegacySettings(pid: Int, defaults: UserDefaults) {
+        if let follows = defaults.object(forKey: legacyFollowsMouseKey) as? Bool {
+            if defaults.object(forKey: followsMouseKey(pid: pid)) == nil { defaults.set(follows, forKey: followsMouseKey(pid: pid)) }
+            defaults.removeObject(forKey: legacyFollowsMouseKey)
+        }
+        if let owner = defaults.string(forKey: legacyOwnerKey) {
+            if defaults.string(forKey: ownerKey(pid: pid)) == nil { defaults.set(owner, forKey: ownerKey(pid: pid)) }
+            defaults.removeObject(forKey: legacyOwnerKey)
+        }
     }
 
     /// Opens the accessory if it isn't open yet, and reads its brightness. A unit opened
@@ -216,11 +232,15 @@ final class AccessoryController: ObservableObject, Identifiable, @unchecked Send
             guard let self else { return }
             let isNew = self.device == nil
             if isNew { self.device = try? HIDDevice.open(found.device, as: "\(self.info.kind.rawValue) interface") }
-            guard let device = self.device else { return }
+            guard let device = self.device else {
+                self.publish { if self.isOpen { self.isOpen = false } }
+                return
+            }
             let brightness = try? device.sendWithRetry(RazerCommands.getBrightness(led: self.info.brightnessLed),
                                                        attempts: HIDDevice.defaultAttempts,
                                                        transactionId: self.info.transactionId).arguments[2]
             self.publish {
+                if !self.isOpen { self.isOpen = true }
                 if let brightness {
                     self.lighting.brightness = RazerCommands.brightnessPercent(fromRaw: brightness)
                 }
@@ -231,6 +251,7 @@ final class AccessoryController: ObservableObject, Identifiable, @unchecked Send
 
     /// Unplugged: close the handle.
     func detach() {
+        isOpen = false
         io.async { [weak self] in
             self?.device?.close()
             self?.device = nil
@@ -347,7 +368,7 @@ final class AccessoryController: ObservableObject, Identifiable, @unchecked Send
                 // rescan opens the accessory afresh.
                 device.close()
                 self.device = nil
-                self.publish { self.onLost?() }
+                self.publish { self.isOpen = false; self.onLost?() }
             }
             self.publish {
                 self.pending.finish(token)
@@ -389,6 +410,7 @@ final class AccessoryController: ObservableObject, Identifiable, @unchecked Send
     func loadPreviewState(followsMouse: Bool = false, synapse: Bool = false, wave: Bool = false,
                           owner: AccessoryLightingOwner? = nil) {
         isPreview = true
+        isOpen = true
         let red = RGB(r: 0xFF, g: 0x00, b: 0x00), blue = RGB(r: 0x00, g: 0x60, b: 0xFF)
         lighting = AccessoryLighting(effect: wave ? .wave : .staticColor,
                                      color: info.kind == .keyboard ? red : blue,
