@@ -79,6 +79,8 @@ says so.
 | Razer Naga V3 Pro (Wired) | Battery, DPI, DPI stages, polling, lighting, brightness | [@chris-agnew](https://github.com/chris-agnew) |
 | Razer Naga Trinity | DPI, DPI stages, polling, lighting, brightness | anonymous report |
 | Razer Viper V3 HyperSpeed | Battery, DPI, DPI stages, polling | anonymous report |
+| Razer Basilisk V3 | DPI, DPI stages, polling, lighting, brightness | SuperSpacer54376 |
+| Razer DeathAdder Essential | DPI, DPI stages, polling, brightness (its one light is green only) | anonymous report |
 | Razer Basilisk V4 HyperSpeed | Battery, DPI; polling not working yet | anonymous report |
 | Razer Viper V4 Pro (Wired) | Battery, DPI, DPI stages; polling not working yet | anonymous report |
 | Razer Basilisk V4 Pro (Wireless) | Battery, DPI, DPI stages, lighting, brightness; polling not working yet | anonymous report |
@@ -87,7 +89,7 @@ says so.
 | Razer Mouse Dock Pro (with a Naga V3 Pro) | Battery, DPI, lighting, brightness; polling not working yet | anonymous report |
 | Razer Naga Chroma | DPI, polling; lighting not working yet | anonymous report |
 | Razer Orochi 2013 | DPI only | [@raphaelchenouard](https://github.com/raphaelchenouard) |
-| Razer Basilisk V3 | Nothing; reported working by a user | — |
+| Razer DeathAdder Essential (2018, White Edition) | Nothing; values from OpenRazer | — |
 | Razer Cobra, Cobra Pro (wired + wireless) | Nothing; same protocol family, values from OpenRazer | — |
 | Razer Basilisk X HyperSpeed | Nothing; values from OpenRazer | — |
 | Razer Viper Ultimate (Wired) | Nothing; its wireless sibling is verified | — |

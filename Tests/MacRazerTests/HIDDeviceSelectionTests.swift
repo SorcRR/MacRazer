@@ -105,6 +105,46 @@ final class HIDDeviceSelectionTests: XCTestCase {
         }
     }
 
+    /// A Firefly V2 mousepad next to a Basilisk V3, with the interfaces one 0.6.1 report
+    /// listed. The pad has a Mouse interface with a 90-byte report, so 0.6.1 opened it when it
+    /// was the only Razer device plugged in. Next to a known mouse it already lost; alone it
+    /// must now be skipped too. (Switching once the mouse arrives is `isOutranked`'s job.)
+    func testMousepadIsNotTheMouse() {
+        let pad = [(0x01, 0x02, 90), (0x01, 0x06, 1)].map {
+            HIDInterfaceInfo(pid: 0x0C04, locationID: 1, usagePage: $0.0, usage: $0.1,
+                             maxFeatureReportSize: $0.2, productName: "Razer Firefly V2")
+        }
+        let mouse = [(0x01, 0x02, 0), (0x01, 0x06, 0), (0x01, 0x06, 1), (0x0C, 0x01, 90)].map {
+            HIDInterfaceInfo(pid: 0x0099, locationID: 2, usagePage: $0.0, usage: $0.1,
+                             maxFeatureReportSize: $0.2, productName: "Razer Basilisk V3")
+        }
+        let both = pad + mouse
+        XCTAssertEqual(HIDDeviceSelection.controlInterfaceIndex(interfaces: both).map { both[$0].pid }, 0x0099)
+        XCTAssertNil(HIDDeviceSelection.controlInterfaceIndex(interfaces: pad), "a mousepad alone is no mouse")
+        XCTAssertFalse(HIDDeviceSelection.couldBeMouse(productName: "Razer Firefly V2"))
+    }
+
+    /// An unknown device opened first gives way when a known mouse is plugged in, and only then.
+    func testUnknownDeviceGivesWayToAKnownMouse() {
+        XCTAssertTrue(MouseController.isOutranked(currentPID: 0x0C04, currentLocation: 1, best: (0x0099, 2)))
+        XCTAssertFalse(MouseController.isOutranked(currentPID: 0x0C04, currentLocation: 1, best: (0x0C04, 1)),
+                       "selection still picks it")
+        XCTAssertFalse(MouseController.isOutranked(currentPID: 0x0C04, currentLocation: 1, best: nil))
+        XCTAssertFalse(MouseController.isOutranked(currentPID: 0x0C04, currentLocation: 1, best: (0xFFF0, 2)),
+                       "only a known mouse is worth the switch")
+        XCTAssertFalse(MouseController.isOutranked(currentPID: 0x00DB, currentLocation: 1, best: (0x00DA, 2)),
+                       "a known mouse is never dropped: its dongle and cable are the same mouse")
+    }
+
+    /// A report names the interface the test opened, even when selection would pick another.
+    func testReportNamesTheOpenedInterface() {
+        let ids: [UInt64] = [11, 22, 33]
+        XCTAssertEqual(HIDDeviceSelection.reportedControlIndex(registryIDs: ids, opened: 33, selected: { 0 }), 2)
+        XCTAssertEqual(HIDDeviceSelection.reportedControlIndex(registryIDs: ids, opened: 99, selected: { 0 }), 0,
+                       "the opened one is gone: fall back to selection")
+        XCTAssertEqual(HIDDeviceSelection.reportedControlIndex(registryIDs: ids, opened: nil, selected: { 1 }), 1)
+    }
+
     func testMiceStayMice() {
         // The registry's names, plus older ones that share words with other product lines.
         let names = RazerDevices.known.map(\.name) + ["Razer DeathAdder Chroma", "Razer Mamba Chroma",

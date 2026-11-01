@@ -89,6 +89,13 @@ enum HIDDeviceSelection {
         "kraken", "seiren", "firefly", "goliathus", "base station",
     ]
 
+    /// Which of `registryIDs` a report names as the control interface: the one open, found by
+    /// its registry ID, else `selected`, selection's pick, when nothing is open or it's gone.
+    static func reportedControlIndex(registryIDs: [UInt64], opened: UInt64?, selected: () -> Int?) -> Int? {
+        if let opened, let index = registryIDs.firstIndex(of: opened) { return index }
+        return selected()
+    }
+
     /// False for a product string naming one of `nonMouseProductLines`.
     static func couldBeMouse(productName: String) -> Bool {
         let name = productName.lowercased()

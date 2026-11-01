@@ -135,7 +135,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     var supportsPollRate: Bool {
         !deviceIsBluetooth && deviceID.map { RazerDevices.acceptsClassicPolling(pid: $0) } != false
     }
-    var supportsLightingEffects: Bool { !deviceIsBluetooth }
+    var supportsLightingEffects: Bool { !deviceIsBluetooth && !lightHasFixedColor }
+    /// The light has one colour of its own (`RazerDeviceInfo.fixedColor`): brightness only.
+    var lightHasFixedColor: Bool { deviceID.map(RazerDevices.fixedColor(pid:)) ?? false }
     var supportsFreeDPI: Bool { !deviceIsBluetooth }
     var supportsProfiles: Bool { !deviceIsBluetooth }
     private var ioHasBattery = true // io-queue mirror of deviceHasBattery
@@ -496,10 +498,40 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// `immediateOffline` so the disconnect shows at once (bypassing the timeout debounce,
     /// since a USB termination is definitive). Also realigns the poll cadence.
     func forceCheck(immediateOffline: Bool) {
-        // A plug event is the only way a different unit can turn up on an interface we
-        // already know, so the cached serial is no longer evidence of which mouse it is.
-        io.async { [weak self] in self?.knownSerial = nil }
+        io.async { [weak self] in
+            guard let self else { return }
+            // A plug event is the only way a different unit can turn up on an interface we
+            // already know, so the cached serial is no longer evidence of which mouse it is.
+            self.knownSerial = nil
+            // Not mid-test: the steps must all talk to the device the test started on. Read
+            // here on `io`, not when the event came in, so a test that began in between counts.
+            if !self.deviceTestActiveForIO { self.releaseDeviceIfOutranked() }
+        }
         checkNow(immediateOffline: immediateOffline)
+    }
+
+    /// Must be called on `io`. Selection only ranks devices when it opens one, so a mouse
+    /// plugged in after the app opened something else (a keypad, a pad, a device it doesn't
+    /// know) never took over until relaunch (#75). On a plug event, let go of an open device
+    /// the registry doesn't know when selection now picks a known mouse; the check that
+    /// follows opens it. A known mouse is never dropped this way: a cable plugged into a mouse
+    /// on its dongle is the same mouse, and the link logic already handles that.
+    private func releaseDeviceIfOutranked() {
+        guard let current = device, !current.isBluetooth else { return }
+        let best = try? HIDDevice.controlInterface(vendorId: Razer.vendorId)
+        guard Self.isOutranked(currentPID: current.productID, currentLocation: current.locationID,
+                               best: best.map { (HIDDevice.productID(of: $0), HIDDevice.locationID(of: $0)) })
+        else { return }
+        current.close()
+        device = nil
+    }
+
+    /// Whether the open device should give way to `best`, selection's pick right now: only an
+    /// unknown device, and only to a mouse the registry knows. Not when selection finds
+    /// nothing: an unplugged device fails its own reads.
+    static func isOutranked(currentPID: Int, currentLocation: Int, best: (pid: Int, location: Int)?) -> Bool {
+        guard let best, best.pid != currentPID || best.location != currentLocation else { return false }
+        return RazerDevices.info(pid: currentPID) == nil && RazerDevices.info(pid: best.pid) != nil
     }
 
     /// Main-thread only. A check is already on its way; don't queue another behind it.
@@ -825,9 +857,12 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// anyway; this keeps the poll and the popover's settings reads from adding traffic and
     /// noise to the session, or publishing a half-way state between steps.
     private(set) var deviceTestActive = false
+    /// `deviceTestActive` as `io` sees it, set in queue order with the test's own steps.
+    private var deviceTestActiveForIO = false
 
     func beginDeviceTest() {
         deviceTestActive = true
+        io.async { [weak self] in self?.deviceTestActiveForIO = true }
         pollTimer?.invalidate()
         pollTimer = nil
         settingsTimer?.invalidate()
@@ -855,6 +890,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     func endDeviceTest() {
         guard deviceTestActive else { return }
         deviceTestActive = false
+        io.async { [weak self] in self?.deviceTestActiveForIO = false }
         refreshAll()
         scheduleNextPoll(after: BatteryPollStateMachine.Cadence.settling)
         // A popover opened during the test didn't start its live reads; start them now.

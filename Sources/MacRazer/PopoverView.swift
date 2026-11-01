@@ -1385,7 +1385,12 @@ struct PopoverView: View {
                 }
             }
 
-            if controller.effect.usesColor || !controller.supportsLightingEffects {
+            if controller.lightHasFixedColor {
+                Text("This mouse's light has one colour of its own, so only its brightness changes.")
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if controller.effect.usesColor || !controller.supportsLightingEffects {
                 HStack(spacing: 7) {
                     ForEach(lightingSwatches.indices, id: \.self) { i in
                         let sw = lightingSwatches[i]
@@ -1449,7 +1454,8 @@ struct PopoverView: View {
                     .padding(.horizontal, 4)
                     .padding(.top, 2)
                 ForEach(accessories.available) { accessory in
-                    AccessoryCard(accessory: accessory, hasMouse: !noMouse,
+                    // Not a one-colour light: there'd be a colour to follow that nobody can set.
+                    AccessoryCard(accessory: accessory, hasMouse: !noMouse && !controller.lightHasFixedColor,
                                   mouseColor: controller.effect.usesColor ? controller.lightingColor.swiftUIColor : nil,
                                   // A lone accessory starts open: there's nothing else to see.
                                   startsOpen: accessories.available.count == 1) {
