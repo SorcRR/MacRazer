@@ -31,6 +31,8 @@ final class RazerDevicesTests: XCTestCase {
             XCTAssertEqual(txn(0x00E3, cls), 0x1f) // Basilisk V4 Pro dongle (hardware-verified)
             XCTAssertEqual(txn(0x00C5, cls), 0x1f) // DeathAdder V3 HyperSpeed dongle (hardware-verified)
             XCTAssertEqual(txn(0x007D, cls), 0x1f) // DeathAdder V2 Pro dongle (hardware-verified)
+            XCTAssertEqual(txn(0x00B8, cls), 0x1f) // Viper V3 HyperSpeed dongle (hardware-verified)
+            XCTAssertEqual(txn(0x00E5, cls), 0x1f) // Viper V4 Pro cable (hardware-verified)
             XCTAssertEqual(txn(0x9999, cls), 0x1f) // unknown → Cobra default
         }
         // Plain Cobra: 0xFF for standard/misc, but 0x1f for extended-matrix (lighting) —
@@ -182,6 +184,35 @@ final class RazerDevicesTests: XCTestCase {
         // Wired only, and Bluetooth never suggested without a row.
         XCTAssertEqual(RazerDevices.linksToTest(besides: 0x0067), [])
         XCTAssertEqual(RazerDevices.linksToTest(besides: 0x9999), [])
+    }
+
+    /// The Viper V3 HyperSpeed has no lighting and a 26K sensor. Its firmware echoes DPI writes
+    /// far above that, so only the registry keeps the slider honest.
+    func testViperV3HyperSpeedCapabilities() {
+        XCTAssertTrue(RazerDevices.fullySupported(pid: 0x00B8))
+        XCTAssertTrue(RazerDevices.hasBattery(pid: 0x00B8))
+        XCTAssertFalse(RazerDevices.hasLighting(pid: 0x00B8))
+        XCTAssertEqual(RazerDevices.maxDPI(pid: 0x00B8), 26000)
+        XCTAssertEqual(RazerDevices.connection(pid: 0x00B8), .wirelessDongle)
+    }
+
+    /// The Viper V4 Pro on its cable: no lighting, polling still to verify, and the classic
+    /// polling command refused, so the picker stays hidden.
+    func testViperV4ProWiredCapabilities() {
+        XCTAssertEqual(RazerDevices.unverified(pid: 0x00E5), [.polling])
+        XCTAssertTrue(RazerDevices.hasBattery(pid: 0x00E5))
+        XCTAssertFalse(RazerDevices.hasLighting(pid: 0x00E5))
+        XCTAssertEqual(RazerDevices.maxDPI(pid: 0x00E5), 45000)
+        XCTAssertEqual(RazerDevices.connection(pid: 0x00E5), .wired)
+    }
+
+    /// The models that answer the classic polling command with "not supported".
+    func testClassicPollingRefusals() {
+        for pid in [0x00A4, 0x00EA, 0x00E3, 0x00E5] {
+            XCTAssertFalse(RazerDevices.acceptsClassicPolling(pid: pid), String(pid, radix: 16))
+        }
+        XCTAssertTrue(RazerDevices.acceptsClassicPolling(pid: 0x00DB))
+        XCTAssertTrue(RazerDevices.acceptsClassicPolling(pid: 0x9999), "unknown models still try it")
     }
 
     func testConnectionKind() {

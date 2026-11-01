@@ -28,9 +28,9 @@ expect rough edges until 1.0.
 - **The device test knows what's already verified.** On a fully supported mouse it says no
   test is needed. On a partly supported one it lists what works and offers to test only
   what's missing. Both name the mouse's other connections that still need a report.
-- **Seven more mice from your reports.** Naga V3 Pro on its cable and Naga Trinity are fully
-  supported. Basilisk V4 Pro, DeathAdder V2 Pro, DeathAdder V3 HyperSpeed, Mouse Dock Pro and
-  Naga Chroma are partly supported.
+- **Nine more mice from your reports.** Naga V3 Pro on its cable, Naga Trinity and Viper V3
+  HyperSpeed are fully supported. Basilisk V4 Pro, DeathAdder V2 Pro, DeathAdder V3
+  HyperSpeed, Mouse Dock Pro, Naga Chroma and Viper V4 Pro on its cable are partly supported.
 - **Breathing lighting.** The Lighting card has a new Breathing effect. The lights fade in
   and out in the colour you pick from the swatches or the colour wheel. It works over USB and
   the 2.4 GHz dongle. A Razer keyboard gets it too, but that is untested. Over Bluetooth only
@@ -46,6 +46,10 @@ expect rough edges until 1.0.
   If you never changed the switch, you'll see the solid look after updating.
 
 ### Fixed
+- **No polling picker that can't work.** The Basilisk V4 models, the Mouse Dock Pro and the
+  Viper V4 Pro refuse the usual polling rate command, so the picker always failed on them. It
+  is hidden there until the newer command is added. Their profiles also apply again, instead
+  of failing on the polling rate.
 - **A Razer keyboard is no longer taken for a mouse.** With no mouse plugged in, the app could
   open a Razer keyboard and show it as the mouse. It now skips keyboards, keypads and other
   products that are never mice.
