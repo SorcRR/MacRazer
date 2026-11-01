@@ -1355,7 +1355,12 @@ struct PopoverView: View {
                 }
             }
 
-            if controller.effect.usesColor || !controller.supportsLightingEffects {
+            if controller.lightHasFixedColor {
+                Text("This mouse's light has one colour of its own, so only its brightness changes.")
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if controller.effect.usesColor || !controller.supportsLightingEffects {
                 HStack(spacing: 7) {
                     ForEach(swatches.indices, id: \.self) { i in
                         swatch(swatches[i].color, name: swatches[i].name)

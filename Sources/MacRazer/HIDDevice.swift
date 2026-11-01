@@ -203,14 +203,17 @@ final class HIDDevice {
                             interfaces: interfaces)
     }
 
-    /// Every HID interface the vendor's devices expose, in a stable order, and which one
-    /// `open(vendorId:)` would pick for control. For the device test's report; the order is
-    /// sorted because macOS returns the set in no particular order.
-    static func interfaceSummaries(vendorId: Int) -> (interfaces: [DeviceProbe.Interface], control: Int?) {
+    /// Every HID interface the vendor's devices expose, in a stable order, and which one is
+    /// used for control: `opened` when given, the interface actually under test, else the one
+    /// `open(vendorId:)` would pick. For the device test's report; the order is sorted because
+    /// macOS returns the set in no particular order.
+    static func interfaceSummaries(vendorId: Int, opened: HIDDevice? = nil) -> (interfaces: [DeviceProbe.Interface], control: Int?) {
         let devices = matchingDevices(vendorId: vendorId)
         let summaries = devices.map(interfaceSummary)
-        // The same choice `controlInterface(vendorId:)` makes, so the report names the one opened.
-        let chosen = HIDDeviceSelection.controlInterfaceIndex(interfaces: interfaceInfos(devices)).map { summaries[$0] }
+        // Selection's pick can differ from what is open: the app may have opened a device
+        // before a better one was plugged in, and the report must name the one it probed.
+        let chosen = (opened.flatMap { o in devices.firstIndex { $0 == o.device } }
+            ?? HIDDeviceSelection.controlInterfaceIndex(interfaces: interfaceInfos(devices))).map { summaries[$0] }
         let sorted = summaries.sorted {
             ($0.productID, $0.usagePage, $0.usage, $0.maxFeatureReportSize, $0.maxInputReportSize)
                 < ($1.productID, $1.usagePage, $1.usage, $1.maxFeatureReportSize, $1.maxInputReportSize)

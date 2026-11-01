@@ -120,6 +120,9 @@ struct RazerDeviceInfo {
     /// HyperPolling models want OpenRazer's polling_rate2 pair, which isn't implemented, so
     /// the popover hides the picker and a profile doesn't count the write as failed.
     var acceptsClassicPolling = true
+    /// True for a mouse whose light has one colour of its own (the DeathAdder Essential's is
+    /// green): only brightness changes it, so the popover hides colours and effects.
+    var fixedColor = false
 }
 
 enum RazerDevices {
@@ -173,7 +176,13 @@ enum RazerDevices {
         // dims it, but no color can show, so one run saw no red. That is the most it can do,
         // so lighting counts as verified rather than asking every owner for a test that can't
         // pass. 6400 is the vendor spec.
-        .init(pid: 0x0098, name: "Razer DeathAdder Essential", unverified: [], hasBattery: false, hasLighting: true, maxDPI: 6400, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
+        .init(pid: 0x0098, name: "Razer DeathAdder Essential", unverified: [], hasBattery: false, hasLighting: true, maxDPI: 6400, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, fixedColor: true),
+        // The older DeathAdder Essential and its White Edition (no reports yet): wired only,
+        // 6400 DPI. razermouse_driver.c gives them 0xFF for DPI and polling. Their light uses
+        // the older single-LED commands, not the extended matrix this app sends, so no
+        // lighting here until someone tries it.
+        .init(pid: 0x006E, name: "Razer DeathAdder Essential (2018)", unverified: [.dpi, .polling], hasBattery: false, hasLighting: false, maxDPI: 6400, transactionId: 0xff, matrixTransactionId: 0xff, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
+        .init(pid: 0x0071, name: "Razer DeathAdder Essential White Edition", unverified: [.dpi, .polling], hasBattery: false, hasLighting: false, maxDPI: 6400, transactionId: 0xff, matrixTransactionId: 0xff, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
         // Orochi2013
         .init(pid: 0x0039, name: "Razer Orochi 2013", unverified: [.polling], hasBattery: false, hasLighting: false, maxDPI: 6400, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
         // Viper Ultimate (Wireless)
@@ -362,6 +371,7 @@ enum RazerDevices {
     static func supportsStageEditing(pid: Int) -> Bool { info(pid: pid)?.supportsStageEditing ?? false }
     static func verifiesBrightnessWrite(pid: Int) -> Bool { info(pid: pid)?.verifiesBrightnessWrite ?? false }
     static func acceptsClassicPolling(pid: Int) -> Bool { info(pid: pid)?.acceptsClassicPolling ?? true }
+    static func fixedColor(pid: Int) -> Bool { info(pid: pid)?.fixedColor ?? false }
     /// Per-command transaction id: explicit per-command override, else the class split
     /// (see `RazerDeviceInfo.matrixTransactionId`). 0x1f default for unknown models — the
     /// Cobra-family id this app has hardware verified.

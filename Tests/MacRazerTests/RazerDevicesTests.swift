@@ -254,6 +254,13 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertFalse(RazerDevices.hasBattery(pid: 0x0098))
         XCTAssertEqual(RazerDevices.maxDPI(pid: 0x0098), 6400)
         XCTAssertEqual(RazerDevices.connection(pid: 0x0098), .wired)
+        XCTAssertTrue(RazerDevices.fixedColor(pid: 0x0098), "green only: brightness, no colours")
+        // The older Essentials, from OpenRazer: 0xFF and nothing verified.
+        for pid in [0x006E, 0x0071] {
+            XCTAssertEqual(RazerDevices.unverified(pid: pid), [.dpi, .polling])
+            XCTAssertEqual(RazerDevices.transactionId(pid: pid, commandClass: 0x04, commandId: 0x05), 0xff)
+            XCTAssertFalse(RazerDevices.hasLighting(pid: pid))
+        }
     }
 
     func testConnectionKind() {

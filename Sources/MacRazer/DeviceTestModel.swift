@@ -284,7 +284,7 @@ final class DeviceTestModel: ObservableObject {
                 let info = RazerDevices.info(pid: device.productID)
                 let (record, sweep) = DeviceTestSteps.identifyMouse(device, registry: info)
                 let capabilities = DeviceTestSteps.capabilities(device, identify: record, registry: info)
-                let (interfaces, control) = HIDDevice.interfaceSummaries(vendorId: Razer.vendorId)
+                let (interfaces, control) = HIDDevice.interfaceSummaries(vendorId: Razer.vendorId, opened: device)
                 return IdentifyResult(pid: device.productID, name: device.productName, record: record,
                                       sweep: sweep, capabilities: capabilities, interfaces: interfaces, control: control)
             }
