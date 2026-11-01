@@ -286,11 +286,15 @@ any Razer mouse); the registry adds what has been verified about the model. Unkn
  is up. A new window only has to conform to be counted.
 
 ### 6.2 Popover, `PopoverView.swift`
-A fixed **320*620** navigable container with a main page and sub-pages (colour, Buttons,
+A **640 pt** wide navigable container, as tall as its content, with a main page and sub-pages (colour, Buttons,
 Usage, Profiles, What's new) and a push/pop slide animation; each page is a `ScrollView` (so
 long content scrolls without resizing the popover):
 
-- **Main page**, Control-Center-style frosted cards, each section its own tile:
+- **Main page**, Control-Center-style frosted cards, each section its own tile. The header,
+ support, update and Bluetooth cards run across the top. Below them are two 303 pt columns:
+ battery, DPI and the accessories on the left, the settings sections on the right. With no
+ mouse, the no-mouse card takes the left column and the accessories move right. Sub-pages are
+ 440 pt wide (the colour page one column wide), centred.
  - **Header card**: Razer logo (green) in a tinted tile + detected device name +
  connection state + status dot. Shows "No mouse connected" when none.
  - **Battery card**: a custom proportional **battery gauge** (fill tracks the exact %,
@@ -311,7 +315,7 @@ long content scrolls without resizing the popover):
  Under Wave, a speed slider (tortoise to hare). The speed byte is `args[4]` of the wave
  command, lower is faster; `WaveSpeed` maps the slider geometrically to 0xC8...0x08, so the
  standard 0x28 sits in the middle and speed changes evenly along it. It can't be read back, so the last one set is kept (`mouseWaveSpeed`, and in
- a profile). The keyboard card has the same slider.
+ a profile). Each accessory card has the same slider.
  - **Power Management** (Basilisk V3 X over Bluetooth): the sleep timer.
  - **Buttons**: opens the buttons page; shows how many buttons are remapped, or "Needs access"
  when saved remaps can't fire without Accessibility permission.
@@ -323,20 +327,30 @@ long content scrolls without resizing the popover):
  firmware and tells the app nothing, so switching is done from the popover
  (`MouseController.applyProfile`). The Profiles page (`ProfilesView.swift`) renames, sets
  active and deletes.
- - **Other Razer devices** (`KeyboardController.swift`, `RazerKeyboards.swift`): a card for a
- Razer keyboard MacRazer knows, under the mouse's sections and independent of the mouse being
- connected. Its Lighting row has the mouse's brightness slider and effect picker; its colour
- swatches stay on screen under every effect (picking one switches to Static). The effect
- can't be read back from the keyboard, so what MacRazer sets is saved per model
- (`keyboardLighting.<pid>`) and none is shown picked until it has set one. The brightness is
- re-read whenever the popover opens, and a colour or effect change never resends it, so the
- keyboard's own brightness keys stick.
- - **Also light the keyboard** (in the mouse's Lighting row): the keyboard follows lighting the
- person sets on the mouse (`MouseController.lightingChanges`), never values read from it. The
- card then shrinks to one line.
- - **Use MacRazer** (only while Razer Synapse runs): off by default, so Synapse keeps the
- keyboard and MacRazer writes nothing. On, MacRazer puts its lighting on, and back on after a
- wake or reconnect.
+ - **Other Razer devices** (`AccessoryController.swift`, `AccessoryCard.swift`,
+ `RazerAccessories.swift`): one card per Razer keyboard or mousepad MacRazer knows, independent
+ of the mouse being connected. `Accessories.shared` lists one `AccessoryController` per unit
+ (PID and LocationID), each with its own device handle and queue; two of the same model are
+ two cards. Closed, a card is one line: icon, name, an "Untested" tag for an untried model, a
+ colour dot and the effect. Clicking opens it; which are open is remembered per model
+ (`popoverAccessoryExpanded.<pid>`), and a lone accessory starts open. Open, it has the mouse's
+ brightness slider and an effect picker with the effects that model has (no Wave on the
+ Goliathus pads); its colour swatches stay on screen under every effect (picking one switches
+ to Static). On a tested model, an effect not yet seen working gets a line saying so. The effect
+ can't be read back, so what MacRazer sets is saved per model (`keyboardLighting.<pid>`, the
+ key keyboards had before pads joined) and none is shown picked until it has set one. The
+ brightness is re-read whenever the popover opens, and a colour or effect change never resends
+ it, so a keyboard's own brightness keys stick.
+ - **Follow mouse** (in each card, while there's a mouse): that accessory follows lighting
+ the person sets on the mouse (`MouseController.lightingChanges`), never values read from it.
+ A pad without Wave runs the mouse's wave as Spectrum. The card then says "Following mouse".
+ Saved per model (`accessoryFollowsMouse.<pid>`); a keyboard falls back on the old single
+ `keyboardFollowsMouse`.
+ - **Use MacRazer** (in each card, only while Razer Synapse runs): off by default, so Synapse
+ keeps that accessory and MacRazer writes nothing to it. On, MacRazer puts its lighting on,
+ and back on after a wake or reconnect. Saved per model (`accessoryLightingOwner.<pid>`).
+ - The colour page names the device it sets once an accessory is plugged in, and goes back to
+ the main page if that accessory is unplugged.
  - **Update card**: when a newer release is found, "Update & Restart" (or the DMG download)
  and a row that opens the **What's new** page (`WhatsNewPage.swift`). After an update, an
  "Updated to …" card until dismissed. See §6.7.
@@ -632,7 +646,8 @@ swift run MacRazer icon-models [dir] # each model's header silhouette
 swift run MacRazer appicon [dir] / iconset [dir] # app icon concepts / the .iconset for iconutil
 swift run MacRazer render-ui [offline|color|update|updated|whatsnew|…] out.png # popover (dev)
 swift run MacRazer render-ui whatsnew installed out.png # the notes without an update to install
-swift run MacRazer render-ui keyboard [follow|synapse|wave] out.png # a Razer keyboard under the mouse
+swift run MacRazer render-ui keyboard|pad|three [follow|synapse [macrazer]|wave] out.png # accessories next to the mouse
+swift run MacRazer render-ui pad color out.png # the colour page naming the pad it sets
 swift run MacRazer render-about [notes] out.png
 swift run MacRazer render-remap out.png
 swift run MacRazer render-support-prompt [noaccess] out.png # the support prompt window
@@ -661,8 +676,9 @@ that path draws the content but needs an explicit size, since there is no window
 | `HIDDeviceSelection.swift` | Which device and interface to open; tells mice from keyboards. |
 | `HIDMonitor.swift` | IOKit service notifications for plug/unplug. |
 | `SliderScroll.swift` | Scroll wheel and trackpad scrolling on the popover's sliders. |
-| `RazerKeyboards.swift` | Keyboards whose backlight MacRazer sets (PID, transaction id), their interface pick, Synapse detection. |
-| `KeyboardController.swift` | The keyboard's lighting: its own device and queue, follow-the-mouse, who sets colours while Synapse runs. |
+| `RazerAccessories.swift` | Keyboards and mousepads whose lighting MacRazer sets (PID, kind, transaction id, LEDs, effects), their interface pick, Synapse detection. |
+| `AccessoryController.swift` | `Accessories`, the list of plugged-in accessories, and one `AccessoryController` each: its own device and queue, follow-the-mouse, who sets colours while Synapse runs. |
+| `AccessoryCard.swift` | An accessory's popover card, and the lighting controls it shares with the mouse's row (swatches, sliders). |
 | `RazerTransport.swift` | Transport protocol shared by USB and Bluetooth, plus the shared retry ladder. |
 | `BLEProtocol.swift` | Bluetooth LE framing and `RazerReport` translation. |
 | `BluetoothDevice.swift` | CoreBluetooth connection to Razer's vendor GATT service. |

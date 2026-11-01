@@ -36,7 +36,8 @@ struct ProfilesView: View {
             }
         }
         .padding(18)
-        .frame(width: onBack == nil ? 440 : 320)
+        // The window's width, and the popover's sub-page width now that the popover is wider.
+        .frame(width: 440)
         .confirmationDialog("Delete this profile?", isPresented: Binding(
             get: { pendingDeleteID != nil },
             set: { if !$0 { pendingDeleteID = nil } }

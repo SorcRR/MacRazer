@@ -11,15 +11,18 @@ expect rough edges until 1.0.
   wave speed, sleep timer) to move it: up raises the value, whatever your natural-scrolling
   setting. Each wheel notch moves 1% of the slider (250 for DPI, 15 seconds for the sleep
   timer), and the change goes to the mouse or keyboard once you stop scrolling.
-- **Wave speed.** Picking Wave shows a speed slider, from slow to fast, for the mouse and for a
-  Razer keyboard alike. The speed is kept for the next time you pick Wave, saved in profiles,
-  and carried over when the keyboard follows the mouse.
-- **Lighting for a Razer keyboard next to the mouse.** A plugged-in Razer keyboard shows up
-  under "Other Razer devices" in the popover, with its own colour, effect and brightness. Turn
-  on "Also light the keyboard" under the mouse's Lighting to keep both the same. While Razer
-  Synapse runs, Synapse keeps the keyboard's colours unless you turn on "Use MacRazer" in its card.
-  Tested on the Cynosa Chroma; the Cynosa Chroma Pro, Cynosa Lite and Ornata V3 family use the
-  same commands but are untested. Lighting only: no keys, macros or per-key colour.
+- **Wave speed.** Picking Wave shows a speed slider, from slow to fast, for the mouse, a
+  keyboard and a mousepad alike. The speed is kept for the next time you pick Wave, saved in
+  profiles, and carried over when an accessory follows the mouse.
+- **Lighting for Razer keyboards and mousepads next to the mouse.** Each one plugged in gets
+  its own card under "Other Razer devices" in the popover. A card is one line with its colour
+  and effect. Click it to open its colour, effect and brightness. Turn on "Follow mouse" in a
+  card to keep that device the same as the mouse. While Razer Synapse runs, Synapse keeps each
+  device's colours unless you turn on "Use MacRazer" in its card. The colour page names the
+  device it's setting. Tested on the Cynosa Chroma keyboard and the Firefly V2 mousepad
+  (static colour and brightness; its other effects are untested and the card says so). The
+  Cynosa Chroma Pro, Cynosa Lite, Ornata V3 family, Firefly V2 Pro and Goliathus Chroma pads
+  use the same commands but are untested. Lighting only: no keys, macros or per-key colour.
 - **MacRazer asks for help when it meets a mouse it doesn't fully support.** A small window
   offers the short device test, which shows us what the mouse can do so a later release can
   support it. It asks once, reminds you once a week later, and stops for good after a report
@@ -40,6 +43,9 @@ expect rough edges until 1.0.
   for random ones.
 
 ### Changed
+- **The popover is wider and shorter.** It now has two columns: battery and DPI on the left,
+  the mouse's settings on the right. Keyboards and mousepads go under the left column. It is
+  about half as tall as before, so it fits under the menu bar on a 13-inch screen.
 - **Settings has a new layout.** A wider window with a sidebar for General, Privacy,
   Appearance and Updates, so it no longer runs off the bottom of a small screen. Each setting
   has an icon, and the version and update status sit at the bottom of the sidebar.

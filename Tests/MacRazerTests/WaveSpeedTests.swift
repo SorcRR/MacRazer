@@ -40,7 +40,8 @@ final class WaveSpeedTests: XCTestCase {
     func testWaveCommandCarriesTheSpeed() {
         let mouse = RazerCommands.effect(.wave, color: RGB(r: 0, g: 0, b: 0), waveSpeed: 0x10)
         XCTAssertEqual(mouse.arguments[4], 0x10)
-        let keyboard = RazerKeyboards.report(for: .wave, color: RGB(r: 0, g: 0, b: 0), waveSpeed: 0x40)
+        let keyboard = RazerAccessories.report(for: .wave, color: RGB(r: 0, g: 0, b: 0), waveSpeed: 0x40,
+                                               on: RazerAccessories.info(pid: 0x022A)!)
         XCTAssertEqual(keyboard.arguments[1], Razer.backlightLed)
         XCTAssertEqual(keyboard.arguments[4], 0x40)
         XCTAssertEqual(RazerCommands.setWave().arguments[4], WaveSpeed.standard)
@@ -49,7 +50,7 @@ final class WaveSpeedTests: XCTestCase {
     /// Lighting and profiles saved before the speed existed still decode, at the standard speed.
     func testOlderSavedDataDecodes() throws {
         let oldLighting = #"{"brightness":27,"effect":"Wave","color":{"r":38,"b":255,"g":89}}"#
-        let lighting = try JSONDecoder().decode(KeyboardLighting.self, from: Data(oldLighting.utf8))
+        let lighting = try JSONDecoder().decode(AccessoryLighting.self, from: Data(oldLighting.utf8))
         XCTAssertNil(lighting.waveSpeed)
         XCTAssertEqual(lighting.effect, .wave)
 

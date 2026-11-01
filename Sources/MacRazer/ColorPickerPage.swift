@@ -31,7 +31,16 @@ struct BackButton: View {
 /// Inline hue/saturation colour wheel + brightness slider, shown as a sub-page of the popover.
 /// Applies the colour to the mouse live (throttled) as you drag.
 struct ColorPickerPage: View {
+    /// The device a pick goes to, named under the title.
+    struct Device: Equatable {
+        let symbol: String
+        let name: String
+        let kind: String
+    }
+
     @Binding var color: Color
+    /// nil with only the mouse to set: there's nothing to tell apart.
+    var device: Device? = nil
     var onBack: () -> Void
     /// false sends the colour only when a drag ends. Breathing restarts its fade on every
     /// write, so live updates would hold it still while dragging.
@@ -54,6 +63,7 @@ struct ColorPickerPage: View {
                 Circle().fill(color).frame(width: 22, height: 22)
                     .overlay(Circle().strokeBorder(Color.primary.opacity(0.25), lineWidth: 1))
             }
+            if let device { deviceLine(device) }
             wheel
             HStack(spacing: 8) {
                 Image(systemName: "sun.min.fill").font(.system(size: 10)).foregroundStyle(.secondary)
@@ -65,6 +75,23 @@ struct ColorPickerPage: View {
         .padding(16)
         .frame(maxWidth: .infinity)
         .onAppear(perform: syncFromColor)
+    }
+
+    private func deviceLine(_ device: Device) -> some View {
+        HStack(spacing: 7) {
+            Image(systemName: device.symbol)
+                .font(.system(size: 11))
+                .frame(width: 22, height: 22)
+                .background(Color.primary.opacity(0.10), in: RoundedRectangle(cornerRadius: 6))
+            Text(device.name).font(.system(size: 12, weight: .medium)).lineLimit(1)
+            Spacer(minLength: 6)
+            Text(device.kind).font(.system(size: 11)).foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Setting the colour of \(device.name)")
     }
 
     private var wheel: some View {

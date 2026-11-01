@@ -198,11 +198,18 @@ case "render-ui":
     if args.contains("downloading") { updateChecker.loadPreviewState(phase: .downloading(0.42)) }
     let launchAtLogin = LaunchAtLogin()
     launchAtLogin.loadPreviewState()
-    // `keyboard`, plus `follow`, `synapse` or `wave`: a Razer keyboard under the mouse.
-    if args.contains("keyboard") {
-        KeyboardController.shared.loadPreviewState(followsMouse: args.contains("follow"),
-                                                   synapse: args.contains("synapse"),
-                                                   wave: args.contains("wave"))
+    // Accessories under "Other Razer devices": `keyboard` (Cynosa Chroma), `pad` (Firefly V2),
+    // `three` (both plus an untested Ornata V3). Then `follow` (the keyboard follows the
+    // mouse), `wave`, `synapse` (Synapse running; `macrazer` gives the pad back to MacRazer).
+    var accessoryPIDs: [Int] = []
+    if args.contains("keyboard") || args.contains("three") { accessoryPIDs.append(0x022A) }
+    if args.contains("pad") || args.contains("three") { accessoryPIDs.append(0x0C04) }
+    if args.contains("three") { accessoryPIDs.append(0x02A1) }
+    if !accessoryPIDs.isEmpty {
+        Accessories.shared.loadPreviewState(pids: accessoryPIDs,
+                                            followsMouse: args.contains("follow") ? [0x022A] : [],
+                                            synapse: args.contains("synapse"), wave: args.contains("wave"),
+                                            useMacRazer: args.contains("macrazer") ? [0x0C04] : [])
     }
     // The notes page is its own render: it is a scroll view, so it needs the hosted path,
     // and it is sized to the height the main page renders at — the whole point of checking
@@ -228,7 +235,10 @@ case "render-ui":
         break
     }
     let rootView: AnyView = args.contains("color")
-        ? AnyView(ColorPickerPage(color: .constant(.blue), onBack: {}, onApply: { _ in }))
+        ? AnyView(ColorPickerPage(color: .constant(.blue),
+                                  device: accessoryPIDs.isEmpty ? nil
+                                      : .init(symbol: AccessoryKind.mousepad.symbol, name: "Razer Firefly V2", kind: "Mousepad"),
+                                  onBack: {}, onApply: { _ in }).frame(width: 320))
         : args.contains("usage")
         ? AnyView(UsageGraphView(controller: controller, onBack: {}))
         : args.contains("profiles")

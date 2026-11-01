@@ -47,7 +47,8 @@ struct RemapView: View {
             footer
         }
         .padding(18)
-        .frame(width: onBack == nil ? 440 : 320)
+        // The window's width, and the popover's sub-page width now that the popover is wider.
+        .frame(width: 440)
         .onAppear {
             remapper.refreshAccessibility(prompt: false)
         }
