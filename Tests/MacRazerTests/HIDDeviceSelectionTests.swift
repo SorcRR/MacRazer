@@ -105,6 +105,23 @@ final class HIDDeviceSelectionTests: XCTestCase {
         }
     }
 
+    /// A Firefly V2 mousepad next to a Basilisk V3, as one 0.6.1 report listed them. The pad
+    /// has a Mouse interface with a 90-byte report, and 0.6.1 took it for the mouse.
+    func testMousepadIsNotTheMouse() {
+        let pad = [(0x01, 0x02, 90), (0x01, 0x06, 1)].map {
+            HIDInterfaceInfo(pid: 0x0C04, locationID: 1, usagePage: $0.0, usage: $0.1,
+                             maxFeatureReportSize: $0.2, productName: "Razer Firefly V2")
+        }
+        let mouse = [(0x01, 0x02, 0), (0x01, 0x06, 0), (0x01, 0x06, 1), (0x0C, 0x01, 90)].map {
+            HIDInterfaceInfo(pid: 0x0099, locationID: 2, usagePage: $0.0, usage: $0.1,
+                             maxFeatureReportSize: $0.2, productName: "Razer Basilisk V3")
+        }
+        let both = pad + mouse
+        XCTAssertEqual(HIDDeviceSelection.controlInterfaceIndex(interfaces: both).map { both[$0].pid }, 0x0099)
+        XCTAssertNil(HIDDeviceSelection.controlInterfaceIndex(interfaces: pad), "a mousepad alone is no mouse")
+        XCTAssertFalse(HIDDeviceSelection.couldBeMouse(productName: "Razer Firefly V2"))
+    }
+
     func testMiceStayMice() {
         // The registry's names, plus older ones that share words with other product lines.
         let names = RazerDevices.known.map(\.name) + ["Razer DeathAdder Chroma", "Razer Mamba Chroma",

@@ -56,9 +56,10 @@ expect rough edges until 1.0.
   Viper V4 Pro refuse the usual polling rate command, so the picker always failed on them. It
   is hidden there until the newer command is added. Their profiles also apply again, instead
   of failing on the polling rate.
-- **A Razer keyboard is no longer taken for a mouse.** With no mouse plugged in, the app could
-  open a Razer keyboard and show it as the mouse. It now skips keyboards, keypads and other
-  products that are never mice.
+- **A Razer keyboard or mousepad is no longer taken for a mouse.** With no mouse plugged in,
+  the app could open a Razer keyboard and show it as the mouse. A Firefly mousepad could even
+  win over the mouse next to it. It now skips keyboards, keypads, mousepads and other products
+  that are never mice.
 
 ## [0.6.1] — 2026-10-29
 
