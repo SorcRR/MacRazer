@@ -216,6 +216,7 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertFalse(RazerDevices.hasLighting(pid: 0x00B8))
         XCTAssertEqual(RazerDevices.maxDPI(pid: 0x00B8), 26000)
         XCTAssertEqual(RazerDevices.connection(pid: 0x00B8), .wirelessDongle)
+        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00B8), [], "an AA-cell mouse has no cable mode")
     }
 
     /// The Viper V4 Pro on its cable: no lighting, polling still to verify, and the classic
