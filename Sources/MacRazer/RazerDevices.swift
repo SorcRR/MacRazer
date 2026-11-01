@@ -116,6 +116,10 @@ struct RazerDeviceInfo {
     /// False for a wireless mouse that never connects by cable (the AA-cell ones), so the
     /// device test and the support prompt don't ask for a cable test it can't have.
     var hasCableLink = true
+    /// False for a mouse whose classic polling command answers "not supported" (0x05). The
+    /// HyperPolling models want OpenRazer's polling_rate2 pair, which isn't implemented, so
+    /// the popover hides the picker and a profile doesn't count the write as failed.
+    var acceptsClassicPolling = true
 }
 
 enum RazerDevices {
@@ -198,20 +202,20 @@ enum RazerDevices {
         // command answers "not supported" (0x05). Brightness stays on LOGO_LED alone, since
         // other mice the dock pairs with may lack the Naga's side panel. The dock's own
         // lighting is not reachable here.
-        .init(pid: 0x00A4, name: "Razer Mouse Dock Pro", unverified: [.polling], hasBattery: true, hasLighting: true, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
+        .init(pid: 0x00A4, name: "Razer Mouse Dock Pro", unverified: [.polling], hasBattery: true, hasLighting: true, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, acceptsClassicPolling: false),
         // Basilisk V4 HyperSpeed over the dongle (in-app report, no credit given): battery and
         // DPI answered with 0x1f. 0xFF and 0x80 time out. Every LED group refuses brightness,
         // so no lighting. The classic polling command answers "not supported" (0x05); it likely
         // needs OpenRazer's polling_rate2 pair, as the V4 Pro does in #55. Until that is tried,
         // the polling picker fails here, so the row stays unverified. The 26000 DPI ceiling is
         // the app's default for unknown models, not a measured value.
-        .init(pid: 0x00EA, name: "Razer Basilisk V4 HyperSpeed", unverified: [.polling], hasBattery: true, hasLighting: false, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
+        .init(pid: 0x00EA, name: "Razer Basilisk V4 HyperSpeed", unverified: [.polling], hasBattery: true, hasLighting: false, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, acceptsClassicPolling: false),
         // Basilisk V4 Pro over the dongle (in-app report, no credit given): battery, DPI and
         // stages, static color and brightness passed with 0x1f. LOGO and SCROLL answer
         // brightness, ZERO and BACKLIGHT return 0x03. The classic polling command answers
         // "not supported" (0x05), the same gap as the V4 HyperSpeed, so the row stays
         // unverified. The 26000 ceiling is the app's default, not a measured value.
-        .init(pid: 0x00E3, name: "Razer Basilisk V4 Pro (Wireless)", unverified: [.polling], hasBattery: true, hasLighting: true, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
+        .init(pid: 0x00E3, name: "Razer Basilisk V4 Pro (Wireless)", unverified: [.polling], hasBattery: true, hasLighting: true, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, acceptsClassicPolling: false),
         // DeathAdder V3 HyperSpeed over the dongle (in-app report, no credit given): DPI and
         // stages and polling passed with 0x1f. It has no lighting (every group answers 0x05).
         // The battery read timed out, so the row stays unverified until it answers.
@@ -221,6 +225,18 @@ enum RazerDevices {
         // lighting were skipped, so the row stays unverified. Only LOGO answers brightness;
         // the rest return 0x03. 20000 is the vendor spec.
         .init(pid: 0x007D, name: "Razer DeathAdder V2 Pro (Wireless)", unverified: [.dpi, .polling, .lighting], hasBattery: true, hasLighting: true, maxDPI: 20000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
+        // Viper V3 HyperSpeed over the dongle (in-app report, no credit given): battery, DPI and
+        // stages, and polling all passed with 0x1f (0x3f and 0x08 answer too; 0xFF and 0x80 time
+        // out). It has no lighting: every group answers 0x05. The firmware echoed a 45000 DPI
+        // write, so the echo can't bound it: 26000 is the ceiling of its Focus X 26K sensor.
+        .init(pid: 0x00B8, name: "Razer Viper V3 HyperSpeed", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
+        // Viper V4 Pro on the cable (in-app report, no credit given): battery and DPI and stages
+        // passed with 0x1f (every id tried answers on the cable). It has no lighting: every group
+        // answers 0x05. The classic polling command answers "not supported" (0x05), as on the
+        // Basilisk V4 models, so it likely needs the polling_rate2 pair and the row stays
+        // unverified. Its control interface is the fourth one. Its sensor is the Focus Pro 50K,
+        // but 45000 is as high as the app writes (the driver's clamp), and the firmware echoed it.
+        .init(pid: 0x00E5, name: "Razer Viper V4 Pro (Wired)", unverified: [.polling], hasBattery: true, hasLighting: false, maxDPI: 45000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, acceptsClassicPolling: false),
     ]
 
     static func info(pid: Int) -> RazerDeviceInfo? { known.first { $0.pid == pid } }
@@ -333,6 +349,7 @@ enum RazerDevices {
     static func supportsSleepTimeout(pid: Int) -> Bool { info(pid: pid)?.supportsSleepTimeout ?? false }
     static func supportsStageEditing(pid: Int) -> Bool { info(pid: pid)?.supportsStageEditing ?? false }
     static func verifiesBrightnessWrite(pid: Int) -> Bool { info(pid: pid)?.verifiesBrightnessWrite ?? false }
+    static func acceptsClassicPolling(pid: Int) -> Bool { info(pid: pid)?.acceptsClassicPolling ?? true }
     /// Per-command transaction id: explicit per-command override, else the class split
     /// (see `RazerDeviceInfo.matrixTransactionId`). 0x1f default for unknown models — the
     /// Cobra-family id this app has hardware verified.

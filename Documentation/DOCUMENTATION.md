@@ -2,11 +2,11 @@
 
 A native macOS menu bar app to control Razer mice: battery, DPI, polling rate, RGB lighting,
 brightness, and software button remapping. Razer's Synapse does not support macOS, so this
-app talks to the mouse directly over USB HID. Four models have been verified on real
-hardware: the Razer Cobra HyperSpeed (the development mouse), the Razer Atheris, the Razer
-Basilisk V3 X HyperSpeed and the Razer Viper Ultimate. By design it detects and tries to
-control any Razer mouse in the same protocol family; the registry carries twelve product ids,
-and README's table says which of them anyone has actually run the probes against.
+app talks to the mouse directly over USB HID. The Razer Cobra HyperSpeed is the development
+mouse; others have been verified from user reports. By design it detects and tries to control
+any Razer mouse in the same protocol family. The registry (`RazerDevices.known`) lists every
+product id it knows, and README's table says which of them anyone has actually run the probes
+against, and how far.
 
 This document explains how the app is built and how every feature works, so a future Claude
 session or a human can pick it up cold. See also:
@@ -354,6 +354,13 @@ long content scrolls without resizing the popover):
  progress, where Esc cancels that).
  - Swatches, chips and the icon buttons carry VoiceOver labels and tooltips; chips and
  rows get a hover highlight.
+ - **Scroll wheel on sliders** (`SliderScroll.swift`, `.scrollAdjusts`): while the pointer is
+ over a slider, a local `NSEvent` monitor takes vertical scrolls. Up raises the value with
+ the natural-scrolling inversion undone. A wheel notch is 1% of the range, rounded to the
+ slider's own step and never finer (`SliderScroll.notch`: DPI 250, sleep timer 15 s); a
+ trackpad moves in proportion (300 pt crosses the slider), momentum is ignored, and the value
+ lands on the slider's step grid. The write goes out 0.3 s after scrolling stops, or when the pointer
+ leaves.
 - **Appearance**, `PopoverTheme.swift`: Settings › Appearance has a **Theme** (System, Dark,
  Light, Razer Green) and a **Glass effect** switch (off by default), stored as `appearance.theme` and
  `appearance.glass` in UserDefaults. `PopoverLook.resolve` turns theme, glass and the system's
@@ -653,6 +660,7 @@ that path draws the content but needs an explicit size, since there is no window
 | `HIDDevice.swift` | IOKit HID open/enumerate + request/response send. |
 | `HIDDeviceSelection.swift` | Which device and interface to open; tells mice from keyboards. |
 | `HIDMonitor.swift` | IOKit service notifications for plug/unplug. |
+| `SliderScroll.swift` | Scroll wheel and trackpad scrolling on the popover's sliders. |
 | `RazerKeyboards.swift` | Keyboards whose backlight MacRazer sets (PID, transaction id), their interface pick, Synapse detection. |
 | `KeyboardController.swift` | The keyboard's lighting: its own device and queue, follow-the-mouse, who sets colours while Synapse runs. |
 | `RazerTransport.swift` | Transport protocol shared by USB and Bluetooth, plus the shared retry ladder. |

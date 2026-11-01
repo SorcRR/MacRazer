@@ -7,6 +7,10 @@ expect rough edges until 1.0.
 ## [Unreleased]
 
 ### Added
+- **Sliders follow the scroll wheel.** Scroll over any slider in the popover (DPI, brightness,
+  wave speed, sleep timer) to move it: up raises the value, whatever your natural-scrolling
+  setting. Each wheel notch moves 1% of the slider (250 for DPI, 15 seconds for the sleep
+  timer), and the change goes to the mouse or keyboard once you stop scrolling.
 - **Wave speed.** Picking Wave shows a speed slider, from slow to fast, for the mouse and for a
   Razer keyboard alike. The speed is kept for the next time you pick Wave, saved in profiles,
   and carried over when the keyboard follows the mouse.
@@ -26,9 +30,9 @@ expect rough edges until 1.0.
 - **The device test knows what's already verified.** On a fully supported mouse it says no
   test is needed. On a partly supported one it lists what works and offers to test only
   what's missing. Both name the mouse's other connections that still need a report.
-- **Seven more mice from your reports.** Naga V3 Pro on its cable and Naga Trinity are fully
-  supported. Basilisk V4 Pro, DeathAdder V2 Pro, DeathAdder V3 HyperSpeed, Mouse Dock Pro and
-  Naga Chroma are partly supported.
+- **Nine more mice from your reports.** Naga V3 Pro on its cable, Naga Trinity and Viper V3
+  HyperSpeed are fully supported. Basilisk V4 Pro, DeathAdder V2 Pro, DeathAdder V3
+  HyperSpeed, Mouse Dock Pro, Naga Chroma and Viper V4 Pro on its cable are partly supported.
 - **Breathing lighting.** The Lighting card has a new Breathing effect. The lights fade in
   and out in the colour you pick from the swatches or the colour wheel. It works over USB and
   the 2.4 GHz dongle. A Razer keyboard gets it too, but that is untested. Over Bluetooth only
@@ -44,6 +48,10 @@ expect rough edges until 1.0.
   If you never changed the switch, you'll see the solid look after updating.
 
 ### Fixed
+- **No polling picker that can't work.** The Basilisk V4 models, the Mouse Dock Pro and the
+  Viper V4 Pro refuse the usual polling rate command, so the picker always failed on them. It
+  is hidden there until the newer command is added. Their profiles also apply again, instead
+  of failing on the polling rate.
 - **A Razer keyboard is no longer taken for a mouse.** With no mouse plugged in, the app could
   open a Razer keyboard and show it as the mouse. It now skips keyboards, keypads and other
   products that are never mice.
