@@ -206,11 +206,12 @@ struct PopoverView: View {
         VStack(spacing: 0) {
             Spacer(minLength: 0)
             ColorPickerPage(color: colorTargetAccessory == nil ? $color : $accessoryColor, device: colorPageDevice,
-                            onBack: { page = .main }, live: colorTargetEffect != .breathing) { rgb in
+                            onBack: { page = .main }, live: colorTargetEffect != .breathing,
+                            wide: twoColumns) { rgb in
                 if let accessory = colorTargetAccessory { accessory.setColor(rgb) } else { controller.setColor(rgb) }
             }
-            // The picker is drawn for one column's width; wider, the wheel would sit in a sea.
-            .frame(width: Self.oneColumnWidth)
+            // One column: the picker's own width. Two: the wheel and the rest side by side.
+            .frame(width: twoColumns ? popoverWidth : Self.oneColumnWidth)
             .frame(maxWidth: .infinity)
             Spacer(minLength: 0)
         }
@@ -222,22 +223,27 @@ struct PopoverView: View {
         // a re-render dismisses an open SwiftUI Menu, collapsing the shortcut picker while
         // the user is still choosing. This page only depends on the remapper, whose own
         // publishes (detected buttons, mappings) still update it normally.
-        ButtonsPage(controller: controller, remapper: remapper, width: subPageWidth, onBack: { page = .main }).equatable()
+        // In two columns the page spreads over the whole popover, in two columns of its own.
+        ButtonsPage(controller: controller, remapper: remapper, width: popoverWidth, twoColumns: twoColumns,
+                    onBack: { page = .main }).equatable()
     }
 
     private struct ButtonsPage: View, Equatable {
         let controller: MouseController
         let remapper: ButtonRemapper
         let width: CGFloat
+        let twoColumns: Bool
         let onBack: () -> Void
 
         /// The closure is deliberately excluded: it's recreated on every parent render and
         /// always does the same thing (navigate back).
-        nonisolated static func == (a: Self, b: Self) -> Bool { a.remapper === b.remapper && a.width == b.width }
+        nonisolated static func == (a: Self, b: Self) -> Bool {
+            a.remapper === b.remapper && a.width == b.width && a.twoColumns == b.twoColumns
+        }
 
         var body: some View {
             ScrollView {
-                RemapView(remapper: remapper, controller: controller, onBack: onBack, width: width)
+                RemapView(remapper: remapper, controller: controller, onBack: onBack, width: width, twoColumns: twoColumns)
                     .frame(maxWidth: .infinity)
             }
         }

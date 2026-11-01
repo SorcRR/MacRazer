@@ -45,6 +45,8 @@ struct ColorPickerPage: View {
     /// false sends the colour only when a drag ends. Breathing restarts its fade on every
     /// write, so live updates would hold it still while dragging.
     var live = true
+    /// The two-column popover: the wheel on the left, the rest beside it.
+    var wide = false
     var onApply: (RGB) -> Void
 
     @State private var hue: Double = 0
@@ -55,26 +57,69 @@ struct ColorPickerPage: View {
     private let hueColors: [Color] = (0...6).map { Color(hue: Double($0) / 6.0, saturation: 1, brightness: 1) }
 
     var body: some View {
-        VStack(spacing: 14) {
-            HStack(spacing: 10) {
-                BackButton(action: onBack)
-                Text("Colour").font(.system(size: 16, weight: .semibold))
-                Spacer()
-                Circle().fill(color).frame(width: 22, height: 22)
-                    .overlay(Circle().strokeBorder(Color.primary.opacity(0.25), lineWidth: 1))
-            }
-            if let device { deviceLine(device) }
-            wheel
-            HStack(spacing: 8) {
-                Image(systemName: "sun.min.fill").font(.system(size: 10)).foregroundStyle(.secondary)
-                Slider(value: $bri, in: 0...1) { editing in apply(force: !editing) }
-                    .tint(.razerGreen).controlSize(.small)
-                Image(systemName: "sun.max.fill").font(.system(size: 11)).foregroundStyle(.secondary)
+        Group {
+            if wide {
+                HStack(alignment: .center, spacing: 22) {
+                    wheel.frame(width: wheelSize)
+                    VStack(alignment: .leading, spacing: 14) {
+                        HStack(spacing: 10) {
+                            BackButton(action: onBack)
+                            Text("Colour").font(.system(size: 16, weight: .semibold))
+                        }
+                        if let device { deviceLine(device) }
+                        preview
+                        brightnessSlider
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            } else {
+                VStack(spacing: 14) {
+                    HStack(spacing: 10) {
+                        BackButton(action: onBack)
+                        Text("Colour").font(.system(size: 16, weight: .semibold))
+                        Spacer()
+                        Circle().fill(color).frame(width: 22, height: 22)
+                            .overlay(Circle().strokeBorder(Color.primary.opacity(0.25), lineWidth: 1))
+                    }
+                    if let device { deviceLine(device) }
+                    wheel
+                    brightnessSlider
+                }
             }
         }
         .padding(16)
         .frame(maxWidth: .infinity)
         .onAppear(perform: syncFromColor)
+    }
+
+    /// The wheel's height (and width, wide): bigger with a column of its own.
+    private var wheelSize: CGFloat { wide ? 220 : 180 }
+
+    private var brightnessSlider: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "sun.min.fill").font(.system(size: 10)).foregroundStyle(.secondary)
+            Slider(value: $bri, in: 0...1) { editing in apply(force: !editing) }
+                .tint(.razerGreen).controlSize(.small)
+            Image(systemName: "sun.max.fill").font(.system(size: 11)).foregroundStyle(.secondary)
+        }
+    }
+
+    /// Wide only: the colour as a swatch with its hex code, in place of the small circle.
+    private var preview: some View {
+        let rgb = color.rgb
+        return HStack(spacing: 10) {
+            RoundedRectangle(cornerRadius: 9).fill(color)
+                .frame(width: 54, height: 54)
+                .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Color.primary.opacity(0.25), lineWidth: 1))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(String(format: "#%02X%02X%02X", rgb.r, rgb.g, rgb.b))
+                    .font(.system(size: 13, weight: .semibold)).monospaced()
+                    .textSelection(.enabled)
+                Text("R \(rgb.r)  G \(rgb.g)  B \(rgb.b)")
+                    .font(.system(size: 11)).monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+        }
     }
 
     private func deviceLine(_ device: Device) -> some View {
@@ -96,9 +141,9 @@ struct ColorPickerPage: View {
 
     private var wheel: some View {
         GeometryReader { geo in
-            let side = min(geo.size.width, 180)
+            let side = min(geo.size.width, wheelSize)
             let r = side / 2
-            let center = CGPoint(x: geo.size.width / 2, y: 90)
+            let center = CGPoint(x: geo.size.width / 2, y: wheelSize / 2)
             ZStack {
                 Circle()
                     .fill(AngularGradient(gradient: Gradient(colors: hueColors), center: .center))
@@ -113,13 +158,13 @@ struct ColorPickerPage: View {
                     .shadow(radius: 1)
                     .position(selectorPos(center: center, r: r))
             }
-            .frame(width: geo.size.width, height: 180)
+            .frame(width: geo.size.width, height: wheelSize)
             .contentShape(Rectangle())
             .gesture(DragGesture(minimumDistance: 0)
                 .onChanged { update(location: $0.location, center: center, r: r) }
                 .onEnded { _ in onApply(color.rgb) })
         }
-        .frame(height: 180)
+        .frame(height: wheelSize)
     }
 
     private func selectorPos(center: CGPoint, r: CGFloat) -> CGPoint {

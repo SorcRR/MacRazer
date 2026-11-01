@@ -296,8 +296,10 @@ long content scrolls without resizing the popover):
  mouse and an accessory, or two accessories). In two columns the header, support, update and
  Bluetooth cards run across the top, and below them are two 303 pt columns: battery, DPI and
  the accessories on the left, the settings sections on the right. With no mouse, the no-mouse
- card takes the left column and the accessories move right. Sub-pages are then 440 pt wide
- (the colour page stays 320), centred.
+ card takes the left column and the accessories move right. The Buttons page then fills the
+ width in two columns (buttons left; the DPI button, notes and footer right), and the colour page
+ puts a 220 pt wheel beside the title, device line, a swatch with its hex code and the
+ brightness slider. The other sub-pages are 440 pt wide, centred.
  - **Header card**: Razer logo (green) in a tinted tile + detected device name +
  connection state + status dot. Shows "No mouse connected" when none.
  - **Battery card**: a custom proportional **battery gauge** (fill tracks the exact %,
@@ -656,6 +658,8 @@ swift run MacRazer render-ui whatsnew installed out.png # the notes without an u
 swift run MacRazer render-ui keyboard|pad|three [follow|synapse [macrazer]|wave] out.png # accessories next to the mouse
 swift run MacRazer render-ui pad color out.png # the colour page naming the pad it sets
 swift run MacRazer render-ui twocolumns out.png # two columns with only the mouse
+swift run MacRazer render-ui pad color twocolumns out.png # the wide colour page
+swift run MacRazer render-remap wide out.png # the two-column Buttons page
 swift run MacRazer render-about [notes] out.png
 swift run MacRazer render-remap out.png
 swift run MacRazer render-support-prompt [noaccess] out.png # the support prompt window

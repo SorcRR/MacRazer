@@ -242,7 +242,8 @@ case "render-ui":
         ? AnyView(ColorPickerPage(color: .constant(.blue),
                                   device: accessoryPIDs.isEmpty ? nil
                                       : .init(symbol: AccessoryKind.mousepad.symbol, name: "Razer Firefly V2", kind: "Mousepad"),
-                                  onBack: {}, onApply: { _ in }).frame(width: 320))
+                                  onBack: {}, wide: args.contains("twocolumns"), onApply: { _ in })
+                    .frame(width: args.contains("twocolumns") ? 640 : 320))
         : args.contains("usage")
         ? AnyView(UsageGraphView(controller: controller, onBack: {}))
         : args.contains("profiles")
@@ -363,7 +364,14 @@ case "render-remap":
     let path = outputPath(args.dropFirst(), default: "remap-preview.png")
     let r = ButtonRemapper()
     r.loadPreviewState()
-    writeViewPNG(RemapView(remapper: r), to: path)
+    // `wide`: the popover's two-column Buttons page, with the DPI button section.
+    if args.contains("wide") {
+        let mouse = MouseController()
+        mouse.loadPreviewState()
+        writeViewPNG(RemapView(remapper: r, controller: mouse, onBack: {}, width: 640, twoColumns: true), to: path)
+    } else {
+        writeViewPNG(RemapView(remapper: r), to: path)
+    }
 
 case "render-permissions":
     _ = NSApplication.shared
