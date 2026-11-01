@@ -234,6 +234,10 @@ case "render-ui":
                        size: CGSize(width: 320, height: 748), to: path)
         break
     }
+    // `twocolumns`: the two-column layout with only the mouse. Scratch defaults, so a render
+    // never changes the setting.
+    let renderAppearance = AppearanceSettings(defaults: UserDefaults(suiteName: "MacRazer.render-ui") ?? .standard)
+    renderAppearance.twoColumns = args.contains("twocolumns")
     let rootView: AnyView = args.contains("color")
         ? AnyView(ColorPickerPage(color: .constant(.blue),
                                   device: accessoryPIDs.isEmpty ? nil
@@ -244,7 +248,7 @@ case "render-ui":
         : args.contains("profiles")
         ? AnyView(ProfilesView(controller: controller, remapper: ButtonRemapper(), onBack: {}))
         : AnyView(PopoverView(controller: controller, remapper: ButtonRemapper(), updateChecker: updateChecker,
-                              launchAtLogin: launchAtLogin, appearance: AppearanceSettings.shared,
+                              launchAtLogin: launchAtLogin, appearance: renderAppearance,
                               onOpenSettings: {},
                               onOpenDeviceTest: {})) // no windows in a render
     writeViewPNG(rootView, to: path)

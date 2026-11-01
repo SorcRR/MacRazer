@@ -286,15 +286,18 @@ any Razer mouse); the registry adds what has been verified about the model. Unkn
  is up. A new window only has to conform to be counted.
 
 ### 6.2 Popover, `PopoverView.swift`
-A **640 pt** wide navigable container, as tall as its content, with a main page and sub-pages (colour, Buttons,
+A **320 pt** wide navigable container (640 pt in two columns), as tall as its content, with a main page and sub-pages (colour, Buttons,
 Usage, Profiles, What's new) and a push/pop slide animation; each page is a `ScrollView` (so
 long content scrolls without resizing the popover):
 
-- **Main page**, Control-Center-style frosted cards, each section its own tile. The header,
- support, update and Bluetooth cards run across the top. Below them are two 303 pt columns:
- battery, DPI and the accessories on the left, the settings sections on the right. With no
- mouse, the no-mouse card takes the left column and the accessories move right. Sub-pages are
- 440 pt wide (the colour page one column wide), centred.
+- **Main page**, Control-Center-style frosted cards, each section its own tile. One column by
+ default. Two columns (`PopoverLayout`) when Settings › Appearance › Two-column popover is on
+ (`appearance.twoColumnPopover`), and always with more than one Razer device connected (the
+ mouse and an accessory, or two accessories). In two columns the header, support, update and
+ Bluetooth cards run across the top, and below them are two 303 pt columns: battery, DPI and
+ the accessories on the left, the settings sections on the right. With no mouse, the no-mouse
+ card takes the left column and the accessories move right. Sub-pages are then 440 pt wide
+ (the colour page stays 320), centred.
  - **Header card**: Razer logo (green) in a tinted tile + detected device name +
  connection state + status dot. Shows "No mouse connected" when none.
  - **Battery card**: a custom proportional **battery gauge** (fill tracks the exact %,
@@ -380,7 +383,8 @@ long content scrolls without resizing the popover):
  Light, Razer Green) and a **Glass effect** switch (off by default), stored as `appearance.theme` and
  `appearance.glass` in UserDefaults. `PopoverLook.resolve` turns theme, glass and the system's
  light or dark mode into one of six looks (light, dark or green glass; solid light #F5F5F7,
- dark #1C1C1E or green #0F1A11). Razer Green is always dark.
+ dark #1C1C1E or green #0F1A11). Razer Green is always dark. A **Two-column popover** switch
+ (off by default) widens the popover with only the mouse; see the main page above.
  - `AppDelegate` re-applies the look when the setting changes or macOS switches mode, including
  while the popover is open. The popover's appearance is always set explicitly: a nil one would
  follow the menu bar, which macOS tints from the wallpaper.
@@ -550,7 +554,7 @@ come from GitHub Releases.
  off, §6.9), Ask me to help test my mouse (§6.5).
  - **Privacy** (only in a build with the Worker): mouse models in the update check, usage stats,
  and deleting what's stored (§6.6).
- - **Appearance**: Theme and Glass effect (§6.2).
+ - **Appearance**: Theme, Glass effect and Two-column popover (§6.2).
  - **Updates**: Install updates automatically, the version, and Check Now.
 - **Start at login**, `LaunchAtLogin.swift`: `SMAppService.mainApp`, which also lists MacRazer
  in System Settings › General › Login Items. On by default, applied once, on the first launch
@@ -649,6 +653,7 @@ swift run MacRazer render-ui [offline|color|update|updated|whatsnew|…] out.png
 swift run MacRazer render-ui whatsnew installed out.png # the notes without an update to install
 swift run MacRazer render-ui keyboard|pad|three [follow|synapse [macrazer]|wave] out.png # accessories next to the mouse
 swift run MacRazer render-ui pad color out.png # the colour page naming the pad it sets
+swift run MacRazer render-ui twocolumns out.png # two columns with only the mouse
 swift run MacRazer render-about [notes] out.png
 swift run MacRazer render-remap out.png
 swift run MacRazer render-support-prompt [noaccess] out.png # the support prompt window

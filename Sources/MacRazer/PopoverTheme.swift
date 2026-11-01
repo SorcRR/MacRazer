@@ -75,6 +75,7 @@ enum PopoverLook: Equatable, CaseIterable {
 final class AppearanceSettings: ObservableObject {
     static let themeKey = "appearance.theme"
     static let glassKey = "appearance.glass"
+    static let twoColumnsKey = "appearance.twoColumnPopover"
 
     /// The app's one instance. The window controllers reach it here rather than having it
     /// threaded through every initializer; tests make their own with a scratch defaults suite.
@@ -88,6 +89,10 @@ final class AppearanceSettings: ObservableObject {
     @Published var glass: Bool {
         didSet { defaults.set(glass, forKey: Self.glassKey) }
     }
+    /// The popover in two columns even with only the mouse. Off by default; see `PopoverLayout`.
+    @Published var twoColumns: Bool {
+        didSet { defaults.set(twoColumns, forKey: Self.twoColumnsKey) }
+    }
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -95,6 +100,7 @@ final class AppearanceSettings: ObservableObject {
         // rather than failing.
         theme = defaults.string(forKey: Self.themeKey).flatMap(PopoverTheme.init(rawValue:)) ?? .system
         glass = defaults.object(forKey: Self.glassKey) as? Bool ?? false
+        twoColumns = defaults.bool(forKey: Self.twoColumnsKey)
     }
 
     func look(systemIsDark: Bool) -> PopoverLook {
@@ -121,6 +127,16 @@ final class AppearanceSettings: ObservableObject {
     func applyToWindows(_ look: PopoverLook) {
         windowLook = look
         for window in windows.allObjects { WindowBackdrop.apply(look, to: window) }
+    }
+}
+
+/// One column or two for the popover's main page.
+enum PopoverLayout {
+    /// Two columns when the person picked them, and always with more than one Razer device
+    /// connected: a keyboard or mousepad under the mouse's column would push the popover
+    /// off a small screen.
+    static func usesTwoColumns(preferred: Bool, hasMouse: Bool, accessories: Int) -> Bool {
+        preferred || (hasMouse ? 1 : 0) + accessories > 1
     }
 }
 

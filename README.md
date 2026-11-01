@@ -34,7 +34,8 @@ Razer mice that use the same HID protocol family, but those are untested, so tre
 - **Profiles**: save DPI, polling rate, lighting and button remaps under a name, and switch
   between them from the popover. Saved per device.
 - **Themes**: System, Dark, Light or Razer Green, with an optional glass effect, in
-  Settings › Appearance.
+  Settings › Appearance. A two-column popover is there too. It's always used while a keyboard
+  or mousepad is connected.
 - **Connection sounds** when the mouse connects or disconnects (can be turned off).
 - **Button remapping** for the side Back/Forward buttons (software, via a CGEvent tap):
   keyboard shortcuts (presets or a custom recorder), mouse clicks, and media keys. Saved per

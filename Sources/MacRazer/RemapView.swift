@@ -18,6 +18,8 @@ struct RemapView: View {
     @ObservedObject var remapper: ButtonRemapper
     var controller: MouseController?
     var onBack: (() -> Void)?
+    /// The popover's sub-page width; the window's is 440.
+    var width: CGFloat = 440
     @State private var recordingButton: Int?
     @State private var recordingDpiCycleShortcut = false
     @State private var recorderError: String?
@@ -47,8 +49,7 @@ struct RemapView: View {
             footer
         }
         .padding(18)
-        // The window's width, and the popover's sub-page width now that the popover is wider.
-        .frame(width: 440)
+        .frame(width: width)
         .onAppear {
             remapper.refreshAccessibility(prompt: false)
         }

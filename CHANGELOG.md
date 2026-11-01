@@ -48,9 +48,11 @@ expect rough edges until 1.0.
   for random ones.
 
 ### Changed
-- **The popover is wider and shorter.** It now has two columns: battery and DPI on the left,
-  the mouse's settings on the right. Keyboards and mousepads go under the left column. It is
-  about half as tall as before, so it fits under the menu bar on a 13-inch screen.
+- **A two-column popover.** With a keyboard or mousepad connected, the popover switches to two
+  columns: battery and DPI on the left, the mouse's settings on the right, and the other
+  devices under the left column. It is about half as tall, so it fits under the menu bar on a
+  13-inch screen. With only the mouse it stays one column, unless you turn on Settings ›
+  Appearance › Two-column popover.
 - **Settings has a new layout.** A wider window with a sidebar for General, Privacy,
   Appearance and Updates, so it no longer runs off the bottom of a small screen. Each setting
   has an icon, and the version and update status sit at the bottom of the sidebar.

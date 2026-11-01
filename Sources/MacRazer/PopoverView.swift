@@ -110,15 +110,20 @@ struct PopoverView: View {
     /// Popover sizes to the MAIN page content (no empty space); sub-pages match that height
     /// (but never less than `subPageMinHeight`). Buttons page scrolls if taller; colour page
     /// is centred.
-    /// Two columns of the old single column's width: the mouse's status on the left, its
-    /// settings on the right, and accessories under whichever column has room. Wide rather
-    /// than tall, so it fits under the menu bar on a 13-inch screen.
-    private let popoverWidth: CGFloat = 640
+    /// One column, or two (`PopoverLayout`): the mouse's status on the left, its settings on
+    /// the right, and accessories under whichever column has room. Wide rather than tall, so
+    /// it fits under the menu bar on a 13-inch screen with more than the mouse plugged in.
+    private var twoColumns: Bool {
+        PopoverLayout.usesTwoColumns(preferred: appearance.twoColumns, hasMouse: !noMouse,
+                                     accessories: accessories.available.count)
+    }
+    private static let oneColumnWidth: CGFloat = 320
+    private var popoverWidth: CGFloat { twoColumns ? 640 : Self.oneColumnWidth }
     /// The page's 12 pt inset and the 10 pt gap between the columns.
     private var columnWidth: CGFloat { (popoverWidth - 24 - 10) / 2 }
-    /// Sub-pages are one column of text and controls, laid out for this width (the Buttons
-    /// and Profiles windows' too) and centred in the wider popover.
-    private let subPageWidth: CGFloat = 440
+    /// Sub-pages are one column of text and controls. In two columns they get the Buttons
+    /// and Profiles windows' width, centred.
+    private var subPageWidth: CGFloat { twoColumns ? 440 : Self.oneColumnWidth }
     /// With its sections collapsed the main page can be short, and sub-pages that scroll (the
     /// usage charts, the button list) would be squeezed into it. Below this they grow instead.
     /// Not the colour page: it's a fixed-size picker, centred, and would only gain empty space.
@@ -205,7 +210,7 @@ struct PopoverView: View {
                 if let accessory = colorTargetAccessory { accessory.setColor(rgb) } else { controller.setColor(rgb) }
             }
             // The picker is drawn for one column's width; wider, the wheel would sit in a sea.
-            .frame(width: columnWidth + 24)
+            .frame(width: Self.oneColumnWidth)
             .frame(maxWidth: .infinity)
             Spacer(minLength: 0)
         }
@@ -217,21 +222,22 @@ struct PopoverView: View {
         // a re-render dismisses an open SwiftUI Menu, collapsing the shortcut picker while
         // the user is still choosing. This page only depends on the remapper, whose own
         // publishes (detected buttons, mappings) still update it normally.
-        ButtonsPage(controller: controller, remapper: remapper, onBack: { page = .main }).equatable()
+        ButtonsPage(controller: controller, remapper: remapper, width: subPageWidth, onBack: { page = .main }).equatable()
     }
 
     private struct ButtonsPage: View, Equatable {
         let controller: MouseController
         let remapper: ButtonRemapper
+        let width: CGFloat
         let onBack: () -> Void
 
         /// The closure is deliberately excluded: it's recreated on every parent render and
         /// always does the same thing (navigate back).
-        nonisolated static func == (a: Self, b: Self) -> Bool { a.remapper === b.remapper }
+        nonisolated static func == (a: Self, b: Self) -> Bool { a.remapper === b.remapper && a.width == b.width }
 
         var body: some View {
             ScrollView {
-                RemapView(remapper: remapper, controller: controller, onBack: onBack)
+                RemapView(remapper: remapper, controller: controller, onBack: onBack, width: width)
                     .frame(maxWidth: .infinity)
             }
         }
@@ -247,7 +253,7 @@ struct PopoverView: View {
 
     private var profilesPage: some View {
         ScrollView {
-            ProfilesView(controller: controller, remapper: remapper, onBack: { page = .main })
+            ProfilesView(controller: controller, remapper: remapper, onBack: { page = .main }, width: subPageWidth)
                 .frame(maxWidth: .infinity)
         }
     }
@@ -275,47 +281,25 @@ struct PopoverView: View {
             // A Razer mouse on Bluetooth can't be controlled (no control protocol over BT) —
             // explain it instead of just showing "offline".
             if controller.bluetoothMouse != nil && !controller.connected { bluetoothNotice }
-            if noMouse && accessories.available.isEmpty {
-                // Nothing to put beside it: the one card says what to do, across the page.
-                if controller.lastBatterySnapshot != nil { batteryCard.opacity(0.55) }
-                noMouseCard
-            } else {
+            // Nothing to put beside the no-mouse card: it says what to do, across the page.
+            if twoColumns && !(noMouse && accessories.available.isEmpty) {
                 // Status on the left, settings on the right. Accessories go under the status,
                 // where there's room, or on the right when there's no mouse to fill it.
                 HStack(alignment: .top, spacing: 10) {
                     VStack(alignment: .leading, spacing: 10) {
-                        if noMouse {
-                            // A last reading is still worth showing (the snapshot is persisted, so most
-                            // returning users have one); the empty-state card still says what to do.
-                            if controller.lastBatterySnapshot != nil { batteryCard.opacity(0.55) }
-                            noMouseCard
-                        } else {
-                            // Battery stays readable (last-known) but dims when offline; its refresh
-                            // button stays active so you can retry.
-                            if controller.deviceHasBattery {
-                                batteryCard.opacity(controller.connected ? 1 : 0.55)
-                            }
-                            // Live mouse-config sections: dim AND disable while disconnected.
-                            dpiCard
-                                .disabled(!controller.connected)
-                                .opacity(controller.connected ? 1 : 0.45)
-                            accessoriesSection
-                        }
+                        statusCards
+                        if !noMouse { accessoriesSection }
                     }
                     .frame(width: columnWidth, alignment: .top)
                     VStack(alignment: .leading, spacing: 10) {
-                        if noMouse {
-                            accessoriesSection
-                        } else {
-                            // Dims with DPI, but its rows still open and close offline so the last-known
-                            // settings stay readable; the controls inside them (and the Buttons page,
-                            // which needs the mouse) are what's disabled.
-                            settingsGroup
-                                .opacity(controller.connected ? 1 : 0.45)
-                        }
+                        if noMouse { accessoriesSection } else { mouseSettings }
                     }
                     .frame(width: columnWidth, alignment: .top)
                 }
+            } else {
+                statusCards
+                mouseSettings
+                accessoriesSection
             }
             footer
         }
@@ -354,6 +338,36 @@ struct PopoverView: View {
         .onChange(of: controller.deviceKey) { _, _ in loadCustomDPI() } // reload/clamp per mouse
         .onChange(of: controller.deviceMaxDPI) { _, _ in loadCustomDPI() }
         .onChange(of: controller.sleepTimeout) { _, new in if let new { sleepTimeoutValue = Double(new) } }
+    }
+
+    /// The battery and DPI, or with no mouse, the card that says what to do.
+    @ViewBuilder private var statusCards: some View {
+        if noMouse {
+            // A last reading is still worth showing (the snapshot is persisted, so most
+            // returning users have one); the empty-state card still says what to do.
+            if controller.lastBatterySnapshot != nil { batteryCard.opacity(0.55) }
+            noMouseCard
+        } else {
+            // Battery stays readable (last-known) but dims when offline; its refresh button
+            // stays active so you can retry.
+            if controller.deviceHasBattery {
+                batteryCard.opacity(controller.connected ? 1 : 0.55)
+            }
+            // Live mouse-config sections: dim AND disable while disconnected.
+            dpiCard
+                .disabled(!controller.connected)
+                .opacity(controller.connected ? 1 : 0.45)
+        }
+    }
+
+    /// The mouse's settings rows. Dims with DPI, but its rows still open and close offline so
+    /// the last-known settings stay readable; the controls inside them (and the Buttons page,
+    /// which needs the mouse) are what's disabled.
+    @ViewBuilder private var mouseSettings: some View {
+        if !noMouse {
+            settingsGroup
+                .opacity(controller.connected ? 1 : 0.45)
+        }
     }
 
     /// No mouse is known at all: never seen this session, or unplugged (which forgets its
