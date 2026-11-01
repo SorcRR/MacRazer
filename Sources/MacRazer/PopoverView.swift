@@ -54,8 +54,8 @@ struct PopoverView: View {
     @ObservedObject var appearance: AppearanceSettings
     /// Whether to show the card asking for a device test; see `SupportPromptPolicy`.
     @ObservedObject var supportPrompt: SupportPrompt = .shared
-    /// A Razer keyboard's backlight, shown under the mouse when one is plugged in.
-    @ObservedObject var keyboard: KeyboardController = .shared
+    /// Razer keyboards and mousepads plugged in next to the mouse, a card each.
+    @ObservedObject var accessories: Accessories = .shared
     @Environment(\.colorScheme) private var colorScheme
     /// Opening a window is the owner's job — the popover doesn't know about window controllers.
     /// Deliberately not defaulted: a no-op default would let a future call site forget the
@@ -80,14 +80,17 @@ struct PopoverView: View {
     /// `Binding<Color>`. The controller's published value is the source of truth (lighting
     /// state is device-confirmed there); this follows it via `onChange`.
     @State private var color: Color = .razerGreen
-    /// Which device the colour page sets: the mouse, or the keyboard's own colour.
+    /// Which device the colour page sets: the mouse, or one accessory's own colour.
     @State private var colorTarget: ColorTarget = .mouse
-    enum ColorTarget { case mouse, keyboard }
-    @State private var keyboardBrightnessValue: Double = 100
-    @State private var keyboardColor: Color = .razerGreen
-    /// Wave speed sliders, 0 (slowest) to 1 (fastest); see `WaveSpeed`.
+    enum ColorTarget: Equatable {
+        case mouse
+        case accessory(AccessoryController.ID)
+    }
+    /// The colour page's colour while it sets an accessory. Seeded from the accessory when
+    /// the page opens.
+    @State private var accessoryColor: Color = .razerGreen
+    /// Wave speed slider, 0 (slowest) to 1 (fastest); see `WaveSpeed`.
     @State private var waveSpeedValue = 0.5
-    @State private var keyboardWaveSpeedValue = 0.5
     /// Recallable custom DPI — persisted per-mouse, and never above the mouse's max.
     @State private var customDPI: Int = 8000
     @State private var editingDpiStage: Int?
@@ -104,23 +107,22 @@ struct PopoverView: View {
     private var displayedStages: [Int] {
         controller.dpiStages.isEmpty ? defaultStages : controller.dpiStages
     }
-    // Distinct hues with a true red (SwiftUI .red is a warm orange-red; .green duplicated razerGreen).
-    // Each carries its spoken/tooltip name.
-    private let swatches: [(name: String, color: Color)] = [
-        ("Red", .swatchRed),
-        ("Orange", Color(red: 1.0, green: 0.5, blue: 0.0)),
-        ("Yellow", .swatchYellow),
-        ("Green", .razerGreen),
-        ("Cyan", .swatchCyan),
-        ("Blue", .swatchBlue),
-        ("Purple", Color(red: 0.6, green: 0.2, blue: 1.0)),
-        ("Pink", Color(red: 1.0, green: 0.2, blue: 0.65)),
-    ]
-
     /// Popover sizes to the MAIN page content (no empty space); sub-pages match that height
     /// (but never less than `subPageMinHeight`). Buttons page scrolls if taller; colour page
     /// is centred.
-    private let popoverWidth: CGFloat = 320
+    /// One column, or two (`PopoverLayout`): the mouse's status on the left, its settings on
+    /// the right, and accessories under whichever column has room. Wide rather than tall, so
+    /// it fits under the menu bar on a 13-inch screen with more than the mouse plugged in.
+    private var twoColumns: Bool {
+        PopoverLayout.usesTwoColumns(preferred: appearance.twoColumns, hasMouse: !noMouse,
+                                     accessories: accessories.available.count)
+    }
+    private var popoverWidth: CGFloat { twoColumns ? PopoverLayout.twoColumnWidth : PopoverLayout.oneColumnWidth }
+    /// The page's 12 pt inset and the 10 pt gap between the columns.
+    private var columnWidth: CGFloat { (popoverWidth - 24 - 10) / 2 }
+    /// Sub-pages are one column of text and controls. In two columns they get the Buttons
+    /// and Profiles windows' width, centred.
+    private var subPageWidth: CGFloat { twoColumns ? 440 : PopoverLayout.oneColumnWidth }
     /// With its sections collapsed the main page can be short, and sub-pages that scroll (the
     /// usage charts, the button list) would be squeezed into it. Below this they grow instead.
     /// Not the colour page: it's a fixed-size picker, centred, and would only gain empty space.
@@ -160,31 +162,57 @@ struct PopoverView: View {
         // Closing the popover resets navigation: reopening onto a stale sub-page (whose
         // gating card may have been disabled in the meantime — e.g. Profiles after a
         // disconnect) is disorienting.
+        // The accessory the colour page sets was unplugged: there's nothing left to set.
+        // `connected`, not `available`: one failed write closes the device until the rescan
+        // reopens it, and that blip shouldn't throw the person off the page mid-drag.
+        .onChange(of: accessories.connected.map(\.id)) { _, ids in
+            if page == .color, case .accessory(let id) = colorTarget, !ids.contains(id) { page = .main }
+        }
+        // Like the mouse's colour on the main page: the wheel shows what the accessory runs,
+        // after a failed write or a Follow mouse change too.
+        .onChange(of: colorTargetAccessory?.lighting.color) { _, new in
+            if let new { accessoryColor = new.swiftUIColor }
+        }
         .onAppear { isShown = true }
         .onDisappear { page = .main; isShown = false }
     }
 
     // MARK: Sub-pages
 
-    /// The effect a pick on the colour page lands on, mouse or keyboard: the same rule the
+    /// The accessory the colour page sets, while it sets one that's still plugged in.
+    private var colorTargetAccessory: AccessoryController? {
+        guard case .accessory(let id) = colorTarget else { return nil }
+        return accessories.accessory(id)
+    }
+
+    /// The effect a pick on the colour page lands on, mouse or accessory: the same rule the
     /// controllers send by, so the wheel goes live exactly when the write won't be Breathing.
     private var colorTargetEffect: LightingEffect {
-        switch colorTarget {
-        case .mouse: return controller.intendedEffect.afterColorPick(effectsSupported: controller.supportsLightingEffects)
-        case .keyboard: return (keyboard.latestLighting.effect ?? .staticColor).afterColorPick()
+        if let accessory = colorTargetAccessory {
+            return (accessory.latestLighting.effect ?? .staticColor).afterColorPick()
         }
+        return controller.intendedEffect.afterColorPick(effectsSupported: controller.supportsLightingEffects)
+    }
+
+    /// Which device the page sets, named once there's more than the mouse to choose from.
+    private var colorPageDevice: ColorPickerPage.Device? {
+        if let accessory = colorTargetAccessory {
+            return .init(symbol: accessory.info.kind.symbol, name: accessory.info.name, kind: accessory.info.kind.label)
+        }
+        guard !accessories.available.isEmpty else { return nil }
+        return .init(symbol: "computermouse", name: controller.deviceName ?? "Mouse", kind: "Mouse")
     }
 
     private var colorPage: some View {
         VStack(spacing: 0) {
             Spacer(minLength: 0)
-            ColorPickerPage(color: colorTarget == .mouse ? $color : $keyboardColor, onBack: { page = .main },
-                            live: colorTargetEffect != .breathing) { rgb in
-                switch colorTarget {
-                case .mouse: controller.setColor(rgb)
-                case .keyboard: keyboard.setColor(rgb)
-                }
+            ColorPickerPage(color: colorTargetAccessory == nil ? $color : $accessoryColor, device: colorPageDevice,
+                            onBack: { page = .main }, live: colorTargetEffect != .breathing,
+                            wide: twoColumns) { rgb in
+                if let accessory = colorTargetAccessory { accessory.setColor(rgb) } else { controller.setColor(rgb) }
             }
+            // One column: the picker's own width. Two: the wheel and the rest side by side.
+            .frame(width: twoColumns ? popoverWidth : PopoverLayout.oneColumnWidth)
             .frame(maxWidth: .infinity)
             Spacer(minLength: 0)
         }
@@ -196,21 +224,27 @@ struct PopoverView: View {
         // a re-render dismisses an open SwiftUI Menu, collapsing the shortcut picker while
         // the user is still choosing. This page only depends on the remapper, whose own
         // publishes (detected buttons, mappings) still update it normally.
-        ButtonsPage(controller: controller, remapper: remapper, onBack: { page = .main }).equatable()
+        // In two columns the page spreads over the whole popover, in two columns of its own.
+        ButtonsPage(controller: controller, remapper: remapper, width: popoverWidth, twoColumns: twoColumns,
+                    onBack: { page = .main }).equatable()
     }
 
     private struct ButtonsPage: View, Equatable {
         let controller: MouseController
         let remapper: ButtonRemapper
+        let width: CGFloat
+        let twoColumns: Bool
         let onBack: () -> Void
 
         /// The closure is deliberately excluded: it's recreated on every parent render and
         /// always does the same thing (navigate back).
-        nonisolated static func == (a: Self, b: Self) -> Bool { a.remapper === b.remapper }
+        nonisolated static func == (a: Self, b: Self) -> Bool {
+            a.remapper === b.remapper && a.width == b.width && a.twoColumns == b.twoColumns
+        }
 
         var body: some View {
             ScrollView {
-                RemapView(remapper: remapper, controller: controller, onBack: onBack)
+                RemapView(remapper: remapper, controller: controller, onBack: onBack, width: width, twoColumns: twoColumns)
                     .frame(maxWidth: .infinity)
             }
         }
@@ -219,13 +253,14 @@ struct PopoverView: View {
     private var usagePage: some View {
         ScrollView {
             UsageGraphView(controller: controller, onBack: { page = .main })
+                .frame(width: subPageWidth)
                 .frame(maxWidth: .infinity)
         }
     }
 
     private var profilesPage: some View {
         ScrollView {
-            ProfilesView(controller: controller, remapper: remapper, onBack: { page = .main })
+            ProfilesView(controller: controller, remapper: remapper, onBack: { page = .main }, width: subPageWidth)
                 .frame(maxWidth: .infinity)
         }
     }
@@ -253,29 +288,26 @@ struct PopoverView: View {
             // A Razer mouse on Bluetooth can't be controlled (no control protocol over BT) —
             // explain it instead of just showing "offline".
             if controller.bluetoothMouse != nil && !controller.connected { bluetoothNotice }
-            if noMouse {
-                // A last reading is still worth showing (the snapshot is persisted, so most
-                // returning users have one); the empty-state card still says what to do.
-                if controller.lastBatterySnapshot != nil { batteryCard.opacity(0.55) }
-                noMouseCard
-            } else {
-                // Battery stays readable (last-known) but dims when offline; its refresh button
-                // stays active so you can retry.
-                if controller.deviceHasBattery {
-                    batteryCard.opacity(controller.connected ? 1 : 0.55)
+            // Nothing to put beside the no-mouse card: it says what to do, across the page.
+            if twoColumns && !(noMouse && accessories.available.isEmpty) {
+                // Status on the left, settings on the right. Accessories go under the status,
+                // where there's room, or on the right when there's no mouse to fill it.
+                HStack(alignment: .top, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        statusCards
+                        if !noMouse { accessoriesSection }
+                    }
+                    .frame(width: columnWidth, alignment: .top)
+                    VStack(alignment: .leading, spacing: 10) {
+                        if noMouse { accessoriesSection } else { mouseSettings }
+                    }
+                    .frame(width: columnWidth, alignment: .top)
                 }
-                // Live mouse-config sections: dim AND disable while disconnected.
-                dpiCard
-                    .disabled(!controller.connected)
-                    .opacity(controller.connected ? 1 : 0.45)
-                // Dims with DPI, but its rows still open and close offline so the last-known
-                // settings stay readable; the controls inside them (and the Buttons page,
-                // which needs the mouse) are what's disabled.
-                settingsGroup
-                    .opacity(controller.connected ? 1 : 0.45)
+            } else {
+                statusCards
+                mouseSettings
+                accessoriesSection
             }
-            // Not tied to the mouse: it shows, and works, with the mouse asleep or unplugged.
-            if let kb = keyboard.keyboard { keyboardSection(kb) }
             footer
         }
         .padding(12)
@@ -289,22 +321,9 @@ struct PopoverView: View {
             loadCustomDPI()
             color = controller.lightingColor.swiftUIColor
             waveSpeedValue = WaveSpeed.fraction(fromByte: controller.waveSpeed)
-            keyboardWaveSpeedValue = WaveSpeed.fraction(fromByte: keyboard.lighting.waveSpeed ?? WaveSpeed.standard)
-            keyboardBrightnessValue = Double(keyboard.lighting.brightness)
-            keyboardColor = keyboard.lighting.color.swiftUIColor
         }
         .onChange(of: controller.lightingColor) { _, new in color = new.swiftUIColor }
         .onChange(of: controller.waveSpeed) { _, new in waveSpeedValue = WaveSpeed.fraction(fromByte: new) }
-        .onChange(of: keyboard.lighting) { _, new in
-            keyboardBrightnessValue = Double(new.brightness)
-            keyboardColor = new.color.swiftUIColor
-            keyboardWaveSpeedValue = WaveSpeed.fraction(fromByte: new.waveSpeed ?? WaveSpeed.standard)
-        }
-        // A failed write leaves `lighting` as it was, so snap the slider back explicitly.
-        .onChange(of: keyboard.lastWriteFailure) { _, _ in
-            keyboardBrightnessValue = Double(keyboard.lighting.brightness)
-            keyboardWaveSpeedValue = WaveSpeed.fraction(fromByte: keyboard.lighting.waveSpeed ?? WaveSpeed.standard)
-        }
         .onChange(of: controller.dpi) { _, new in if new != 0 { dpiValue = Double(new) } }
         .onChange(of: controller.brightness) { _, new in brightnessValue = Double(new) }
         // A failed device write leaves the controller's values unchanged, so no value-driven
@@ -328,15 +347,43 @@ struct PopoverView: View {
         .onChange(of: controller.sleepTimeout) { _, new in if let new { sleepTimeoutValue = Double(new) } }
     }
 
+    /// The battery and DPI, or with no mouse, the card that says what to do.
+    @ViewBuilder private var statusCards: some View {
+        if noMouse {
+            // A last reading is still worth showing (the snapshot is persisted, so most
+            // returning users have one); the empty-state card still says what to do.
+            if controller.lastBatterySnapshot != nil { batteryCard.opacity(0.55) }
+            noMouseCard
+        } else {
+            // Battery stays readable (last-known) but dims when offline; its refresh button
+            // stays active so you can retry.
+            if controller.deviceHasBattery {
+                batteryCard.opacity(controller.connected ? 1 : 0.55)
+            }
+            // Live mouse-config sections: dim AND disable while disconnected.
+            dpiCard
+                .disabled(!controller.connected)
+                .opacity(controller.connected ? 1 : 0.45)
+        }
+    }
+
+    /// The mouse's settings rows. Dims with DPI, but its rows still open and close offline so
+    /// the last-known settings stay readable; the controls inside them (and the Buttons page,
+    /// which needs the mouse) are what's disabled.
+    @ViewBuilder private var mouseSettings: some View {
+        if !noMouse {
+            settingsGroup
+                .opacity(controller.connected ? 1 : 0.45)
+        }
+    }
+
     /// No mouse is known at all: never seen this session, or unplugged (which forgets its
     /// name). Not a sleeping or out-of-range one, which keeps its name and its dimmed
     /// controls. With no model to describe, those controls would be placeholders for a mouse
     /// that isn't there — every card disabled, the DPI chips showing defaults — so the page
     /// shows one card that says what to do, the way Control Center's Bluetooth module does
     /// with nothing paired.
-    private var noMouse: Bool {
-        !controller.connected && controller.deviceName == nil && controller.bluetoothMouse == nil
-    }
+    private var noMouse: Bool { controller.noMouseKnown }
 
     private var noMouseCard: some View {
         card {
@@ -827,6 +874,8 @@ struct PopoverView: View {
                                 page = .main
                                 Task { await updateChecker.downloadAndInstall() }
                             })
+            .frame(width: subPageWidth)
+            .frame(maxWidth: .infinity)
     }
 
     /// Shown after the version changes, until dismissed.
@@ -1327,17 +1376,7 @@ struct PopoverView: View {
     /// The Lighting row's expanded content; the row itself shows the effect and brightness.
     private var lightingContent: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Brightness.
-            HStack(spacing: 6) {
-                Image(systemName: "sun.min.fill").font(.system(size: 10)).foregroundStyle(.secondary)
-                Slider(value: $brightnessValue, in: 0...100, step: 1) { editing in
-                    if !editing { controller.setBrightness(Int(brightnessValue)) }
-                }
-                .tint(.razerGreen)
-                .controlSize(.small)
-                .scrollAdjusts($brightnessValue, in: 0...100, snap: 1) { controller.setBrightness(Int($0)) }
-                Image(systemName: "sun.max.fill").font(.system(size: 11)).foregroundStyle(.secondary)
-            }
+            BrightnessSlider(value: $brightnessValue) { controller.setBrightness($0) }
             // Bound straight to the controller: setEffect publishes only on a successful
             // device write, so a failed change snaps the picker back by itself — no local
             // state, no suppression flags.
@@ -1349,8 +1388,9 @@ struct PopoverView: View {
                 .pickerStyle(.segmented)
                 .controlSize(.small)
                 .labelsHidden()
+                .frame(maxWidth: .infinity)
                 if controller.effect == .wave {
-                    waveSpeedSlider($waveSpeedValue) { controller.setWaveSpeed(WaveSpeed.byte(fromFraction: $0)) }
+                    WaveSpeedSlider(value: $waveSpeedValue) { controller.setWaveSpeed(WaveSpeed.byte(fromFraction: $0)) }
                         .transition(.opacity)
                 }
             }
@@ -1362,30 +1402,19 @@ struct PopoverView: View {
                     .fixedSize(horizontal: false, vertical: true)
             } else if controller.effect.usesColor || !controller.supportsLightingEffects {
                 HStack(spacing: 7) {
-                    ForEach(swatches.indices, id: \.self) { i in
-                        swatch(swatches[i].color, name: swatches[i].name)
+                    ForEach(lightingSwatches.indices, id: \.self) { i in
+                        let sw = lightingSwatches[i]
+                        SwatchButton(color: sw.color, name: sw.name, selected: sw.color.rgb == color.rgb) {
+                            controller.setColor(sw.color.rgb)
+                        }
                     }
-                    customColorWell()
+                    CustomColorWell {
+                        colorTarget = .mouse
+                        page = .color
+                    }
                     Spacer(minLength: 0)
                 }
                 .transition(.opacity)
-            }
-
-            // Not for a one-colour light: the keyboard would follow a colour nobody can set.
-            if keyboard.keyboard != nil && keyboard.canWrite && !controller.lightHasFixedColor {
-                Divider().opacity(0.6)
-                HStack(spacing: 8) {
-                    Image(systemName: "keyboard")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                    Text("Also light the keyboard").font(.system(size: 11.5))
-                    Spacer(minLength: 6)
-                    Toggle("Also light the keyboard", isOn: $keyboard.followsMouse)
-                        .labelsHidden()
-                        .toggleStyle(.switch)
-                        .tint(.razerGreen)
-                        .controlSize(.mini)
-                }
             }
 
             if showsLightingBatteryHint {
@@ -1421,232 +1450,57 @@ struct PopoverView: View {
             && Int(brightnessValue) > Battery.lightingHintBrightnessPercent
     }
 
-    /// Wave speed, slow on the left and fast on the right, shown only while Wave runs. Sent
-    /// when the drag ends, like brightness.
-    private func waveSpeedSlider(_ value: Binding<Double>, onCommit: @escaping (Double) -> Void) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: "tortoise.fill").font(.system(size: 10)).foregroundStyle(.secondary)
-            Slider(value: value, in: 0...1) { editing in
-                if !editing { onCommit(value.wrappedValue) }
-            }
-            .tint(.razerGreen)
-            .controlSize(.small)
-            .accessibilityLabel("Wave speed")
-            .accessibilityValue(WaveSpeed.spokenValue(fromFraction: value.wrappedValue))
-            .scrollAdjusts(value, in: 0...1, onCommit: onCommit)
-            Image(systemName: "hare.fill").font(.system(size: 11)).foregroundStyle(.secondary)
-        }
-    }
+    // MARK: Accessories
 
-    /// A real button rather than a tap gesture on a circle, so it reaches VoiceOver and
-    /// keyboard navigation, and greys out with the rest of the card while disconnected.
-    private func swatch(_ sw: Color, name: String, for target: ColorTarget = .mouse) -> some View {
-        let selected = isSelected(sw, for: target)
-        return Button {
-            switch target {
-            case .mouse: controller.setColor(sw.rgb)
-            case .keyboard: keyboard.setColor(sw.rgb)
-            }
-        } label: {
-            Circle()
-                .fill(sw)
-                .frame(width: 18, height: 18)
-                .overlay(Circle().strokeBorder(Color.primary.opacity(0.15), lineWidth: 0.5))
-                .overlay(Circle().inset(by: -2.5).stroke(Color.primary, lineWidth: selected ? 1.5 : 0))
-                .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
-        .help(name)
-        .accessibilityLabel(name)
-        .accessibilityAddTraits(selected ? .isSelected : [])
-    }
-
-    /// Circular "custom colour" well — a rainbow ring that opens the system colour panel.
-    /// Uses a real button + NSColorPanel bridge (the hidden-ColorPicker trick didn't register
-    /// clicks).
-    private func customColorWell(for target: ColorTarget = .mouse) -> some View {
-        Button {
-            colorTarget = target
-            page = .color
-        } label: {
-            ZStack {
-                Circle().fill(AngularGradient(
-                    gradient: Gradient(colors: [.red, .yellow, .green, .cyan, .blue, .purple, .red]),
-                    center: .center))
-                Image(systemName: "eyedropper").font(.system(size: 8, weight: .bold))
-                    .foregroundStyle(.white)
-                    .shadow(radius: 1)
-            }
-            .frame(width: 18, height: 18)
-            .overlay(Circle().strokeBorder(Color.primary.opacity(0.15), lineWidth: 0.5))
-        }
-        .buttonStyle(.plain)
-        .help("Pick any colour")
-        .accessibilityLabel("Custom colour")
-    }
-
-    private func isSelected(_ sw: Color, for target: ColorTarget = .mouse) -> Bool {
-        switch target {
-        case .mouse: return sw.rgb == color.rgb
-        // Only Static and Breathing show a colour as picked: Spectrum and Wave have none.
-        case .keyboard: return keyboard.lighting.effect?.usesColor == true && sw.rgb == keyboard.lighting.color
-        }
-    }
-
-    // MARK: Keyboard
-
-    /// Whether the keyboard's Lighting row is open, remembered like the mouse's sections.
-    @AppStorage("popoverKeyboardLightingExpanded") private var keyboardLightingExpanded = true
-
-    /// A Razer keyboard plugged in next to the mouse: its name, then its own lighting, a line
-    /// saying it follows the mouse, or the question of who sets its colours while Synapse runs.
-    private func keyboardSection(_ kb: KeyboardController.Keyboard) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("Other Razer devices")
-                .font(.system(size: 10.5, weight: .semibold))
-                .textCase(.uppercase)
-                .foregroundStyle(.secondary)
+    /// Razer keyboards and mousepads plugged in next to the mouse, a card each. Not tied to
+    /// the mouse: they show, and work, with the mouse asleep or unplugged.
+    ///
+    /// The cards sit in a recessed tray, a shade darker than the popover with a hairline
+    /// edge, so they read as a group of their own rather than more of the mouse's cards.
+    @ViewBuilder private var accessoriesSection: some View {
+        let devices = accessories.available
+        if !devices.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 6) {
+                    Text("Other Razer devices")
+                        .font(.system(size: 10.5, weight: .semibold))
+                        .textCase(.uppercase)
+                        .foregroundStyle(.secondary)
+                    Text("\(devices.count)")
+                        .font(.system(size: 10, weight: .semibold)).monospacedDigit()
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 6)
+                        .background(Color.primary.opacity(0.10), in: Capsule())
+                        .accessibilityHidden(true)
+                }
                 .padding(.horizontal, 4)
                 .padding(.top, 2)
-            cardSurface(VStack(alignment: .leading, spacing: 0) {
-                keyboardHeader(kb)
-                if keyboard.synapseRunning { synapseToggleRow }
-                if keyboard.canWrite && !keyboardFollowing { keyboardLightingRow }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading))
-        }
-    }
-
-    private func keyboardHeader(_ kb: KeyboardController.Keyboard) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: "keyboard")
-                .font(.system(size: 15))
-                .foregroundStyle(.primary.opacity(0.85))
-                .frame(width: 34, height: 34)
-                .background(Color.primary.opacity(0.10), in: RoundedRectangle(cornerRadius: 9))
-            VStack(alignment: .leading, spacing: 1) {
-                Text(kb.name).font(.system(size: 13, weight: .semibold)).lineLimit(1)
-                HStack(spacing: 5) {
-                    if keyboardFollowing, keyboard.lighting.effect?.usesColor == true {
-                        Circle().fill(keyboard.lighting.color.swiftUIColor).frame(width: 9, height: 9)
+                .accessibilityElement(children: .combine)
+                ForEach(devices) { accessory in
+                    // Not a one-colour light: there'd be a colour to follow that nobody can set.
+                    AccessoryCard(accessory: accessory, hasMouse: !noMouse && !controller.lightHasFixedColor,
+                                  mouseGlow: mouseGlow,
+                                  // A lone accessory starts open: there's nothing else to see.
+                                  startsOpen: devices.count == 1) {
+                        colorTarget = .accessory(accessory.id)
+                        accessoryColor = accessory.lighting.color.swiftUIColor
+                        page = .color
                     }
-                    Text(keyboardSubtitle(kb))
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
                 }
             }
-            Spacer(minLength: 0)
-            Circle().fill(Color.green).frame(width: 8, height: 8)
-                .accessibilityLabel("Connected")
-        }
-        .padding(12)
-    }
-
-    private func keyboardSubtitle(_ kb: KeyboardController.Keyboard) -> String {
-        if keyboard.leftToSynapse { return "Colours set by Synapse" }
-        if keyboardFollowing { return "Following mouse · \(keyboardLightingSummary)" }
-        return kb.verified ? "Keyboard · lighting only" : "Keyboard · lighting only, untested"
-    }
-
-    /// "Also light the keyboard" is on and there is a mouse to follow. With none, the
-    /// keyboard's own controls come back: the switch lives on the mouse's Lighting row,
-    /// which isn't there to turn it off.
-    private var keyboardFollowing: Bool {
-        keyboard.followsMouse && keyboard.canWrite && !noMouse && !controller.lightHasFixedColor
-    }
-
-    /// Like `lightingSummary`, for the keyboard. Before MacRazer has set an effect it can only
-    /// say the brightness: the keyboard's own effect can't be read.
-    private var keyboardLightingSummary: String {
-        let pct = Int(keyboardBrightnessValue)
-        guard let effect = keyboard.lighting.effect else { return "\(pct)%" }
-        if pct == 0 || effect == .off { return "Off" }
-        return "\(effect.rawValue) · \(pct)%"
-    }
-
-    private var keyboardLightingRow: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Button {
-                withAnimation(.easeInOut(duration: 0.2)) { keyboardLightingExpanded.toggle() }
-            } label: {
-                groupRowLabel(title: "Lighting", symbol: "light.max", tint: .orange,
-                              value: keyboardLightingSummary, valueColor: .secondary,
-                              expanded: keyboardLightingExpanded)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Keyboard lighting")
-            .accessibilityValue(keyboardLightingSummary)
-            if keyboardLightingExpanded {
-                keyboardLightingContent
-                    .padding(.horizontal, 12)
-                    .padding(.top, 6)
-                    .padding(.bottom, 12)
-                    .transition(.opacity)
-            }
+            .padding(8)
+            .background(Color.black.opacity(colorScheme == .dark ? 0.28 : 0.06),
+                        in: RoundedRectangle(cornerRadius: 15))
+            .overlay(RoundedRectangle(cornerRadius: 15).strokeBorder(Color.primary.opacity(0.10), lineWidth: 1))
         }
     }
 
-    /// The mouse's lighting controls, pointed at the keyboard.
-    private var keyboardLightingContent: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                Image(systemName: "sun.min.fill").font(.system(size: 10)).foregroundStyle(.secondary)
-                Slider(value: $keyboardBrightnessValue, in: 0...100, step: 1) { editing in
-                    if !editing { keyboard.setBrightness(Int(keyboardBrightnessValue)) }
-                }
-                .tint(.razerGreen)
-                .controlSize(.small)
-                .scrollAdjusts($keyboardBrightnessValue, in: 0...100, snap: 1) { keyboard.setBrightness(Int($0)) }
-                Image(systemName: "sun.max.fill").font(.system(size: 11)).foregroundStyle(.secondary)
-            }
-            // nil (never set from MacRazer) shows no segment picked rather than a guess.
-            Picker("", selection: Binding(get: { keyboard.lighting.effect },
-                                          set: { if let e = $0 { keyboard.setEffect(e) } })) {
-                ForEach(LightingEffect.allCases) { Text($0.rawValue).tag(Optional($0)) }
-            }
-            .pickerStyle(.segmented)
-            .controlSize(.small)
-            .labelsHidden()
-            if keyboard.lighting.effect == .wave {
-                waveSpeedSlider($keyboardWaveSpeedValue) { keyboard.setWaveSpeed(WaveSpeed.byte(fromFraction: $0)) }
-                    .transition(.opacity)
-            }
-            // Always there, unlike the mouse's: picking a colour under Spectrum or Wave switches
-            // to Static, so the colours are one click away whatever the keyboard is running.
-            // Only Static and Breathing show a colour as picked.
-            HStack(spacing: 7) {
-                ForEach(swatches.indices, id: \.self) { i in
-                    swatch(swatches[i].color, name: swatches[i].name, for: .keyboard)
-                }
-                customColorWell(for: .keyboard)
-                Spacer(minLength: 0)
-            }
-        }
-    }
-
-    /// Shown only while Synapse runs: who sets the keyboard's colours, either way at any
-    /// time. Off, the default, leaves them to Synapse and hides MacRazer's controls; on,
-    /// MacRazer's colours go back on, and again after a wake or reconnect.
-    private var synapseToggleRow: some View {
-        HStack(alignment: .top, spacing: 8) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Use MacRazer").font(.system(size: 11.5, weight: .medium))
-                Text("Razer Synapse is running and may change this keyboard's colours.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: 6)
-            Toggle("Use MacRazer", isOn: Binding(get: { keyboard.owner == .macRazer },
-                                                 set: { keyboard.choose($0 ? .macRazer : .synapse) }))
-                .labelsHidden()
-                .toggleStyle(.switch)
-                .tint(.razerGreen)
-                .controlSize(.mini)
-        }
-        .padding(.horizontal, 12)
-        .padding(.bottom, 12)
+    /// What the mouse's light shows, for an accessory following it. Over Bluetooth the
+    /// effect can't be set, so it's the colour.
+    private var mouseGlow: AccessoryIcon.Glow {
+        if Int(brightnessValue) == 0 { return .unlit }
+        if !controller.supportsLightingEffects { return .color(controller.lightingColor.swiftUIColor) }
+        return AccessoryIcon.Glow(effect: controller.effect, color: controller.lightingColor.swiftUIColor)
     }
 
     // MARK: Grouped settings

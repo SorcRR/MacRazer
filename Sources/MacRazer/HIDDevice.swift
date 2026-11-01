@@ -262,11 +262,11 @@ final class HIDDevice {
         return devices[idx]
     }
 
-    /// The control interface of a keyboard `RazerKeyboards` knows, without opening it, or nil
-    /// when none is plugged in. Picked by `RazerKeyboards.controlInterfaceIndex`.
-    static func keyboardControlInterface() -> IOHIDDevice? {
+    /// The control interface of every accessory `RazerAccessories` knows, without opening
+    /// them, one per unit. Picked by `RazerAccessories.controlInterfaceIndices`.
+    static func accessoryControlInterfaces() -> [IOHIDDevice] {
         let devices = matchingDevices(vendorId: Razer.vendorId)
-        return RazerKeyboards.controlInterfaceIndex(interfaces: interfaceInfos(devices)).map { devices[$0] }
+        return RazerAccessories.controlInterfaceIndices(interfaces: interfaceInfos(devices)).map { devices[$0] }
     }
 
     /// What `HIDDeviceSelection` ranks each interface by.

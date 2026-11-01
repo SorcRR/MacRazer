@@ -34,7 +34,8 @@ Razer mice that use the same HID protocol family, but those are untested, so tre
 - **Profiles**: save DPI, polling rate, lighting and button remaps under a name, and switch
   between them from the popover. Saved per device.
 - **Themes**: System, Dark, Light or Razer Green, with an optional glass effect, in
-  Settings › Appearance.
+  Settings › Appearance. A two-column popover is there too. It's always used while a keyboard
+  or mousepad is connected.
 - **Connection sounds** when the mouse connects or disconnects (can be turned off).
 - **Button remapping** for the side Back/Forward buttons (software, via a CGEvent tap):
   keyboard shortcuts (presets or a custom recorder), mouse clicks, and media keys. Saved per
@@ -42,9 +43,11 @@ Razer mice that use the same HID protocol family, but those are untested, so tre
 - **Any Razer mouse is detected and named.** Controls a model lacks are hidden automatically
   (no lighting on the Atheris, no battery UI on wired-only mice). A Razer keyboard or other
   product that is never a mouse is not taken for one.
-- **Razer keyboard lighting.** A Razer keyboard next to the mouse gets its own colour, effect
-  and brightness in the popover, or can follow the mouse's lighting. Tested on the Cynosa
-  Chroma; the Cynosa Chroma Pro, Cynosa Lite and Ornata V3 family should work too.
+- **Keyboard and mousepad lighting.** Each Razer keyboard or mousepad next to the mouse gets
+  its own card in the popover, with its own colour, effect and brightness. Each can also
+  follow the mouse's lighting. Tested on the Cynosa Chroma keyboard and the Firefly V2
+  mousepad. The Cynosa Chroma Pro, Cynosa Lite, Ornata V3 family, Firefly V2 Pro and
+  Goliathus Chroma pads use the same commands but are untested.
 - **Asks for help with a new mouse.** When a mouse MacRazer doesn't fully support connects, a
   small window offers the device test (see below). It can be turned off in Settings.
 - Settings are written to the mouse's **onboard memory** where supported, so they persist when

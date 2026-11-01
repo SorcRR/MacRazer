@@ -14,7 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     private var statusItem: NSStatusItem!
     private let popover = NSPopover()
     private let controller = MouseController()
-    private let keyboard = KeyboardController.shared
+    private let accessories = Accessories.shared
     private var cancellables = Set<AnyCancellable>()
     private var monitor: HIDMonitor?
     private var bluetoothMonitor: HIDMonitor?
@@ -218,13 +218,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { ctrl.forceCheck(immediateOffline: false) }
                 MainActor.assumeIsolated {
                     self?.relistRazerMice()
-                    self?.keyboard.rescan()
+                    self?.accessories.rescan()
                 }
             },
             onRemove: { [weak self] pids in
                 MainActor.assumeIsolated {
                     self?.relistRazerMice()
-                    self?.keyboard.rescan()
+                    self?.accessories.rescan()
                 }
                 // Only the connected device's removal is definitive. Matching is vendor-wide,
                 // so unplugging a Razer keyboard (or a different-model mouse) fires this too —
@@ -255,29 +255,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
             }
         )
 
-        // "Also light the keyboard" follows lighting the person sets on the mouse, never the
-        // values read from it: the mouse's effect can't be read back, so at launch it is only
-        // the default, and following that would repaint the keyboard on every start.
+        // "Follow mouse" follows lighting the person sets on the mouse, never the values read
+        // from it: the mouse's effect can't be read back, so at launch it is only the default,
+        // and following that would repaint every accessory on each start. Turning the switch
+        // on matches an accessory straight away (`AccessoryController.followsMouse`).
         let ctrl2 = controller
-        // Nothing to follow on a one-colour light: the keyboard keeps its own lighting then.
-        keyboard.mouseLighting = { [weak ctrl2] in
-            ctrl2.flatMap { $0.lightHasFixedColor ? nil : $0 }.map { KeyboardLighting(effect: $0.effect, color: $0.lightingColor, brightness: $0.brightness,
+        // Nothing to follow on a one-colour light, or with no mouse at all: each accessory
+        // keeps its own lighting then, as its card shows.
+        accessories.mouseLighting = { [weak ctrl2] in
+            ctrl2.flatMap { $0.lightHasFixedColor || $0.noMouseKnown ? nil : $0 }
+                .map { AccessoryLighting(effect: $0.effect, color: $0.lightingColor, brightness: $0.brightness,
                                          waveSpeed: $0.waveSpeed) }
         }
-        keyboard.start()
-        let kb = keyboard
+        accessories.start()
+        let acc = accessories
         // After `receive(on:)` because @Published emits before the property is set.
         controller.$lightingChanges
             .dropFirst()
             .receive(on: RunLoop.main)
-            .sink { _ in kb.followMouse() }
-            .store(in: &cancellables)
-        // Turning it on matches the keyboard to the mouse straight away.
-        keyboard.$followsMouse
-            .dropFirst()
-            .filter { $0 }
-            .receive(on: RunLoop.main)
-            .sink { _ in kb.followMouse() }
+            .sink { _ in acc.followMouse() }
             .store(in: &cancellables)
 
         remapper.start()
@@ -749,8 +745,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
 
     func popoverDidShow(_ notification: Notification) {
         controller.setPopoverVisible(true)
-        // Re-reads the keyboard's brightness: its own keys change it behind the app's back.
-        keyboard.rescan()
+        // Re-reads each accessory's brightness: a keyboard's own keys change it behind the app's back.
+        accessories.rescan()
     }
     func popoverDidClose(_ notification: Notification) {
         controller.setPopoverVisible(false)

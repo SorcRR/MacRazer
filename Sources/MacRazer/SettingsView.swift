@@ -352,6 +352,8 @@ struct SettingsView: View {
             themeRow
             rowDivider
             glassRow
+            rowDivider
+            twoColumnsRow
         }
     }
 
@@ -456,6 +458,16 @@ struct SettingsView: View {
             detail: "The popover and windows let the desktop show through. Off gives a solid "
                 + "background, which is easier to read over busy windows.",
             isOn: $appearance.glass
+        )
+    }
+
+    private var twoColumnsRow: some View {
+        settingRow(
+            symbol: "rectangle.split.2x1", tint: Color(nsColor: .systemIndigo),
+            title: "Two-column popover",
+            detail: "A wider, shorter popover: battery and DPI on the left, settings on the right. "
+                + "Always on while a Razer keyboard or mousepad is connected too.",
+            isOn: $appearance.twoColumns
         )
     }
 
