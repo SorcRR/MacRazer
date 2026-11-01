@@ -238,6 +238,31 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertTrue(RazerDevices.acceptsClassicPolling(pid: 0x9999), "unknown models still try it")
     }
 
+    /// The Basilisk V3 verified on its cable, with both lit zones on the brightness slider.
+    func testBasiliskV3Verified() {
+        XCTAssertTrue(RazerDevices.fullySupported(pid: 0x0099))
+        XCTAssertFalse(RazerDevices.hasBattery(pid: 0x0099))
+        XCTAssertEqual(RazerDevices.info(pid: 0x0099)?.extraBrightnessLeds, [Razer.scrollLed])
+        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x0099), [], "wired only, nothing else to ask for")
+    }
+
+    /// The DeathAdder Essential: wired, no battery, and a green-only light whose brightness is
+    /// all there is to verify. Nothing left to ask its owners for.
+    func testDeathAdderEssential() {
+        XCTAssertTrue(RazerDevices.fullySupported(pid: 0x0098))
+        XCTAssertFalse(RazerDevices.needsReport(pid: 0x0098))
+        XCTAssertFalse(RazerDevices.hasBattery(pid: 0x0098))
+        XCTAssertEqual(RazerDevices.maxDPI(pid: 0x0098), 6400)
+        XCTAssertEqual(RazerDevices.connection(pid: 0x0098), .wired)
+        XCTAssertTrue(RazerDevices.fixedColor(pid: 0x0098), "green only: brightness, no colours")
+        // The older Essentials, from OpenRazer: 0xFF and nothing verified.
+        for pid in [0x006E, 0x0071] {
+            XCTAssertEqual(RazerDevices.unverified(pid: pid), [.dpi, .polling])
+            XCTAssertEqual(RazerDevices.transactionId(pid: pid, commandClass: 0x04, commandId: 0x05), 0xff)
+            XCTAssertFalse(RazerDevices.hasLighting(pid: pid))
+        }
+    }
+
     func testConnectionKind() {
         XCTAssertEqual(RazerDevices.connection(pid: 0x00DB), .wirelessDongle)
         XCTAssertEqual(RazerDevices.connection(pid: 0x00DA), .wired)

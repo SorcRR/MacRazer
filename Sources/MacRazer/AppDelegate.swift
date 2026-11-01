@@ -259,8 +259,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         // values read from it: the mouse's effect can't be read back, so at launch it is only
         // the default, and following that would repaint the keyboard on every start.
         let ctrl2 = controller
+        // Nothing to follow on a one-colour light: the keyboard keeps its own lighting then.
         keyboard.mouseLighting = { [weak ctrl2] in
-            ctrl2.map { KeyboardLighting(effect: $0.effect, color: $0.lightingColor, brightness: $0.brightness,
+            ctrl2.flatMap { $0.lightHasFixedColor ? nil : $0 }.map { KeyboardLighting(effect: $0.effect, color: $0.lightingColor, brightness: $0.brightness,
                                          waveSpeed: $0.waveSpeed) }
         }
         keyboard.start()
