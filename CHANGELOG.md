@@ -30,10 +30,11 @@ expect rough edges until 1.0.
 - **The device test knows what's already verified.** On a fully supported mouse it says no
   test is needed. On a partly supported one it lists what works and offers to test only
   what's missing. Both name the mouse's other connections that still need a report.
-- **Ten more mice from your reports.** Naga V3 Pro on its cable, Naga Trinity and Viper V3
-  HyperSpeed are fully supported. Basilisk V4 Pro, DeathAdder Essential, DeathAdder V2 Pro,
+- **Ten more mice from your reports.** DeathAdder Essential, Naga V3 Pro on its cable, Naga
+  Trinity and Viper V3 HyperSpeed are fully supported. Basilisk V4 Pro, DeathAdder V2 Pro,
   DeathAdder V3 HyperSpeed, Mouse Dock Pro, Naga Chroma and Viper V4 Pro on its cable are
-  partly supported.
+  partly supported. The DeathAdder Essential's light is green only, so the colour picker
+  changes nothing there; brightness works.
 - **The Basilisk V3 is verified.** It was listed from a user saying it works. Now a full test
   confirms DPI, DPI stages, polling, lighting and brightness, and the brightness slider dims
   the scroll wheel along with the logo.

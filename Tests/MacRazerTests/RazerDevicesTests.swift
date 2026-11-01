@@ -246,14 +246,14 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(RazerDevices.linksToTest(besides: 0x0099), [], "wired only, nothing else to ask for")
     }
 
-    /// The DeathAdder Essential: wired, no battery, and a green-only light, so lighting stays
-    /// the one thing still to verify.
+    /// The DeathAdder Essential: wired, no battery, and a green-only light whose brightness is
+    /// all there is to verify. Nothing left to ask its owners for.
     func testDeathAdderEssential() {
-        XCTAssertEqual(RazerDevices.unverified(pid: 0x0098), [.lighting])
+        XCTAssertTrue(RazerDevices.fullySupported(pid: 0x0098))
+        XCTAssertFalse(RazerDevices.needsReport(pid: 0x0098))
         XCTAssertFalse(RazerDevices.hasBattery(pid: 0x0098))
         XCTAssertEqual(RazerDevices.maxDPI(pid: 0x0098), 6400)
         XCTAssertEqual(RazerDevices.connection(pid: 0x0098), .wired)
-        XCTAssertEqual(RazerDevices.support(pid: 0x0098), .partly(works: [.dpi, .polling], missing: [.lighting]))
     }
 
     func testConnectionKind() {

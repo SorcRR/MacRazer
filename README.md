@@ -78,10 +78,10 @@ says so.
 | Razer Naga Trinity | DPI, DPI stages, polling, lighting, brightness | anonymous report |
 | Razer Viper V3 HyperSpeed | Battery, DPI, DPI stages, polling | anonymous report |
 | Razer Basilisk V3 | DPI, DPI stages, polling, lighting, brightness | SuperSpacer54376 |
+| Razer DeathAdder Essential | DPI, DPI stages, polling, brightness (its one light is green only) | anonymous report |
 | Razer Basilisk V4 HyperSpeed | Battery, DPI; polling not working yet | anonymous report |
 | Razer Viper V4 Pro (Wired) | Battery, DPI, DPI stages; polling not working yet | anonymous report |
 | Razer Basilisk V4 Pro (Wireless) | Battery, DPI, DPI stages, lighting, brightness; polling not working yet | anonymous report |
-| Razer DeathAdder Essential | DPI, DPI stages, polling, brightness; its light is green only, so colour is untested | anonymous report |
 | Razer DeathAdder V3 HyperSpeed | DPI, DPI stages, polling; battery not answering yet | anonymous report |
 | Razer DeathAdder V2 Pro (Wireless) | Battery; DPI, polling and lighting not tested yet | anonymous report |
 | Razer Mouse Dock Pro (with a Naga V3 Pro) | Battery, DPI, lighting, brightness; polling not working yet | anonymous report |

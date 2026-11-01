@@ -169,10 +169,11 @@ enum RazerDevices {
         .init(pid: 0x0099, name: "Razer Basilisk V3", unverified: [], hasBattery: false, hasLighting: true, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, transactionOverrides: [0x0406: 0xff, 0x0486: 0xff], extraBrightnessLeds: [Razer.scrollLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
         // DeathAdder Essential (two in-app reports, no credit given): wired only, battery 0x05.
         // DPI, the stage table and polling passed with 0x1f (every id answers on the cable);
-        // it ships at 125 Hz. Its one light is green only: brightness on LOGO dims it, but a
-        // color can't show, so one run saw no red and lighting stays unverified. 6400 is the
-        // vendor spec.
-        .init(pid: 0x0098, name: "Razer DeathAdder Essential", unverified: [.lighting], hasBattery: false, hasLighting: true, maxDPI: 6400, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
+        // it ships at 125 Hz. Its one light is green only (vendor spec): brightness on LOGO
+        // dims it, but no color can show, so one run saw no red. That is the most it can do,
+        // so lighting counts as verified rather than asking every owner for a test that can't
+        // pass. 6400 is the vendor spec.
+        .init(pid: 0x0098, name: "Razer DeathAdder Essential", unverified: [], hasBattery: false, hasLighting: true, maxDPI: 6400, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
         // Orochi2013
         .init(pid: 0x0039, name: "Razer Orochi 2013", unverified: [.polling], hasBattery: false, hasLighting: false, maxDPI: 6400, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
         // Viper Ultimate (Wireless)
