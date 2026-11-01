@@ -15,7 +15,7 @@ expect rough edges until 1.0.
   keyboard and a mousepad alike. The speed is kept for the next time you pick Wave, saved in
   profiles, and carried over when an accessory follows the mouse.
 - **Lighting for Razer keyboards and mousepads next to the mouse.** Each one plugged in gets
-  its own card under "Other Razer devices" in the popover. A card is one line with its colour
+  its own card in the popover, grouped in an "Other Razer devices" panel. A card is one line with its colour
   and effect. Click it to open its colour, effect and brightness. Turn on "Follow mouse" in a
   card to keep that device the same as the mouse. While Razer Synapse runs, Synapse keeps each
   device's colours unless you turn on "Use MacRazer" in its card. The colour page names the

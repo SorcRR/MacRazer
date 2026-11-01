@@ -329,7 +329,8 @@ long content scrolls without resizing the popover):
  active and deletes.
  - **Other Razer devices** (`AccessoryController.swift`, `AccessoryCard.swift`,
  `RazerAccessories.swift`): one card per Razer keyboard or mousepad MacRazer knows, independent
- of the mouse being connected. `Accessories.shared` lists one `AccessoryController` per unit
+ of the mouse being connected. They sit in a recessed tray (a shade darker than the popover,
+ hairline edge, a count by the heading) so they read as their own group. `Accessories.shared` lists one `AccessoryController` per unit
  (PID and LocationID), each with its own device handle and queue; two of the same model are
  two cards. Closed, a card is one line: icon, name, an "Untested" tag for an untried model, a
  colour dot and the effect. Clicking opens it; which are open is remembered per model

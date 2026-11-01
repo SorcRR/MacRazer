@@ -1444,27 +1444,44 @@ struct PopoverView: View {
 
     /// Razer keyboards and mousepads plugged in next to the mouse, a card each. Not tied to
     /// the mouse: they show, and work, with the mouse asleep or unplugged.
+    ///
+    /// The cards sit in a recessed tray, a shade darker than the popover with a hairline
+    /// edge, so they read as a group of their own rather than more of the mouse's cards.
     @ViewBuilder private var accessoriesSection: some View {
-        if !accessories.available.isEmpty {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Other Razer devices")
-                    .font(.system(size: 10.5, weight: .semibold))
-                    .textCase(.uppercase)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 4)
-                    .padding(.top, 2)
-                ForEach(accessories.available) { accessory in
+        let devices = accessories.available
+        if !devices.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 6) {
+                    Text("Other Razer devices")
+                        .font(.system(size: 10.5, weight: .semibold))
+                        .textCase(.uppercase)
+                        .foregroundStyle(.secondary)
+                    Text("\(devices.count)")
+                        .font(.system(size: 10, weight: .semibold)).monospacedDigit()
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 6)
+                        .background(Color.primary.opacity(0.10), in: Capsule())
+                        .accessibilityHidden(true)
+                }
+                .padding(.horizontal, 4)
+                .padding(.top, 2)
+                .accessibilityElement(children: .combine)
+                ForEach(devices) { accessory in
                     // Not a one-colour light: there'd be a colour to follow that nobody can set.
                     AccessoryCard(accessory: accessory, hasMouse: !noMouse && !controller.lightHasFixedColor,
                                   mouseColor: controller.effect.usesColor ? controller.lightingColor.swiftUIColor : nil,
                                   // A lone accessory starts open: there's nothing else to see.
-                                  startsOpen: accessories.available.count == 1) {
+                                  startsOpen: devices.count == 1) {
                         colorTarget = .accessory(accessory.id)
                         accessoryColor = accessory.lighting.color.swiftUIColor
                         page = .color
                     }
                 }
             }
+            .padding(8)
+            .background(Color.black.opacity(colorScheme == .dark ? 0.28 : 0.06),
+                        in: RoundedRectangle(cornerRadius: 15))
+            .overlay(RoundedRectangle(cornerRadius: 15).strokeBorder(Color.primary.opacity(0.10), lineWidth: 1))
         }
     }
 
