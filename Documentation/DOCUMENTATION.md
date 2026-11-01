@@ -297,7 +297,8 @@ long content scrolls without resizing the popover):
  Bluetooth cards run across the top, and below them are two 303 pt columns: battery, DPI and
  the accessories on the left, the settings sections on the right. With no mouse, the no-mouse
  card takes the left column and the accessories move right. The Buttons page then fills the
- width in two columns (buttons left; the DPI button, notes and footer right), and the colour page
+ width in two columns (the permission banner or "press a button" hint and how remapping works on the left; the
+ buttons, the DPI button and model notes on the right), and the colour page
  puts a 220 pt wheel beside the title, device line, a swatch with its hex code and the
  brightness slider. The other sub-pages are 440 pt wide, centred.
  - **Header card**: Razer logo (green) in a tinted tile + detected device name +

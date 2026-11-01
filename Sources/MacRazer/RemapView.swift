@@ -34,15 +34,24 @@ struct RemapView: View {
         VStack(alignment: .leading, spacing: 14) {
             header
             if twoColumns {
+                // What to do and how remapping works on the left; the mappings on the right.
                 HStack(alignment: .top, spacing: 18) {
-                    VStack(alignment: .leading, spacing: 14) { buttonsColumn }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    VStack(alignment: .leading, spacing: 14) { extrasColumn }
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    VStack(alignment: .leading, spacing: 14) {
+                        notices
+                        footer
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    VStack(alignment: .leading, spacing: 14) {
+                        buttonList
+                        dpiAndModelNotes
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
             } else {
-                buttonsColumn
-                extrasColumn
+                notices
+                buttonList
+                dpiAndModelNotes
+                footer
             }
         }
         .padding(18)
@@ -53,20 +62,18 @@ struct RemapView: View {
         .overlay { if recordingButton != nil || recordingDpiCycleShortcut { recorderOverlay } }
     }
 
-    /// Permission or detection notes, then the buttons and what each does.
-    @ViewBuilder private var buttonsColumn: some View {
+    /// The permission banner, or the paused note and the "press a button" hint.
+    @ViewBuilder private var notices: some View {
         if !remapper.remappingPermissionsGranted {
             accessibilityBanner
-            buttonList
         } else {
             if remapper.remappingPaused { pausedNote }
             detectionHint
-            buttonList
         }
     }
 
-    /// The DPI button's binding, model notes and the footer.
-    @ViewBuilder private var extrasColumn: some View {
+    /// The DPI button's binding and model notes.
+    @ViewBuilder private var dpiAndModelNotes: some View {
         if let controller {
             DpiCycleBindingSection(controller: controller, remapper: remapper) {
                 recorderError = nil
@@ -74,7 +81,6 @@ struct RemapView: View {
             }
         }
         if remapper.isBasiliskV3XHyperSpeed { basiliskButtonLimits }
-        footer
     }
 
     private var recorderOverlay: some View {
