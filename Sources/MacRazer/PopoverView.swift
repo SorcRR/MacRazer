@@ -118,7 +118,7 @@ struct PopoverView: View {
                                      accessories: accessories.available.count)
     }
     private static let oneColumnWidth: CGFloat = 320
-    private var popoverWidth: CGFloat { twoColumns ? 640 : Self.oneColumnWidth }
+    private var popoverWidth: CGFloat { twoColumns ? PopoverLayout.twoColumnWidth : Self.oneColumnWidth }
     /// The page's 12 pt inset and the 10 pt gap between the columns.
     private var columnWidth: CGFloat { (popoverWidth - 24 - 10) / 2 }
     /// Sub-pages are one column of text and controls. In two columns they get the Buttons
@@ -1399,6 +1399,7 @@ struct PopoverView: View {
                 .pickerStyle(.segmented)
                 .controlSize(.small)
                 .labelsHidden()
+                .frame(maxWidth: .infinity)
                 if controller.effect == .wave {
                     WaveSpeedSlider(value: $waveSpeedValue) { controller.setWaveSpeed(WaveSpeed.byte(fromFraction: $0)) }
                         .transition(.opacity)

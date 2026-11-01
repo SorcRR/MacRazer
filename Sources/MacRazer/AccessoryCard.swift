@@ -272,6 +272,7 @@ struct AccessoryCard: View {
         .pickerStyle(.segmented)
         .controlSize(.small)
         .labelsHidden()
+        .frame(maxWidth: .infinity)
         if accessory.lighting.effect == .wave {
             WaveSpeedSlider(value: $waveSpeed) { accessory.setWaveSpeed(WaveSpeed.byte(fromFraction: $0)) }
                 .transition(.opacity)

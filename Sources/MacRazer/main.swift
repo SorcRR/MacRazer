@@ -243,7 +243,7 @@ case "render-ui":
                                   device: accessoryPIDs.isEmpty ? nil
                                       : .init(symbol: AccessoryKind.mousepad.symbol, name: "Razer Firefly V2", kind: "Mousepad"),
                                   onBack: {}, wide: args.contains("twocolumns"), onApply: { _ in })
-                    .frame(width: args.contains("twocolumns") ? 640 : 320))
+                    .frame(width: args.contains("twocolumns") ? PopoverLayout.twoColumnWidth : 320))
         : args.contains("usage")
         ? AnyView(UsageGraphView(controller: controller, onBack: {}))
         : args.contains("profiles")
@@ -252,7 +252,8 @@ case "render-ui":
                               launchAtLogin: launchAtLogin, appearance: renderAppearance,
                               onOpenSettings: {},
                               onOpenDeviceTest: {})) // no windows in a render
-    writeViewPNG(rootView, to: path)
+    // `hosted` draws native controls (segmented pickers, switches) instead of placeholders.
+    if args.contains("hosted") { writeHostedPNG(rootView, to: path) } else { writeViewPNG(rootView, to: path) }
 
 case "render-settings":
     _ = NSApplication.shared
@@ -368,7 +369,7 @@ case "render-remap":
     if args.contains("wide") {
         let mouse = MouseController()
         mouse.loadPreviewState()
-        writeViewPNG(RemapView(remapper: r, controller: mouse, onBack: {}, width: 640, twoColumns: true), to: path)
+        writeViewPNG(RemapView(remapper: r, controller: mouse, onBack: {}, width: PopoverLayout.twoColumnWidth, twoColumns: true), to: path)
     } else {
         writeViewPNG(RemapView(remapper: r), to: path)
     }
