@@ -41,6 +41,10 @@ expect rough edges until 1.0.
 - **The Basilisk V3 is verified.** It was listed from a user saying it works. Now a full test
   confirms DPI, DPI stages, polling, lighting and brightness, and the brightness slider dims
   the scroll wheel along with the logo.
+- **Configure Buttons names apps that take button clicks.** Mouse apps like Mac Mouse Fix,
+  SteerMouse or BetterMouse can catch a side button's clicks before MacRazer sees them, and
+  then the button never shows up for remapping. Until a side button gets through, the page
+  now names any such app that's running, so you know which one to quit.
 - **Breathing lighting.** The Lighting card has a new Breathing effect. The lights fade in
   and out in the colour you pick from the swatches or the colour wheel. It works over USB and
   the 2.4 GHz dongle. A Razer keyboard gets it too, but that is untested. Over Bluetooth only
