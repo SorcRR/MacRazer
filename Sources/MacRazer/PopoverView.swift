@@ -162,10 +162,9 @@ struct PopoverView: View {
         // Closing the popover resets navigation: reopening onto a stale sub-page (whose
         // gating card may have been disabled in the meantime — e.g. Profiles after a
         // disconnect) is disorienting.
-        // The accessory the colour page sets was unplugged: there's nothing left to set.
-        // `connected`, not `available`: one failed write closes the device until the rescan
-        // reopens it, and that blip shouldn't throw the person off the page mid-drag.
-        .onChange(of: accessories.connected.map(\.id)) { _, ids in
+        // The accessory the colour page sets was unplugged or couldn't be opened again: there's
+        // nothing left to set.
+        .onChange(of: accessories.available.map(\.id)) { _, ids in
             if page == .color, case .accessory(let id) = colorTarget, !ids.contains(id) { page = .main }
         }
         // Like the mouse's colour on the main page: the wheel shows what the accessory runs,

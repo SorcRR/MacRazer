@@ -251,8 +251,11 @@ final class AccessoryController: ObservableObject, Identifiable, @unchecked Send
                     return
                 }
                 device = reopened
-                isNew = true
                 brightness = try? self.readBrightness(device)
+                // Only a fresh handle that answers proves the old one was stale. One that still
+                // doesn't may be a model that never answers this read: putting the lighting back
+                // then would rewrite it on every popover open.
+                isNew = brightness != nil
             } catch {
                 // Just opened and not answering yet: a later rescan reads it.
             }
@@ -393,10 +396,11 @@ final class AccessoryController: ObservableObject, Identifiable, @unchecked Send
                 break // the accessory answered and refused: the handle is fine
             default:
                 // Most likely the handle outlived a quick unplug and replug: drop it, so the
-                // rescan opens the accessory afresh.
+                // rescan opens the accessory afresh. `isOpen` stays as it is: the rescan decides,
+                // so the card doesn't blink out and back in.
                 device.close()
                 self.device = nil
-                self.publish { self.isOpen = false; self.onLost?() }
+                self.publish { self.onLost?() }
             }
             self.publish {
                 self.pending.finish(token)
