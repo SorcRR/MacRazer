@@ -68,7 +68,7 @@ struct RemapView: View {
             accessibilityBanner
         } else {
             if remapper.remappingPaused { pausedNote }
-            if !remapper.competingTapApps.isEmpty { competingAppsNote }
+            if remapper.showsCompetingApps { competingAppsNote }
             detectionHint
         }
     }
@@ -91,8 +91,8 @@ struct RemapView: View {
     nonisolated static func competingAppsText(_ apps: [String]) -> String {
         let list = ListFormatter.localizedString(byJoining: apps)
         let pronoun = apps.count == 1 ? "it" : "them"
-        return "\(list) can also take mouse button clicks. If a button doesn't show up here "
-            + "when you press it, quit \(pronoun) and try again."
+        return "If a side button doesn't show up here when you press it, \(list) may be taking "
+            + "its clicks. Quit \(pronoun) and try again."
     }
 
     /// The DPI button's binding and model notes.

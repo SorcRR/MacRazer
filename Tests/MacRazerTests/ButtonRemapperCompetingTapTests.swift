@@ -47,10 +47,33 @@ final class ButtonRemapperCompetingTapTests: XCTestCase {
         XCTAssertNil(ButtonRemapper.appName(executablePath: "/opt/homebrew/bin/skhd"))
     }
 
+    func testAHelperInsideAnAppleAppIsLeftOut() throws {
+        try XCTSkipUnless(FileManager.default.fileExists(atPath: "/Applications/Safari.app"))
+        XCTAssertNil(ButtonRemapper.appName(executablePath: "/Applications/Safari.app/Contents/MacOS/Safari"))
+    }
+
     func testTheNoteNamesEachApp() {
         XCTAssertEqual(RemapView.competingAppsText(["Mac Mouse Fix"]),
-                       "Mac Mouse Fix can also take mouse button clicks. If a button doesn't show up "
-                       + "here when you press it, quit it and try again.")
-        XCTAssertTrue(RemapView.competingAppsText(["SteerMouse", "BetterMouse"]).hasSuffix("quit them and try again."))
+                       "If a side button doesn't show up here when you press it, Mac Mouse Fix may be "
+                       + "taking its clicks. Quit it and try again.")
+        XCTAssertTrue(RemapView.competingAppsText(["SteerMouse", "BetterMouse"]).hasSuffix("Quit them and try again."))
+    }
+
+    private func press(_ remapper: ButtonRemapper, button: Int) {
+        let event = CGEvent(mouseEventSource: nil, mouseType: .otherMouseDown, mouseCursorPosition: .zero,
+                            mouseButton: CGMouseButton(rawValue: UInt32(button))!)!
+        _ = remapper.handle(type: .otherMouseDown, event: event)
+    }
+
+    /// A filtering tap may pass every click on, so once a side button gets through, nothing
+    /// is taking them. The wheel click says nothing: it's the one Henry's mouse still sent.
+    func testASideButtonGettingThroughEndsTheNote() {
+        let r = ButtonRemapper(defaults: UserDefaults(suiteName: "competing-tap-\(UUID())")!)
+        press(r, button: 2)
+        XCTAssertFalse(r.sideButtonDetected)
+        press(r, button: 3)
+        XCTAssertTrue(r.sideButtonDetected)
+        r.setActiveDevice("another-mouse")
+        XCTAssertFalse(r.sideButtonDetected, "detection is per mouse")
     }
 }
