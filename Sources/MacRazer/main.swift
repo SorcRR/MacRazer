@@ -198,11 +198,18 @@ case "render-ui":
     if args.contains("downloading") { updateChecker.loadPreviewState(phase: .downloading(0.42)) }
     let launchAtLogin = LaunchAtLogin()
     launchAtLogin.loadPreviewState()
-    // `keyboard`, plus `follow`, `synapse` or `wave`: a Razer keyboard under the mouse.
-    if args.contains("keyboard") {
-        KeyboardController.shared.loadPreviewState(followsMouse: args.contains("follow"),
-                                                   synapse: args.contains("synapse"),
-                                                   wave: args.contains("wave"))
+    // Accessories under "Other Razer devices": `keyboard` (Cynosa Chroma), `pad` (Firefly V2),
+    // `three` (both plus an untested Ornata V3). Then `follow` (the keyboard follows the
+    // mouse), `wave`, `synapse` (Synapse running; `macrazer` gives the pad back to MacRazer).
+    var accessoryPIDs: [Int] = []
+    if args.contains("keyboard") || args.contains("three") { accessoryPIDs.append(0x022A) }
+    if args.contains("pad") || args.contains("three") { accessoryPIDs.append(0x0C04) }
+    if args.contains("three") { accessoryPIDs.append(0x02A1) }
+    if !accessoryPIDs.isEmpty {
+        Accessories.shared.loadPreviewState(pids: accessoryPIDs,
+                                            followsMouse: args.contains("follow") ? [0x022A] : [],
+                                            synapse: args.contains("synapse"), wave: args.contains("wave"),
+                                            useMacRazer: args.contains("macrazer") ? [0x0C04] : [])
     }
     // The notes page is its own render: it is a scroll view, so it needs the hosted path,
     // and it is sized to the height the main page renders at — the whole point of checking
@@ -224,20 +231,30 @@ case "render-ui":
                                                         : updateChecker.latestNotes,
                                     canInstallInPlace: updateChecker.canInstallInPlace,
                                     onBack: {}, onUpdate: installed ? nil : {}),
-                       size: CGSize(width: 320, height: 748), to: path)
+                       size: CGSize(width: PopoverLayout.oneColumnWidth, height: 748), to: path)
         break
     }
+    // `twocolumns`: the two-column layout with only the mouse. Scratch defaults, so a render
+    // never changes the setting.
+    let renderAppearance = AppearanceSettings(defaults: UserDefaults(suiteName: "MacRazer.render-ui") ?? .standard)
+    renderAppearance.twoColumns = args.contains("twocolumns")
     let rootView: AnyView = args.contains("color")
-        ? AnyView(ColorPickerPage(color: .constant(.blue), onBack: {}, onApply: { _ in }))
+        ? AnyView(ColorPickerPage(color: .constant(.blue),
+                                  device: accessoryPIDs.isEmpty ? nil
+                                      : .init(symbol: AccessoryKind.mousepad.symbol, name: "Razer Firefly V2", kind: "Mousepad"),
+                                  onBack: {}, wide: args.contains("twocolumns"), onApply: { _ in })
+                    .frame(width: args.contains("twocolumns") ? PopoverLayout.twoColumnWidth : PopoverLayout.oneColumnWidth))
         : args.contains("usage")
         ? AnyView(UsageGraphView(controller: controller, onBack: {}))
         : args.contains("profiles")
-        ? AnyView(ProfilesView(controller: controller, remapper: ButtonRemapper(), onBack: {}))
+        ? AnyView(ProfilesView(controller: controller, remapper: ButtonRemapper(), onBack: {},
+                                width: PopoverLayout.oneColumnWidth))
         : AnyView(PopoverView(controller: controller, remapper: ButtonRemapper(), updateChecker: updateChecker,
-                              launchAtLogin: launchAtLogin, appearance: AppearanceSettings.shared,
+                              launchAtLogin: launchAtLogin, appearance: renderAppearance,
                               onOpenSettings: {},
                               onOpenDeviceTest: {})) // no windows in a render
-    writeViewPNG(rootView, to: path)
+    // `hosted` draws native controls (segmented pickers, switches) instead of placeholders.
+    if args.contains("hosted") { writeHostedPNG(rootView, to: path) } else { writeViewPNG(rootView, to: path) }
 
 case "render-settings":
     _ = NSApplication.shared
@@ -349,7 +366,14 @@ case "render-remap":
     let path = outputPath(args.dropFirst(), default: "remap-preview.png")
     let r = ButtonRemapper()
     r.loadPreviewState()
-    writeViewPNG(RemapView(remapper: r), to: path)
+    // `wide`: the popover's two-column Buttons page, with the DPI button section.
+    if args.contains("wide") {
+        let mouse = MouseController()
+        mouse.loadPreviewState()
+        writeViewPNG(RemapView(remapper: r, controller: mouse, onBack: {}, width: PopoverLayout.twoColumnWidth, twoColumns: true), to: path)
+    } else {
+        writeViewPNG(RemapView(remapper: r), to: path)
+    }
 
 case "render-permissions":
     _ = NSApplication.shared

@@ -55,8 +55,8 @@ enum HIDDeviceSelection {
         for (key, members) in groups {
             let first = interfaces[members[0]]
             if RazerDevices.info(pid: first.pid) == nil, !couldBeMouse(productName: first.productName) { continue }
-            // A keyboard MacRazer lights is never the mouse, whatever its product string says.
-            if RazerKeyboards.info(pid: first.pid) != nil { continue }
+            // An accessory MacRazer lights is never the mouse, whatever its product string says.
+            if RazerAccessories.info(pid: first.pid) != nil { continue }
             let candidates = members.filter { interfaces[$0].maxFeatureReportSize >= controlReportSize }
             guard let top = candidates.max(by: { controlScore(interfaces[$0]) < controlScore(interfaces[$1]) })
             else { continue } // this device has no interface that can carry the control report
