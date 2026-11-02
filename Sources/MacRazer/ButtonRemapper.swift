@@ -48,6 +48,10 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
     @Published private(set) var seenButtons: Set<Int> = []
     @Published private(set) var suggestedButtons: Set<Int> = []
     @Published private(set) var mappings: [Int: RemapAction] = [:]
+    /// Other apps with an event tap that can swallow extra-button clicks (Synapse, Mac Mouse
+    /// Fix, …). One that gets a click first leaves nothing for ours to see, so the page names
+    /// them. Refreshed with the Accessibility check.
+    @Published private(set) var competingTapApps: [String] = []
 
     @Published private(set) var dpiCycleSoftwareAction: RemapAction?
     @Published private(set) var dpiBridgeBindingConfirmed = false
@@ -145,6 +149,7 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         } else {
             removeTap()
         }
+        refreshCompetingTaps()
     }
 
     /// Tears down the event tap and its run-loop source — called when Accessibility is revoked
@@ -288,6 +293,72 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         keyboardCaptureAvailable = entries.prefix(Int(count)).contains {
             $0.tappingProcess == getpid() && $0.enabled && Self.includesKeyboardEvents($0.eventsOfInterest)
         }
+    }
+
+    /// What `competingTapPIDs` needs from a `CGEventTapInformation`.
+    struct TapEntry: Equatable {
+        let pid: pid_t
+        /// 0 for a tap on the whole session; else the one app it filters, which can't take
+        /// clicks meant for anywhere else.
+        let tappedPID: pid_t
+        let enabled: Bool
+        let listenOnly: Bool
+        let eventsOfInterest: CGEventMask
+    }
+
+    /// The other processes whose taps can drop an extra-button click before ours sees it:
+    /// enabled, session-wide, filtering (a listen-only tap can't drop anything) and asking
+    /// for `otherMouseDown`. In list order, each once.
+    static func competingTapPIDs(_ taps: [TapEntry], ownPID: pid_t) -> [pid_t] {
+        let otherMouse = CGEventMask(1) << CGEventType.otherMouseDown.rawValue
+        var seen = Set<pid_t>()
+        return taps.compactMap { tap in
+            guard tap.pid != ownPID, tap.tappedPID == 0, tap.enabled, !tap.listenOnly,
+                  tap.eventsOfInterest & otherMouse != 0, seen.insert(tap.pid).inserted else { return nil }
+            return tap.pid
+        }
+    }
+
+    private func refreshCompetingTaps() {
+        var count: UInt32 = 0
+        guard CGGetEventTapList(0, nil, &count) == .success, count > 0 else {
+            competingTapApps = []; return
+        }
+        var entries = [CGEventTapInformation](repeating: CGEventTapInformation(), count: Int(count))
+        guard CGGetEventTapList(count, &entries, &count) == .success else {
+            competingTapApps = []; return
+        }
+        let taps = entries.prefix(Int(count)).map {
+            TapEntry(pid: $0.tappingProcess, tappedPID: $0.processBeingTapped, enabled: $0.enabled,
+                     listenOnly: $0.options == .listenOnly, eventsOfInterest: $0.eventsOfInterest)
+        }
+        // Apps only: macOS's own daemons tap mouse events too, and passing clicks on is their job.
+        var names: [String] = []
+        for pid in Self.competingTapPIDs(taps, ownPID: getpid()) {
+            guard let name = Self.appName(pid: pid), !names.contains(name) else { continue }
+            names.append(name)
+        }
+        if names != competingTapApps { competingTapApps = names }
+    }
+
+    /// The app a process belongs to, or nil for one of macOS's own. A helper launched by
+    /// launchd has no `NSRunningApplication`, so the `.app` around its executable names it.
+    private static func appName(pid: pid_t) -> String? {
+        if let app = NSRunningApplication(processIdentifier: pid), let bundleID = app.bundleIdentifier {
+            return bundleID.hasPrefix("com.apple.") ? nil : app.localizedName ?? bundleID
+        }
+        var buffer = [CChar](repeating: 0, count: 4 * Int(MAXPATHLEN))
+        guard proc_pidpath(pid, &buffer, UInt32(buffer.count)) > 0 else { return nil }
+        return appName(executablePath: String(cString: buffer))
+    }
+
+    /// The outermost `.app` in the path, without its extension; nil outside one, or in macOS's
+    /// own folders.
+    static func appName(executablePath path: String) -> String? {
+        guard !path.hasPrefix("/System/"), !path.hasPrefix("/usr/") else { return nil }
+        let components = path.split(separator: "/")
+        guard let app = components.first(where: { $0.hasSuffix(".app") }) else { return nil }
+        return String(app.dropLast(4))
     }
 
     private static let tapCallback: CGEventTapCallBack = { _, type, event, userInfo in

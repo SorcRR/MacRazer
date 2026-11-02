@@ -68,8 +68,31 @@ struct RemapView: View {
             accessibilityBanner
         } else {
             if remapper.remappingPaused { pausedNote }
+            if !remapper.competingTapApps.isEmpty { competingAppsNote }
             detectionHint
         }
+    }
+
+    /// Another app can take a button's clicks before MacRazer sees them, and then the button
+    /// never shows up here. Naming the app saves a support email.
+    private var competingAppsNote: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "exclamationmark.triangle").foregroundStyle(Color.batteryMid)
+            Text(Self.competingAppsText(remapper.competingTapApps))
+                .font(.system(size: 11)).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.batteryMid.opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    nonisolated static func competingAppsText(_ apps: [String]) -> String {
+        let list = ListFormatter.localizedString(byJoining: apps)
+        let pronoun = apps.count == 1 ? "it" : "them"
+        return "\(list) can also take mouse button clicks. If a button doesn't show up here "
+            + "when you press it, quit \(pronoun) and try again."
     }
 
     /// The DPI button's binding and model notes.
