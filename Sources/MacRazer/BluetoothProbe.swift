@@ -105,7 +105,9 @@ final class BluetoothProbe: NSObject, BluetoothReadChannel, @unchecked Sendable 
             let connected = central.retrieveConnectedPeripherals(
                 withServices: [razerService, hidService, batteryService, deviceInfoService])
             let razer = central.retrieveConnectedPeripherals(withServices: [razerService])
-            guard let match = connected.first(where: { $0.name == hidName }) ?? razer.first else { return false }
+            // With two of them (a Razer keyboard, a second mouse) there's no telling which is this one.
+            guard let match = connected.first(where: { $0.name == hidName }) ?? (razer.count == 1 ? razer.first : nil)
+            else { return false }
             onChange = { ready.signal() }
             peripheral = match
             match.delegate = self
@@ -189,6 +191,12 @@ extension BluetoothProbe: CBCentralManagerDelegate, CBPeripheralDelegate {
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
         notifyReady = false
         if let pending { finish(pending, error: HIDDevice.HIDError.notFound) }
+        // During setup, `connect` is waiting: say why now rather than after its timeout.
+        if onChange != nil {
+            data.error = "The mouse disconnected from Bluetooth during the test"
+                + (error.map { ": \(String(describing: $0))" } ?? ".")
+            onChange?()
+        }
     }
 
     func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {

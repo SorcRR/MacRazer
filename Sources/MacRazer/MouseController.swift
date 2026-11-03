@@ -425,6 +425,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         let t = Timer(timeInterval: interval, repeats: false) { [weak self] _ in
             self?.pollTick()
         }
+        // A tenth of the wait, so macOS can fold the poll's wakeup in with others' for
+        // battery life. No cadence here depends on being exact.
+        t.tolerance = interval / 10
         RunLoop.main.add(t, forMode: .common)
         pollTimer = t
     }
@@ -493,6 +496,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         let t = Timer(timeInterval: 2.0, repeats: true) { [weak self] _ in
             self?.refreshSettings()
         }
+        t.tolerance = 0.2
         RunLoop.main.add(t, forMode: .common)
         settingsTimer = t
     }

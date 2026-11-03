@@ -121,6 +121,9 @@ struct DeviceTestView: View {
             case nil:
                 EmptyView()
             }
+            if model.finishingEarlierTest {
+                note("The test you started earlier is still finishing with your mouse. Start works again in a moment.")
+            }
         }
     }
 
@@ -189,7 +192,9 @@ struct DeviceTestView: View {
                         row("Name", report.device.name)
                         row("Product ID", String(format: "0x%04X", report.device.productID))
                         row("Razer's service", bt.razerService ? "Yes" : "No")
-                        row("Battery", bt.batteryLevel.map { "\($0)%" } ?? "Unknown")
+                        // The report's own reading: Razer's battery read when it answered, else
+                        // the standard service, so this shows what will be sent.
+                        row("Battery", report.battery.data?.percent.map { "\($0)%" } ?? "Unknown")
                         if let reads = report.capabilities?.reads {
                             row("Answered", "\(reads.filter { $0.answer == .answered }.count) of \(reads.count) reads")
                         }
@@ -488,21 +493,23 @@ struct DeviceTestView: View {
         HStack {
             switch model.stage {
             case .intro where model.support == .full:
-                Button("Test anyway") { model.start() }
+                Button("Test anyway") { model.start() }.disabled(model.running)
                 Spacer()
                 Button("Close", action: onClose).keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
             case .intro:
                 Button("Cancel", action: onClose)
                 Spacer()
                 if model.offersBluetoothTest {
-                    Button("Bluetooth test") { model.startBluetooth() }
+                    Button("Bluetooth test") { model.startBluetooth() }.disabled(model.running)
                 }
                 if case .partly = model.support {
-                    Button("Full test") { model.start() }
+                    Button("Full test") { model.start() }.disabled(model.running)
                     Button("Test what's missing") { model.start(missingOnly: true) }
                         .keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
+                        .disabled(model.running)
                 } else {
                     Button("Start") { model.start() }.keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
+                        .disabled(model.running)
                 }
             case .permission:
                 Button("Continue without it") { model.continueWithoutAccess() }

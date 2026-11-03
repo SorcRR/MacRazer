@@ -606,10 +606,21 @@ enum DeviceTestSteps {
             return read
         }
         var data = DeviceReport.CapabilitiesData(reads: reads)
+        // The probes' own answers, by entry id, so the sweep doesn't ask for them again. Not a
+        // timeout: that one gets its second try in the sweep.
+        var probed: [UInt8: (DeviceReport.CapabilityAnswer, [UInt8]?)] = [:]
+        for (read, request) in zip(reads, bluetoothReads) where read.name == "buttonFunction" && read.answer != .noAnswer {
+            probed[request.key.bytes[3]] = (read.answer, read.response)
+        }
         if timeouts < 3, reads.contains(where: { $0.name == "buttonFunction" && $0.answer == .answered }) {
             data.buttonTable = buttonTableIds.compactMap { id in
-                guard timeouts < 3 else { return nil }
-                let (answer, response) = bluetoothAnswer(channel, bluetoothButtonRead(id), timeouts: &timeouts)
+                let (answer, response): (DeviceReport.CapabilityAnswer, [UInt8]?)
+                if let known = probed[id] {
+                    (answer, response) = known
+                } else {
+                    guard timeouts < 3 else { return nil }
+                    (answer, response) = bluetoothAnswer(channel, bluetoothButtonRead(id), timeouts: &timeouts)
+                }
                 // Replies are matched to their request by frame id, so no stale one gets here.
                 guard answer == .answered, let response, response.contains(where: { $0 != 0 }) else { return nil }
                 return .init(id: id, block: response)
@@ -646,14 +657,19 @@ enum DeviceTestSteps {
 
     /// The report for a mouse on Bluetooth, from what `BluetoothProbe` found and the reads
     /// it ran. Identify passes when Razer's service answered a read; with no such service it's
-    /// not on this mouse (#35's Pro Click V2 has none). Battery comes from Razer's battery
-    /// read, on the USB scale, else the standard service. The other steps need the USB
+    /// not on this mouse (#35's Pro Click V2 has none). With no services seen at all the probe
+    /// never got that far (Bluetooth off or not allowed, a slow setup), which says nothing
+    /// about the mouse, so it fails rather than counting as not there. Battery comes from
+    /// Razer's battery read, on the USB scale, else the standard service. The other steps need the USB
     /// protocol and stay skipped. The ids are IOHID's, else the PnP ID's: the Worker takes
     /// only Razer's vendor ids, so a report must not go out with none.
     static func bluetoothReport(name: String, hid: HIDDevice.BluetoothHID, probe: DeviceReport.BluetoothData,
                                 capabilities: DeviceReport.CapabilitiesData?) -> DeviceReport {
         var identify = DeviceReport.StepRecord<DeviceReport.IdentifyData>()
-        if !probe.razerService {
+        if probe.services.isEmpty && !probe.razerService {
+            identify.outcome = .failed
+            identify.error = probe.error ?? "MacRazer couldn't read the mouse's Bluetooth services."
+        } else if !probe.razerService {
             identify.outcome = .notSupported
             identify.error = probe.error ?? "No Razer control service over Bluetooth."
         } else {

@@ -154,7 +154,9 @@ final class HIDDevice {
             guard (strProp(dev, kIOHIDTransportKey) ?? "").localizedCaseInsensitiveContains("Bluetooth"),
                   let name = strProp(dev, kIOHIDProductKey) else { return nil }
             return classifyBluetoothMouse(vendorID: intProp(dev, kIOHIDVendorIDKey),
-                                          productID: intProp(dev, kIOHIDProductIDKey), name: name)
+                                          productID: intProp(dev, kIOHIDProductIDKey), name: name,
+                                          primaryUsageIsMouse: intProp(dev, kIOHIDPrimaryUsagePageKey) == 0x01
+                                              && intProp(dev, kIOHIDPrimaryUsageKey) == 0x02)
         }
         return found.first { $0.controllablePID != nil } ?? found.first
     }
@@ -163,10 +165,22 @@ final class HIDDevice {
     /// the exact Bluetooth vendor and product id (a name match could be another model on the
     /// same service). Razer's Bluetooth vendor id alone is enough to recognise one, whatever
     /// its name: the Pro Click V2 calls itself "PCV2 Ver" (#35). Without it, the name.
-    static func classifyBluetoothMouse(vendorID: Int?, productID: Int?, name: String) -> BluetoothMouse? {
+    ///
+    /// A Razer keyboard on Bluetooth has the same vendor id and may carry a pointer collection,
+    /// so a PID the registry doesn't know also needs a name no keyboard line uses
+    /// (`HIDDeviceSelection.couldBeMouse`), as on USB, and either Mouse as its primary usage
+    /// or a mouse's name. Not the primary usage alone: a mouse with macro keys may list its
+    /// keyboard collection first.
+    static func classifyBluetoothMouse(vendorID: Int?, productID: Int?, name: String,
+                                       primaryUsageIsMouse: Bool = true) -> BluetoothMouse? {
         if vendorID == BLEProtocol.vendorId {
-            let pid = productID.flatMap { RazerDevices.bluetoothPIDs.contains($0) ? $0 : nil }
-            return BluetoothMouse(name: name, controllablePID: pid)
+            if let pid = productID, RazerDevices.bluetoothPIDs.contains(pid) {
+                return BluetoothMouse(name: name, controllablePID: pid)
+            }
+            let lower = name.lowercased()
+            guard HIDDeviceSelection.couldBeMouse(productName: name),
+                  primaryUsageIsMouse || razerMouseKeywords.contains(where: { lower.contains($0) }) else { return nil }
+            return BluetoothMouse(name: name, controllablePID: nil)
         }
         let lower = name.lowercased()
         guard razerMouseKeywords.contains(where: { lower.contains($0) }) else { return nil }

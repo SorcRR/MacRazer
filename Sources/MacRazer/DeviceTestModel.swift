@@ -68,7 +68,11 @@ final class DeviceTestModel: ObservableObject {
         if running { idleWaiters.append(body) } else { body() }
     }
     @Published private(set) var report: DeviceReport?
-    @Published private(set) var blocker: Blocker?
+    @Published private(set) var blocker: Blocker? {
+        // Only on the intro, the one screen that offers it: Start clears the blocker on its way
+        // out, and that shouldn't cost two device listings.
+        didSet { if stage == .intro, blocker != oldValue { refreshBluetoothOffer() } }
+    }
     @Published private(set) var needsRelaunch = false
     @Published var connection: DeviceReport.Connection? {
         didSet { report?.device.connection = connection }
@@ -200,6 +204,7 @@ final class DeviceTestModel: ObservableObject {
     /// Called when the window comes back to the front: the person may have just granted it in
     /// System Settings.
     func recheckAccess() {
+        if stage == .intro { refreshBluetoothOffer() }
         if stage == .permission, !needsRelaunch, Self.inputMonitoringGranted { begin() }
     }
 
@@ -238,11 +243,25 @@ final class DeviceTestModel: ObservableObject {
     }
 
     /// Whether to offer the Bluetooth test: the full test found the mouse on Bluetooth, or
-    /// there's no mouse on a cable or dongle and there is one on Bluetooth.
-    var offersBluetoothTest: Bool {
-        if case .bluetoothOnly? = blocker { return true }
-        return blocker == nil && !Self.razerMousePresent && HIDDevice.bluetoothRazerMouse() != nil
+    /// there's no mouse on a cable or dongle and there is one on Bluetooth. Stored, not
+    /// computed: working it out lists devices twice, and the footer reads it on every redraw.
+    @Published private(set) var offersBluetoothTest = false
+
+    /// Works `offersBluetoothTest` out again: when the blocker changes and each time the
+    /// window comes to the front, the moments the answer can have changed.
+    func refreshBluetoothOffer() {
+        let offers: Bool
+        if case .bluetoothOnly? = blocker {
+            offers = true
+        } else {
+            offers = blocker == nil && !Self.razerMousePresent && HIDDevice.bluetoothRazerMouse() != nil
+        }
+        if offers != offersBluetoothTest { offersBluetoothTest = offers }
     }
+
+    /// The window was closed and opened again while a step it started is still running (the
+    /// Bluetooth test can take half a minute): Start waits for it, so the intro says so.
+    var finishingEarlierTest: Bool { stage == .intro && running }
 
     /// The shorter, read-only test for a mouse on Bluetooth (`DeviceTestSteps.bluetoothTest`).
     /// Needs no Input Monitoring: nothing goes through IOHID but the interface list.

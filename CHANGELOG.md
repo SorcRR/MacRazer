@@ -74,7 +74,17 @@ expect rough edges until 1.0.
   of failing on the polling rate.
 - **A Razer keyboard or mousepad is no longer taken for a mouse.** With no mouse plugged in,
   the app could open a Razer keyboard or a Firefly mousepad and show it as the mouse. It now
-  skips keyboards, keypads, mousepads and other products that are never mice.
+  skips keyboards, keypads, mousepads and other products that are never mice. The same now
+  goes for a Razer keyboard on Bluetooth.
+- **An unplugged keyboard or mousepad leaves the popover.** Its card could stay behind after
+  you unplugged it, because the app looked again before macOS had finished removing it.
+- **Bluetooth test reports are more accurate.** When Bluetooth was off or not allowed, a
+  report said the mouse had no Razer service at all. It now says the test couldn't connect.
+  The Bluetooth step shows the same battery level the report sends, and a mouse that drops
+  off during the test says so straight away.
+- **Less background work.** The app's timers now let macOS group their wakeups with other
+  apps', which saves a little battery, and the device test window no longer scans for
+  devices every time it redraws.
 - **Plugging in your mouse now switches to it.** If the app had opened some other Razer device
   first, it kept that one until you relaunched or unplugged it. Now a mouse it knows takes over
   as soon as it is plugged in.

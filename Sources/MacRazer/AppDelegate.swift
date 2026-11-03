@@ -54,6 +54,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     /// tick never enumerates devices itself.
     private var razerMiceOnUSB: [HIDDevice.USBMouse] = []
     private var relistRazerMiceWork: DispatchWorkItem?
+    private var rescanAccessoriesWork: DispatchWorkItem?
     /// Closing it re-asks the auto-install gate, for the same reason as `updatedWindow`.
     private lazy var supportPromptWindow = SupportPromptWindowController(
         prompt: supportPrompt,
@@ -218,13 +219,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { ctrl.forceCheck(immediateOffline: false) }
                 MainActor.assumeIsolated {
                     self?.relistRazerMice()
-                    self?.accessories.rescan()
+                    self?.rescanAccessoriesAfterPlug()
                 }
             },
             onRemove: { [weak self] pids in
                 MainActor.assumeIsolated {
                     self?.relistRazerMice()
-                    self?.accessories.rescan()
+                    self?.rescanAccessoriesAfterPlug()
                 }
                 // Only the connected device's removal is definitive. Matching is vendor-wide,
                 // so unplugging a Razer keyboard (or a different-model mouse) fires this too —
@@ -623,6 +624,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         }
         // Not straight away even when clear: the menu bar item has only just appeared.
         timer.fireDate = Date().addingTimeInterval(5)
+        // Slack lets macOS fold its wakeups in with others': nothing here is to the second.
+        timer.tolerance = 0.3
         RunLoop.main.add(timer, forMode: .common)
         usageStatsAskTimer = timer
     }
@@ -660,6 +663,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         }
         // Not straight away: the mouse is still being opened and the setup window may be next.
         timer.fireDate = Date().addingTimeInterval(10)
+        timer.tolerance = 0.5
         RunLoop.main.add(timer, forMode: .common)
         supportPromptTimer = timer
     }
@@ -674,6 +678,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
             self.razerMiceOnUSB = self.listRazerMiceIfNeeded()
         }
         relistRazerMiceWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1, execute: work)
+    }
+
+    /// `accessories.rescan`, settled the same way as `relistRazerMice`: a keyboard unplugged
+    /// can still be listed when its removal fires, and one plugged in may not have its control
+    /// interface yet, which would leave a dead card or the wrong interface open.
+    private func rescanAccessoriesAfterPlug() {
+        rescanAccessoriesWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.accessories.rescan() }
+        rescanAccessoriesWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 1, execute: work)
     }
 
