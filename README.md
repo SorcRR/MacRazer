@@ -30,8 +30,9 @@ Razer mice that use the same HID protocol family, but those are untested, so tre
 - **DPI** with a slider (capped at each model's real maximum), the mouse's own preset stages
   read from the device, and a recallable custom value (per device).
 - **Polling rate**: 125 / 500 / 1000 Hz.
-- **RGB lighting**: static colour via an inline hue/saturation wheel, plus spectrum, wave, off,
-  and a brightness slider.
+- **RGB lighting**: static colour via an inline hue/saturation wheel, plus breathing,
+  spectrum, wave (with a speed slider), off, and a brightness slider.
+- **Sliders follow the scroll wheel**: scroll over any slider in the popover to move it.
 - **Low battery alert**: a notification when the battery drops below 15%, once per charge.
 - **Profiles**: save DPI, polling rate, lighting and button remaps under a name, and switch
   between them from the popover. Saved per device.
@@ -41,7 +42,8 @@ Razer mice that use the same HID protocol family, but those are untested, so tre
 - **Connection sounds** when the mouse connects or disconnects (can be turned off).
 - **Button remapping** for the side Back/Forward buttons (software, via a CGEvent tap):
   keyboard shortcuts (presets or a custom recorder), mouse clicks, and media keys. Saved per
-  device.
+  device. If another mouse app (Mac Mouse Fix, SteerMouse, BetterMouse) takes the side
+  buttons' clicks first, the page names it so you know which one to quit.
 - **Any Razer mouse is detected and named.** Controls a model lacks are hidden automatically
   (no lighting on the Atheris, no battery UI on wired-only mice). A Razer keyboard or other
   product that is never a mouse is not taken for one.
@@ -267,6 +269,7 @@ swift run MacRazer rgb breathing ff0000 # breathing (two colours for dual, none 
 swift run MacRazer brightness [0-100]   # read or set LED brightness
 swift run MacRazer discover             # which transaction ids the mouse answers to
 swift run MacRazer devicetest           # the in-app device test, printed as JSON
+MacRazer.app/Contents/MacOS/MacRazer bluetoothtest  # the read-only Bluetooth test (quit the app first)
 ```
 
 ## How it works
