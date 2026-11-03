@@ -128,23 +128,25 @@ final class DeviceTestModel: ObservableObject {
     typealias Support = RazerDevices.LinkSupport
 
     var support: Support {
-        (previewPID ?? controller.deviceID).map { RazerDevices.support(pid: $0) } ?? .unknown
+        testedPID.map { RazerDevices.support(pid: $0) } ?? .unknown
     }
 
     /// Whether the connected model is already on the verified list. Decides the window title.
     var isKnownSupported: Bool { support == .full }
     /// The connected mouse's other links still worth a report, for the intro.
     var linksToTest: [RazerDevices.LinkToTest] {
-        (previewPID ?? controller.deviceID).map { RazerDevices.linksToTest(besides: $0) } ?? []
+        testedPID.map { RazerDevices.linksToTest(besides: $0) } ?? []
     }
     /// What no report has shown working on this link yet: everything for a model not on record.
     var missingFeatures: [RazerFeature] {
-        (previewPID ?? controller.deviceID).flatMap(RazerDevices.unverified(pid:)) ?? RazerFeature.allCases
+        testedPID.flatMap(RazerDevices.unverified(pid:)) ?? RazerFeature.allCases
     }
     /// Skipping this step leaves out data the registry still lacks, so Skip asks first.
     var skipNeedsConfirming: Bool { DeviceTestFlow.skipNeedsConfirming(stage, missing: missingFeatures) }
     /// Set only by `loadPreview`, to render each intro without a device.
     private var previewPID: Int?
+    /// The mouse the registry is asked about: the preview's, else the connected one.
+    private var testedPID: Int? { previewPID ?? controller.deviceID }
     /// The steps this run is limited to, or nil for the full test. Set by "Test what's missing".
     @Published private(set) var focus: [RazerFeature]?
     /// The screens a focused run passes over.

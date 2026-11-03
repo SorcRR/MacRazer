@@ -65,6 +65,20 @@ final class DeviceTestFlowTests: XCTestCase {
                        "the button step is information only")
     }
 
+    /// What Skip asks about comes from the registry: a row's unverified steps, or every step
+    /// for a mouse not on record.
+    @MainActor func testMissingFeaturesFollowTheRegistry() {
+        func missing(_ pid: Int?) -> [RazerFeature] {
+            let model = DeviceTestModel(controller: MouseController(), permissions: PermissionsModel(), reportEndpoint: nil)
+            if let pid { model.loadPreview(.intro, pid: pid, ranSteps: false) }
+            return model.missingFeatures
+        }
+        XCTAssertEqual(missing(0x00DB), [], "Cobra HyperSpeed")
+        XCTAssertEqual(missing(0x00E3), [.polling], "Basilisk V4 Pro")
+        XCTAssertEqual(missing(0x7FFF), RazerFeature.allCases, "not on record")
+        XCTAssertEqual(missing(nil), RazerFeature.allCases, "no mouse connected")
+    }
+
     func testTheSkipQuestionNamesTheStep() {
         XCTAssertTrue(DeviceTestView.skipMessage(for: .polling).hasPrefix("We don't have polling rate data"))
         XCTAssertTrue(DeviceTestView.skipMessage(for: .dpi).hasPrefix("We don't have DPI data"))

@@ -22,16 +22,20 @@ struct DeviceTestView: View {
         .padding(20)
         .frame(width: 440)
         .alert("Could you run this test?", isPresented: $confirmingSkip) {
-            Button("Run Test") { Task { await runCurrentStep() } }
+            Button("Run Test") { runCurrentStep() }
                 .keyboardShortcut(.defaultAction)
-            Button("Skip Anyway", role: .cancel) { model.next() }
+            Button("Skip Anyway") { model.next() }
+            // Esc backs out of the question and leaves the step as it was.
+            Button("Cancel", role: .cancel) {}
         } message: {
             Text(Self.skipMessage(for: model.stage))
         }
     }
 
     nonisolated static func skipMessage(for stage: DeviceTestModel.Stage) -> String {
-        let feature = stage == .dpi ? "DPI" : stage == .polling ? "polling rate" : "lighting"
+        let label = RazerFeature.allCases.first { DeviceTestFlow.stage(for: $0) == stage }?.label ?? "this"
+        // "DPI" stays in capitals; "Polling rate" and "Lighting" read mid-sentence.
+        let feature = label == RazerFeature.dpi.label ? label : label.lowercased()
         return "We don't have \(feature) data for this mouse yet, so this result would really help. "
             + "If your mouse doesn't have this feature, run it anyway: the test records that too, "
             + "and it puts your settings back afterwards."
@@ -42,12 +46,15 @@ struct DeviceTestView: View {
         if model.skipNeedsConfirming { confirmingSkip = true } else { model.next() }
     }
 
-    private func runCurrentStep() async {
-        switch model.stage {
-        case .dpi: await model.runDPI()
-        case .polling: await model.runPolling()
-        case .lighting: await model.runLighting()
-        default: break
+    /// The Run button's work, and the dialog's Run Test.
+    private func runCurrentStep() {
+        Task {
+            switch model.stage {
+            case .dpi: await model.runDPI()
+            case .polling: await model.runPolling()
+            case .lighting: await model.runLighting()
+            default: break
+            }
         }
     }
 
@@ -546,13 +553,13 @@ struct DeviceTestView: View {
         switch model.stage {
         case .dpi where model.report?.dpi.data == nil && model.report?.dpi.error == nil:
             Button("Skip") { skip() }.disabled(model.running)
-            Button("Run") { Task { await model.runDPI() } }.disabled(model.running).keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
+            Button("Run") { runCurrentStep() }.disabled(model.running).keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
         case .polling where model.report?.polling.data == nil && model.report?.polling.error == nil:
             Button("Skip") { skip() }.disabled(model.running)
-            Button("Run") { Task { await model.runPolling() } }.disabled(model.running).keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
+            Button("Run") { runCurrentStep() }.disabled(model.running).keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
         case .lighting where model.report?.lighting.data == nil:
             Button("Skip") { skip() }.disabled(model.running)
-            Button("Run") { Task { await model.runLighting() } }.disabled(model.running).keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
+            Button("Run") { runCurrentStep() }.disabled(model.running).keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
         case .buttons:
             Button(model.buttonsSeen.isEmpty ? "Skip" : "Next") { model.next() }.keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
         default:
