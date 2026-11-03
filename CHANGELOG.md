@@ -35,11 +35,12 @@ expect rough edges until 1.0.
   what's missing. Both name the mouse's other connections that still need a report.
   Skipping a step we still need data for asks first, in case you can run it after all. If
   the mouse doesn't have that feature, running the step records that too.
-- **Ten more mice from your reports.** DeathAdder Essential, Naga V3 Pro on its cable, Naga
-  Trinity and Viper V3 HyperSpeed are fully supported. Basilisk V4 Pro, DeathAdder V2 Pro,
-  DeathAdder V3 HyperSpeed, Mouse Dock Pro, Naga Chroma and Viper V4 Pro on its cable are
-  partly supported. The DeathAdder Essential's light is green only, so its Lighting card
-  shows just the brightness slider.
+- **Sixteen more mice from your reports.** DeathAdder Essential, Naga Trinity, Naga V2 Pro
+  and Naga V3 Pro on their cables, Pro Click V2, Taipan and Viper V3 HyperSpeed are fully
+  supported. Basilisk V3 Pro 35K, Basilisk V4 HyperSpeed on its cable, Basilisk V4 Pro,
+  DeathAdder V2 Pro, DeathAdder V3 HyperSpeed, Mouse Dock Pro, Naga Chroma and Viper V4 Pro
+  (cable and dongle) are partly supported. The DeathAdder Essential's light is green only,
+  so its Lighting card shows just the brightness slider.
 - **The Basilisk V3 is verified.** It was listed from a user saying it works. Now a full test
   confirms DPI, DPI stages, polling, lighting and brightness, and the brightness slider dims
   the scroll wheel along with the logo.
