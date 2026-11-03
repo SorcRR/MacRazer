@@ -230,8 +230,9 @@ enum RazerDevices {
         // DPI answered with 0x1f. 0xFF and 0x80 time out. Every LED group refuses brightness,
         // so no lighting. The classic polling command answers "not supported" (0x05); it likely
         // needs OpenRazer's polling_rate2 pair, as the V4 Pro does in #55. Until that is tried,
-        // the polling picker fails here, so the row stays unverified. The 26000 DPI ceiling is
-        // the app's default for unknown models, not a measured value.
+        // the popover hides the polling picker and the row stays unverified. The 26000 DPI
+        // ceiling is the app's default for unknown models, not a measured value. The name has
+        // no "(Wireless)": usage stats count models by it, and 0.6 already sent it this way.
         .init(pid: 0x00EA, name: "Razer Basilisk V4 HyperSpeed", unverified: [.polling], hasBattery: true, hasLighting: false, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, acceptsClassicPolling: false),
         // Basilisk V4 Pro over the dongle (in-app report, no credit given): battery, DPI and
         // stages, static color and brightness passed with 0x1f. LOGO and SCROLL answer
@@ -261,6 +262,40 @@ enum RazerDevices {
         // unverified. Its control interface is the fourth one. Its sensor is the Focus Pro 50K,
         // but 45000 is as high as the app writes (the driver's clamp), and the firmware echoed it.
         .init(pid: 0x00E5, name: "Razer Viper V4 Pro (Wired)", unverified: [.polling], hasBattery: true, hasLighting: false, maxDPI: 45000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, acceptsClassicPolling: false),
+        // Viper V4 Pro over the dongle (in-app report from Robotxm): battery and DPI and stages
+        // passed with 0x1f, and every id tried answers. No lighting (every group answers 0x05),
+        // and the classic polling command answers 0x05, as on its cable. Same 45000 ceiling.
+        .init(pid: 0x00E6, name: "Razer Viper V4 Pro (Wireless)", unverified: [.polling], hasBattery: true, hasLighting: false, maxDPI: 45000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, acceptsClassicPolling: false),
+        // Basilisk V4 HyperSpeed on the cable (two in-app reports, no credit given): battery and
+        // DPI and stages passed with 0x1f, and every id answers. As over the dongle, every LED
+        // group refuses brightness and the classic polling command answers 0x05. Its control
+        // interface is the fourth one. The owner found 2 of its 4 thumb buttons and one wheel
+        // tilt unusable for remapping: the tilt sends horizontal scroll (consumer page 0x238),
+        // and the other two thumb buttons sent nothing standard during the button step.
+        .init(pid: 0x00EB, name: "Razer Basilisk V4 HyperSpeed (Wired)", unverified: [.polling], hasBattery: true, hasLighting: false, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, acceptsClassicPolling: false),
+        // Pro Click V2 over the dongle (in-app report, no credit given): battery, DPI and stages,
+        // and polling passed with 0x1f. 0xFF and 0x80 time out. No lighting (every group
+        // returns 0x03). 30000 is the vendor spec, as for the Vertical Edition.
+        .init(pid: 0x00D1, name: "Razer Pro Click V2", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
+        // Naga V2 Pro on the cable (in-app report, no credit given): battery, DPI and stages,
+        // polling, static color and brightness all passed with 0x1f, and every id answers.
+        // LOGO and BACKLIGHT answer brightness (SCROLL and ZERO return 0x03), so the slider
+        // writes both. 30000 is the vendor spec.
+        .init(pid: 0x00A7, name: "Razer Naga V2 Pro (Wired)", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.backlightLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
+        // Taipan (in-app report, no credit given): an older wired-only mouse. DPI and polling
+        // passed with 0x1f, and every id answers. The battery read returns 0x03. Every LED group
+        // refuses the extended-matrix commands, so its light likely takes the older single-LED
+        // ones; no lighting here until someone tries them, and lighting stays unverified so a
+        // report can say. The DPI stages read fails (0x03).
+        // 8200 is its sensor's ceiling and the DPI it reported. The owner found only the two
+        // left side buttons detected for remapping, of six extra buttons.
+        .init(pid: 0x0034, name: "Razer Taipan", unverified: [.lighting], hasBattery: false, hasLighting: false, maxDPI: 8200, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
+        // Basilisk V3 Pro 35K on the cable (in-app report, no credit given): battery, DPI and
+        // stages, and polling passed with 0x1f. LOGO and SCROLL answer brightness and every
+        // lighting write is acknowledged, but the owner saw neither the dim nor the red, so the
+        // lighting controls stay hidden until a report shows them working. Both zones are
+        // recorded for the slider for when they are. 35000 is the spec.
+        .init(pid: 0x00CC, name: "Razer Basilisk V3 Pro 35K (Wired)", unverified: [.lighting], hasBattery: true, hasLighting: false, maxDPI: 35000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
     ]
 
     static func info(pid: Int) -> RazerDeviceInfo? { known.first { $0.pid == pid } }

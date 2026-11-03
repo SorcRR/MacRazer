@@ -229,9 +229,49 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(RazerDevices.connection(pid: 0x00E5), .wired)
     }
 
+    /// From the November reports: the other link of the Viper V4 Pro and Basilisk V4
+    /// HyperSpeed, and four mice new to the registry.
+    func testNovemberReportedMice() {
+        for pid in [0x00E6, 0x00EB] {
+            XCTAssertEqual(RazerDevices.unverified(pid: pid), [.polling], String(pid, radix: 16))
+            XCTAssertTrue(RazerDevices.hasBattery(pid: pid))
+            XCTAssertFalse(RazerDevices.hasLighting(pid: pid))
+        }
+        XCTAssertEqual(RazerDevices.maxDPI(pid: 0x00E6), 45000)
+        XCTAssertEqual(RazerDevices.connection(pid: 0x00E6), .wirelessDongle)
+        XCTAssertEqual(RazerDevices.connection(pid: 0x00EB), .wired)
+        // Each link of the two names its sibling as still needing polling.
+        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00E6), [.init(connection: .wired, missing: [.polling])])
+        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00EA), [.init(connection: .wired, missing: [.polling])])
+
+        XCTAssertTrue(RazerDevices.fullySupported(pid: 0x00D1), "Pro Click V2")
+        XCTAssertFalse(RazerDevices.hasLighting(pid: 0x00D1))
+        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00D1), [.init(connection: .wired, missing: nil)])
+
+        XCTAssertTrue(RazerDevices.fullySupported(pid: 0x00A7), "Naga V2 Pro")
+        XCTAssertTrue(RazerDevices.hasLighting(pid: 0x00A7))
+        XCTAssertEqual(RazerDevices.info(pid: 0x00A7)?.extraBrightnessLeds, [Razer.backlightLed])
+
+        XCTAssertEqual(RazerDevices.unverified(pid: 0x0034), [.lighting], "Taipan: its light refuses these commands")
+        XCTAssertFalse(RazerDevices.hasLighting(pid: 0x0034))
+        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x0034), [], "wired only, no battery")
+        XCTAssertEqual(RazerDevices.maxDPI(pid: 0x0034), 8200)
+
+        XCTAssertEqual(RazerDevices.unverified(pid: 0x00CC), [.lighting], "Basilisk V3 Pro 35K")
+        XCTAssertFalse(RazerDevices.hasLighting(pid: 0x00CC), "acknowledged but nothing changed")
+        XCTAssertEqual(RazerDevices.maxDPI(pid: 0x00CC), 35000)
+        XCTAssertEqual(RazerDevices.info(pid: 0x00CC)?.extraBrightnessLeds, [Razer.scrollLed])
+
+        // Every report answered on 0x1f, for standard and lighting commands alike.
+        for pid in [0x00E6, 0x00EB, 0x00D1, 0x00A7, 0x0034, 0x00CC] {
+            XCTAssertEqual(RazerDevices.transactionId(pid: pid, commandClass: 0x04, commandId: 0x05), 0x1f, String(pid, radix: 16))
+            XCTAssertEqual(RazerDevices.transactionId(pid: pid, commandClass: 0x0F, commandId: 0x04), 0x1f, String(pid, radix: 16))
+        }
+    }
+
     /// The models that answer the classic polling command with "not supported".
     func testClassicPollingRefusals() {
-        for pid in [0x00A4, 0x00EA, 0x00E3, 0x00E5] {
+        for pid in [0x00A4, 0x00EA, 0x00EB, 0x00E3, 0x00E5, 0x00E6] {
             XCTAssertFalse(RazerDevices.acceptsClassicPolling(pid: pid), String(pid, radix: 16))
         }
         XCTAssertTrue(RazerDevices.acceptsClassicPolling(pid: 0x00DB))
