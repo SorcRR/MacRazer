@@ -128,17 +128,28 @@ final class DeviceTestModel: ObservableObject {
     typealias Support = RazerDevices.LinkSupport
 
     var support: Support {
-        (previewPID ?? controller.deviceID).map { RazerDevices.support(pid: $0) } ?? .unknown
+        testedPID.map { RazerDevices.support(pid: $0) } ?? .unknown
     }
 
     /// Whether the connected model is already on the verified list. Decides the window title.
     var isKnownSupported: Bool { support == .full }
     /// The connected mouse's other links still worth a report, for the intro.
     var linksToTest: [RazerDevices.LinkToTest] {
-        (previewPID ?? controller.deviceID).map { RazerDevices.linksToTest(besides: $0) } ?? []
+        testedPID.map { RazerDevices.linksToTest(besides: $0) } ?? []
     }
+    /// What no report has shown working on this link yet: everything for a model not on record.
+    /// Polling is left out on a mouse whose row already says it refuses the classic command:
+    /// running it again only records the same refusal.
+    var missingFeatures: [RazerFeature] {
+        guard let pid = testedPID, let unverified = RazerDevices.unverified(pid: pid) else { return RazerFeature.allCases }
+        return RazerDevices.acceptsClassicPolling(pid: pid) ? unverified : unverified.filter { $0 != .polling }
+    }
+    /// Skipping this step leaves out data the registry still lacks, so Skip asks first.
+    var skipNeedsConfirming: Bool { DeviceTestFlow.skipNeedsConfirming(stage, missing: missingFeatures) }
     /// Set only by `loadPreview`, to render each intro without a device.
     private var previewPID: Int?
+    /// The mouse the registry is asked about: the preview's, else the connected one.
+    private var testedPID: Int? { previewPID ?? controller.deviceID }
     /// The steps this run is limited to, or nil for the full test. Set by "Test what's missing".
     @Published private(set) var focus: [RazerFeature]?
     /// The screens a focused run passes over.
@@ -675,6 +686,11 @@ enum DeviceTestFlow {
         return target
     }
 
+    /// The feature a step tests, or nil for a step that tests none (identify, buttons, review).
+    static func feature(for stage: DeviceTestModel.Stage) -> RazerFeature? {
+        RazerFeature.allCases.first { self.stage(for: $0) == stage }
+    }
+
     static func stage(for feature: RazerFeature) -> DeviceTestModel.Stage {
         switch feature {
         case .battery: return .battery
@@ -682,6 +698,12 @@ enum DeviceTestFlow {
         case .polling: return .polling
         case .lighting: return .lighting
         }
+    }
+
+    /// Whether Skip on `stage` asks first: the step tests something in `missing`. A step
+    /// already verified on this link skips straight away.
+    static func skipNeedsConfirming(_ stage: DeviceTestModel.Stage, missing: [RazerFeature]) -> Bool {
+        missing.contains { self.stage(for: $0) == stage }
     }
 
     /// The screens a run limited to `focus` passes over: every other feature's, and the
