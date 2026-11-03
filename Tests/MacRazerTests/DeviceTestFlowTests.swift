@@ -74,15 +74,23 @@ final class DeviceTestFlowTests: XCTestCase {
             return model.missingFeatures
         }
         XCTAssertEqual(missing(0x00DB), [], "Cobra HyperSpeed")
-        XCTAssertEqual(missing(0x00E3), [.polling], "Basilisk V4 Pro")
+        XCTAssertEqual(missing(0x0053), [.lighting], "Naga Chroma")
+        XCTAssertEqual(missing(0x00E3), [], "Basilisk V4 Pro: polling unverified, but it refuses the classic command")
         XCTAssertEqual(missing(0x7FFF), RazerFeature.allCases, "not on record")
         XCTAssertEqual(missing(nil), RazerFeature.allCases, "no mouse connected")
     }
 
+    func testEachFeatureStepMapsBack() {
+        for feature in RazerFeature.allCases {
+            XCTAssertEqual(DeviceTestFlow.feature(for: DeviceTestFlow.stage(for: feature)), feature)
+        }
+        XCTAssertNil(DeviceTestFlow.feature(for: .buttons))
+    }
+
     func testTheSkipQuestionNamesTheStep() {
-        XCTAssertTrue(DeviceTestView.skipMessage(for: .polling).hasPrefix("We don't have polling rate data"))
-        XCTAssertTrue(DeviceTestView.skipMessage(for: .dpi).hasPrefix("We don't have DPI data"))
-        XCTAssertTrue(DeviceTestView.skipMessage(for: .lighting).hasPrefix("We don't have lighting data"))
+        XCTAssertTrue(DeviceTestView.skipMessage(for: RazerFeature.polling).hasPrefix("We don't have polling rate data"))
+        XCTAssertTrue(DeviceTestView.skipMessage(for: RazerFeature.dpi).hasPrefix("We don't have DPI data"))
+        XCTAssertTrue(DeviceTestView.skipMessage(for: RazerFeature.lighting).hasPrefix("We don't have lighting data"))
     }
 
     /// Which intro each kind of mouse gets, from the registry.

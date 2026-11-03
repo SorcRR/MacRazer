@@ -22,23 +22,22 @@ struct DeviceTestView: View {
         .padding(20)
         .frame(width: 440)
         .alert("Could you run this test?", isPresented: $confirmingSkip) {
+            // First, so macOS makes it the alert's default button.
             Button("Run Test") { runCurrentStep() }
-                .keyboardShortcut(.defaultAction)
             Button("Skip Anyway") { model.next() }
             // Esc backs out of the question and leaves the step as it was.
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text(Self.skipMessage(for: model.stage))
+            if let feature = DeviceTestFlow.feature(for: model.stage) { Text(Self.skipMessage(for: feature)) }
         }
     }
 
-    nonisolated static func skipMessage(for stage: DeviceTestModel.Stage) -> String {
-        let label = RazerFeature.allCases.first { DeviceTestFlow.stage(for: $0) == stage }?.label ?? "this"
+    nonisolated static func skipMessage(for feature: RazerFeature) -> String {
         // "DPI" stays in capitals; "Polling rate" and "Lighting" read mid-sentence.
-        let feature = label == RazerFeature.dpi.label ? label : label.lowercased()
-        return "We don't have \(feature) data for this mouse yet, so this result would really help. "
+        let name = feature == .dpi ? feature.label : feature.label.lowercased()
+        return "We don't have \(name) data for this mouse yet, so this result would really help. "
             + "If your mouse doesn't have this feature, run it anyway: the test records that too, "
-            + "and it puts your settings back afterwards."
+            + "and it tries to put your settings back afterwards."
     }
 
     /// Skip, or the question first on a step the registry still needs.

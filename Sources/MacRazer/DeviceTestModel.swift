@@ -138,8 +138,11 @@ final class DeviceTestModel: ObservableObject {
         testedPID.map { RazerDevices.linksToTest(besides: $0) } ?? []
     }
     /// What no report has shown working on this link yet: everything for a model not on record.
+    /// Polling is left out on a mouse whose row already says it refuses the classic command:
+    /// running it again only records the same refusal.
     var missingFeatures: [RazerFeature] {
-        testedPID.flatMap(RazerDevices.unverified(pid:)) ?? RazerFeature.allCases
+        guard let pid = testedPID, let unverified = RazerDevices.unverified(pid: pid) else { return RazerFeature.allCases }
+        return RazerDevices.acceptsClassicPolling(pid: pid) ? unverified : unverified.filter { $0 != .polling }
     }
     /// Skipping this step leaves out data the registry still lacks, so Skip asks first.
     var skipNeedsConfirming: Bool { DeviceTestFlow.skipNeedsConfirming(stage, missing: missingFeatures) }
@@ -681,6 +684,11 @@ enum DeviceTestFlow {
         var target = back(from: stage, identifyRan: identifyRan)
         while let t = target, skipping.contains(t) { target = back(from: t, identifyRan: identifyRan) }
         return target
+    }
+
+    /// The feature a step tests, or nil for a step that tests none (identify, buttons, review).
+    static func feature(for stage: DeviceTestModel.Stage) -> RazerFeature? {
+        RazerFeature.allCases.first { self.stage(for: $0) == stage }
     }
 
     static func stage(for feature: RazerFeature) -> DeviceTestModel.Stage {
