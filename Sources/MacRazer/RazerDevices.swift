@@ -230,9 +230,10 @@ enum RazerDevices {
         // DPI answered with 0x1f. 0xFF and 0x80 time out. Every LED group refuses brightness,
         // so no lighting. The classic polling command answers "not supported" (0x05); it likely
         // needs OpenRazer's polling_rate2 pair, as the V4 Pro does in #55. Until that is tried,
-        // the polling picker fails here, so the row stays unverified. The 26000 DPI ceiling is
-        // the app's default for unknown models, not a measured value.
-        .init(pid: 0x00EA, name: "Razer Basilisk V4 HyperSpeed (Wireless)", unverified: [.polling], hasBattery: true, hasLighting: false, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, acceptsClassicPolling: false),
+        // the popover hides the polling picker and the row stays unverified. The 26000 DPI
+        // ceiling is the app's default for unknown models, not a measured value. The name has
+        // no "(Wireless)": usage stats count models by it, and 0.6 already sent it this way.
+        .init(pid: 0x00EA, name: "Razer Basilisk V4 HyperSpeed", unverified: [.polling], hasBattery: true, hasLighting: false, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, acceptsClassicPolling: false),
         // Basilisk V4 Pro over the dongle (in-app report, no credit given): battery, DPI and
         // stages, static color and brightness passed with 0x1f. LOGO and SCROLL answer
         // brightness, ZERO and BACKLIGHT return 0x03. The classic polling command answers
@@ -284,15 +285,17 @@ enum RazerDevices {
         // Taipan (in-app report, no credit given): an older wired-only mouse. DPI and polling
         // passed with 0x1f, and every id answers. The battery read returns 0x03. Every LED group
         // refuses the extended-matrix commands, so its light likely takes the older single-LED
-        // ones; no lighting here until someone tries them. The DPI stages read fails (0x03).
+        // ones; no lighting here until someone tries them, and lighting stays unverified so a
+        // report can say. The DPI stages read fails (0x03).
         // 8200 is its sensor's ceiling and the DPI it reported. The owner found only the two
         // left side buttons detected for remapping, of six extra buttons.
-        .init(pid: 0x0034, name: "Razer Taipan", unverified: [], hasBattery: false, hasLighting: false, maxDPI: 8200, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
+        .init(pid: 0x0034, name: "Razer Taipan", unverified: [.lighting], hasBattery: false, hasLighting: false, maxDPI: 8200, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
         // Basilisk V3 Pro 35K on the cable (in-app report, no credit given): battery, DPI and
         // stages, and polling passed with 0x1f. LOGO and SCROLL answer brightness and every
         // lighting write is acknowledged, but the owner saw neither the dim nor the red, so the
-        // lighting controls stay hidden until a report shows them working. 35000 is the spec.
-        .init(pid: 0x00CC, name: "Razer Basilisk V3 Pro 35K (Wired)", unverified: [.lighting], hasBattery: true, hasLighting: false, maxDPI: 35000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
+        // lighting controls stay hidden until a report shows them working. Both zones are
+        // recorded for the slider for when they are. 35000 is the spec.
+        .init(pid: 0x00CC, name: "Razer Basilisk V3 Pro 35K (Wired)", unverified: [.lighting], hasBattery: true, hasLighting: false, maxDPI: 35000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
     ]
 
     static func info(pid: Int) -> RazerDeviceInfo? { known.first { $0.pid == pid } }

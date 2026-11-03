@@ -252,13 +252,21 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertTrue(RazerDevices.hasLighting(pid: 0x00A7))
         XCTAssertEqual(RazerDevices.info(pid: 0x00A7)?.extraBrightnessLeds, [Razer.backlightLed])
 
-        XCTAssertTrue(RazerDevices.fullySupported(pid: 0x0034), "Taipan")
-        XCTAssertFalse(RazerDevices.needsReport(pid: 0x0034), "wired only, no battery: nothing left to ask")
+        XCTAssertEqual(RazerDevices.unverified(pid: 0x0034), [.lighting], "Taipan: its light refuses these commands")
+        XCTAssertFalse(RazerDevices.hasLighting(pid: 0x0034))
+        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x0034), [], "wired only, no battery")
         XCTAssertEqual(RazerDevices.maxDPI(pid: 0x0034), 8200)
 
         XCTAssertEqual(RazerDevices.unverified(pid: 0x00CC), [.lighting], "Basilisk V3 Pro 35K")
         XCTAssertFalse(RazerDevices.hasLighting(pid: 0x00CC), "acknowledged but nothing changed")
         XCTAssertEqual(RazerDevices.maxDPI(pid: 0x00CC), 35000)
+        XCTAssertEqual(RazerDevices.info(pid: 0x00CC)?.extraBrightnessLeds, [Razer.scrollLed])
+
+        // Every report answered on 0x1f, for standard and lighting commands alike.
+        for pid in [0x00E6, 0x00EB, 0x00D1, 0x00A7, 0x0034, 0x00CC] {
+            XCTAssertEqual(RazerDevices.transactionId(pid: pid, commandClass: 0x04, commandId: 0x05), 0x1f, String(pid, radix: 16))
+            XCTAssertEqual(RazerDevices.transactionId(pid: pid, commandClass: 0x0F, commandId: 0x04), 0x1f, String(pid, radix: 16))
+        }
     }
 
     /// The models that answer the classic polling command with "not supported".

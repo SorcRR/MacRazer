@@ -84,7 +84,7 @@ says so.
 | Razer DeathAdder Essential | DPI, DPI stages, polling, brightness (its one light is green only) | anonymous report |
 | Razer Naga V2 Pro (Wired) | Battery, DPI, DPI stages, polling, lighting, brightness | anonymous report |
 | Razer Pro Click V2 | Battery, DPI, DPI stages, polling | anonymous report |
-| Razer Taipan | DPI, polling (no lighting control) | anonymous report |
+| Razer Taipan | DPI, polling; lighting not working yet | anonymous report |
 | Razer Basilisk V4 HyperSpeed (wired + wireless) | Battery, DPI, DPI stages; polling not working yet | anonymous reports |
 | Razer Viper V4 Pro (wired + wireless) | Battery, DPI, DPI stages; polling not working yet | Robotxm and an anonymous report |
 | Razer Basilisk V4 Pro (Wireless) | Battery, DPI, DPI stages, lighting, brightness; polling not working yet | anonymous report |
