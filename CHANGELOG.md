@@ -6,6 +6,8 @@ expect rough edges until 1.0.
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-11-03
+
 ### Added
 - **Sliders follow the scroll wheel.** Scroll over any slider in the popover (DPI, brightness,
   wave speed, sleep timer) to move it: up raises the value, whatever your natural-scrolling
