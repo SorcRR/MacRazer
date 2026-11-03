@@ -6,6 +6,8 @@ expect rough edges until 1.0.
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-11-03
+
 ### Added
 - **Sliders follow the scroll wheel.** Scroll over any slider in the popover (DPI, brightness,
   wave speed, sleep timer) to move it: up raises the value, whatever your natural-scrolling
@@ -30,6 +32,12 @@ expect rough edges until 1.0.
   off in Settings › General › Ask me to help test my mouse. A partly verified mouse is asked
   about just what's missing, and one verified on its dongle but not on its cable or Bluetooth
   (or the other way round) gets a note saying which connection still needs a test.
+- **A device test for a mouse on Bluetooth.** The full test needs the dongle or a cable. A
+  mouse on Bluetooth now gets a shorter test that only reads: which Bluetooth services it
+  has, its battery, and which of Razer's commands it answers there. Start it with **Bluetooth
+  test** in the test window. The full test also asks, read-only, which other features the
+  mouse has (scroll wheel settings, onboard profiles, its button table, every lighting zone),
+  so a new mouse can be added from one report.
 - **The device test knows what's already verified.** On a fully supported mouse it says no
   test is needed. On a partly supported one it lists what works and offers to test only
   what's missing. Both name the mouse's other connections that still need a report.

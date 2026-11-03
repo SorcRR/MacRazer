@@ -424,6 +424,9 @@ buttons are handled onboard and never reach macOS.
  Settings / Re-check in the UI).
 - Available both inline (popover buttons page) and as a standalone window
  (`RemapWindowController.swift`, opened from the right-click menu).
+- Another app's event tap can take a side button's clicks before MacRazer's sees them. Until a
+ side button gets through, the page names any such app that's running
+ (`ButtonRemapper.competingTapApps`, from `CGGetEventTapList`, Apple's own processes left out).
 
 ### 6.4 Device test, `DeviceTest*.swift` + the Worker
 The right-click menu's **Help Support This Mouse…** (or **Test This Mouse…** on a verified
@@ -436,7 +439,21 @@ model) runs a guided test and builds a report a maintainer can turn into a regis
  each result recorded) and the channel that records every command for the report.
 - `DeviceTestModel.swift` / `DeviceTestView.swift` / `DeviceTestWindowController.swift`: the
  window. Steps run on `MouseController`'s device queue with the app's own reads paused. Quit
- waits for a running step. The test needs USB; a mouse on Bluetooth is told to switch.
+ waits for a running step. The full test needs the cable or dongle.
+- After Identify, `DeviceTestSteps.capabilities` asks a fixed list of read-only commands once
+ (`capabilityReads`: polling_rate2, idle time, scroll settings, profile slots, the per-zone
+ effect for every LED id) and, when the button function read answers, the whole button table
+ (`readButtonTable`). When no transaction id answers on the interface MacRazer picked, Identify
+ also tries the mouse's other interfaces that can carry the control report
+ (`HIDDevice.withOtherControlInterfaces`); an answer there means the interface pick is wrong
+ for that mouse.
+- A mouse on Bluetooth gets a shorter, read-only test (`DeviceTestSteps.bluetoothTest`, the
+ window's **Bluetooth test**, or the `bluetoothtest` command). `BluetoothProbe.swift` opens its
+ own CoreBluetooth connection, after `MouseController.releaseBluetoothForDeviceTest` closes the
+ app's, and reads the GATT services, the PnP ID, the standard battery level and a list of keys
+ over Razer's service (`bluetoothReads`). The report has `connection: bluetooth` and a
+ `bluetooth` section. Identify is not on the mouse when there is no Razer service, and fails
+ when the probe never saw any services (Bluetooth off or not allowed).
 - The intro follows the registry row for the connected link (`DeviceTestModel.Support`). Fully
  supported: no test needed, with Test anyway for after a firmware update. Partly supported:
  what works, what still needs testing, and **Test what's missing**, which runs Identify and
@@ -553,7 +570,8 @@ come from GitHub Releases.
 ### 6.8 Settings, setup and About windows
 - **Settings**, `SettingsView.swift` / `SettingsWindowController.swift`: settings for the app
  itself, in a window rather than the popover. Opened with ⌘, from the menu or the popover's
- gear. Sections:
+ gear. One fixed size, with a sidebar of pages, the version and update status at its foot.
+ Escape and ⌘W close it. Pages:
  - **General**: Start at login, connection sounds (`connectionSoundsEnabled`), battery % in the
  menu bar (hidden for mice without a battery), crash reports (hidden while crash reporting is
  off, §6.9), Ask me to help test my mouse (§6.5).
@@ -649,6 +667,7 @@ swift run MacRazer rgb breathing ff0000 # one colour; two for dual, none for ran
 swift run MacRazer brightness [0-100] # sweeps LOGO/SCROLL/ZERO/BACKLIGHT LEDs
 swift run MacRazer discover # which transaction ids the mouse answers to
 swift run MacRazer devicetest # the device test without its window, as JSON on stdout
+MacRazer.app/Contents/MacOS/MacRazer bluetoothtest # the read-only Bluetooth test, as JSON; needs the bundle's Info.plist, and the app quit
 swift run MacRazer render-device-test review ran sent out.png # one test screen (dev)
 swift run MacRazer login-item [on|off] # the "Start at login" registration
 swift run MacRazer icon out.png # render the menu bar icon
@@ -695,6 +714,9 @@ that path draws the content but needs an explicit size, since there is no window
 | `RazerTransport.swift` | Transport protocol shared by USB and Bluetooth, plus the shared retry ladder. |
 | `BLEProtocol.swift` | Bluetooth LE framing and `RazerReport` translation. |
 | `BluetoothDevice.swift` | CoreBluetooth connection to Razer's vendor GATT service. |
+| `BluetoothProbe.swift` | The device test's own Bluetooth connection: GATT services, PnP ID, battery, read-only keys. |
+| `StatusItemClick.swift` | Whether a menu bar icon click opens the popover or the right-click menu. |
+| `FormControls.swift` | The windows' text fields, comment boxes and choice buttons. |
 | `RazerReport.swift` | 90-byte `razer_report` struct + CRC. |
 | `RazerCommands.swift` | Command-byte builders (battery/DPI/poll/RGB/brightness) + Razer constants. |
 | `RazerDevices.swift` | PID to {name, supported, hasBattery} registry. |
