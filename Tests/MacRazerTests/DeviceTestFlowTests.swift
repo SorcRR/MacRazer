@@ -55,6 +55,22 @@ final class DeviceTestFlowTests: XCTestCase {
         XCTAssertEqual(DeviceTestFlow.next(from: .battery, skipping: []), .dpi)
     }
 
+    /// Skip asks first only on a step whose data the registry still lacks.
+    func testSkipAsksFirstOnlyOnAMissingStep() {
+        XCTAssertTrue(DeviceTestFlow.skipNeedsConfirming(.polling, missing: [.polling]))
+        XCTAssertFalse(DeviceTestFlow.skipNeedsConfirming(.dpi, missing: [.polling]), "already verified")
+        XCTAssertFalse(DeviceTestFlow.skipNeedsConfirming(.lighting, missing: []), "fully supported")
+        XCTAssertTrue(DeviceTestFlow.skipNeedsConfirming(.lighting, missing: RazerFeature.allCases), "a new mouse")
+        XCTAssertFalse(DeviceTestFlow.skipNeedsConfirming(.buttons, missing: RazerFeature.allCases),
+                       "the button step is information only")
+    }
+
+    func testTheSkipQuestionNamesTheStep() {
+        XCTAssertTrue(DeviceTestView.skipMessage(for: .polling).hasPrefix("We don't have polling rate data"))
+        XCTAssertTrue(DeviceTestView.skipMessage(for: .dpi).hasPrefix("We don't have DPI data"))
+        XCTAssertTrue(DeviceTestView.skipMessage(for: .lighting).hasPrefix("We don't have lighting data"))
+    }
+
     /// Which intro each kind of mouse gets, from the registry.
     @MainActor func testTheIntroFollowsTheRegistry() {
         func support(_ pid: Int) -> DeviceTestModel.Support {

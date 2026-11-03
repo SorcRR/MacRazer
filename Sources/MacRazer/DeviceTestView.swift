@@ -7,6 +7,8 @@ import SwiftUI
 struct DeviceTestView: View {
     @ObservedObject var model: DeviceTestModel
     var onClose: () -> Void
+    /// Skip was pressed on a step the registry still needs; the dialog asks to run it instead.
+    @State private var confirmingSkip = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -19,6 +21,34 @@ struct DeviceTestView: View {
         }
         .padding(20)
         .frame(width: 440)
+        .alert("Could you run this test?", isPresented: $confirmingSkip) {
+            Button("Run Test") { Task { await runCurrentStep() } }
+                .keyboardShortcut(.defaultAction)
+            Button("Skip Anyway", role: .cancel) { model.next() }
+        } message: {
+            Text(Self.skipMessage(for: model.stage))
+        }
+    }
+
+    nonisolated static func skipMessage(for stage: DeviceTestModel.Stage) -> String {
+        let feature = stage == .dpi ? "DPI" : stage == .polling ? "polling rate" : "lighting"
+        return "We don't have \(feature) data for this mouse yet, so this result would really help. "
+            + "If your mouse doesn't have this feature, run it anyway: the test records that too, "
+            + "and it puts your settings back afterwards."
+    }
+
+    /// Skip, or the question first on a step the registry still needs.
+    private func skip() {
+        if model.skipNeedsConfirming { confirmingSkip = true } else { model.next() }
+    }
+
+    private func runCurrentStep() async {
+        switch model.stage {
+        case .dpi: await model.runDPI()
+        case .polling: await model.runPolling()
+        case .lighting: await model.runLighting()
+        default: break
+        }
     }
 
     // MARK: Progress
@@ -515,13 +545,13 @@ struct DeviceTestView: View {
     @ViewBuilder private var stepButtons: some View {
         switch model.stage {
         case .dpi where model.report?.dpi.data == nil && model.report?.dpi.error == nil:
-            Button("Skip") { model.next() }.disabled(model.running)
+            Button("Skip") { skip() }.disabled(model.running)
             Button("Run") { Task { await model.runDPI() } }.disabled(model.running).keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
         case .polling where model.report?.polling.data == nil && model.report?.polling.error == nil:
-            Button("Skip") { model.next() }.disabled(model.running)
+            Button("Skip") { skip() }.disabled(model.running)
             Button("Run") { Task { await model.runPolling() } }.disabled(model.running).keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
         case .lighting where model.report?.lighting.data == nil:
-            Button("Skip") { model.next() }.disabled(model.running)
+            Button("Skip") { skip() }.disabled(model.running)
             Button("Run") { Task { await model.runLighting() } }.disabled(model.running).keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
         case .buttons:
             Button(model.buttonsSeen.isEmpty ? "Skip" : "Next") { model.next() }.keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
