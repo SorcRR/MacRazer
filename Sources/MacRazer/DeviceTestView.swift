@@ -495,6 +495,11 @@ struct DeviceTestView: View {
             case .intro where model.support == .full:
                 Button("Test anyway") { model.start() }.disabled(model.running)
                 Spacer()
+                // A verified mouse on Bluetooth: "Test anyway" can only say to switch links, so
+                // the read-only test is offered here too.
+                if model.offersBluetoothTest {
+                    Button("Bluetooth test") { model.startBluetooth() }.disabled(model.running)
+                }
                 Button("Close", action: onClose).keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
             case .intro:
                 Button("Cancel", action: onClose)
