@@ -45,6 +45,10 @@ final class BluetoothReportTests: XCTestCase {
         XCTAssertEqual(data.reads.first { $0.name == "brightness" && $0.led == 0x04 }?.response, [0x80])
         XCTAssertEqual(data.buttonTable?.map(\.id), [0x02, 0x60], "0x30 is all zeros")
         XCTAssertEqual(data.buttonTable?.first?.block, [0x01, 0x01, 0x02], "kept as the mouse sent it")
+        let probes = [DeviceTestSteps.bluetoothButtonRead(0x04).bytes, DeviceTestSteps.bluetoothButtonRead(0x60).bytes]
+        for probe in probes {
+            XCTAssertEqual(mouse.asked.filter { $0 == probe }.count, 1, "the sweep reuses the probe's answer")
+        }
     }
 
     func testNoButtonTableWithoutAProbeAnswer() {
@@ -95,6 +99,15 @@ final class BluetoothReportTests: XCTestCase {
         XCTAssertEqual(report.device.productID, 0x00E4)
         XCTAssertEqual(DeviceTestSteps.bluetoothReport(name: "x", hid: none, probe: .init(), capabilities: nil)
             .device.vendorID, BLEProtocol.vendorId)
+    }
+
+    /// No services seen means the probe never got that far, which says nothing about the mouse.
+    func testAProbeThatNeverConnectedFailsIdentify() {
+        let probe = DeviceReport.BluetoothData(error: "Bluetooth is off, or MacRazer wasn't allowed to use it.")
+        let report = DeviceTestSteps.bluetoothReport(name: "x", hid: hid, probe: probe, capabilities: nil)
+        XCTAssertEqual(report.identify.outcome, .failed)
+        XCTAssertEqual(report.identify.error, probe.error)
+        XCTAssertEqual(report.verdict?.notSupported, [])
     }
 
     func testIdentifyPassesWhenRazersServiceAnswers() {
