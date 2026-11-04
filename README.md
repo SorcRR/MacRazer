@@ -208,16 +208,20 @@ Download [`MacRazer.dmg`](https://reports.macrazer.com/v1/download?via=site&page
 (release notes on the [latest release](../../releases/latest) page), open it, and drag
 **MacRazer** into Applications.
 
-This build is unsigned (no paid Apple Developer ID), so on first launch Gatekeeper will say
-the app "cannot be opened because it is from an unidentified developer" or "is damaged and
-can't be opened". Both are the standard unsigned-app warning, not an actual problem. To open
-it anyway, do **one** of:
+This build is unsigned (no paid Apple Developer ID), so the first time you open it macOS
+blocks it. You'll see "MacRazer Not Opened" with only a **Done** button, or on older macOS
+"cannot be opened because it is from an unidentified developer". It's the standard warning
+for any app without a paid Apple ID, not a real problem. To open it anyway, do **one** of:
 
-- Right-click (or Control-click) **MacRazer.app** in Finder, choose **Open**, then confirm
-  **Open** in the dialog. (Only needed once.)
-- Or, in System Settings > Privacy & Security, scroll to the bottom and click **Open Anyway**
-  next to the MacRazer warning.
+- Click **Done**, then go to System Settings > Privacy & Security, scroll to the bottom and
+  click **Open Anyway** next to the MacRazer message. Confirm with your password or Touch ID.
 - Or, from Terminal: `xattr -cr /Applications/MacRazer.app`, then open it normally.
+- On macOS 14 and earlier you can also right-click (or Control-click) **MacRazer.app** in
+  Finder, choose **Open**, then **Open** again. macOS 15 removed this shortcut.
+
+You only need to do this once. Getting rid of this step for good needs a paid Apple Developer
+ID ($99 a year). If you'd like to help with that, tips go to
+[ko-fi.com/sorcrr](https://ko-fi.com/sorcrr).
 
 After that it launches like any other app. It will then ask for **Input Monitoring**
 permission (and **Accessibility** if you use button remapping); see [Permissions](#permissions)
@@ -301,4 +305,5 @@ derived from OpenRazer. Full attribution and the trademark notice are in [NOTICE
 ## Support
 
 This is a free, unpaid community project. If it is useful to you, you can leave a tip:
-[ko-fi.com/sorcrr](https://ko-fi.com/sorcrr).
+[ko-fi.com/sorcrr](https://ko-fi.com/sorcrr). The first goal is an Apple Developer ID ($99 a
+year), so MacRazer can be signed and opens without the security warning.
