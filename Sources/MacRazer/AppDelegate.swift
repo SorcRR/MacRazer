@@ -41,6 +41,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     private lazy var crashReportWindow = CrashReportWindowController(
         onClosed: { [weak self] in self?.autoInstallIfEnabled() })
     private let usageStats = UsageStats.shared
+    /// The connected mouse models for the reports page, anonymous and in the background.
+    private let mouseCountReporter = MouseCountReporter()
     /// Closing it re-asks the auto-install gate, for the same reason as `updatedWindow`.
     private lazy var usageStatsWindow = UsageStatsWindowController(
         stats: usageStats, onClosed: { [weak self] in self?.autoInstallIfEnabled() })
@@ -337,7 +339,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         }
         // Unthrottled: a launch is rare, and it is when someone who just installed or reopened
         // the app most expects it to know about the latest release.
-        updateChecker.connectedMice = { [weak self] in self?.usageStats.connectedMice ?? [] }
         Task { await updateChecker.checkForUpdatesNow() }
         startUpdateTriggers()
     }
@@ -349,8 +350,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         // three hours fires a moment before the throttle opens, because the check it follows
         // finished a little after it started, and so waited a whole extra period each time.
         // A timer also stops counting while the Mac sleeps.
+        // The same tick retries a mouse count that hasn't gone out today.
         let timer = Timer(timeInterval: 15 * 60, repeats: true) { [weak self] _ in
-            Task { await self?.updateChecker.checkForUpdatesIfDue() }
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                async let check: Void = self.updateChecker.checkForUpdatesIfDue()
+                async let mice: Void = self.mouseCountReporter.reportIfNeeded()
+                _ = await (check, mice)
+            }
         }
         timer.tolerance = 60
         RunLoop.main.add(timer, forMode: .common)
@@ -364,6 +371,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
             MainActor.assumeIsolated {
                 guard let self else { return }
                 Task { await self.updateChecker.checkForUpdatesIfDue() }
+                Task { await self.mouseCountReporter.reportIfNeeded() }
             }
         }
 
@@ -378,6 +386,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
                 defer { self.wasOnline = online }
                 guard self.wasOnline == false, online else { return }
                 Task { await self.updateChecker.checkForUpdatesIfDue() }
+                Task { await self.mouseCountReporter.reportIfNeeded() }
             }
         }
         pathMonitor.start(queue: .main)
@@ -586,6 +595,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     /// Feeds the connected mouse to `UsageStats`, sends whatever is due, and asks once if
     /// nobody has been asked yet. Nothing goes anywhere without a yes; see `UsageStats`.
     private func startUsageStats() {
+        mouseCountReporter.connectedMice = { [weak self] in self?.usageStats.connectedMice ?? [] }
         // Debounced: the controller publishes a new mouse's fields one at a time, and the
         // ping should see them all.
         Publishers.CombineLatest4(controller.$connected, controller.$deviceID,
@@ -598,6 +608,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
                     [UsageStatsPolicy.mouse(pid: $0, productName: name, isBluetooth: bluetooth, supported: supported)]
                 } ?? [] : []
                 self?.usageStats.setConnectedMice(mice)
+                // A mouse just found goes out now, not at the next update check.
+                Task { await self?.mouseCountReporter.reportIfNeeded() }
             }
             .store(in: &cancellables)
         // A mouse usually connects within a few seconds of launch and goes with the first

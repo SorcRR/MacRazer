@@ -338,8 +338,6 @@ struct SettingsView: View {
 
     @ViewBuilder private var privacyPage: some View {
         settingsGroup {
-            mouseModelsRow
-            rowDivider
             usageStatsRow
         }
         settingsGroup {
@@ -489,16 +487,6 @@ struct SettingsView: View {
                 + "needs a test on another connection, ask whether to run a short test that helps. "
                 + "Right-click the menu bar icon to run it any time.",
             isOn: $supportPrompt.isEnabled
-        )
-    }
-
-    private var mouseModelsRow: some View {
-        settingRow(
-            symbol: "computermouse.fill", tint: Color(nsColor: .systemBlue),
-            title: "Count my mouse model",
-            detail: "The update check also says which mouse model is connected, so I can see which "
-                + "mice people use. It's counted with nothing that identifies this Mac.",
-            isOn: $updateChecker.sendsMouseModels
         )
     }
 

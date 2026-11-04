@@ -119,15 +119,18 @@ enum WorkerEndpoint {
         components?.queryItems = [URLQueryItem(name: "via", value: "update"), URLQueryItem(name: "tag", value: tag)]
         return components?.url
     }
+    /// The Worker's limit on mice per request (`MAX_MICE` in its releases.ts).
+    static let maxMice = 4
+
     /// The update check. It says which app version this is (nil, for a `swift run` build, goes
-    /// as "dev") and, unless the owner turned it off, which mouse models are connected. The
-    /// Worker counts those per day with no ID for the Mac, so they need no consent the way the
-    /// usage stats do; the homepage's privacy section says so.
+    /// as "dev"). `MouseCountReporter` sends the same request with the connected mouse models.
+    /// The Worker counts those per day with no ID for the Mac, so they need no consent the way
+    /// the usage stats do; the homepage's privacy section says so.
     static func releases(appVersion: String?, mice: [UsagePing.Mouse] = [], base: URL? = base) -> URL? {
         guard let base else { return nil }
         var components = URLComponents(url: base.appendingPathComponent("v1/releases"), resolvingAgainstBaseURL: false)
         components?.queryItems = [URLQueryItem(name: "app", value: appVersion ?? "dev")]
-            + mice.prefix(4).map { URLQueryItem(name: "mouse", value: mouseValue($0)) }
+            + mice.prefix(maxMice).map { URLQueryItem(name: "mouse", value: mouseValue($0)) }
         return components?.url
     }
 

@@ -7,6 +7,12 @@ expect rough edges until 1.0.
 ## [Unreleased]
 
 ### Changed
+- **The mouse model count now catches every Mac.** It used to go with the update check, which
+  runs at launch before the app has found the mouse, and then only every few hours. So about
+  half the mice in use were never counted. Now the app sends the connected model as soon as it
+  finds the mouse, once a day per model, and tries again every 15 minutes if that fails. It
+  stays anonymous, with nothing that identifies your Mac, and it's always on now: the "Count
+  my mouse model" switch in Settings › Privacy is gone.
 - **Four more mice are fully verified.** Test reports confirmed what was still missing on the
   Basilisk X HyperSpeed, DeathAdder V2 Pro and DeathAdder V3 HyperSpeed (over the dongle) and
   the Viper Ultimate on its cable. MacRazer stops asking about what was confirmed. The two

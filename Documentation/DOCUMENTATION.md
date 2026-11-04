@@ -540,11 +540,16 @@ come from GitHub Releases.
 
 - **Checking.** At most every **3 hours** (`checkInterval`), from launch and a repeating timer,
  plus the menu's Check for Updates…. A build with a Worker asks it first: it passes on GitHub's
- release list and counts the Mac as active for the day by a salted hash of its IP. Settings ›
- Privacy can stop the check from naming the connected mouse models (`sendsMouseModels`, on by
- default). Any failure there falls through to GitHub directly, so the Worker can never cost
+ release list and counts the Mac as active for the day by a salted hash of its IP. The check
+ itself sends only the app version. Any failure there falls through to GitHub directly, so the Worker can never cost
  anyone an update. One exception skips the throttle: the version just changed and there are no
  notes for it yet.
+- **Mouse models.** `MouseCountReporter` sends the same Worker request with the connected mouse
+ models, so the reports page can count mice in use. Always on, anonymous like the check. It goes
+ out as soon as the controller finds a mouse, then once per UTC day per model and link. A failed
+ send is silent and retried on the 15-minute tick, at wake and when the network returns. It
+ used to ride on the update check, which runs at launch before the mouse is found and then only
+ every 3 hours, and missed about half the mice.
 - **Release notes.** `ReleaseSpan` picks every published release between the running version
  and the new one, so someone skipping versions reads all of them, not only the latest.
  `ReleaseNotes.parse` turns each GitHub body into a summary and sections, and keeps anything it
@@ -575,8 +580,7 @@ come from GitHub Releases.
  - **General**: Start at login, connection sounds (`connectionSoundsEnabled`), battery % in the
  menu bar (hidden for mice without a battery), crash reports (hidden while crash reporting is
  off, §6.9), Ask me to help test my mouse (§6.5).
- - **Privacy** (only in a build with the Worker): mouse models in the update check, usage stats,
- and deleting what's stored (§6.6).
+ - **Privacy** (only in a build with the Worker): usage stats and deleting what's stored (§6.6).
  - **Appearance**: Theme, Glass effect and Two-column popover (§6.2).
  - **Updates**: Install updates automatically, the version, and Check Now.
 - **Start at login**, `LaunchAtLogin.swift`: `SMAppService.mainApp`, which also lists MacRazer
