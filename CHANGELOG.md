@@ -50,8 +50,14 @@ expect rough edges until 1.0.
   turn sharing off and how many come back.
 - **Four more mice are fully verified.** Test reports confirmed what was still missing on the
   Basilisk X HyperSpeed, DeathAdder V2 Pro and DeathAdder V3 HyperSpeed (over the dongle) and
-  the Viper Ultimate on its cable. MacRazer stops asking about what was confirmed. The two
-  DeathAdders still ask once for a test on their cable, which nobody has reported yet.
+  the Viper Ultimate on its cable. MacRazer stops asking about what was confirmed. The
+  DeathAdder V2 Pro still asks once for a test on its cable, which nobody has reported yet.
+- **DeathAdder V3 HyperSpeed on its cable.** Two test reports passed battery, DPI, stages and
+  polling, so it's fully supported on both the cable and the dongle, and it stops asking for
+  a cable test.
+- **HyperFlux V2.** The charging mat passes commands to the mouse on it, and a test report
+  passed battery, DPI, stages and polling through it. Lighting answered but wasn't confirmed,
+  so the test still asks about that.
 
 ## [0.7.0] — 2026-11-03
 
