@@ -89,8 +89,12 @@ struct DeviceTestView: View {
 
     private var intro: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // First: what the rest of the intro says depends on which device it is.
-            if !model.devices.isEmpty { devicePicker }
+            // First: the rest of the intro describes the device the test will run on.
+            if !model.devices.isEmpty {
+                // On Bluetooth the test can't use the open mouse, so it names none.
+                warning(DeviceTestModel.unplugHint(model.devices, testing: model.controller.deviceIsBluetooth
+                                                   ? nil : model.controller.deviceName))
+            }
             switch model.support {
             case .full:
                 tag("Fully supported", color: .razerGreenText)
@@ -126,30 +130,6 @@ struct DeviceTestView: View {
             if model.finishingEarlierTest {
                 note("The test you started earlier is still finishing with your mouse. Start works again in a moment.")
             }
-        }
-    }
-
-    /// With a dock next to its own dongle, or two mice, selection's pick may not be the one the
-    /// person means to test.
-    private var devicePicker: some View {
-        let labels = DeviceTestModel.deviceLabels(model.devices)
-        return VStack(alignment: .leading, spacing: 6) {
-            Picker("Device to test", selection: Binding(
-                get: { model.chosenDevice },
-                set: { if let key = $0 { model.choose(key) } }
-            )) {
-                if model.chosenDevice == nil { Text("Choose a device").tag(HIDDeviceSelection.DeviceKey?.none) }
-                ForEach(Array(model.devices.enumerated()), id: \.element.key) { index, device in
-                    Text(verbatim: labels[index]).tag(Optional(device.key))
-                }
-            }
-            .pickerStyle(.menu)
-            .disabled(model.switchingDevice || model.finishingEarlierTest)
-            .font(.system(size: 12))
-            if let problem = model.switchProblem { warning(problem) }
-            note(model.switchingDevice
-                ? "Switching…"
-                : "More than one Razer device here could be your mouse. Pick the one to test. MacRazer controls it until you quit.")
         }
     }
 

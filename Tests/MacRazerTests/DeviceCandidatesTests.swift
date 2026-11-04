@@ -4,9 +4,9 @@
 import XCTest
 @testable import MacRazer
 
-/// The device test's picker: which devices it lists, that a pick wins over the ranking, and
+/// Which devices count as a possible mouse, the intro's hint when there's more than one, and
 /// what the review asks about a dock.
-final class DevicePickerTests: XCTestCase {
+final class DeviceCandidatesTests: XCTestCase {
     /// The Basilisk Ultimate report's setup: its Mouse Dock (0x007E) and its dongle (0x0088),
     /// neither in the registry, plus an Ornata V2 keyboard.
     private let dock: [HIDInterfaceInfo] = [
@@ -33,23 +33,6 @@ final class DevicePickerTests: XCTestCase {
             .init(pid: 0x00DB, locationID: 0x3000000, usagePage: 0x01, usage: 0x02, maxFeatureReportSize: 90, productName: "Razer Cobra HyperSpeed"),
         ]
         XCTAssertEqual(HIDDeviceSelection.candidates(interfaces: dock + known).map(\.key.pid), [0x00DB, 0x007E])
-    }
-
-    func testAPickWinsOverTheRanking() {
-        let interfaces = dock + dongle
-        let picked = HIDDeviceSelection.DeviceKey(pid: 0x0088, locationID: 0x1200000)
-        let index = HIDDeviceSelection.controlInterfaceIndex(interfaces: interfaces, preferred: picked)
-        XCTAssertEqual(interfaces[index!].pid, 0x0088)
-    }
-
-    func testAPickThatIsGoneFallsBackToTheRanking() {
-        let unplugged = HIDDeviceSelection.DeviceKey(pid: 0x0088, locationID: 0x1200000)
-        let index = HIDDeviceSelection.controlInterfaceIndex(interfaces: dock, preferred: unplugged)
-        XCTAssertEqual(dock[index!].pid, 0x007E)
-        let keyboardPick = HIDDeviceSelection.DeviceKey(pid: 0x025D, locationID: 0x1000000)
-        let withKeyboard = keyboard + dock
-        XCTAssertEqual(withKeyboard[HIDDeviceSelection.controlInterfaceIndex(interfaces: withKeyboard, preferred: keyboardPick)!].pid,
-                       0x007E, "a pick can't make a keyboard the mouse")
     }
 
     func testLabelsNumberDevicesThatShareAName() {
@@ -132,41 +115,16 @@ final class DevicePickerTests: XCTestCase {
                        ["Razer Cobra HyperSpeed (2.4 GHz) 1", "Razer Cobra HyperSpeed (2.4 GHz) 2"])
     }
 
-    /// The device picked in the test takes over again when it comes back.
-    func testAReturningPickTakesOver() {
-        let dock = HIDDeviceSelection.DeviceKey(pid: 0x00CF, locationID: 2)
-        XCTAssertTrue(MouseController.isOutranked(currentPID: 0x00C5, currentLocation: 1, best: (0x00CF, 2), preferred: dock))
-        XCTAssertFalse(MouseController.isOutranked(currentPID: 0x00CF, currentLocation: 2, best: (0x00CF, 2), preferred: dock),
-                       "already on it")
-        XCTAssertFalse(MouseController.isOutranked(currentPID: 0x00C5, currentLocation: 1, best: (0x00CF, 2), preferred: nil),
-                       "no pick: a known mouse isn't dropped for another")
-    }
-
-    func testAPickSwitchesOnlyOnTheIntroWithNothingRunning() {
-        let dock = HIDDeviceSelection.DeviceKey(pid: 0x007E, locationID: 1)
-        let dongle = HIDDeviceSelection.DeviceKey(pid: 0x0088, locationID: 2)
-        XCTAssertTrue(DeviceTestModel.canSwitch(to: dongle, stage: .intro, running: false, switching: false, chosen: dock))
-        XCTAssertTrue(DeviceTestModel.canSwitch(to: dongle, stage: .intro, running: false, switching: false, chosen: nil))
-        XCTAssertFalse(DeviceTestModel.canSwitch(to: dock, stage: .intro, running: false, switching: false, chosen: dock), "already open")
-        XCTAssertFalse(DeviceTestModel.canSwitch(to: dongle, stage: .battery, running: false, switching: false, chosen: dock), "mid-run")
-        XCTAssertFalse(DeviceTestModel.canSwitch(to: dongle, stage: .intro, running: true, switching: false, chosen: dock))
-        XCTAssertFalse(DeviceTestModel.canSwitch(to: dongle, stage: .intro, running: false, switching: true, chosen: dock))
-    }
-
-    /// What decides whether a pick took: the open device is that USB device.
-    func testAPickTookOnlyWhenThatUSBDeviceIsOpen() {
-        final class Fake: RazerTransport {
-            let productID: Int, locationID: Int, isBluetooth: Bool
-            let productName = "Fake"
-            init(_ pid: Int, _ location: Int, bluetooth: Bool = false) { productID = pid; locationID = location; isBluetooth = bluetooth }
-            func sendWithRetry(_ report: RazerReport) throws -> RazerReport { report }
-            func close() {}
-        }
-        let key = HIDDeviceSelection.DeviceKey(pid: 0x0088, locationID: 2)
-        XCTAssertTrue(MouseController.isOpen(key, Fake(0x0088, 2)))
-        XCTAssertFalse(MouseController.isOpen(key, Fake(0x0088, 3)), "same model, other port")
-        XCTAssertFalse(MouseController.isOpen(key, Fake(0x007E, 1)), "selection's own pick")
-        XCTAssertFalse(MouseController.isOpen(key, Fake(0x0088, 2, bluetooth: true)))
-        XCTAssertFalse(MouseController.isOpen(key, nil), "nothing opened")
+    func testTheHintNamesEveryDeviceAndTheOneUnderTest() {
+        let two = [
+            HIDDeviceSelection.Candidate(key: .init(pid: 0x007E, locationID: 1), name: "Razer Mouse Dock", index: 0),
+            HIDDeviceSelection.Candidate(key: .init(pid: 0x0088, locationID: 2), name: "Razer Basilisk Ultimate Dongle", index: 1),
+        ]
+        XCTAssertEqual(DeviceTestModel.unplugHint(two, testing: "Razer Mouse Dock"),
+                       "More than one Razer device that could be a mouse is plugged in: Razer Mouse Dock and Razer Basilisk Ultimate Dongle. For an accurate test, unplug all but the one you want to test. The test will run on Razer Mouse Dock.")
+        let three = two + [HIDDeviceSelection.Candidate(key: .init(pid: 0x00C5, locationID: 3), name: "Razer DeathAdder V3 HyperSpeed", index: 2)]
+        XCTAssertTrue(DeviceTestModel.unplugHint(three, testing: nil)
+            .contains("Razer Mouse Dock, Razer Basilisk Ultimate Dongle, and Razer DeathAdder V3 HyperSpeed. For an accurate test, unplug all but the one you want to test."))
+        XCTAssertFalse(DeviceTestModel.unplugHint(three, testing: nil).contains("will run on"))
     }
 }

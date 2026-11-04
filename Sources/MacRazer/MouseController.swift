@@ -115,9 +115,6 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     @Published private(set) var lastWriteFailure: Date?
     /// Product ID of the connected mouse (nil when none) — drives feature gating.
     @Published private(set) var deviceID: Int?
-    /// Where the connected mouse sits on the USB bus, with `deviceID` naming the device the
-    /// test's picker shows as chosen. Nil on Bluetooth and when none is connected.
-    @Published private(set) var deviceLocation: Int?
     /// Stable per-unit key (serial number if available, else PID) — drives per-device settings.
     @Published private(set) var deviceKey: String?
     /// The connected mouse is on Bluetooth. Read through the `supports…` properties below.
@@ -532,14 +529,12 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// plugged in after the app opened something else (a keypad, a pad, a device it doesn't
     /// know) never took over until relaunch (#75). On a plug event, let go of an open device
     /// the registry doesn't know when selection now picks a known mouse; the check that
-    /// follows opens it. A known mouse is dropped this way only for its own cable, or for the
-    /// device picked in the test.
+    /// follows opens it. A known mouse is dropped this way only for its own cable.
     private func releaseDeviceIfOutranked() {
         guard let current = device, !current.isBluetooth else { return }
         let best = try? HIDDevice.controlInterface(vendorId: Razer.vendorId)
         guard Self.isOutranked(currentPID: current.productID, currentLocation: current.locationID,
-                               best: best.map { (HIDDevice.productID(of: $0), HIDDevice.locationID(of: $0)) },
-                               preferred: HIDDevice.preferredDevice)
+                               best: best.map { (HIDDevice.productID(of: $0), HIDDevice.locationID(of: $0)) })
         else { return }
         current.close()
         device = nil
@@ -548,12 +543,8 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// Whether the open device should give way to `best`, selection's pick right now: only an
     /// unknown device, and only to a mouse the registry knows. Not when selection finds
     /// nothing: an unplugged device fails its own reads.
-    /// The device picked in the test (`preferred`) also takes over when it's back: unplugged
-    /// for a moment, it handed over to another, and coming back it should be used again.
-    static func isOutranked(currentPID: Int, currentLocation: Int, best: (pid: Int, location: Int)?,
-                            preferred: HIDDeviceSelection.DeviceKey? = nil) -> Bool {
+    static func isOutranked(currentPID: Int, currentLocation: Int, best: (pid: Int, location: Int)?) -> Bool {
         guard let best, best.pid != currentPID || best.location != currentLocation else { return false }
-        if let preferred, preferred.pid == best.pid, preferred.locationID == best.location { return true }
         // The cable plugged into a mouse on its dongle: the same mouse, moved to the better link.
         if RazerDevices.isCable(best.pid, ofDongle: currentPID) { return true }
         return RazerDevices.info(pid: currentPID) == nil && RazerDevices.info(pid: best.pid) != nil
@@ -759,7 +750,6 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 if gone {
                     self.update(\.deviceName, nil)
                     self.update(\.deviceID, nil)
-                    self.update(\.deviceLocation, nil)
                     self.update(\.deviceKey, nil)
                     self.update(\.deviceIsBluetooth, false)
                     self.update(\.activeDpiStage, nil)
@@ -964,58 +954,6 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 }
             }
         }
-    }
-
-    /// Switches to the USB device the person picked in the device test, when more than one
-    /// could be the mouse (a dock next to its own dongle, two mice). The choice holds for this
-    /// launch, for the popover too: the test reports on the device the app controls. Returns
-    /// whether the picked device is the one open now. When it won't open, the pick is dropped
-    /// and the app goes back to selection's own choice, so it isn't left with no mouse.
-    func useUSBDevice(_ key: HIDDeviceSelection.DeviceKey) async -> Bool {
-        let opened = await withCheckedContinuation { (done: CheckedContinuation<Bool, Never>) in
-            userCommand { [weak self] in
-                guard let self else { return done.resume(returning: false) }
-                HIDDevice.preferredDevice = key
-                self.pickOverridesBluetooth = true
-                if !Self.isOpen(key, self.device) { self.closeDeviceForSwitch() }
-                _ = try? self.ensureDevice()
-                let ok = Self.isOpen(key, self.device)
-                if !ok {
-                    HIDDevice.preferredDevice = nil
-                    self.closeDeviceForSwitch()
-                    _ = try? self.ensureDevice()
-                }
-                done.resume(returning: ok)
-            }
-        }
-        // Outside a test the popover should show the device it now controls; a test reads
-        // everything again when it ends.
-        if !deviceTestActive { refreshAll() }
-        return opened
-    }
-
-    /// io-queue only. From a pick until the test window is done with it, the picked device is
-    /// used even when the mouse is also on Bluetooth: the test can't use Bluetooth. After that
-    /// the usual link choice is back, and the pick only says which USB device to use.
-    private var pickOverridesBluetooth = false
-
-    /// The test window is done: closed, or a run has ended.
-    func endUSBPickOverride() {
-        io.async { [weak self] in self?.pickOverridesBluetooth = false }
-    }
-
-    /// Whether `device` is the USB device `key` names.
-    static func isOpen(_ key: HIDDeviceSelection.DeviceKey, _ device: (any RazerTransport)?) -> Bool {
-        guard let device, !device.isBluetooth else { return false }
-        return device.productID == key.pid && device.locationID == key.locationID
-    }
-
-    /// Must be called on `io`. Lets go of the open device so the next open picks again.
-    private func closeDeviceForSwitch() {
-        device?.close()
-        device = nil
-        // The cached serial belongs to the device just closed.
-        knownSerial = nil
     }
 
     /// Must be called on `io`, which knows the link for certain; the published
@@ -1731,10 +1669,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             // Decided before opening, so an idle dongle isn't opened and closed on every poll.
             let usb = try HIDDevice.controlInterface(vendorId: Razer.vendorId) // any Razer mouse
             let connection = RazerDevices.connection(pid: HIDDevice.productID(of: usb))
-            // A device just picked in the test is used as picked, even with the mouse on Bluetooth.
-            let picked = pickOverridesBluetooth && HIDDevice.preferredDevice == HIDDeviceSelection.DeviceKey(
-                pid: HIDDevice.productID(of: usb), locationID: HIDDevice.locationID(of: usb))
-            if picked || !Self.prefersBluetooth(over: connection, bluetoothControllable: bt != nil) {
+            if !Self.prefersBluetooth(over: connection, bluetoothControllable: bt != nil) {
                 return try HIDDevice.open(usb)
             }
         } catch {
@@ -1882,14 +1817,12 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             }
         }
         let name = d.productName
-        let location = d.locationID
         let battery = RazerDevices.hasBattery(pid: pid)
         let bluetooth = d.isBluetooth
         ioHasBattery = battery
         publish {
             self.update(\.deviceIsBluetooth, bluetooth)
             self.update(\.deviceID, pid)
-            self.update(\.deviceLocation, bluetooth ? nil : location)
             self.update(\.deviceKey, key)
             self.update(\.deviceName, name)
             self.update(\.deviceSupported, RazerDevices.fullySupported(pid: pid))

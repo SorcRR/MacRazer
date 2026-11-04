@@ -40,13 +40,8 @@ enum HIDDeviceSelection {
     ///    stable across reconnects instead of following Set/Dictionary iteration order.
     /// A known mouse's dongle is left out while the same model's cable is plugged in.
     /// Within the winning device, the interface with the best `controlScore` is chosen.
-    ///
-    /// `preferred` is a device the person picked in the device test: when it's still plugged
-    /// in and could be the mouse, it wins over the ranking.
-    static func controlInterfaceIndex(interfaces: [HIDInterfaceInfo], preferred: DeviceKey? = nil) -> Int? {
-        let ranked = candidates(interfaces: interfaces)
-        if let preferred, let chosen = ranked.first(where: { $0.key == preferred }) { return chosen.index }
-        return ranked.first?.index
+    static func controlInterfaceIndex(interfaces: [HIDInterfaceInfo]) -> Int? {
+        candidates(interfaces: interfaces).first?.index
     }
 
     /// One physical device: interfaces grouped by product and USB location.

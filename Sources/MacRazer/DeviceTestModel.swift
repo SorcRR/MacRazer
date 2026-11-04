@@ -174,8 +174,6 @@ final class DeviceTestModel: ObservableObject {
     func pinForTesting() { pin() }
     #endif
 
-    /// Set only by `loadPreviewDevices`, to render the picker without two devices.
-    private var previewChosen: HIDDeviceSelection.DeviceKey?
     /// Set only by `loadPreview`, to render each intro without a device.
     private var previewPID: Int?
     /// The mouse the registry is asked about: the preview's, else the connected one.
@@ -215,33 +213,27 @@ final class DeviceTestModel: ObservableObject {
     }
     var deviceName: String { report?.device.name ?? controller.deviceName ?? "your mouse" }
 
-    // MARK: - Which device
+    // MARK: - Other devices
 
-    /// Every device plugged in that could be the mouse, when there's more than one, so the
-    /// intro can ask which to test. Empty with one or none: nothing to choose.
+    /// Every device plugged in that could be the mouse, when there's more than one. The intro
+    /// asks to unplug all but one: the test runs on whichever selection opens, and with a dock
+    /// next to its own dongle that may not be the one meant. Empty with one or none.
     @Published private(set) var devices: [HIDDeviceSelection.Candidate] = []
-    /// A switch the person asked for is on its way to the device queue.
-    @Published private(set) var switchingDevice = false
-    /// Why the last pick didn't take, for the intro to say.
-    @Published private(set) var switchProblem: String?
 
-    /// Lists the devices again: when the intro shows, and after a switch.
+    /// Lists the devices again: when the intro shows, and on a plug event.
     func refreshDevices() {
         let found = HIDDevice.mouseCandidates()
         let shown = found.count > 1 ? found : []
         if shown != devices { devices = shown }
     }
 
-    /// The device the app has open, as the picker names it.
-    var chosenDevice: HIDDeviceSelection.DeviceKey? {
-        if let previewChosen { return previewChosen }
-        guard let pid = controller.deviceID, let location = controller.deviceLocation else { return nil }
-        return .init(pid: pid, locationID: location)
+    /// A Razer device was plugged in or unplugged. Lists them again if the intro is showing.
+    func devicesMayHaveChanged() {
+        if stage == .intro { refreshDevices() }
     }
 
-    /// The picker's label for each device: its name. When two share one, the link the registry
-    /// knows it by tells them apart (a mouse on its cable and its dongle at once), and a number
-    /// when that doesn't (two of the same).
+    /// The devices as the hint names them: each by its name, with the link the registry knows
+    /// it by when two share a name, and a number when that doesn't tell them apart either.
     nonisolated static func deviceLabels(_ devices: [HIDDeviceSelection.Candidate]) -> [String] {
         func repeated(_ names: [String]) -> Set<String> {
             Set(Dictionary(grouping: names, by: { $0 }).filter { $0.value.count > 1 }.keys)
@@ -261,33 +253,15 @@ final class DeviceTestModel: ObservableObject {
         }
     }
 
-    /// Switches the test, and the app, to `key`. Only on the intro: a run must stay on the
-    /// device it started on.
-    func choose(_ key: HIDDeviceSelection.DeviceKey) {
-        guard Self.canSwitch(to: key, stage: stage, running: running, switching: switchingDevice,
-                             chosen: chosenDevice) else { return }
-        let name = devices.first { $0.key == key }?.name ?? "That device"
-        switchingDevice = true
-        switchProblem = nil
-        Task {
-            if await !controller.useUSBDevice(key) {
-                switchProblem = "\(name) didn't open, so MacRazer stayed on the device it had."
-            }
-            switchingDevice = false
-            refreshDevices()
-        }
-    }
-
-    /// Whether a pick may switch devices now: only on the intro, with nothing running or
-    /// switching, and only to a device other than the one open.
-    nonisolated static func canSwitch(to key: HIDDeviceSelection.DeviceKey, stage: Stage, running: Bool,
-                                      switching: Bool, chosen: HIDDeviceSelection.DeviceKey?) -> Bool {
-        stage == .intro && !running && !switching && key != chosen
-    }
-
-    /// A Razer device was plugged in or unplugged. Lists them again if the intro is showing.
-    func devicesMayHaveChanged() {
-        if stage == .intro, !switchingDevice { refreshDevices() }
+    /// The intro's hint with more than one device plugged in. `testing` is the device the app
+    /// has open, which the test runs on.
+    nonisolated static func unplugHint(_ devices: [HIDDeviceSelection.Candidate], testing: String?) -> String {
+        let names = deviceLabels(devices)
+        let list = names.count == 2 ? "\(names[0]) and \(names[1])"
+            : names.dropLast().joined(separator: ", ") + ", and " + (names.last ?? "")
+        var hint = "More than one Razer device that could be a mouse is plugged in: \(list). For an accurate test, unplug all but the one you want to test."
+        if let testing { hint += " The test will run on \(testing)." }
+        return hint
     }
 
     /// A dock or charging mat that passes commands to the mouse on it. Its product ID is the
@@ -342,8 +316,7 @@ final class DeviceTestModel: ObservableObject {
     /// `missingOnly` limits the run to what the registry hasn't seen working on this link.
     func start(missingOnly: Bool = false) {
         // A window closed mid-step and reopened: that step is still finishing on the device.
-        // Or a picked device is still opening: the run must start on that one.
-        guard !running, !switchingDevice else { return }
+        guard !running else { return }
         blocker = nil
         if missingOnly, case .partly(_, let missing) = support { focus = missing } else { focus = nil }
         // A mouse on Bluetooth with the dongle still plugged in gets this far. Identify finds
@@ -752,7 +725,6 @@ final class DeviceTestModel: ObservableObject {
             controller.endDeviceTest()
             sessionOpen = false
         }
-        controller.endUSBPickOverride()
     }
 
     /// The link worth testing next, or nil. A mouse is a different product id on its cable and
@@ -804,7 +776,6 @@ final class DeviceTestModel: ObservableObject {
         buttonsSeen = []
         comment = ""
         dockMouse = ""
-        switchProblem = nil
         credit = ""
         replyEmail = ""
         copied = false
@@ -822,10 +793,9 @@ extension DeviceTestModel {
         replyEmail = state == .sent ? "you@example.com" : replyEmail
     }
 
-    /// The picker as it shows with `devices` plugged in, the first one chosen.
+    /// The intro's hint as it shows with `devices` plugged in.
     func loadPreviewDevices(_ devices: [HIDDeviceSelection.Candidate]) {
         self.devices = devices
-        previewChosen = devices.first?.key
     }
 
     /// `pid` picks the intro: a fully supported model, a partly supported one, or one the

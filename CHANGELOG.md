@@ -20,10 +20,11 @@ expect rough edges until 1.0.
   asked to test it without waiting for the next update. The list can only drop a request,
   never add one, and it never changes how the app talks to your mouse. Nothing about you or your
   mice is sent with the request. Offline, the app uses its own list.
-- **Pick which device to test.** With more than one Razer device that could be the mouse
-  plugged in, like a charging dock next to its own dongle, the device test now asks which one
-  to test. Before, it took whichever sat on the lower USB port, so a dock could get tested in
-  place of the mouse. MacRazer keeps controlling the one you pick until you quit.
+- **The test asks you to unplug extra devices.** With more than one Razer device that could
+  be the mouse plugged in, like a charging dock next to its own dongle, the device test now
+  names them, asks you to unplug all but the one you want to test, and says which one it will
+  run on. Before, it quietly took whichever sat on the lower USB port, so a dock could get
+  tested in place of the mouse. Keyboards and mousepads don't count.
 - **The cable wins over the dongle.** With a mouse on its cable and its dongle still plugged
   in, MacRazer now always uses the cable, and moves to it as soon as you plug it in. Before,
   whichever sat on the lower USB port won.

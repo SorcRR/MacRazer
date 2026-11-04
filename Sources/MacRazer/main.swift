@@ -331,7 +331,7 @@ case "render-about":
 
 case "render-device-test":
     // One screen of the device test, for checking layout and wording without a mouse:
-    // `render-device-test <stage> [unknown|partly|unlit|wiredonly|dock] [picker] [ran] [sent|failed] [path.png]`, stage one of
+    // `render-device-test <stage> [unknown|partly|unlit|wiredonly|dock] [several] [ran] [sent|failed] [path.png]`, stage one of
     // intro, permission, identify, battery, dpi, polling, lighting, buttons, review.
     _ = NSApplication.shared
     let path = outputPath(args.dropFirst(), default: "device-test-preview.png")
@@ -351,11 +351,11 @@ case "render-device-test":
     let pid = args.contains("dock") ? 0x00A4 : args.contains("unknown") ? 0x9999 : args.contains("partly") ? 0x00E3
         : args.contains("unlit") ? 0x00B8 : args.contains("wiredonly") ? 0x0067 : 0x00DB
     model.loadPreview(stage, pid: pid, ranSteps: args.contains("ran"))
-    // `picker` shows the intro's device choice: a Cobra HyperSpeed dongle and a Mouse Dock Pro.
-    if args.contains("picker") {
+    // `several` shows the intro's hint with two devices plugged in: a Mouse Dock and its dongle.
+    if args.contains("several") {
         model.loadPreviewDevices([
-            .init(key: .init(pid: 0x00DB, locationID: 0x1100000), name: "Razer Cobra HyperSpeed", index: 0),
-            .init(key: .init(pid: 0x00A4, locationID: 0x1200000), name: "Razer Mouse Dock Pro", index: 1),
+            .init(key: .init(pid: 0x007E, locationID: 0x1100000), name: "Razer Mouse Dock", index: 0),
+            .init(key: .init(pid: 0x0088, locationID: 0x1200000), name: "Razer Basilisk Ultimate Dongle", index: 1),
         ])
     }
     if args.contains("sent") { model.previewSendState(.sent) }
