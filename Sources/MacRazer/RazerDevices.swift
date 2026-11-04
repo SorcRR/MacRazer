@@ -428,7 +428,8 @@ enum RazerDevices {
         var links: [LinkToTest] = []
         for link in [RazerConnection.wired, .wirelessDongle, .bluetooth] where link != info.connection {
             if let row = siblings.first(where: { $0.connection == link }) {
-                if !fullySupported(row) { links.append(.init(connection: link, missing: unverified(row))) }
+                let missing = unverified(row)
+                if !missing.isEmpty { links.append(.init(connection: link, missing: missing)) }
             } else if link != .bluetooth, info.connection != .bluetooth, info.hasBattery,
                       link != .wired || info.hasCableLink {
                 links.append(.init(connection: link, missing: nil))

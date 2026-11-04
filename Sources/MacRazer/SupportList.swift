@@ -65,9 +65,11 @@ struct SupportList: Equatable {
     }
 
     /// Whether this build should use it: made for this version. Master keeps the released
-    /// version until the next release, so that's every list made between the two.
+    /// version until the next release, so that's every list made between the two. A `swift run`
+    /// build has no version ("0") and takes any list, so it can be tried against `wrangler dev`.
     func applies(to appVersion: String) -> Bool {
-        !VersionCompare.isNewer(appVersion, than: version) && !VersionCompare.isNewer(version, than: appVersion)
+        if appVersion == AppInfo.unversioned { return true }
+        return !VersionCompare.isNewer(appVersion, than: version) && !VersionCompare.isNewer(version, than: appVersion)
     }
 }
 

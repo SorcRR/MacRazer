@@ -24,7 +24,9 @@ enum AppInfo {
     /// For `VersionCompare`. Deliberately **not** `displayVersion`: "0" sorts older than any
     /// real release, so a dev build always sees an update as available, whereas "dev" parses
     /// to 0 by accident rather than by intent and reads as a bug when you meet it.
-    static var comparableVersion: String { version ?? "0" }
+    static var comparableVersion: String { version ?? unversioned }
+    /// `comparableVersion` for a build with no version: `swift run`.
+    static let unversioned = "0"
 }
 
 /// Every URL that identifies this project. Also one place: the repository host appeared in

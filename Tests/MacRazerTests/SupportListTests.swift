@@ -46,6 +46,7 @@ final class SupportListDecodeTests: XCTestCase {
         XCTAssertFalse(list.applies(to: "0.6.1"), "a newer release may have confirmed it with new code")
         XCTAssertFalse(list.applies(to: "0.8.0"), "this build's table is newer than the list")
         XCTAssertFalse(list.applies(to: "0.7.1"))
+        XCTAssertTrue(list.applies(to: AppInfo.unversioned), "a swift run build, to try it against wrangler dev")
     }
 }
 
@@ -87,14 +88,13 @@ final class SupportListOverlayTests: XCTestCase {
         let kept = Array(row.unverified.suffix(2))
         RazerDevices.applySupportList([row.pid: Set(kept.reversed())])
         XCTAssertEqual(RazerDevices.unverified(pid: row.pid), kept, "the row's own test order")
+        // Everything the row could show as working, once nothing is left to confirm.
+        RazerDevices.applySupportList([row.pid: []])
+        let all = RazerDevices.verified(pid: row.pid)
         let last = try XCTUnwrap(row.unverified.last)
         RazerDevices.applySupportList([row.pid: [last]])
         XCTAssertEqual(RazerDevices.unverified(pid: row.pid), [last])
-        XCTAssertFalse(RazerDevices.verified(pid: row.pid).contains(last))
-        for feature in row.unverified.dropLast() where feature != .battery || row.hasBattery {
-            if feature == .lighting && !row.hasLighting { continue }
-            XCTAssertTrue(RazerDevices.verified(pid: row.pid).contains(feature), feature.rawValue)
-        }
+        XCTAssertEqual(RazerDevices.verified(pid: row.pid), all.filter { $0 != last })
     }
 
     func testCanNeverAddToARow() throws {
@@ -129,6 +129,20 @@ final class SupportListOverlayTests: XCTestCase {
         let before = snapshot()
         RazerDevices.applySupportList(Dictionary(uniqueKeysWithValues: RazerDevices.known.map { ($0.pid, []) }))
         XCTAssertEqual(snapshot(), before)
+    }
+
+    /// A list landing mid-run leaves the title, intro and Skip as the run began.
+    @MainActor func testARunningTestKeepsWhatItStartedWith() throws {
+        let row = try rowWithSeveral()
+        let model = DeviceTestModel(controller: MouseController(), permissions: PermissionsModel(), reportEndpoint: nil)
+        model.loadPreview(.intro, pid: row.pid, ranSteps: false)
+        let (support, missing) = (model.support, model.missingFeatures)
+        model.pinForTesting()
+        RazerDevices.applySupportList([row.pid: []])
+        XCTAssertEqual(model.support, support)
+        XCTAssertEqual(model.missingFeatures, missing)
+        model.reset()
+        XCTAssertEqual(model.support, .full, "back at the intro, it follows the list")
     }
 
     func testTellsObserversOnlyOnAChange() {
