@@ -254,8 +254,8 @@ final class UsageStats: ObservableObject {
         (defaults.stringArray(forKey: Self.pendingChangesKey) ?? []).compactMap(UsageStatsConsent.Change.init)
     }
 
-    /// Drops the changes a count carried. A change only waiting once, the same one made again
-    /// while the count was on its way goes with it; the Worker counts each once a day anyway.
+    /// Drops the changes a count carried, with any made again while it was on its way: the
+    /// Worker counts each once a day anyway.
     func consentChangesSent(_ sent: [UsageStatsConsent.Change]) {
         let left = pendingConsentChanges.filter { !sent.contains($0) }
         defaults.set(left.map(\.rawValue), forKey: Self.pendingChangesKey)
