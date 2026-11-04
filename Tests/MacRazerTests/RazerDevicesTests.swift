@@ -164,6 +164,16 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(RazerDevices.unverified(pid: 0x00E3), [.polling])
         XCTAssertFalse(RazerDevices.fullySupported(pid: 0x00E3))
         XCTAssertNil(RazerDevices.unverified(pid: 0x9999))
+        // Verified from 0.7.0 reports. The two DeathAdders have no cable row yet, so they
+        // still ask for that link; the others have nothing left to ask.
+        for pid in [0x0083, 0x007D, 0x00C5, 0x007a] {
+            XCTAssertEqual(RazerDevices.support(pid: pid), .full, String(pid, radix: 16))
+        }
+        XCTAssertFalse(RazerDevices.needsReport(pid: 0x0083), "no cable mode")
+        XCTAssertFalse(RazerDevices.needsReport(pid: 0x007a), "its dongle side is verified")
+        XCTAssertFalse(RazerDevices.needsReport(pid: 0x007b), "its cable side is verified now")
+        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x007D).map(\.connection), [.wired])
+        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00C5).map(\.connection), [.wired])
         XCTAssertEqual(RazerDevices.verified(pid: 0x00C5), [.battery, .dpi, .polling], "no lighting on the mouse at all")
         XCTAssertEqual(RazerDevices.verified(pid: 0x0067), [.dpi, .polling, .lighting], "wired only: no battery")
         XCTAssertEqual(RazerDevices.verified(pid: 0x0053), [.dpi, .polling], "lighting is hidden and unverified")

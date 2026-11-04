@@ -90,7 +90,7 @@ says so.
 | Razer Pro Click V2 | Battery, DPI, DPI stages, polling | anonymous report |
 | Razer Basilisk X HyperSpeed | Battery, DPI, DPI stages, polling (it has no lighting) | MagnetTileMan |
 | Razer DeathAdder V3 HyperSpeed | Battery, DPI, DPI stages, polling (it has no lighting) | anonymous reports |
-| Razer DeathAdder V2 Pro (Wireless) | Battery, DPI, polling, lighting, brightness | anonymous reports |
+| Razer DeathAdder V2 Pro (Wireless) | Battery, DPI, polling, lighting | anonymous reports |
 | Razer Viper Ultimate (Wired) | Battery, DPI, polling, lighting | anonymous report |
 | Razer Taipan | DPI, polling; lighting not working yet | anonymous report |
 | Razer Basilisk V4 HyperSpeed (wired + wireless) | Battery, DPI, DPI stages; polling not working yet | anonymous reports |

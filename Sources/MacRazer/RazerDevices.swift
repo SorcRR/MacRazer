@@ -244,8 +244,9 @@ enum RazerDevices {
         .init(pid: 0x00E3, name: "Razer Basilisk V4 Pro (Wireless)", unverified: [.polling], hasBattery: true, hasLighting: true, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, acceptsClassicPolling: false),
         // DeathAdder V3 HyperSpeed over the dongle (in-app report, no credit given): DPI and
         // stages and polling passed with 0x1f. It has no lighting (every group answers 0x05).
-        // The battery read timed out in the first report and in one 0.7.0 run, but answered
-        // with 0x1f in another 0.7.0 run, so a timeout here means the mouse was asleep.
+        // The battery read timed out in the first report and in a 0.7.0 run on firmware v1.10,
+        // then answered with 0x1f in a 0.7.0 run on v1.2. The timeouts look like the mouse
+        // sleeping, but a v1.10 quirk isn't ruled out.
         .init(pid: 0x00C5, name: "Razer DeathAdder V3 HyperSpeed", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
         // DeathAdder V2 Pro over the dongle (in-app report, no credit given): battery answered
         // with 0x1f (0x3f and 0x08 answer too; 0xFF and 0x80 time out). A 0.7.0 report then
