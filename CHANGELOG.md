@@ -6,6 +6,13 @@ expect rough edges until 1.0.
 
 ## [Unreleased]
 
+### Added
+- **Test prompts end sooner.** MacRazer now fetches the latest support list from
+  reports.macrazer.com. When a test report confirms a feature after a release, you stop being
+  asked to test it without waiting for the next update. The list can only drop a request,
+  never add one, and it never changes how the app talks to your mouse. Nothing is sent with
+  the request. Offline, the app uses its own list.
+
 ### Changed
 - **Four more mice are fully verified.** Test reports confirmed what was still missing on the
   Basilisk X HyperSpeed, DeathAdder V2 Pro and DeathAdder V3 HyperSpeed (over the dongle) and

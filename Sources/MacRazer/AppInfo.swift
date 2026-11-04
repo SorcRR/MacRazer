@@ -110,6 +110,8 @@ enum WorkerEndpoint {
 
     static var deviceReports: URL? { base?.appendingPathComponent("v1/device-report") }
     static var usageStats: URL? { base?.appendingPathComponent("v1/stats") }
+    /// What's been confirmed on each mouse since this build; see `SupportList`.
+    static var supportList: URL? { base?.appendingPathComponent("v1/support-list") }
     /// The updater's download of one release, through the Worker so it's counted. The Worker
     /// redirects to the same file as `ProjectLinks.dmg(forVersion:tag:)`, and the updater goes
     /// there itself if this fails.

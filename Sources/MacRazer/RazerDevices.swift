@@ -2,6 +2,7 @@
 // Part of MacRazer, a control app for Razer mice on macOS. See LICENSE and NOTICE.md.
 
 import Foundation
+import os
 
 /// Which body shape `MenuBarIcon.mouseModel` draws, grouped by physical chassis rather than
 /// by SKU — wired/wireless variants of the same mouse share a shape. Lives in the registry
@@ -67,6 +68,8 @@ struct RazerDeviceInfo {
     /// What this link still needs a report for, in test order. Empty means fully supported.
     /// A feature listed here can still be offered in the UI (`hasLighting` decides that); this
     /// only says nobody has shown it working on hardware yet, so the device test asks for it.
+    /// This is what the build shipped with. The online support list can narrow it, so ask
+    /// `RazerDevices.unverified(pid:)` for what still needs a report.
     let unverified: [RazerFeature]
     var fullySupported: Bool { unverified.isEmpty }
     let hasBattery: Bool
@@ -311,7 +314,7 @@ enum RazerDevices {
         known.filter { $0.connection == .bluetooth }
             .map { $0.name.replacingOccurrences(of: " (Bluetooth)", with: "") }
     }
-    static func fullySupported(pid: Int) -> Bool { info(pid: pid)?.fullySupported ?? false }
+    static func fullySupported(pid: Int) -> Bool { info(pid: pid).map(fullySupported(_:)) ?? false }
     /// A row's name without the link in brackets: "Razer Naga Pro (Wired)" is "Razer Naga Pro".
     static func modelName(_ name: String) -> String {
         name.replacingOccurrences(of: #" \((Wired|Wireless|Bluetooth)\)$"#, with: "", options: .regularExpression)
@@ -324,19 +327,49 @@ enum RazerDevices {
     /// a row with the same model name on that link. False when `pid` isn't known.
     static func fullySupported(modelOf pid: Int, on connection: RazerConnection) -> Bool {
         guard let name = info(pid: pid).map(modelName(of:)) else { return false }
-        return known.contains { $0.connection == connection && $0.fullySupported && modelName(of: $0) == name }
+        return known.contains { $0.connection == connection && fullySupported($0) && modelName(of: $0) == name }
     }
     /// What the row for `pid` still needs a report for, or nil when the model isn't known.
-    static func unverified(pid: Int) -> [RazerFeature]? { info(pid: pid)?.unverified }
+    static func unverified(pid: Int) -> [RazerFeature]? { info(pid: pid).map(unverified(_:)) }
+
+    // MARK: - The online support list
+
+    /// Posted on the main thread when the online support list changes what a row still needs.
+    static let supportChanged = Notification.Name("RazerDevices.supportChanged")
+    /// Per pid, the features the online support list still has as unverified. Only rows it
+    /// covers and that passed `SupportList`'s checks are here. It can only narrow a row,
+    /// never add to it, and nothing that talks to the mouse reads it: transaction ids, LEDs,
+    /// DPI and the rest always come from the row as built. Locked, since the HID side asks
+    /// for rows off the main thread.
+    private static let narrowed = OSAllocatedUnfairLock<[Int: Set<RazerFeature>]>(initialState: [:])
+
+    /// Replaces what the online support list says. Call on the main thread; observers of
+    /// `supportChanged` update there.
+    static func applySupportList(_ remaining: [Int: Set<RazerFeature>]) {
+        let changed = narrowed.withLock { current in
+            defer { current = remaining }
+            return current != remaining
+        }
+        if changed { NotificationCenter.default.post(name: supportChanged, object: nil) }
+    }
+
+    /// What `row` still needs: its own list, less what the online list has confirmed since,
+    /// in the row's test order.
+    private static func unverified(_ row: RazerDeviceInfo) -> [RazerFeature] {
+        guard let remaining = narrowed.withLock({ $0[row.pid] }) else { return row.unverified }
+        return row.unverified.filter(remaining.contains)
+    }
+    private static func fullySupported(_ row: RazerDeviceInfo) -> Bool { unverified(row).isEmpty }
     /// What has been shown working on `pid`'s link: the features the row has, less those still
     /// unverified. Lighting counts when it is unverified, even with the controls hidden, since
     /// the mouse has it and the test is what would turn it on.
     static func verified(pid: Int) -> [RazerFeature] {
         guard let info = info(pid: pid) else { return [] }
+        let missing = unverified(info)
         return RazerFeature.allCases.filter { feature in
             switch feature {
             case .battery where !info.hasBattery, .lighting where !info.hasLighting: return false
-            default: return !info.unverified.contains(feature)
+            default: return !missing.contains(feature)
             }
         }
     }
@@ -370,7 +403,7 @@ enum RazerDevices {
     static func rowsAnswered(byReportFrom pid: Int, name: String, on connection: RazerConnection) -> [Int] {
         let model = info(pid: pid).map(modelName(of:)) ?? modelName(name)
         return known.filter {
-            $0.pid != pid && modelName(of: $0) == model && $0.fullySupported
+            $0.pid != pid && modelName(of: $0) == model && fullySupported($0)
                 && linksToTest(besides: $0.pid).contains { $0.connection == connection }
         }.map(\.pid)
     }
@@ -395,7 +428,7 @@ enum RazerDevices {
         var links: [LinkToTest] = []
         for link in [RazerConnection.wired, .wirelessDongle, .bluetooth] where link != info.connection {
             if let row = siblings.first(where: { $0.connection == link }) {
-                if !row.fullySupported { links.append(.init(connection: link, missing: row.unverified)) }
+                if !fullySupported(row) { links.append(.init(connection: link, missing: unverified(row))) }
             } else if link != .bluetooth, info.connection != .bluetooth, info.hasBattery,
                       link != .wired || info.hasCableLink {
                 links.append(.init(connection: link, missing: nil))

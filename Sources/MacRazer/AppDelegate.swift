@@ -41,6 +41,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     private lazy var crashReportWindow = CrashReportWindowController(
         onClosed: { [weak self] in self?.autoInstallIfEnabled() })
     private let usageStats = UsageStats.shared
+    private let supportList = SupportListUpdater()
+    private var supportListObserver: NSObjectProtocol?
     /// Closing it re-asks the auto-install gate, for the same reason as `updatedWindow`.
     private lazy var usageStatsWindow = UsageStatsWindowController(
         stats: usageStats, onClosed: { [weak self] in self?.autoInstallIfEnabled() })
@@ -96,6 +98,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         // Button remapping additionally needs Accessibility (optional; surfaced in the same window).
         // A mouse MacRazer controls over Bluetooth needs neither, so it doesn't trigger the window.
         permissions.recheck()
+        // Before any mouse is read, so the first prompt decision already has the kept list.
+        startSupportList()
         // Explicit, not a side effect of constructing the model — see the doc comment there.
         launchAtLogin.applyDefaultOnFirstRun()
         LowBatteryNotifier.configureNotifications(delegate: self)
@@ -342,6 +346,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         startUpdateTriggers()
     }
 
+    /// What's been confirmed on each mouse since this build, from the Worker. The kept list
+    /// first, then a fetch on the update check's triggers; see `SupportListUpdater`.
+    private func startSupportList() {
+        supportListObserver = NotificationCenter.default.addObserver(
+            forName: RazerDevices.supportChanged, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.controller.supportListChanged() }
+        }
+        supportList.applyCached()
+        Task { await supportList.refreshIfDue() }
+    }
+
+    /// The update check and the support list, each behind its own throttle.
+    private func checkOnlineIfDue() {
+        Task { await updateChecker.checkForUpdatesIfDue() }
+        Task { await supportList.refreshIfDue() }
+    }
+
     /// Everything that asks "is a check due?" after launch. Each only asks: the throttle in
     /// `UpdateChecker` decides, and a check already running is shared rather than repeated.
     private func startUpdateTriggers() {
@@ -350,7 +372,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         // finished a little after it started, and so waited a whole extra period each time.
         // A timer also stops counting while the Mac sleeps.
         let timer = Timer(timeInterval: 15 * 60, repeats: true) { [weak self] _ in
-            Task { await self?.updateChecker.checkForUpdatesIfDue() }
+            MainActor.assumeIsolated { self?.checkOnlineIfDue() }
         }
         timer.tolerance = 60
         RunLoop.main.add(timer, forMode: .common)
@@ -362,8 +384,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
             forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
-                guard let self else { return }
-                Task { await self.updateChecker.checkForUpdatesIfDue() }
+                self?.checkOnlineIfDue()
             }
         }
 
@@ -377,7 +398,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
                 guard let self else { return }
                 defer { self.wasOnline = online }
                 guard self.wasOnline == false, online else { return }
-                Task { await self.updateChecker.checkForUpdatesIfDue() }
+                self.checkOnlineIfDue()
             }
         }
         pathMonitor.start(queue: .main)
@@ -451,7 +472,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
             controller.refreshAll()
             // Someone looking at the popover is the person an update card is for. Throttled,
             // so opening it often costs nothing.
-            Task { await updateChecker.checkForUpdatesIfDue() }
+            checkOnlineIfDue()
         }
     }
 
