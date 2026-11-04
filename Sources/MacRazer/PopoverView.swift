@@ -1158,14 +1158,15 @@ struct PopoverView: View {
                         .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Color.razerGreen, lineWidth: 1.5))
                 }
             }
+            // Errors first: a write the mouse didn't keep must show even in Edit mode.
             if let dpiStageError {
                 Text(dpiStageError).font(.system(size: 10.5)).foregroundStyle(Color.batteryLow)
+            } else if let error = controller.dpiStagesError {
+                Text(error).font(.system(size: 10.5)).foregroundStyle(Color.batteryLow)
             } else if inStageEditMode || editingDpiStage != nil {
                 Text(editingDpiStage.map { stageRangeHint(index: $0) }
                      ?? "Click a stage to change its DPI. Press Return to save it.")
                     .font(.system(size: 10.5)).foregroundStyle(.secondary)
-            } else if let error = controller.dpiStagesError {
-                Text(error).font(.system(size: 10.5)).foregroundStyle(Color.batteryLow)
             }
         }
         // Esc can close the popover before the field sees it: leave nothing half-edited for
@@ -1180,8 +1181,14 @@ struct PopoverView: View {
     /// Turns the DPI card's Edit mode on and off. Shown only where stages can be written.
     private var editStagesButton: some View {
         Button {
-            editingDpiStages.toggle()
-            if !editingDpiStages { cancelDpiStageEdit() }
+            guard editingDpiStages else { return editingDpiStages = true }
+            // Done keeps a changed field: save it, and stay in Edit mode if it's out of range.
+            if let open = editingDpiStage, dpiStageDraft != dpiStageOriginal {
+                commitDpiStage(index: open)
+                guard editingDpiStage == nil else { return }
+            }
+            cancelDpiStageEdit()
+            editingDpiStages = false
         } label: {
             Label(editingDpiStages ? "Done" : "Edit", systemImage: editingDpiStages ? "checkmark" : "pencil")
                 .font(.system(size: 10.5, weight: .medium))
