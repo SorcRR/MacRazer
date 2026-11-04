@@ -163,6 +163,20 @@ final class DeviceTestModel: ObservableObject {
     /// What a step left out of a focused run records, so the report doesn't read as if the
     /// person skipped it.
     static let alreadyVerified = "Already verified on this mouse, so this run left it out."
+    /// What a step records for something the mouse doesn't have (`RazerDeviceInfo.notOnMouse`).
+    nonisolated static func notOnMouseNote(_ feature: RazerFeature) -> String {
+        feature == .battery ? "This mouse has no battery, so the test left it out."
+            : "This mouse has no lights, so the test left it out."
+    }
+
+    /// The feature behind `stage`, when the identified mouse doesn't have it. That step then
+    /// says so and offers Next instead of running.
+    func notOnMouse(_ stage: Stage) -> RazerFeature? {
+        guard let pid = report?.device.productID,
+              let feature = RazerFeature.allCases.first(where: { DeviceTestFlow.stage(for: $0) == stage }),
+              RazerDevices.notOnMouse(pid: pid).contains(feature) else { return nil }
+        return feature
+    }
     var deviceName: String { report?.device.name ?? controller.deviceName ?? "your mouse" }
     var emailProblem: String? { DeviceReportOutput.emailProblem(replyEmail) }
 
@@ -229,6 +243,8 @@ final class DeviceTestModel: ObservableObject {
         report = Self.emptyReport(pid: pid, name: product?.product ?? "Razer mouse",
                                   interfaces: interfaces, control: control,
                                   identify: .init(outcome: .skipped, error: "Input Monitoring wasn't granted."))
+        // Known without reading anything, so it holds here too.
+        if var marked = report { Self.markNotOnMouse(&marked); report = marked }
         stage = .review
     }
 
@@ -331,6 +347,8 @@ final class DeviceTestModel: ObservableObject {
                     leaveOut(feature)
                 }
             }
+            // After the focus: what the mouse lacks is "not on this mouse", not "already verified".
+            if var marked = report { Self.markNotOnMouse(&marked); report = marked }
             // Known models say how they connect; only an unknown one needs asking.
             switch info?.connection {
             case .wired?: connection = .cable
@@ -354,8 +372,8 @@ final class DeviceTestModel: ObservableObject {
         }
     }
 
-    private static func emptyReport(pid: Int, name: String, interfaces: [DeviceProbe.Interface], control: Int?,
-                                    identify: DeviceReport.StepRecord<DeviceReport.IdentifyData>) -> DeviceReport {
+    nonisolated static func emptyReport(pid: Int, name: String, interfaces: [DeviceProbe.Interface], control: Int?,
+                            identify: DeviceReport.StepRecord<DeviceReport.IdentifyData>) -> DeviceReport {
         DeviceReport(appVersion: AppInfo.displayVersion, macOSVersion: DeviceReport.currentMacOSVersion,
                      device: .init(vendorID: Razer.vendorId, productID: pid, name: name, connection: nil,
                                    interfaces: interfaces, controlInterface: control),
@@ -421,6 +439,19 @@ final class DeviceTestModel: ObservableObject {
         return verdict.skipped.filter(labels.contains)
     }
 
+    /// Records each step for something the mouse doesn't have, without touching the mouse.
+    nonisolated static func markNotOnMouse(_ report: inout DeviceReport) {
+        for feature in RazerDevices.notOnMouse(pid: report.device.productID) {
+            let note = notOnMouseNote(feature)
+            switch feature {
+            case .battery: report.battery = .init(outcome: .notSupported, error: note)
+            case .dpi: report.dpi = .init(outcome: .notSupported, error: note)
+            case .polling: report.polling = .init(outcome: .notSupported, error: note)
+            case .lighting: report.lighting = .init(outcome: .notSupported, error: note)
+            }
+        }
+    }
+
     /// Records a step a focused run doesn't visit.
     private func leaveOut(_ feature: RazerFeature) {
         switch feature {
@@ -472,7 +503,7 @@ final class DeviceTestModel: ObservableObject {
         if stage == .buttons { stopListening() }
         stage = target
         switch target {
-        case .battery where report?.battery.data == nil: Task { await runBattery() }
+        case .battery where report?.battery.data == nil && notOnMouse(.battery) == nil: Task { await runBattery() }
         case .buttons: startListening()
         default: break
         }
@@ -646,6 +677,7 @@ extension DeviceTestModel {
         connection = .dongle
         // A known model's verdict comes from its registry entry, as in a real run.
         report.registry = RazerDevices.info(pid: pid).map(DeviceReport.Registry.init)
+        Self.markNotOnMouse(&report)
         self.report = report
         self.report?.device.connection = .dongle
         self.stage = stage

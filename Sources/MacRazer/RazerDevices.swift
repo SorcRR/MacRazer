@@ -123,6 +123,11 @@ struct RazerDeviceInfo {
     /// True for a mouse whose light has one colour of its own (the DeathAdder Essential's is
     /// green): only brightness changes it, so the popover hides colours and effects.
     var fixedColor = false
+    /// What the mouse itself doesn't have: no battery on a wired-only mouse, no lights on an
+    /// unlit one. The device test still shows that step, says so, and moves on without
+    /// touching the mouse. Only from a report or the vendor spec, never from `hasBattery` or
+    /// `hasLighting`, which also cover a mouse whose battery or lights the app can't drive yet.
+    var notOnMouse: Set<RazerFeature> = []
 }
 
 enum RazerDevices {
@@ -145,7 +150,7 @@ enum RazerDevices {
         // polling :2011/:2193, DPI :2600/:2781) but 0x1f for every extended-matrix
         // command (brightness :4202/:4312, spectrum :4622, static :5085, none :5301).
         // Not yet re-verified on hardware with this app.
-        .init(pid: 0x00A3, name: "Razer Cobra", unverified: [], hasBattery: false, hasLighting: true, maxDPI: 8500, transactionId: 0xff, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
+        .init(pid: 0x00A3, name: "Razer Cobra", unverified: [], hasBattery: false, hasLighting: true, maxDPI: 8500, transactionId: 0xff, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
         .init(pid: 0x00AF, name: "Razer Cobra Pro (Wired)", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobraPro, dischargeCurveModelKey: nil),
         .init(pid: 0x00B0, name: "Razer Cobra Pro (Wireless)", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobraPro, dischargeCurveModelKey: nil),
         // OpenRazer uses 0xFF for the Atheris, but 0x1f is what this app was hardware-tested
@@ -164,20 +169,20 @@ enum RazerDevices {
         // razermouse_driver.c gives it 0xFF for every command it supports. An in-app report
         // (credit MagnetTileMan) passed battery, DPI, stages and polling with 0xFF; every
         // lighting group answers 0x05.
-        .init(pid: 0x0083, name: "Razer Basilisk X HyperSpeed", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 16000, transactionId: 0xff, matrixTransactionId: 0xff, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, hasCableLink: false),
+        .init(pid: 0x0083, name: "Razer Basilisk X HyperSpeed", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 16000, transactionId: 0xff, matrixTransactionId: 0xff, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, hasCableLink: false, notOnMouse: [.lighting]),
         // Basilisk V3 on the cable (in-app report by SuperSpacer54376): DPI, the stage table,
         // polling, static color and brightness all passed. It takes 0x1f everywhere except the
         // DPI-stages pair, which answers on 0xFF as razermouse_driver.c says. Battery answers
         // 0x05, as a wired-only mouse should. LOGO and SCROLL answer brightness; ZERO and
         // BACKLIGHT return 0x03. The firmware echoed a 45000 DPI write; 26000 is its sensor's.
-        .init(pid: 0x0099, name: "Razer Basilisk V3", unverified: [], hasBattery: false, hasLighting: true, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, transactionOverrides: [0x0406: 0xff, 0x0486: 0xff], extraBrightnessLeds: [Razer.scrollLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
+        .init(pid: 0x0099, name: "Razer Basilisk V3", unverified: [], hasBattery: false, hasLighting: true, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, transactionOverrides: [0x0406: 0xff, 0x0486: 0xff], extraBrightnessLeds: [Razer.scrollLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
         // DeathAdder Essential (two in-app reports, no credit given): wired only, battery 0x05.
         // DPI, the stage table and polling passed with 0x1f (every id answers on the cable);
         // it ships at 125 Hz. Its one light is green only (vendor spec): brightness on LOGO
         // dims it, but no color can show, so one run saw no red. That is the most it can do,
         // so lighting counts as verified rather than asking every owner for a test that can't
         // pass. 6400 is the vendor spec.
-        .init(pid: 0x0098, name: "Razer DeathAdder Essential", unverified: [], hasBattery: false, hasLighting: true, maxDPI: 6400, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, fixedColor: true),
+        .init(pid: 0x0098, name: "Razer DeathAdder Essential", unverified: [], hasBattery: false, hasLighting: true, maxDPI: 6400, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, fixedColor: true, notOnMouse: [.battery]),
         // The older DeathAdder Essential and its White Edition (no reports yet): wired only,
         // 6400 DPI. razermouse_driver.c gives them 0xFF for DPI and polling. Their light uses
         // the older single-LED commands, not the extended matrix this app sends, so no
@@ -185,8 +190,8 @@ enum RazerDevices {
         // as the 0x0098 row; its name here says the year so the two read apart in lists.
         // Nothing matches rows by name across the same link, so the difference is harmless,
         // but tell them apart by product id, not by name.
-        .init(pid: 0x006E, name: "Razer DeathAdder Essential (2018)", unverified: [.dpi, .polling], hasBattery: false, hasLighting: false, maxDPI: 6400, transactionId: 0xff, matrixTransactionId: 0xff, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
-        .init(pid: 0x0071, name: "Razer DeathAdder Essential White Edition", unverified: [.dpi, .polling], hasBattery: false, hasLighting: false, maxDPI: 6400, transactionId: 0xff, matrixTransactionId: 0xff, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
+        .init(pid: 0x006E, name: "Razer DeathAdder Essential (2018)", unverified: [.dpi, .polling], hasBattery: false, hasLighting: false, maxDPI: 6400, transactionId: 0xff, matrixTransactionId: 0xff, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
+        .init(pid: 0x0071, name: "Razer DeathAdder Essential White Edition", unverified: [.dpi, .polling], hasBattery: false, hasLighting: false, maxDPI: 6400, transactionId: 0xff, matrixTransactionId: 0xff, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
         // Orochi2013
         .init(pid: 0x0039, name: "Razer Orochi 2013", unverified: [.polling], hasBattery: false, hasLighting: false, maxDPI: 6400, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
         // Viper Ultimate (Wireless)
@@ -214,13 +219,13 @@ enum RazerDevices {
         // brightness, ZERO and BACKLIGHT return 0x03. 16000 is OpenRazer's DPI_MAX. A second
         // report from another owner saw neither the dim nor the red, though every write
         // succeeded; kept verified until a third report says which one is right.
-        .init(pid: 0x0067, name: "Razer Naga Trinity", unverified: [], hasBattery: false, hasLighting: true, maxDPI: 16000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
+        .init(pid: 0x0067, name: "Razer Naga Trinity", unverified: [], hasBattery: false, hasLighting: true, maxDPI: 16000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
         // Naga Chroma (in-app report, no credit given): an older wired-only Naga. DPI and
         // polling passed with 0x1f. Its battery read answers zeros. The extended-matrix
         // brightness commands are acknowledged but every zone reads back 0 and nothing
         // changes, so it likely takes the older standard-matrix (class 0x03) lighting
         // commands. Lighting stays off until those are tried. The DPI stages read fails (0x03).
-        .init(pid: 0x0053, name: "Razer Naga Chroma", unverified: [.lighting], hasBattery: false, hasLighting: false, maxDPI: 16000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
+        .init(pid: 0x0053, name: "Razer Naga Chroma", unverified: [.lighting], hasBattery: false, hasLighting: false, maxDPI: 16000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
         // Mouse Dock Pro: the dock acts as the receiver for the mouse paired to it, so what
         // answers is that mouse. The one report (no credit given) had a Naga V3 Pro behind
         // it: battery, DPI, static color and brightness passed with 0x1f. The classic polling
@@ -247,7 +252,7 @@ enum RazerDevices {
         // The battery read timed out in the first report and in a 0.7.0 run on firmware v1.10,
         // then answered with 0x1f in a 0.7.0 run on v1.2. The timeouts look like the mouse
         // sleeping, but a v1.10 quirk isn't ruled out.
-        .init(pid: 0x00C5, name: "Razer DeathAdder V3 HyperSpeed", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
+        .init(pid: 0x00C5, name: "Razer DeathAdder V3 HyperSpeed", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.lighting]),
         // DeathAdder V2 Pro over the dongle (in-app report, no credit given): battery answered
         // with 0x1f (0x3f and 0x08 answer too; 0xFF and 0x80 time out). A 0.7.0 report then
         // passed DPI, polling and lighting. Only LOGO answers brightness; the rest return
@@ -258,18 +263,18 @@ enum RazerDevices {
         // out). It has no lighting: every group answers 0x05. The firmware echoed a 45000 DPI
         // write, so the echo can't bound it: 26000 is the ceiling of its Focus X 26K sensor. It
         // runs on an AA cell, so it has no cable mode to ask about.
-        .init(pid: 0x00B8, name: "Razer Viper V3 HyperSpeed", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, hasCableLink: false),
+        .init(pid: 0x00B8, name: "Razer Viper V3 HyperSpeed", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, hasCableLink: false, notOnMouse: [.lighting]),
         // Viper V4 Pro on the cable (in-app report, no credit given): battery and DPI and stages
         // passed with 0x1f (every id tried answers on the cable). It has no lighting: every group
         // answers 0x05. The classic polling command answers "not supported" (0x05), as on the
         // Basilisk V4 models, so it likely needs the polling_rate2 pair and the row stays
         // unverified. Its control interface is the fourth one. Its sensor is the Focus Pro 50K,
         // but 45000 is as high as the app writes (the driver's clamp), and the firmware echoed it.
-        .init(pid: 0x00E5, name: "Razer Viper V4 Pro (Wired)", unverified: [.polling], hasBattery: true, hasLighting: false, maxDPI: 45000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, acceptsClassicPolling: false),
+        .init(pid: 0x00E5, name: "Razer Viper V4 Pro (Wired)", unverified: [.polling], hasBattery: true, hasLighting: false, maxDPI: 45000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, acceptsClassicPolling: false, notOnMouse: [.lighting]),
         // Viper V4 Pro over the dongle (in-app report from Robotxm): battery and DPI and stages
         // passed with 0x1f, and every id tried answers. No lighting (every group answers 0x05),
         // and the classic polling command answers 0x05, as on its cable. Same 45000 ceiling.
-        .init(pid: 0x00E6, name: "Razer Viper V4 Pro (Wireless)", unverified: [.polling], hasBattery: true, hasLighting: false, maxDPI: 45000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, acceptsClassicPolling: false),
+        .init(pid: 0x00E6, name: "Razer Viper V4 Pro (Wireless)", unverified: [.polling], hasBattery: true, hasLighting: false, maxDPI: 45000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, acceptsClassicPolling: false, notOnMouse: [.lighting]),
         // Basilisk V4 HyperSpeed on the cable (two in-app reports, no credit given): battery and
         // DPI and stages passed with 0x1f, and every id answers. As over the dongle, every LED
         // group refuses brightness and the classic polling command answers 0x05. Its control
@@ -280,7 +285,7 @@ enum RazerDevices {
         // Pro Click V2 over the dongle (in-app report, no credit given): battery, DPI and stages,
         // and polling passed with 0x1f. 0xFF and 0x80 time out. No lighting (every group
         // returns 0x03). 30000 is the vendor spec, as for the Vertical Edition.
-        .init(pid: 0x00D1, name: "Razer Pro Click V2", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
+        .init(pid: 0x00D1, name: "Razer Pro Click V2", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.lighting]),
         // Naga V2 Pro on the cable (in-app report, no credit given): battery, DPI and stages,
         // polling, static color and brightness all passed with 0x1f, and every id answers.
         // LOGO and BACKLIGHT answer brightness (SCROLL and ZERO return 0x03), so the slider
@@ -293,7 +298,7 @@ enum RazerDevices {
         // report can say. The DPI stages read fails (0x03).
         // 8200 is its sensor's ceiling and the DPI it reported. The owner found only the two
         // left side buttons detected for remapping, of six extra buttons.
-        .init(pid: 0x0034, name: "Razer Taipan", unverified: [.lighting], hasBattery: false, hasLighting: false, maxDPI: 8200, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
+        .init(pid: 0x0034, name: "Razer Taipan", unverified: [.lighting], hasBattery: false, hasLighting: false, maxDPI: 8200, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
         // Basilisk V3 Pro 35K on the cable (in-app report, no credit given): battery, DPI and
         // stages, and polling passed with 0x1f. LOGO and SCROLL answer brightness and every
         // lighting write is acknowledged, but the owner saw neither the dim nor the red, so the
@@ -414,6 +419,8 @@ enum RazerDevices {
     static func verifiesBrightnessWrite(pid: Int) -> Bool { info(pid: pid)?.verifiesBrightnessWrite ?? false }
     static func acceptsClassicPolling(pid: Int) -> Bool { info(pid: pid)?.acceptsClassicPolling ?? true }
     static func fixedColor(pid: Int) -> Bool { info(pid: pid)?.fixedColor ?? false }
+    /// Empty for a model not on record: the test is how anyone finds out.
+    static func notOnMouse(pid: Int) -> Set<RazerFeature> { info(pid: pid)?.notOnMouse ?? [] }
     /// Per-command transaction id: explicit per-command override, else the class split
     /// (see `RazerDeviceInfo.matrixTransactionId`). 0x1f default for unknown models — the
     /// Cobra-family id this app has hardware verified.

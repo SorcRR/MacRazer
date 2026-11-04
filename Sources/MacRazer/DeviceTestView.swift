@@ -267,8 +267,19 @@ struct DeviceTestView: View {
 
     private var battery: some View {
         VStack(alignment: .leading, spacing: 10) {
-            stepTitle("Battery", changes: false)
-            note("Reads the level and whether it's charging.")
+            if model.notOnMouse(.battery) != nil {
+                title("Battery")
+                notOnMouse("battery")
+            } else {
+                stepTitle("Battery", changes: false)
+                note("Reads the level and whether it's charging.")
+                batteryBody
+            }
+        }
+    }
+
+    @ViewBuilder private var batteryBody: some View {
+        Group {
             if model.running {
                 running("Reading the battery…")
             } else if let record = model.report?.battery {
@@ -336,7 +347,18 @@ struct DeviceTestView: View {
 
     private var lighting: some View {
         VStack(alignment: .leading, spacing: 10) {
-            stepTitle("Lighting", changes: true)
+            if model.notOnMouse(.lighting) != nil {
+                title("Lighting")
+                notOnMouse("lights")
+            } else {
+                stepTitle("Lighting", changes: true)
+                lightingBody
+            }
+        }
+    }
+
+    @ViewBuilder private var lightingBody: some View {
+        Group {
             if model.running {
                 running("Watch your mouse: dark, then red…")
             } else if let record = model.report?.lighting, record.data != nil {
@@ -568,7 +590,7 @@ struct DeviceTestView: View {
         case .polling where model.report?.polling.data == nil && model.report?.polling.error == nil:
             Button("Skip") { skip() }.disabled(model.running)
             Button("Run") { runCurrentStep() }.disabled(model.running).keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
-        case .lighting where model.report?.lighting.data == nil:
+        case .lighting where model.report?.lighting.data == nil && model.notOnMouse(.lighting) == nil:
             Button("Skip") { skip() }.disabled(model.running)
             Button("Run") { runCurrentStep() }.disabled(model.running).keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
         case .buttons:
@@ -584,6 +606,11 @@ struct DeviceTestView: View {
 
     private func title(_ text: String) -> some View {
         Text(text).font(.system(size: 16, weight: .semibold)).fixedSize(horizontal: false, vertical: true)
+    }
+
+    /// A step for something the mouse doesn't have: it says so, and Next moves on.
+    private func notOnMouse(_ what: String) -> some View {
+        note("Your \(model.deviceName) has no \(what), so there's nothing to test here. Click Next to go on.")
     }
 
     private func stepTitle(_ text: String, changes: Bool) -> some View {
