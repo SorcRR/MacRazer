@@ -224,7 +224,11 @@ final class DeviceTestModel: ObservableObject {
     func refreshDevices() {
         let found = HIDDevice.mouseCandidates()
         let shown = found.count > 1 ? found : []
-        if shown != devices { devices = shown }
+        // Not `index`: it points into an IOHID set whose order changes between listings.
+        func same(_ a: [HIDDeviceSelection.Candidate], _ b: [HIDDeviceSelection.Candidate]) -> Bool {
+            a.map(\.key) == b.map(\.key) && a.map(\.name) == b.map(\.name)
+        }
+        if !same(shown, devices) { devices = shown }
     }
 
     /// A Razer device was plugged in or unplugged. Lists them again if the intro is showing.

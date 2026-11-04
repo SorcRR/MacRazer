@@ -59,7 +59,9 @@ enum HIDDeviceSelection {
     }
 
     /// Every device that could be the mouse, best first, in the order described above.
-    static func candidates(interfaces: [HIDInterfaceInfo]) -> [Candidate] {
+    /// `cableFirst: false` keeps a dongle whose mouse is also on its cable, for when the
+    /// cable doesn't answer (`dongleIndex`).
+    static func candidates(interfaces: [HIDInterfaceInfo], cableFirst: Bool = true) -> [Candidate] {
         let groups = Dictionary(grouping: interfaces.indices) {
             DeviceKey(pid: interfaces[$0].pid, locationID: interfaces[$0].locationID)
         }
@@ -85,8 +87,10 @@ enum HIDDeviceSelection {
         // A mouse on its cable with its dongle still plugged in is one mouse on two links: the
         // cable is used and the dongle isn't offered. (Two units of one model, one on each, lose
         // the dongle one too; picking a unit is rarer than plugging a cable into a dongle mouse.)
-        let pids = entries.map(\.candidate.key.pid)
-        entries.removeAll { entry in pids.contains { RazerDevices.isCable($0, ofDongle: entry.candidate.key.pid) } }
+        if cableFirst {
+            let pids = entries.map(\.candidate.key.pid)
+            entries.removeAll { entry in pids.contains { RazerDevices.isCable($0, ofDongle: entry.candidate.key.pid) } }
+        }
         // Total order even when everything else ties (two LocationID-less devices):
         // Dictionary iteration order varies per process and must not pick the winner.
         return entries.sorted { a, b in
@@ -97,6 +101,13 @@ enum HIDDeviceSelection {
             if a.score != b.score { return a.score > b.score }
             return a.candidate.key.pid < b.candidate.key.pid
         }.map(\.candidate)
+    }
+
+    /// The control interface of the dongle whose mouse is on the cable with product id
+    /// `cablePID`, when both are plugged in: what to fall back to if the cable doesn't answer.
+    static func dongleIndex(ofCable cablePID: Int, interfaces: [HIDInterfaceInfo]) -> Int? {
+        candidates(interfaces: interfaces, cableFirst: false)
+            .first { RazerDevices.isCable(cablePID, ofDongle: $0.key.pid) }?.index
     }
 
     /// Razer product lines that are not mice but may expose a pointer interface: keyboards,

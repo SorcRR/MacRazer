@@ -97,6 +97,10 @@ final class DeviceCandidatesTests: XCTestCase {
         ]
         XCTAssertEqual(HIDDeviceSelection.candidates(interfaces: both + other).map(\.key.pid), [0x00DA, 0x00C5])
         XCTAssertTrue(RazerDevices.isCable(0x00C4, ofDongle: 0x00C5), "same name on both rows")
+        // When the cable doesn't answer, its dongle is what to open instead.
+        XCTAssertEqual(HIDDeviceSelection.dongleIndex(ofCable: 0x00DA, interfaces: both).map { both[$0].pid }, 0x00DB)
+        XCTAssertNil(HIDDeviceSelection.dongleIndex(ofCable: 0x00DA, interfaces: cable), "no dongle plugged in")
+        XCTAssertNil(HIDDeviceSelection.dongleIndex(ofCable: 0x00C4, interfaces: both), "not that cable's dongle")
         XCTAssertFalse(RazerDevices.isCable(0x00DB, ofDongle: 0x00DA))
     }
 

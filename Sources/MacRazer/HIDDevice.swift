@@ -276,6 +276,13 @@ final class HIDDevice {
         return devices[idx]
     }
 
+    /// The dongle of the mouse whose cable is `cable`, when it's plugged in too. Not opened.
+    static func dongle(ofCable cable: IOHIDDevice) -> IOHIDDevice? {
+        let devices = matchingDevices(vendorId: Razer.vendorId)
+        return HIDDeviceSelection.dongleIndex(ofCable: productID(of: cable), interfaces: interfaceInfos(devices))
+            .map { devices[$0] }
+    }
+
     /// Every device plugged in by cable or dongle that could be the mouse, best first. Listing
     /// opens nothing, so it needs no permission.
     static func mouseCandidates() -> [HIDDeviceSelection.Candidate] {

@@ -536,6 +536,14 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         guard Self.isOutranked(currentPID: current.productID, currentLocation: current.locationID,
                                best: best.map { (HIDDevice.productID(of: $0), HIDDevice.locationID(of: $0)) })
         else { return }
+        // Its own cable: only once the cable answers. A cable that only charges, or a mouse
+        // still switching over, would leave the app on a link that doesn't answer.
+        if let best, RazerDevices.isCable(HIDDevice.productID(of: best), ofDongle: current.productID) {
+            guard let cable = try? HIDDevice.open(best, as: "cable check") else { return }
+            let answers = Self.answers(cable)
+            cable.close()
+            guard answers else { return }
+        }
         current.close()
         device = nil
     }
@@ -1670,7 +1678,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             let usb = try HIDDevice.controlInterface(vendorId: Razer.vendorId) // any Razer mouse
             let connection = RazerDevices.connection(pid: HIDDevice.productID(of: usb))
             if !Self.prefersBluetooth(over: connection, bluetoothControllable: bt != nil) {
-                return try HIDDevice.open(usb)
+                return try Self.openCableOrItsDongle(usb)
             }
         } catch {
             // Whatever stopped USB (nothing there, or Input Monitoring not granted, which
@@ -1704,6 +1712,22 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                Date().timeIntervalSince(started) > 1 { bluetoothOpenFailedAt = Date() }
             throw reportable ?? error
         }
+    }
+
+    /// Opens `usb`, selection's pick. When that's a mouse's cable with its dongle plugged in
+    /// too, the cable has to answer first: one that only charges, or a mouse still switching
+    /// over, gets the dongle instead, which still works. Checked on each open, so the cable
+    /// takes over by the next reopen once it answers.
+    private static func openCableOrItsDongle(_ usb: IOHIDDevice) throws -> HIDDevice {
+        let opened = try HIDDevice.open(usb)
+        guard let dongle = HIDDevice.dongle(ofCable: usb), !answers(opened) else { return opened }
+        opened.close()
+        return try HIDDevice.open(dongle)
+    }
+
+    /// One quick read, to tell a link that answers from one that only enumerates.
+    private static func answers(_ device: HIDDevice) -> Bool {
+        (try? device.sendWithRetry(RazerCommands.getFirmwareVersion(), attempts: 1)) != nil
     }
 
     /// Must be called on `io`.
