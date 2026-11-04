@@ -20,7 +20,6 @@ expect rough edges until 1.0.
   asked to test it without waiting for the next update. The list can only drop a request,
   never add one, and it never changes how the app talks to your mouse. Nothing about you or your
   mice is sent with the request. Offline, the app uses its own list.
-
 - **Pick which device to test.** With more than one Razer device that could be the mouse
   plugged in, like a charging dock next to its own dongle, the device test now asks which one
   to test. Before, it took whichever sat on the lower USB port, so a dock could get tested in
