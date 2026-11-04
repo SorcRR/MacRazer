@@ -132,24 +132,45 @@ final class DeviceTestModel: ObservableObject {
     typealias Support = RazerDevices.LinkSupport
 
     var support: Support {
-        testedPID.map { RazerDevices.support(pid: $0) } ?? .unknown
+        pinned?.support ?? testedPID.map { RazerDevices.support(pid: $0) } ?? .unknown
     }
 
     /// Whether the connected model is already on the verified list. Decides the window title.
     var isKnownSupported: Bool { support == .full }
     /// The connected mouse's other links still worth a report, for the intro.
     var linksToTest: [RazerDevices.LinkToTest] {
-        testedPID.map { RazerDevices.linksToTest(besides: $0) } ?? []
+        pinned?.links ?? testedPID.map { RazerDevices.linksToTest(besides: $0) } ?? []
     }
     /// What no report has shown working on this link yet: everything for a model not on record.
     /// Polling is left out on a mouse whose row already says it refuses the classic command:
     /// running it again only records the same refusal.
     var missingFeatures: [RazerFeature] {
+        if let pinned { return pinned.missing }
         guard let pid = testedPID, let unverified = RazerDevices.unverified(pid: pid) else { return RazerFeature.allCases }
         return RazerDevices.acceptsClassicPolling(pid: pid) ? unverified : unverified.filter { $0 != .polling }
     }
     /// Skipping this step leaves out data the registry still lacks, so Skip asks first.
     var skipNeedsConfirming: Bool { DeviceTestFlow.skipNeedsConfirming(stage, missing: missingFeatures) }
+    /// What the registry said when this run began. The online support list can land mid-run
+    /// (`SupportList`), and the title, the intro and what Skip asks shouldn't change under it.
+    /// Nil at the intro, which follows the registry as it stands.
+    private var pinned: Pinned?
+    private struct Pinned {
+        let support: Support
+        let links: [RazerDevices.LinkToTest]
+        let missing: [RazerFeature]
+    }
+
+    private func pin() {
+        pinned = nil
+        pinned = Pinned(support: support, links: linksToTest, missing: missingFeatures)
+    }
+
+    #if DEBUG
+    /// `pin()`, which `begin()` calls, for the test that a run keeps what it started with.
+    func pinForTesting() { pin() }
+    #endif
+
     /// Set only by `loadPreview`, to render each intro without a device.
     private var previewPID: Int?
     /// The mouse the registry is asked about: the preview's, else the connected one.
@@ -265,6 +286,7 @@ final class DeviceTestModel: ObservableObject {
             controller.beginDeviceTest()
             sessionOpen = true
         }
+        pin()
         stage = .identify
         Task { await runIdentify() }
     }
@@ -304,6 +326,7 @@ final class DeviceTestModel: ObservableObject {
             controller.beginDeviceTest()
             sessionOpen = true
         }
+        pin()
         stage = .bluetooth
         Task { await runBluetooth(name: mouse.name) }
     }
@@ -651,6 +674,7 @@ final class DeviceTestModel: ObservableObject {
         endSession()
         stage = .intro
         lacking = []
+        pinned = nil
         focus = nil
         report = nil
         blocker = nil

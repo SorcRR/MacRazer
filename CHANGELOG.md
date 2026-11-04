@@ -6,6 +6,13 @@ expect rough edges until 1.0.
 
 ## [Unreleased]
 
+### Added
+- **Test prompts end sooner.** MacRazer now fetches the latest support list from
+  reports.macrazer.com. When a test report confirms a feature after a release, you stop being
+  asked to test it without waiting for the next update. The list can only drop a request,
+  never add one, and it never changes how the app talks to your mouse. Nothing about you or your
+  mice is sent with the request. Offline, the app uses its own list.
+
 ### Changed
 - **The device test knows what your mouse doesn't have.** On a wired-only mouse the
   battery step now says it has no battery, and on a mouse without lights the lighting step
