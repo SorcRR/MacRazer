@@ -99,6 +99,10 @@ struct PopoverView: View {
     @State private var editingDpiStages = false
     private var inStageEditMode: Bool { editingDpiStages && controller.supportsDpiStageEditing }
     @State private var dpiStageDraft = ""
+    /// The open stage's value when its editor opened, to tell an untouched field from an edit.
+    @State private var dpiStageOriginal = ""
+    /// A stage clicked while the open one was being saved: its editor opens once the save ends.
+    @State private var pendingDpiStageEdit: Int?
     @State private var dpiStageError: String?
     @FocusState private var dpiStageFieldFocused: Bool
     @State private var versionHovered = false
@@ -1143,7 +1147,16 @@ struct PopoverView: View {
                 ForEach(Array(displayedStages.enumerated()), id: \.offset) { index, value in
                     dpiChip(value, index: index)
                 }
-                if controller.supportsFreeDPI { customChip }
+                if controller.supportsFreeDPI && !inStageEditMode { customChip }
+            }
+            // Edit mode frames the stage row in green, so it's clear the chips edit now.
+            .padding(inStageEditMode ? 5 : 0)
+            .background {
+                if inStageEditMode {
+                    RoundedRectangle(cornerRadius: 9)
+                        .fill(Color.razerGreen.opacity(0.08))
+                        .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Color.razerGreen, lineWidth: 1.5))
+                }
             }
             if let dpiStageError {
                 Text(dpiStageError).font(.system(size: 10.5)).foregroundStyle(Color.batteryLow)
@@ -1158,6 +1171,9 @@ struct PopoverView: View {
         // Esc can close the popover before the field sees it: leave nothing half-edited for
         // the next time it opens.
         .onDisappear { cancelDpiStageEdit(); editingDpiStages = false }
+        .onChange(of: controller.isUpdatingDpiStages) { _, updating in
+            if !updating { openPendingDpiStageEdit() }
+        }
         }
     }
 
@@ -1255,7 +1271,7 @@ struct PopoverView: View {
                 // Edit mode: a dashed outline on every chip says each one opens an editor.
                 RoundedRectangle(cornerRadius: 6)
                     .strokeBorder(editing ? Color.razerGreen : accent.color,
-                                  style: StrokeStyle(lineWidth: editing ? 1.5 : 1, dash: editing ? [] : [3, 2]))
+                                  style: StrokeStyle(lineWidth: editing ? 2 : 1.5, dash: editing ? [] : [4, 2]))
             } else if !active {
                 RoundedRectangle(cornerRadius: 6).strokeBorder(accent.color.opacity(0.7), lineWidth: 1)
             }
@@ -1272,18 +1288,35 @@ struct PopoverView: View {
         .accessibilityLabel(editing ? "Stage \(index + 1) DPI" : DPIStageAccent.accessibilityLabel(
             value: value, stageIndex: index))
         .accessibilityAddTraits(active ? .isSelected : [])
-        .disabled(controller.isUpdatingDpiStages || (editingDpiStage != nil && !editing))
+        // In Edit mode another chip stays clickable while a field is open: it moves the editor.
+        .disabled(controller.isUpdatingDpiStages || (editingDpiStage != nil && !editing && !inStageEditMode))
     }
 
     private func beginDpiStageEdit(index: Int, value: Int) {
         guard controller.supportsDpiStageEditing, !controller.isUpdatingDpiStages else { return }
+        if let open = editingDpiStage, open != index, dpiStageDraft != dpiStageOriginal {
+            // The open field was changed: save it first, then open this one when that's done.
+            commitDpiStage(index: open)
+            guard editingDpiStage == nil else { return } // out of range: stay on it
+            if controller.isUpdatingDpiStages { pendingDpiStageEdit = index; return }
+        }
         dpiStageError = nil
         dpiStageDraft = String(value)
+        dpiStageOriginal = dpiStageDraft
         editingDpiStage = index
         dpiStageFieldFocused = true
     }
 
+    /// Opens the editor a click asked for while the previous stage was saving.
+    private func openPendingDpiStageEdit() {
+        guard let index = pendingDpiStageEdit, !controller.isUpdatingDpiStages else { return }
+        pendingDpiStageEdit = nil
+        guard inStageEditMode, displayedStages.indices.contains(index) else { return }
+        beginDpiStageEdit(index: index, value: displayedStages[index])
+    }
+
     private func cancelDpiStageEdit() {
+        pendingDpiStageEdit = nil
         editingDpiStage = nil
         dpiStageFieldFocused = false
         dpiStageError = nil
