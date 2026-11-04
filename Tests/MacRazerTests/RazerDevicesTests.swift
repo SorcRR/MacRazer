@@ -164,16 +164,25 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(RazerDevices.unverified(pid: 0x00E3), [.polling])
         XCTAssertFalse(RazerDevices.fullySupported(pid: 0x00E3))
         XCTAssertNil(RazerDevices.unverified(pid: 0x9999))
-        // Verified from 0.7.0 reports. The two DeathAdders have no cable row yet, so they
-        // still ask for that link; the others have nothing left to ask.
-        for pid in [0x0083, 0x007D, 0x00C5, 0x007a] {
+        // Verified from 0.7.0 reports. The DeathAdder V2 Pro has no cable row yet, so it
+        // still asks for that link; the others have nothing left to ask.
+        for pid in [0x0083, 0x007D, 0x00C5, 0x007a, 0x00C4] {
             XCTAssertEqual(RazerDevices.support(pid: pid), .full, String(pid, radix: 16))
         }
         XCTAssertFalse(RazerDevices.needsReport(pid: 0x0083), "no cable mode")
         XCTAssertFalse(RazerDevices.needsReport(pid: 0x007a), "its dongle side is verified")
         XCTAssertFalse(RazerDevices.needsReport(pid: 0x007b), "its cable side is verified now")
         XCTAssertEqual(RazerDevices.linksToTest(besides: 0x007D).map(\.connection), [.wired])
-        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00C5).map(\.connection), [.wired])
+        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00C5), [], "its cable row is verified now")
+        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00C4), [], "its dongle row is verified")
+        XCTAssertFalse(RazerDevices.needsReport(pid: 0x00C5))
+        XCTAssertFalse(RazerDevices.needsReport(pid: 0x00C4))
+        XCTAssertEqual(RazerDevices.verified(pid: 0x00C4), [.battery, .dpi, .polling], "no lighting on the mouse at all")
+        // The HyperFlux V2 mat: everything but lighting, and no cable link to ask about.
+        XCTAssertEqual(RazerDevices.unverified(pid: 0x00CF), [.lighting])
+        XCTAssertEqual(RazerDevices.verified(pid: 0x00CF), [.battery, .dpi, .polling])
+        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00CF), [])
+        XCTAssertTrue(RazerDevices.hasLighting(pid: 0x00CF), "brightness and colour answered, so it's offered")
         XCTAssertEqual(RazerDevices.verified(pid: 0x00C5), [.battery, .dpi, .polling], "no lighting on the mouse at all")
         XCTAssertEqual(RazerDevices.verified(pid: 0x0067), [.dpi, .polling, .lighting], "wired only: no battery")
         XCTAssertEqual(RazerDevices.verified(pid: 0x0053), [.dpi, .polling], "lighting is hidden and unverified")

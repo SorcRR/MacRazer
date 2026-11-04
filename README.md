@@ -89,7 +89,7 @@ says so.
 | Razer Naga V2 Pro (Wired) | Battery, DPI, DPI stages, polling, lighting, brightness | anonymous report |
 | Razer Pro Click V2 | Battery, DPI, DPI stages, polling | anonymous report |
 | Razer Basilisk X HyperSpeed | Battery, DPI, DPI stages, polling (it has no lighting) | MagnetTileMan |
-| Razer DeathAdder V3 HyperSpeed | Battery, DPI, DPI stages, polling (it has no lighting) | anonymous reports |
+| Razer DeathAdder V3 HyperSpeed (wired + wireless) | Battery, DPI, DPI stages, polling (it has no lighting) | fxaxg and anonymous reports |
 | Razer DeathAdder V2 Pro (Wireless) | Battery, DPI, polling, lighting | anonymous reports |
 | Razer Viper Ultimate (Wired) | Battery, DPI, polling, lighting | anonymous report |
 | Razer Taipan | DPI, polling; lighting not working yet | anonymous report |
@@ -97,6 +97,7 @@ says so.
 | Razer Viper V4 Pro (wired + wireless) | Battery, DPI, DPI stages; polling not working yet | Robotxm and an anonymous report |
 | Razer Basilisk V4 Pro (Wireless) | Battery, DPI, DPI stages, lighting, brightness; polling not working yet | anonymous report |
 | Razer Mouse Dock Pro (with a Naga V3 Pro) | Battery, DPI, lighting, brightness; polling not working yet | anonymous report |
+| Razer HyperFlux V2 (with the mouse on it) | Battery, DPI, DPI stages, polling; lighting not confirmed yet | anonymous report |
 | Razer Naga Chroma | DPI, polling; lighting not working yet | anonymous report |
 | Razer Basilisk V3 Pro 35K (Wired) | Battery, DPI, DPI stages, polling; lighting not working yet | anonymous report |
 | Razer Orochi 2013 | DPI only | [@raphaelchenouard](https://github.com/raphaelchenouard) |
