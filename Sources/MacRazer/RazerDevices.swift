@@ -161,9 +161,10 @@ enum RazerDevices {
         // one field here not demonstrated on a device.
         .init(pid: 0x00B9, name: "Razer Basilisk V3 X HyperSpeed", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 18000, transactionId: 0x1f, matrixTransactionId: 0x1f, brightnessLed: Razer.scrollLed, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, hasCableLink: false),
         // Basilisk X HyperSpeed: the older AA-cell sibling — no lighting at all, and
-        // razermouse_driver.c gives it 0xFF for every command it supports. Not verified
-        // on hardware by us.
-        .init(pid: 0x0083, name: "Razer Basilisk X HyperSpeed", unverified: [.battery, .dpi, .polling], hasBattery: true, hasLighting: false, maxDPI: 16000, transactionId: 0xff, matrixTransactionId: 0xff, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, hasCableLink: false),
+        // razermouse_driver.c gives it 0xFF for every command it supports. An in-app report
+        // (credit MagnetTileMan) passed battery, DPI, stages and polling with 0xFF; every
+        // lighting group answers 0x05.
+        .init(pid: 0x0083, name: "Razer Basilisk X HyperSpeed", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 16000, transactionId: 0xff, matrixTransactionId: 0xff, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, hasCableLink: false),
         // Basilisk V3 on the cable (in-app report by SuperSpacer54376): DPI, the stage table,
         // polling, static color and brightness all passed. It takes 0x1f everywhere except the
         // DPI-stages pair, which answers on 0xFF as razermouse_driver.c says. Battery answers
@@ -190,8 +191,9 @@ enum RazerDevices {
         .init(pid: 0x0039, name: "Razer Orochi 2013", unverified: [.polling], hasBattery: false, hasLighting: false, maxDPI: 6400, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
         // Viper Ultimate (Wireless)
         .init(pid: 0x007b, name: "Razer Viper Ultimate (Wireless)", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 20000, transactionId: 0xff, matrixTransactionId: 0x3f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
-        // Viper Ultimate (Wired)
-        .init(pid: 0x007a, name: "Razer Viper Ultimate (Wired)", unverified: [.battery, .dpi, .polling, .lighting], hasBattery: true, hasLighting: true, maxDPI: 20000, transactionId: 0xff, matrixTransactionId: 0x3f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
+        // Viper Ultimate (Wired): an in-app report over the cable passed battery, DPI, polling
+        // and lighting with the same ids as the wireless side.
+        .init(pid: 0x007a, name: "Razer Viper Ultimate (Wired)", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 20000, transactionId: 0xff, matrixTransactionId: 0x3f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
         // Naga Pro over the dongle (#69): battery, DPI and stages, polling, static color and
         // brightness all passed the in-app test with 0x1f. 0xFF and 0x80 time out. It has
         // three lit zones and LOGO, SCROLL and BACKLIGHT all answer brightness (ZERO refuses),
@@ -242,13 +244,15 @@ enum RazerDevices {
         .init(pid: 0x00E3, name: "Razer Basilisk V4 Pro (Wireless)", unverified: [.polling], hasBattery: true, hasLighting: true, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, acceptsClassicPolling: false),
         // DeathAdder V3 HyperSpeed over the dongle (in-app report, no credit given): DPI and
         // stages and polling passed with 0x1f. It has no lighting (every group answers 0x05).
-        // The battery read timed out, so the row stays unverified until it answers.
-        .init(pid: 0x00C5, name: "Razer DeathAdder V3 HyperSpeed", unverified: [.battery], hasBattery: true, hasLighting: false, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
+        // The battery read timed out in the first report and in a 0.7.0 run on firmware v1.10,
+        // then answered with 0x1f in a 0.7.0 run on v1.2. The timeouts look like the mouse
+        // sleeping, but a v1.10 quirk isn't ruled out.
+        .init(pid: 0x00C5, name: "Razer DeathAdder V3 HyperSpeed", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
         // DeathAdder V2 Pro over the dongle (in-app report, no credit given): battery answered
-        // with 0x1f (0x3f and 0x08 answer too; 0xFF and 0x80 time out). DPI, polling and
-        // lighting were skipped, so the row stays unverified. Only LOGO answers brightness;
-        // the rest return 0x03. 20000 is the vendor spec.
-        .init(pid: 0x007D, name: "Razer DeathAdder V2 Pro (Wireless)", unverified: [.dpi, .polling, .lighting], hasBattery: true, hasLighting: true, maxDPI: 20000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
+        // with 0x1f (0x3f and 0x08 answer too; 0xFF and 0x80 time out). A 0.7.0 report then
+        // passed DPI, polling and lighting. Only LOGO answers brightness; the rest return
+        // 0x03. 20000 is the vendor spec.
+        .init(pid: 0x007D, name: "Razer DeathAdder V2 Pro (Wireless)", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 20000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
         // Viper V3 HyperSpeed over the dongle (in-app report, no credit given): battery, DPI and
         // stages, and polling all passed with 0x1f (0x3f and 0x08 answer too; 0xFF and 0x80 time
         // out). It has no lighting: every group answers 0x05. The firmware echoed a 45000 DPI
