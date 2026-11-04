@@ -79,6 +79,22 @@ final class USBStageEditTests: XCTestCase {
         })
     }
 
+    func testFirmwareRoundingStillCountsAsKept() throws {
+        let mouse = FakeMouse()
+        mouse.holds(RazerCommands.setDPIStages(try XCTUnwrap(RazerCommands.parseDPIStageTable(basiliskReply()))))
+        // Stage 2 lands as 4300 when 4321 is written.
+        mouse.clamp = { report in
+            guard report.commandId == 0x06 else { return report }
+            var kept = report
+            kept.arguments[3 + 7 + 1] = 0x10; kept.arguments[3 + 7 + 2] = 0xCC
+            return kept
+        }
+        let written = try MouseController.writeUSBStages(send: { try mouse.sendWithRetry($0, attempts: 1) }) {
+            $0.values[1] = 4321
+        }
+        XCTAssertEqual(written.values[1], 4300)
+    }
+
     func testOnlyUSBRowsWithVerifiedDPIGetTheEditor() {
         XCTAssertTrue(RazerDevices.supportsUSBStageEditing(pid: 0x00EA), "Basilisk V4 HyperSpeed dongle")
         XCTAssertTrue(RazerDevices.supportsUSBStageEditing(pid: 0x00DB), "Cobra HyperSpeed dongle")
