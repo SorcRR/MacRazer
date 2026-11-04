@@ -634,15 +634,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
                     [UsageStatsPolicy.mouse(pid: $0, productName: name, isBluetooth: bluetooth, supported: supported)]
                 } ?? [] : []
                 self?.usageStats.setConnectedMice(mice)
-                // A mouse just found goes out now, not at the next update check.
-                Task { await self?.countReporter.reportIfNeeded() }
+                // A mouse just found goes out now, not at the next update check. No mouse waits
+                // for the count below, so a launch doesn't send once without the mouse and
+                // again with it a moment later.
+                if !mice.isEmpty { Task { await self?.countReporter.reportIfNeeded() } }
             }
             .store(in: &cancellables)
         // A mouse usually connects within a few seconds of launch and goes with the first
-        // ping. Without one, the ping goes anyway after this, and the mouse follows later.
+        // ping. Without one, the ping and the anonymous count go anyway after this, and the
+        // mouse follows later.
         DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak self] in
             guard let self else { return }
             Task { await self.usageStats.sendIfDue() }
+            Task { await self.countReporter.reportIfNeeded() }
         }
         // Someone who just updated is asked in the Updated window instead. A `swift run`
         // build has no version and a build without the Worker has nowhere to send, so
