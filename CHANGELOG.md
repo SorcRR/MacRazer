@@ -14,6 +14,10 @@ expect rough edges until 1.0.
   mice is sent with the request. Offline, the app uses its own list.
 
 ### Changed
+- **The device test knows what your mouse doesn't have.** On a wired-only mouse the
+  battery step now says it has no battery, and on a mouse without lights the lighting step
+  says so. Click Next to go on. Nothing is sent to the mouse for those steps, and the report
+  lists them as not on this mouse.
 - **Four more mice are fully verified.** Test reports confirmed what was still missing on the
   Basilisk X HyperSpeed, DeathAdder V2 Pro and DeathAdder V3 HyperSpeed (over the dongle) and
   the Viper Ultimate on its cable. MacRazer stops asking about what was confirmed. The two
