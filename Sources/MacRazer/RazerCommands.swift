@@ -181,6 +181,54 @@ enum RazerCommands {
     /// The active stage byte from a get-DPI-stages response (args[1]).
     static func parseActiveDPIStage(_ resp: RazerReport) -> Int { Int(resp.arguments[1]) }
 
+    /// A stage table as the mouse reports it, with its own stage numbers. Mice number their
+    /// stages from 1 in the reply, and the active byte names one of those numbers, so an edit
+    /// writes the numbers back as read instead of assuming a base.
+    struct DPIStageTable: Equatable {
+        var activeID: UInt8
+        var ids: [UInt8]
+        var values: [Int]
+
+        /// Index into `values` of the active stage, or nil when the byte names none of them.
+        var activeIndex: Int? { ids.firstIndex(of: activeID) }
+    }
+
+    /// The whole table from a get-DPI-stages response, or nil when it's empty, too long, or
+    /// has a zero entry (`parseDPIStages` would drop it and the indices would no longer line up).
+    static func parseDPIStageTable(_ resp: RazerReport) -> DPIStageTable? {
+        let count = Int(resp.arguments[2])
+        guard (1...maxDPIStages).contains(count) else { return nil }
+        var ids: [UInt8] = []
+        var values: [Int] = []
+        for i in 0..<count {
+            let base = 3 + i * 7
+            let x = (Int(resp.arguments[base + 1]) << 8) | Int(resp.arguments[base + 2])
+            guard x > 0 else { return nil }
+            ids.append(resp.arguments[base])
+            values.append(x)
+        }
+        return DPIStageTable(activeID: resp.arguments[1], ids: ids, values: values)
+    }
+
+    /// Writes `table` back with the mouse's own stage numbers and active byte.
+    static func setDPIStages(_ table: DPIStageTable) -> RazerReport {
+        var r = RazerReport(commandClass: 0x04, commandId: 0x06, dataSize: 0x26)
+        let count = min(table.values.count, table.ids.count, maxDPIStages)
+        r.arguments[0] = Razer.varstore
+        r.arguments[1] = table.activeID
+        r.arguments[2] = UInt8(count)
+        for i in 0..<count {
+            let dpi = UInt16(max(100, min(table.values[i], 45000)))
+            let base = 3 + i * 7
+            r.arguments[base] = table.ids[i]
+            r.arguments[base + 1] = UInt8((dpi >> 8) & 0xFF)
+            r.arguments[base + 2] = UInt8(dpi & 0xFF)
+            r.arguments[base + 3] = UInt8((dpi >> 8) & 0xFF)
+            r.arguments[base + 4] = UInt8(dpi & 0xFF)
+        }
+        return r
+    }
+
     /// Devices store at most 5 stages (dataSize 0x26 = 3 header bytes + 5 × 7-byte records).
     static let maxDPIStages = 5
 
