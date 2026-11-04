@@ -7,8 +7,10 @@ expect rough edges until 1.0.
 ## [Unreleased]
 
 ### Added
-- **Edit DPI stages over the dongle or cable.** Right-click a stage chip and choose Edit DPI
-  to change that stage on the mouse itself, as you already could over Bluetooth. Before, the
+- **Edit DPI stages over the dongle or cable.** Click **Edit stages** on the DPI card, then
+  click a stage to change it on the mouse itself, as you already could over Bluetooth.
+  Right-clicking a stage still works too. The field takes numbers only, and each stage has to
+  stay above the one before it and below the one after it. Before, the
   slider only set the current DPI, so a custom value showed up on the last chip and the stage
   you meant never changed. Clicking a stage chip now also makes it the mouse's active stage,
   so its DPI button carries on from there. It's offered on mice whose DPI is verified. Every

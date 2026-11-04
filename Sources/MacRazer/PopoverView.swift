@@ -94,6 +94,8 @@ struct PopoverView: View {
     /// Recallable custom DPI — persisted per-mouse, and never above the mouse's max.
     @State private var customDPI: Int = 8000
     @State private var editingDpiStage: Int?
+    /// The DPI card's Edit mode: clicking a stage chip opens its editor instead of selecting it.
+    @State private var editingDpiStages = false
     @State private var dpiStageDraft = ""
     @State private var dpiStageError: String?
     @FocusState private var dpiStageFieldFocused: Bool
@@ -1123,6 +1125,7 @@ struct PopoverView: View {
             HStack {
                 sectionLabel("DPI", "scope")
                 Spacer()
+                if controller.supportsDpiStageEditing { editStagesButton }
                 Text(verbatim: "\(Int(dpiValue))")
                     .font(.system(size: 12, weight: .medium)).monospacedDigit()
             }
@@ -1142,11 +1145,52 @@ struct PopoverView: View {
             }
             if let dpiStageError {
                 Text(dpiStageError).font(.system(size: 10.5)).foregroundStyle(Color.batteryLow)
+            } else if editingDpiStages || editingDpiStage != nil {
+                Text(editingDpiStage.map { stageRangeHint(index: $0) }
+                     ?? "Click a stage to change its DPI. Press Return to save it.")
+                    .font(.system(size: 10.5)).foregroundStyle(.secondary)
             } else if let error = controller.dpiStagesError {
                 Text(error).font(.system(size: 10.5)).foregroundStyle(Color.batteryLow)
             }
         }
         }
+    }
+
+    /// Turns the DPI card's Edit mode on and off. Shown only where stages can be written.
+    private var editStagesButton: some View {
+        Button {
+            editingDpiStages.toggle()
+            if !editingDpiStages { cancelDpiStageEdit() }
+        } label: {
+            Label(editingDpiStages ? "Done" : "Edit stages",
+                  systemImage: editingDpiStages ? "checkmark" : "pencil")
+                .font(.system(size: 10.5, weight: .medium))
+        }
+        .buttonStyle(.borderless)
+        .foregroundStyle(Color.razerGreenText)
+        .help(editingDpiStages ? "Stop editing the DPI stages" : "Change the DPI of each stage on the mouse")
+        .disabled(controller.isUpdatingDpiStages)
+    }
+
+    /// The values a stage may take: above the stage before it and below the stage after it,
+    /// 50 apart like the slider, within the mouse's range. A stage hemmed in by neighbours
+    /// closer than that can only keep the value it has.
+    nonisolated static func stageRange(stages: [Int], index: Int, maxDPI: Int) -> ClosedRange<Int> {
+        guard stages.indices.contains(index) else { return 100...maxDPI }
+        let low = index > 0 ? stages[index - 1] + 50 : 100
+        let high = index < stages.count - 1 ? stages[index + 1] - 50 : maxDPI
+        let value = stages[index]
+        return low <= high ? low...high : value...value
+    }
+
+    /// Keeps a typed stage value to digits, at most as many as the mouse's max DPI has.
+    nonisolated static func digitsOnly(_ text: String, maxDPI: Int) -> String {
+        String(text.filter(\.isASCII).filter(\.isNumber).prefix(String(maxDPI).count))
+    }
+
+    private func stageRangeHint(index: Int) -> String {
+        let range = Self.stageRange(stages: controller.dpiStages, index: index, maxDPI: controller.deviceMaxDPI)
+        return "Stage \(index + 1) can be \(range.lowerBound) to \(range.upperBound). Return saves, Esc cancels."
     }
 
     /// A fixed-preset DPI chip.
@@ -1164,10 +1208,17 @@ struct PopoverView: View {
                     .multilineTextAlignment(.center)
                     .monospacedDigit()
                     .focused($dpiStageFieldFocused)
+                    .onChange(of: dpiStageDraft) { _, text in
+                        let digits = Self.digitsOnly(text, maxDPI: controller.deviceMaxDPI)
+                        if digits != text { dpiStageDraft = digits }
+                        dpiStageError = nil
+                    }
                     .onSubmit { commitDpiStage(index: index) }
+                    .onExitCommand { cancelDpiStageEdit() }
                     .onAppear { dpiStageFieldFocused = true }
             } else {
                 Button {
+                    if editingDpiStages { return beginDpiStageEdit(index: index, value: value) }
                     dpiValue = Double(value)
                     controller.selectDPIStage(index, value: value)
                 } label: {
@@ -1189,7 +1240,12 @@ struct PopoverView: View {
         .background(active ? accent.color : Color.primary.opacity(0.08),
                     in: RoundedRectangle(cornerRadius: 6))
         .overlay {
-            if !active {
+            if editingDpiStages {
+                // Edit mode: a dashed outline on every chip says each one opens an editor.
+                RoundedRectangle(cornerRadius: 6)
+                    .strokeBorder(editing ? Color.razerGreen : accent.color,
+                                  style: StrokeStyle(lineWidth: editing ? 1.5 : 1, dash: editing ? [] : [3, 2]))
+            } else if !active {
                 RoundedRectangle(cornerRadius: 6).strokeBorder(accent.color.opacity(0.7), lineWidth: 1)
             }
         }
@@ -1199,8 +1255,9 @@ struct PopoverView: View {
                 Button("Edit DPI") { beginDpiStageEdit(index: index, value: value) }
             }
         }
-        // The stage editor lives in a context menu, which nothing on the chip hints at.
-        .help(controller.supportsDpiStageEditing ? "Stage \(index + 1) · Right-click to edit" : "Stage \(index + 1)")
+        .help(editingDpiStages ? "Stage \(index + 1) · Click to change its DPI"
+              : controller.supportsDpiStageEditing ? "Stage \(index + 1) · Right-click or Edit stages to change it"
+              : "Stage \(index + 1)")
         .accessibilityLabel(editing ? "Stage \(index + 1) DPI" : DPIStageAccent.accessibilityLabel(
             value: value, stageIndex: index))
         .accessibilityAddTraits(active ? .isSelected : [])
@@ -1215,14 +1272,21 @@ struct PopoverView: View {
         dpiStageFieldFocused = true
     }
 
+    private func cancelDpiStageEdit() {
+        editingDpiStage = nil
+        dpiStageFieldFocused = false
+        dpiStageError = nil
+    }
+
     private func commitDpiStage(index: Int) {
         guard editingDpiStage == index else { return }
-        defer { editingDpiStage = nil; dpiStageFieldFocused = false }
-        guard let value = Int(dpiStageDraft.trimmingCharacters(in: .whitespaces)),
-              (100...controller.deviceMaxDPI).contains(value) else {
-            dpiStageError = "DPI must be between 100 and \(controller.deviceMaxDPI)."
+        let range = Self.stageRange(stages: controller.dpiStages, index: index, maxDPI: controller.deviceMaxDPI)
+        guard let value = Int(dpiStageDraft), range.contains(value) else {
+            // Keep the field open so the number can be fixed, with the range that fits.
+            dpiStageError = "Stage \(index + 1) must be between \(range.lowerBound) and \(range.upperBound)."
             return
         }
+        defer { editingDpiStage = nil; dpiStageFieldFocused = false }
         guard controller.dpiStages.indices.contains(index), controller.dpiStages[index] != value else { return }
         dpiStageError = nil
         controller.setDPIStageValue(value, at: index)

@@ -103,3 +103,24 @@ final class USBStageEditTests: XCTestCase {
         XCTAssertFalse(RazerDevices.supportsUSBStageEditing(pid: 0x9999))
     }
 }
+
+/// The stage editor's limits: digits only, and between the stages either side.
+final class StageEditorLimitTests: XCTestCase {
+    let stages = [400, 800, 1600, 3200, 6400]
+
+    func testAStageStaysBetweenItsNeighbours() {
+        XCTAssertEqual(PopoverView.stageRange(stages: stages, index: 2, maxDPI: 26000), 850...3150)
+        XCTAssertEqual(PopoverView.stageRange(stages: stages, index: 0, maxDPI: 26000), 100...750, "the first starts at 100")
+        XCTAssertEqual(PopoverView.stageRange(stages: stages, index: 4, maxDPI: 26000), 3250...26000, "the last goes to the max")
+    }
+
+    func testAHemmedInStageKeepsItsValue() {
+        XCTAssertEqual(PopoverView.stageRange(stages: [800, 820, 840], index: 1, maxDPI: 26000), 820...820)
+    }
+
+    func testOnlyDigitsAreTyped() {
+        XCTAssertEqual(PopoverView.digitsOnly("1,6a00 ", maxDPI: 26000), "1600")
+        XCTAssertEqual(PopoverView.digitsOnly("123456", maxDPI: 26000), "12345", "no more digits than the max has")
+        XCTAssertEqual(PopoverView.digitsOnly("١٢٣", maxDPI: 26000), "", "non-ASCII digits don't parse as Int")
+    }
+}
