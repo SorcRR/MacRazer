@@ -41,6 +41,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     private lazy var crashReportWindow = CrashReportWindowController(
         onClosed: { [weak self] in self?.autoInstallIfEnabled() })
     private let usageStats = UsageStats.shared
+    /// The connected mouse models for the reports page, anonymous and in the background.
+    private let mouseCountReporter = MouseCountReporter()
     private let supportList = SupportListUpdater()
     private var supportListObserver: NSObjectProtocol?
     /// Closing it re-asks the auto-install gate, for the same reason as `updatedWindow`.
@@ -341,7 +343,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         }
         // Unthrottled: a launch is rare, and it is when someone who just installed or reopened
         // the app most expects it to know about the latest release.
-        updateChecker.connectedMice = { [weak self] in self?.usageStats.connectedMice ?? [] }
         Task { await updateChecker.checkForUpdatesNow() }
         startUpdateTriggers()
     }
@@ -358,10 +359,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         Task { await supportList.refreshIfDue() }
     }
 
-    /// The update check and the support list, each behind its own throttle.
+    /// The update check and the support list, each behind its own throttle, and a mouse count
+    /// that hasn't gone out today.
     private func checkOnlineIfDue() {
         Task { await updateChecker.checkForUpdatesIfDue() }
         Task { await supportList.refreshIfDue() }
+        Task { await mouseCountReporter.reportIfNeeded() }
     }
 
     /// Everything that asks "is a check due?" after launch. Each only asks: the throttle in
@@ -607,6 +610,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     /// Feeds the connected mouse to `UsageStats`, sends whatever is due, and asks once if
     /// nobody has been asked yet. Nothing goes anywhere without a yes; see `UsageStats`.
     private func startUsageStats() {
+        mouseCountReporter.connectedMice = { [weak self] in self?.usageStats.connectedMice ?? [] }
         // Debounced: the controller publishes a new mouse's fields one at a time, and the
         // ping should see them all.
         Publishers.CombineLatest4(controller.$connected, controller.$deviceID,
@@ -619,6 +623,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
                     [UsageStatsPolicy.mouse(pid: $0, productName: name, isBluetooth: bluetooth, supported: supported)]
                 } ?? [] : []
                 self?.usageStats.setConnectedMice(mice)
+                // A mouse just found goes out now, not at the next update check.
+                Task { await self?.mouseCountReporter.reportIfNeeded() }
             }
             .store(in: &cancellables)
         // A mouse usually connects within a few seconds of launch and goes with the first
