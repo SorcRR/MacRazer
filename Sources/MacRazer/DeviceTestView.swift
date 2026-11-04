@@ -279,20 +279,18 @@ struct DeviceTestView: View {
     }
 
     @ViewBuilder private var batteryBody: some View {
-        Group {
-            if model.running {
-                running("Reading the battery…")
-            } else if let record = model.report?.battery {
-                card {
-                    VStack(spacing: 4) {
-                        row("Battery", record.data?.percent.map { "\($0)%" } ?? "No answer")
-                        row("Charging", record.data?.charging.map { $0 ? "Yes" : "No" } ?? "No answer")
-                    }
+        if model.running {
+            running("Reading the battery…")
+        } else if let record = model.report?.battery {
+            card {
+                VStack(spacing: 4) {
+                    row("Battery", record.data?.percent.map { "\($0)%" } ?? "No answer")
+                    row("Charging", record.data?.charging.map { $0 ? "Yes" : "No" } ?? "No answer")
                 }
-                outcomeRow("Battery", record.outcome)
-                note("Plug in the cable now and check again to see charging detected.")
-                Button("Check again") { Task { await model.runBattery() } }
             }
+            outcomeRow("Battery", record.outcome)
+            note("Plug in the cable now and check again to see charging detected.")
+            Button("Check again") { Task { await model.runBattery() } }
         }
     }
 
@@ -358,20 +356,18 @@ struct DeviceTestView: View {
     }
 
     @ViewBuilder private var lightingBody: some View {
-        Group {
-            if model.running {
-                running("Watch your mouse: dark, then red…")
-            } else if let record = model.report?.lighting, record.data != nil {
-                if let data = record.data, data.dimShown {
-                    question("Did the lights go dark for a moment?", $model.dimmed)
-                    if data.redShown { question("Then did they turn red?", $model.turnedRed) }
-                    note(data.restored ? "Everything has been put back." : "Something couldn't be put back. Check the lighting in the popover.")
-                } else {
-                    outcomeRow("Lighting", record.outcome)
-                }
+        if model.running {
+            running("Watch your mouse: dark, then red…")
+        } else if let record = model.report?.lighting, record.data != nil {
+            if let data = record.data, data.dimShown {
+                question("Did the lights go dark for a moment?", $model.dimmed)
+                if data.redShown { question("Then did they turn red?", $model.turnedRed) }
+                note(data.restored ? "Everything has been put back." : "Something couldn't be put back. Check the lighting in the popover.")
             } else {
-                note("Watch your mouse while this runs. Its lights go dark for three seconds, then turn red for three seconds. Afterwards they go back to your brightness and to MacRazer's current lighting setting.")
+                outcomeRow("Lighting", record.outcome)
             }
+        } else {
+            note("Watch your mouse while this runs. Its lights go dark for three seconds, then turn red for three seconds. Afterwards they go back to your brightness and to MacRazer's current lighting setting.")
         }
     }
 

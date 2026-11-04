@@ -25,7 +25,7 @@ final class NotOnMouseTests: XCTestCase {
 
     private func report(pid: Int) -> DeviceReport {
         var report = DeviceTestModel.emptyReport(pid: pid, name: "Mouse", interfaces: [], control: nil, identify: .init())
-        DeviceTestModel.markNotOnMouse(&report)
+        DeviceTestModel.markNotOnMouse(&report, lacking: DeviceTestModel.lacking(pid: pid, sweep: nil))
         return report
     }
 
@@ -40,6 +40,32 @@ final class NotOnMouseTests: XCTestCase {
         XCTAssertEqual(wired.battery.outcome, .notSupported)
         XCTAssertEqual(wired.battery.error, DeviceTestModel.notOnMouseNote(.battery))
         XCTAssertEqual(wired.lighting.outcome, .skipped)
+    }
+
+    private func sweep(answering: Bool) -> [DeviceProbe.LEDAnswer] {
+        let reply = RazerReport(commandClass: 0x0F, commandId: 0x84, dataSize: 0x03)
+        return [
+            .init(name: "LOGO", led: Razer.logoLed, result: answering ? .success(.init(value: 120, response: reply)) : .failure(HIDDevice.HIDError.notSupported)),
+            .init(name: "SCROLL", led: Razer.scrollLed, result: .failure(HIDDevice.HIDError.notSupported)),
+        ]
+    }
+
+    /// A mark can be wrong, and the mouse is what corrects it: an LED group that answers means
+    /// lights after all, so the lighting step runs and its report fixes the row.
+    func testTheMouseCanContradictTheRow() {
+        XCTAssertEqual(DeviceTestModel.lacking(pid: 0x00B8, sweep: sweep(answering: false)), [.lighting])
+        XCTAssertEqual(DeviceTestModel.lacking(pid: 0x00B8, sweep: sweep(answering: true)), [])
+        XCTAssertEqual(DeviceTestModel.lacking(pid: 0x0067, sweep: sweep(answering: true)), [.battery],
+                       "lights answering says nothing about a battery")
+    }
+
+    /// The quiet battery read on a row with no battery: only a level or charging says otherwise.
+    func testOnlyARealBatteryReadingContradictsTheRow() {
+        typealias Record = DeviceReport.StepRecord<DeviceReport.BatteryData>
+        XCTAssertTrue(DeviceTestModel.batteryContradicts(Record(outcome: .passed, data: .init(raw: 160, percent: 63, charging: false))))
+        XCTAssertTrue(DeviceTestModel.batteryContradicts(Record(outcome: .failed, data: .init(raw: 0, percent: 0, charging: true))))
+        XCTAssertFalse(DeviceTestModel.batteryContradicts(Record(outcome: .notSupported, data: .init(raw: 0, percent: 0, charging: false))))
+        XCTAssertFalse(DeviceTestModel.batteryContradicts(Record(outcome: .failed, error: "The mouse wasn't reachable.")))
     }
 
     /// "Not on this mouse" is an answer, so it doesn't make the report partial.
