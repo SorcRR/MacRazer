@@ -8,6 +8,32 @@ import IOKit
 /// What the person said when asked about usage stats. Nothing is sent unless it's `granted`.
 enum UsageStatsConsent: String {
     case undecided, granted, declined
+
+    /// How the anonymous daily count names it (`AnonymousCountReporter`).
+    var countValue: String {
+        switch self {
+        case .granted: "yes"
+        case .declined: "no"
+        case .undecided: "unasked"
+        }
+    }
+
+    /// A change of answer, for the anonymous daily count: the first answer when asked, and
+    /// turning sharing off (Delete My Data included) or back on later.
+    enum Change: String, CaseIterable {
+        case saidYes = "said_yes", saidNo = "said_no", turnedOff = "turned_off", turnedOn = "turned_on"
+
+        /// Nil when nothing changed.
+        static func from(_ old: UsageStatsConsent, to new: UsageStatsConsent) -> Change? {
+            switch (old, new) {
+            case (.undecided, .granted): .saidYes
+            case (.undecided, .declined): .saidNo
+            case (.granted, .declined): .turnedOff
+            case (.declined, .granted): .turnedOn
+            default: nil
+            }
+        }
+    }
 }
 
 /// One ping, exactly as the Worker takes it (`src/stats.ts` in SorcRR/macrazer-worker). Settings shows this same
@@ -131,6 +157,7 @@ enum UsageMachineID {
 @MainActor
 final class UsageStats: ObservableObject {
     static let consentKey = "usageStats.consent"
+    static let pendingChangesKey = "usageStats.pendingChanges"
     static let idKey = "usageStats.id"
     static let lastReportedVersionKey = "usageStats.lastReportedVersion"
     static let reportedMiceKey = "usageStats.reportedMice"
@@ -220,10 +247,33 @@ final class UsageStats: ObservableObject {
                   os: DeviceReport.currentMacOSVersion, arch: UsageMachineID.arch, mice: connectedMice)
     }
 
+    // MARK: Counting answers
+
+    /// Changes of answer the anonymous daily count hasn't carried yet, oldest first, each once.
+    var pendingConsentChanges: [UsageStatsConsent.Change] {
+        (defaults.stringArray(forKey: Self.pendingChangesKey) ?? []).compactMap(UsageStatsConsent.Change.init)
+    }
+
+    /// Drops the changes a count carried, with any made again while it was on its way: the
+    /// Worker counts each once a day anyway.
+    func consentChangesSent(_ sent: [UsageStatsConsent.Change]) {
+        let left = pendingConsentChanges.filter { !sent.contains($0) }
+        defaults.set(left.map(\.rawValue), forKey: Self.pendingChangesKey)
+    }
+
+    private func noteChange(to new: UsageStatsConsent) {
+        guard let change = UsageStatsConsent.Change.from(consent, to: new) else { return }
+        var pending = pendingConsentChanges
+        if !pending.contains(change) { pending.append(change) }
+        defaults.set(pending.map(\.rawValue), forKey: Self.pendingChangesKey)
+    }
+
     // MARK: Asking
 
     func setConsent(_ granted: Bool) {
-        consent = granted ? .granted : .declined
+        let new: UsageStatsConsent = granted ? .granted : .declined
+        noteChange(to: new)
+        consent = new
         defaults.set(consent.rawValue, forKey: Self.consentKey)
         if granted {
             if deletion == .deleted { deletion = .idle }
@@ -300,6 +350,7 @@ final class UsageStats: ObservableObject {
         defaults.set(machineID, forKey: Self.pendingDeletionKey)
         // Shown straight away, even when a ping in flight makes the delete wait for it.
         deletion = .deleting
+        noteChange(to: .declined)
         consent = .declined
         defaults.set(consent.rawValue, forKey: Self.consentKey)
         // Forget what was reported, so opting in again starts over as a new Mac, the way the

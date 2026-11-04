@@ -32,6 +32,11 @@ expect rough edges until 1.0.
   finds the mouse, once a day per model, and tries again every 15 minutes if that fails. It
   stays anonymous, with nothing that identifies your Mac, and it's always on now: the "Count
   my mouse model" switch in Settings › Privacy is gone.
+- **The anonymous count now includes your usage stats answer.** Once a day it says whether
+  you share usage stats, said no, or haven't been asked. When the answer changes it also says
+  how: yes or no when asked, turned off (Delete My Data included), or turned back on. It goes
+  with the mouse count, with nothing that identifies your Mac, so I can see how many people
+  turn sharing off and how many come back.
 - **Four more mice are fully verified.** Test reports confirmed what was still missing on the
   Basilisk X HyperSpeed, DeathAdder V2 Pro and DeathAdder V3 HyperSpeed (over the dongle) and
   the Viper Ultimate on its cable. MacRazer stops asking about what was confirmed. The two

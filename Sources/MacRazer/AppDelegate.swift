@@ -41,8 +41,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     private lazy var crashReportWindow = CrashReportWindowController(
         onClosed: { [weak self] in self?.autoInstallIfEnabled() })
     private let usageStats = UsageStats.shared
-    /// The connected mouse models for the reports page, anonymous and in the background.
-    private let mouseCountReporter = MouseCountReporter()
+    /// The connected mouse models and the usage stats answer for the reports page, anonymous
+    /// and in the background.
+    private let countReporter = AnonymousCountReporter()
     private let supportList = SupportListUpdater()
     private var supportListObserver: NSObjectProtocol?
     /// Closing it re-asks the auto-install gate, for the same reason as `updatedWindow`.
@@ -360,11 +361,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     }
 
     /// The update check and the support list, each behind its own throttle, and a mouse count
-    /// that hasn't gone out today.
+    /// or answer that hasn't gone out today.
     private func checkOnlineIfDue() {
         Task { await updateChecker.checkForUpdatesIfDue() }
         Task { await supportList.refreshIfDue() }
-        Task { await mouseCountReporter.reportIfNeeded() }
+        Task { await countReporter.reportIfNeeded() }
     }
 
     /// Everything that asks "is a check due?" after launch. Each only asks: the throttle in
@@ -610,7 +611,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     /// Feeds the connected mouse to `UsageStats`, sends whatever is due, and asks once if
     /// nobody has been asked yet. Nothing goes anywhere without a yes; see `UsageStats`.
     private func startUsageStats() {
-        mouseCountReporter.connectedMice = { [weak self] in self?.usageStats.connectedMice ?? [] }
+        countReporter.connectedMice = { [weak self] in self?.usageStats.connectedMice ?? [] }
+        countReporter.answer = { [weak self] in
+            guard let self, self.usageStats.isAvailable else { return nil }
+            return self.usageStats.consent
+        }
+        countReporter.pendingChanges = { [weak self] in self?.usageStats.pendingConsentChanges ?? [] }
+        countReporter.changesSent = { [weak self] in self?.usageStats.consentChangesSent($0) }
+        // A changed answer goes out now. In a task: @Published tells before it sets the value.
+        usageStats.$consent.dropFirst().removeDuplicates()
+            .sink { [weak self] _ in Task { await self?.countReporter.reportIfNeeded() } }
+            .store(in: &cancellables)
         // Debounced: the controller publishes a new mouse's fields one at a time, and the
         // ping should see them all.
         Publishers.CombineLatest4(controller.$connected, controller.$deviceID,
@@ -623,15 +634,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
                     [UsageStatsPolicy.mouse(pid: $0, productName: name, isBluetooth: bluetooth, supported: supported)]
                 } ?? [] : []
                 self?.usageStats.setConnectedMice(mice)
-                // A mouse just found goes out now, not at the next update check.
-                Task { await self?.mouseCountReporter.reportIfNeeded() }
+                // A mouse just found goes out now, not at the next update check. No mouse waits
+                // for the count below, so a launch doesn't send once without the mouse and
+                // again with it a moment later.
+                if !mice.isEmpty { Task { await self?.countReporter.reportIfNeeded() } }
             }
             .store(in: &cancellables)
         // A mouse usually connects within a few seconds of launch and goes with the first
-        // ping. Without one, the ping goes anyway after this, and the mouse follows later.
+        // ping. Without one, the ping and the anonymous count go anyway after this, and the
+        // mouse follows later.
         DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak self] in
             guard let self else { return }
             Task { await self.usageStats.sendIfDue() }
+            Task { await self.countReporter.reportIfNeeded() }
         }
         // Someone who just updated is asked in the Updated window instead. A `swift run`
         // build has no version and a build without the Worker has nowhere to send, so

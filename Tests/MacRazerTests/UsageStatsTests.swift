@@ -198,6 +198,35 @@ final class UsageStatsTests: XCTestCase {
         XCTAssertNotNil(s.lastSentAt)
     }
 
+    // MARK: Counting answers
+
+    func testEachChangeOfAnswerIsNotedOnceUntilSent() {
+        let s = stats(FakeServer())
+        XCTAssertEqual(s.pendingConsentChanges, [])
+        s.setConsent(false)
+        s.setConsent(false)
+        s.setConsent(true)
+        s.setConsent(false)
+        s.setConsent(true)
+        XCTAssertEqual(s.pendingConsentChanges, [.saidNo, .turnedOn, .turnedOff])
+        s.consentChangesSent([.saidNo, .turnedOn])
+        XCTAssertEqual(s.pendingConsentChanges, [.turnedOff])
+    }
+
+    func testAFirstYesAndDeleteMyDataAreChangesToo() async {
+        let s = stats(FakeServer())
+        s.setConsent(true)
+        await s.deleteMyData()
+        XCTAssertEqual(s.pendingConsentChanges, [.saidYes, .turnedOff])
+    }
+
+    func testClosingTheQuestionIsASaidNo() {
+        let s = stats(FakeServer())
+        s.dismissUnanswered()
+        XCTAssertEqual(s.pendingConsentChanges, [.saidNo])
+        XCTAssertEqual(UsageStatsConsent.undecided.countValue, "unasked")
+    }
+
     // MARK: Delete My Data
 
     func testDeleteMyDataTurnsSharingOffAndAsksTheServer() async throws {
