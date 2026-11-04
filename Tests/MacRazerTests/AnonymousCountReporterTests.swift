@@ -11,10 +11,10 @@ private let basilisk = UsagePing.Mouse(pid: 0x99, name: "Basilisk V3 X", link: "
 private let lateEvening = Date(timeIntervalSince1970: 1_793_835_000)
 
 @MainActor
-final class MouseCountReporterTests: XCTestCase {
+final class AnonymousCountReporterTests: XCTestCase {
     /// A fresh store per reporter, so no test sees another's sends.
     private func freshDefaults() -> UserDefaults {
-        let suite = "MouseCountReporterTests.\(UUID().uuidString)"
+        let suite = "AnonymousCountReporterTests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         defaults.removePersistentDomain(forName: suite)
         addTeardownBlock { UserDefaults().removePersistentDomain(forName: suite) }
@@ -24,8 +24,8 @@ final class MouseCountReporterTests: XCTestCase {
     /// A reporter whose requests are answered with `status`, or fail when it's nil. `requests`
     /// collects every URL it asked for.
     private func reporter(at date: @escaping () -> Date, status: @escaping () -> Int?,
-                          requests: @escaping (URL) -> Void) -> MouseCountReporter {
-        MouseCountReporter(defaults: freshDefaults(), base: base, appVersion: "0.7.1", now: date) { url in
+                          requests: @escaping (URL) -> Void) -> AnonymousCountReporter {
+        AnonymousCountReporter(defaults: freshDefaults(), base: base, appVersion: "0.7.1", now: date) { url in
             requests(url)
             guard let code = status() else { throw URLError(.notConnectedToInternet) }
             return (Data("[]".utf8), HTTPURLResponse(url: url, statusCode: code, httpVersion: nil, headerFields: nil)!)
@@ -95,7 +95,7 @@ final class MouseCountReporterTests: XCTestCase {
 
     func testABuildWithoutAWorkerSendsNothing() async {
         var asked: [URL] = []
-        let sut = MouseCountReporter(defaults: freshDefaults(), base: nil, appVersion: "0.7.1", now: { lateEvening }) { url in
+        let sut = AnonymousCountReporter(defaults: freshDefaults(), base: nil, appVersion: "0.7.1", now: { lateEvening }) { url in
             asked.append(url)
             return (Data(), URLResponse())
         }
@@ -104,8 +104,49 @@ final class MouseCountReporterTests: XCTestCase {
         XCTAssertTrue(asked.isEmpty)
     }
 
+    func testTheAnswerGoesOutOnceADayEvenWithNoMouse() async throws {
+        var asked: [URL] = []
+        var now = lateEvening
+        let sut = reporter(at: { now }, status: { 200 }, requests: { asked.append($0) })
+        sut.answer = { .declined }
+        await sut.reportIfNeeded()
+        await sut.reportIfNeeded()
+        now = lateEvening.addingTimeInterval(40 * 60)
+        await sut.reportIfNeeded()
+        XCTAssertEqual(asked.count, 2)
+        let items = try XCTUnwrap(URLComponents(url: asked[0], resolvingAgainstBaseURL: false)?.queryItems)
+        XCTAssertEqual(items.map(\.name), ["app", "stats"])
+        XCTAssertEqual(items[1].value, "no")
+    }
+
+    func testAChangedAnswerGoesOutWithItsChangeUntilTheWorkerHasIt() async throws {
+        var asked: [URL] = []
+        var answer: Int? = nil
+        var consent = UsageStatsConsent.granted
+        var pending: [UsageStatsConsent.Change] = []
+        let sut = reporter(at: { lateEvening }, status: { answer }, requests: { asked.append($0) })
+        sut.answer = { consent }
+        sut.pendingChanges = { pending }
+        sut.changesSent = { sent in pending.removeAll { sent.contains($0) } }
+        answer = 200
+        await sut.reportIfNeeded()
+        consent = .declined
+        pending = [.turnedOff]
+        answer = nil
+        await sut.reportIfNeeded()
+        XCTAssertEqual(pending, [.turnedOff], "kept while offline")
+        answer = 200
+        await sut.reportIfNeeded()
+        await sut.reportIfNeeded()
+        XCTAssertEqual(asked.count, 3)
+        XCTAssertTrue(pending.isEmpty)
+        let items = try XCTUnwrap(URLComponents(url: asked[2], resolvingAgainstBaseURL: false)?.queryItems)
+        XCTAssertEqual(items.map(\.name), ["app", "stats", "change"])
+        XCTAssertEqual(items.map(\.value), ["0.7.1", "no", "turned_off"])
+    }
+
     func testTheDayIsUTC() {
-        XCTAssertEqual(MouseCountReporter.day(of: lateEvening), "2026-11-04")
-        XCTAssertEqual(MouseCountReporter.day(of: lateEvening.addingTimeInterval(31 * 60)), "2026-11-05")
+        XCTAssertEqual(AnonymousCountReporter.day(of: lateEvening), "2026-11-04")
+        XCTAssertEqual(AnonymousCountReporter.day(of: lateEvening.addingTimeInterval(31 * 60)), "2026-11-05")
     }
 }

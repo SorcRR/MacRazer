@@ -127,14 +127,18 @@ enum WorkerEndpoint {
     static let maxMice = 4
 
     /// The update check. It says which app version this is (nil, for a `swift run` build, goes
-    /// as "dev"). `MouseCountReporter` sends the same request with the connected mouse models.
-    /// The Worker counts those per day with no ID for the Mac, so they need no consent the way
-    /// the usage stats do; the homepage's privacy section says so.
-    static func releases(appVersion: String?, mice: [UsagePing.Mouse] = [], base: URL? = base) -> URL? {
+    /// as "dev"). `AnonymousCountReporter` sends the same request with the connected mouse
+    /// models and the usage stats answer and its changes. The Worker counts those per day with
+    /// no ID for the Mac, so they need no consent the way the usage stats do; the homepage's
+    /// privacy section says so.
+    static func releases(appVersion: String?, mice: [UsagePing.Mouse] = [], stats: UsageStatsConsent? = nil,
+                         changes: [UsageStatsConsent.Change] = [], base: URL? = base) -> URL? {
         guard let base else { return nil }
         var components = URLComponents(url: base.appendingPathComponent("v1/releases"), resolvingAgainstBaseURL: false)
         components?.queryItems = [URLQueryItem(name: "app", value: appVersion ?? "dev")]
             + mice.prefix(maxMice).map { URLQueryItem(name: "mouse", value: mouseValue($0)) }
+            + (stats.map { [URLQueryItem(name: "stats", value: $0.countValue)] } ?? [])
+            + changes.map { URLQueryItem(name: "change", value: $0.rawValue) }
         return components?.url
     }
 

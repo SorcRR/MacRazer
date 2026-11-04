@@ -544,9 +544,13 @@ come from GitHub Releases.
  itself sends only the app version. Any failure there falls through to GitHub directly, so the Worker can never cost
  anyone an update. One exception skips the throttle: the version just changed and there are no
  notes for it yet.
-- **Mouse models.** `MouseCountReporter` sends the same Worker request with the connected mouse
- models, so the reports page can count mice in use. Always on, anonymous like the check. It goes
- out as soon as the controller finds a mouse, then once per UTC day per model and link. A failed
+- **Anonymous daily count.** `AnonymousCountReporter` sends the same Worker request with the
+ connected mouse models and the usage stats answer (`stats=yes|no|unasked`), so the reports page
+ can count mice in use and how many share. A change of answer is noted in `UsageStats` and goes
+ with the next count (`change=said_yes|said_no|turned_off|turned_on`, Delete My Data counts as
+ turned off) until the Worker has it. Always on, anonymous like the check. A count goes out
+ when there's something new: the first of each UTC day, a mouse not sent yet that day, or a
+ changed answer. A failed
  send is silent and retried on the 15-minute tick, at wake and when the network returns. It
  used to ride on the update check, which runs at launch before the mouse is found and then only
  every 3 hours, and missed about half the mice.
