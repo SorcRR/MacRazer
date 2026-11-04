@@ -236,6 +236,15 @@ enum RazerDevices {
         // other mice the dock pairs with may lack the Naga's side panel. The dock's own
         // lighting is not reachable here.
         .init(pid: 0x00A4, name: "Razer Mouse Dock Pro", unverified: [.polling], hasBattery: true, hasLighting: true, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, acceptsClassicPolling: false),
+        // HyperFlux V2 charging mat: like the Mouse Dock Pro, the mat is the receiver for the
+        // mouse on it, so what answers is that mouse. The one report (no credit given) passed
+        // battery, DPI and stages, and polling with 0x1f (0x80 times out). The mouse behind it
+        // has a tilt wheel and answers Smart Reel, but the report doesn't name it. LOGO and
+        // SCROLL answer brightness and the static red showed, but the tester skipped the
+        // lighting check, so lighting stays unverified. Brightness stays on LOGO_LED alone, as
+        // on the dock. The firmware echoed a 45000 DPI write; 30000 matches the dock's row.
+        // The mat has no cable mode for the mouse, so no cable link is asked about.
+        .init(pid: 0x00CF, name: "Razer HyperFlux V2", unverified: [.lighting], hasBattery: true, hasLighting: true, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, hasCableLink: false),
         // Basilisk V4 HyperSpeed over the dongle (in-app report, no credit given): battery and
         // DPI answered with 0x1f. 0xFF and 0x80 time out. Every LED group refuses brightness,
         // so no lighting. The classic polling command answers "not supported" (0x05); it likely
@@ -256,6 +265,12 @@ enum RazerDevices {
         // then answered with 0x1f in a 0.7.0 run on v1.2. The timeouts look like the mouse
         // sleeping, but a v1.10 quirk isn't ruled out.
         .init(pid: 0x00C5, name: "Razer DeathAdder V3 HyperSpeed", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.lighting]),
+        // DeathAdder V3 HyperSpeed on the cable (two in-app reports, one credited to fxaxg):
+        // battery, DPI and stages, and polling passed with 0x1f on firmware v1.10 and v1.2.
+        // Every lighting group answers 0x05, as over the dongle. The name has no "(Wired)",
+        // to match the dongle row and what the mouse reports, so usage stats count it as one
+        // model. modelName still pairs the two rows by name.
+        .init(pid: 0x00C4, name: "Razer DeathAdder V3 HyperSpeed", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.lighting]),
         // DeathAdder V2 Pro over the dongle (in-app report, no credit given): battery answered
         // with 0x1f (0x3f and 0x08 answer too; 0xFF and 0x80 time out). A 0.7.0 report then
         // passed DPI, polling and lighting. Only LOGO answers brightness; the rest return
