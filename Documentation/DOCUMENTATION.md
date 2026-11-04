@@ -635,8 +635,10 @@ grant** (the toggle looks on but doesn't apply). Fixes:
 - `tccutil reset ListenEvent com.macrazer.menubar` clears a stale Input Monitoring grant.
 
 For distribution to other users: every user still grants Input Monitoring once (unavoidable
-macOS security). Self-signed = works but Gatekeeper warns ("unidentified developer", one-time
-right-click->Open). A clean install needs Developer ID + notarization (paid Apple account).
+macOS security). Self-signed = works but Gatekeeper blocks the first launch. On macOS 15+ the
+dialog only has Done, and the user has to click Open Anyway in System Settings > Privacy &
+Security (or run `xattr -cr`). Right-click > Open only gets past it on macOS 14 and earlier. A
+clean install needs Developer ID + notarization (paid Apple account).
 
 ---
 
