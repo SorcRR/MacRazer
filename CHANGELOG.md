@@ -6,6 +6,14 @@ expect rough edges until 1.0.
 
 ## [Unreleased]
 
+### Added
+- **Edit DPI stages over the dongle or cable.** Right-click a stage chip and choose Edit DPI
+  to change that stage on the mouse itself, as you already could over Bluetooth. Before, the
+  slider only set the current DPI, so a custom value showed up on the last chip and the stage
+  you meant never changed. Clicking a stage chip now also makes it the mouse's active stage,
+  so its DPI button carries on from there. It's offered on mice whose DPI is verified. Every
+  change is read back, and the popover says so if the mouse didn't keep it.
+
 ### Changed
 - **Four more mice are fully verified.** Test reports confirmed what was still missing on the
   Basilisk X HyperSpeed, DeathAdder V2 Pro and DeathAdder V3 HyperSpeed (over the dongle) and

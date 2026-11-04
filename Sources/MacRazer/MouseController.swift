@@ -142,6 +142,13 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// The light has one colour of its own (`RazerDeviceInfo.fixedColor`): brightness only.
     var lightHasFixedColor: Bool { deviceID.map(RazerDevices.fixedColor(pid:)) ?? false }
     var supportsFreeDPI: Bool { !deviceIsBluetooth }
+    /// One stage's DPI can be changed from the popover: the Bluetooth stage table on models
+    /// that have it, or the USB one on a model with verified DPI.
+    var supportsDpiStageEditing: Bool {
+        guard let pid = deviceID else { return false }
+        return deviceIsBluetooth ? RazerDevices.supportsStageEditing(pid: pid)
+                                 : RazerDevices.supportsUSBStageEditing(pid: pid)
+    }
     var supportsProfiles: Bool { !deviceIsBluetooth }
     private var ioHasBattery = true // io-queue mirror of deviceHasBattery
 
@@ -819,7 +826,11 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 let active = RazerCommands.parseActiveDPIStage(r)
                 return stages.indices.contains(active) ? active : nil
             }
-            : nil
+            // Over USB the active byte is one of the table's own stage numbers. Only read on
+            // models whose stages can be edited, where a chip click also sets it.
+            : RazerDevices.supportsUSBStageEditing(pid: dev.productID)
+                ? stagesReport.flatMap { RazerCommands.parseDPIStageTable($0)?.activeIndex }
+                : nil
         let d: Int? = dev.isBluetooth
             ? activeDpiStage.map { stages[$0] }
             : read(RazerCommands.getDPI()) { Int(RazerCommands.parseDPI($0).x) }
@@ -982,8 +993,18 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// copy can be up to one settings refresh old, and writing it back would undo a press of
     /// the mouse's DPI button made in the meantime.
     func setDPIStageValue(_ value: Int, at index: Int) {
-        guard deviceIsBluetooth, deviceID.map(RazerDevices.supportsStageEditing(pid:)) == true else { return }
+        guard supportsDpiStageEditing else { return }
         let dpiValue = max(100, min(value, deviceMaxDPI))
+        guard deviceIsBluetooth else {
+            // Over USB the current DPI is separate from the table. When the edited stage is
+            // the one in use, the current DPI follows it, as it does on Bluetooth.
+            let followsCurrent = dpiStages.indices.contains(index) && dpiStages[index] == dpi
+            editUSBStages(alsoSetDPI: followsCurrent ? dpiValue : nil) { table in
+                guard table.values.indices.contains(index) else { throw HIDDevice.HIDError.badResponse }
+                table.values[index] = dpiValue
+            }
+            return
+        }
         isUpdatingDpiStages = true
         dpiStagesError = nil
         userCommand { [weak self] in
@@ -1012,6 +1033,78 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 }
             }
         }
+    }
+
+    /// A stage chip was clicked. Where the USB table can be edited, that stage becomes the
+    /// mouse's active one too, so its DPI button carries on from there. Otherwise, and on
+    /// Bluetooth, it only sets the current DPI, as before.
+    func selectDPIStage(_ index: Int, value: Int) {
+        guard !deviceIsBluetooth, supportsDpiStageEditing else { return setDPI(value) }
+        editUSBStages(alsoSetDPI: value, isSelection: true) { table in
+            guard table.ids.indices.contains(index) else { throw HIDDevice.HIDError.badResponse }
+            table.activeID = table.ids[index]
+        }
+    }
+
+    /// Reads the USB stage table fresh, changes it, writes it and checks the read-back, then
+    /// sets the current DPI when asked. Reading first keeps a DPI-button press made since the
+    /// last refresh, like the Bluetooth path. A chip click (`isSelection`) still sets its DPI
+    /// when the table write fails, so it never does less than it did before stages were
+    /// written, and says nothing: the DPI the person asked for is what they get.
+    private func editUSBStages(alsoSetDPI dpiValue: Int?, isSelection: Bool = false,
+                               _ change: @escaping @Sendable (inout RazerCommands.DPIStageTable) throws -> Void) {
+        if !isSelection { isUpdatingDpiStages = true }
+        dpiStagesError = nil
+        userCommand { [weak self] in
+            guard let self else { return }
+            let v = dpiValue.map { UInt16(max(100, min($0, 45000))) }
+            var found: RazerCommands.DPIStageTable?
+            var failure: Error?
+            var dpiSent = true
+            do {
+                let device = try self.ensureDevice()
+                guard !device.isBluetooth else { throw HIDDevice.HIDError.notSupported }
+                do { found = try Self.writeUSBStages(send: device.sendWithRetry, change) }
+                catch { failure = error }
+                if let v, found != nil || isSelection {
+                    dpiSent = (try? device.sendWithRetry(RazerCommands.setDPI(x: v, y: v))) != nil
+                }
+            } catch {
+                failure = error
+                dpiSent = v == nil
+            }
+            let (written, stageError, dpiOK) = (found, failure.map { "\($0.localizedDescription)" }, dpiSent)
+            self.publish {
+                if !isSelection { self.isUpdatingDpiStages = false }
+                if let written {
+                    self.dpiStages = written.values
+                    self.activeDpiStage = written.activeIndex
+                }
+                if let v, dpiOK, written != nil || isSelection { self.dpi = Int(v) }
+                if let stageError, !isSelection {
+                    self.dpiStagesError = "DPI stages could not be verified: \(stageError)"
+                }
+                if (stageError != nil && !isSelection) || !dpiOK { self.lastWriteFailure = Date() }
+                if written != nil || dpiOK { self.clearActiveProfileIfNeeded() }
+            }
+        }
+    }
+
+    /// The USB table round trip, apart from the device so tests can drive it. A read-back that
+    /// differs from what was written throws: the stage write isn't verified by the device test.
+    static func writeUSBStages(send: (RazerReport) throws -> RazerReport,
+                               _ change: (inout RazerCommands.DPIStageTable) throws -> Void) throws -> RazerCommands.DPIStageTable {
+        guard var table = RazerCommands.parseDPIStageTable(try send(RazerCommands.getDPIStages())) else {
+            throw HIDDevice.HIDError.badResponse
+        }
+        try change(&table)
+        table.values = table.values.map { max(100, min($0, 45000)) }
+        _ = try send(RazerCommands.setDPIStages(table))
+        guard let back = RazerCommands.parseDPIStageTable(try send(RazerCommands.getDPIStages())),
+              back.values == table.values, back.activeID == table.activeID else {
+            throw HIDDevice.HIDError.badResponse
+        }
+        return back
     }
 
     func setSleepTimeout(_ seconds: Int) {

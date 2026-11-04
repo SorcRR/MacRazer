@@ -411,6 +411,13 @@ enum RazerDevices {
     static func supportsDpiButtonBinding(pid: Int) -> Bool { info(pid: pid)?.supportsDpiButtonBinding ?? false }
     static func supportsSleepTimeout(pid: Int) -> Bool { info(pid: pid)?.supportsSleepTimeout ?? false }
     static func supportsStageEditing(pid: Int) -> Bool { info(pid: pid)?.supportsStageEditing ?? false }
+    /// Editing a stage over the dongle or cable: any USB row whose DPI is verified. The stage
+    /// write itself isn't covered by the device test yet, so the controller reads the table
+    /// back after every write and reports a mismatch.
+    static func supportsUSBStageEditing(pid: Int) -> Bool {
+        guard let info = info(pid: pid) else { return false }
+        return info.connection != .bluetooth && !info.unverified.contains(.dpi)
+    }
     static func verifiesBrightnessWrite(pid: Int) -> Bool { info(pid: pid)?.verifiesBrightnessWrite ?? false }
     static func acceptsClassicPolling(pid: Int) -> Bool { info(pid: pid)?.acceptsClassicPolling ?? true }
     static func fixedColor(pid: Int) -> Bool { info(pid: pid)?.fixedColor ?? false }

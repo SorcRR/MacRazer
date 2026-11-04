@@ -1169,7 +1169,7 @@ struct PopoverView: View {
             } else {
                 Button {
                     dpiValue = Double(value)
-                    controller.setDPI(value)
+                    controller.selectDPIStage(index, value: value)
                 } label: {
                     // Fill the chip so the whole hover-highlighted area is clickable.
                     Text(verbatim: "\(value)")
@@ -1195,12 +1195,12 @@ struct PopoverView: View {
         }
         .hoverHighlight(RoundedRectangle(cornerRadius: 6))
         .contextMenu {
-            if supportsBasiliskBluetooth {
+            if controller.supportsDpiStageEditing {
                 Button("Edit DPI") { beginDpiStageEdit(index: index, value: value) }
             }
         }
         // The stage editor lives in a context menu, which nothing on the chip hints at.
-        .help(supportsBasiliskBluetooth ? "Stage \(index + 1) · Right-click to edit" : "Stage \(index + 1)")
+        .help(controller.supportsDpiStageEditing ? "Stage \(index + 1) · Right-click to edit" : "Stage \(index + 1)")
         .accessibilityLabel(editing ? "Stage \(index + 1) DPI" : DPIStageAccent.accessibilityLabel(
             value: value, stageIndex: index))
         .accessibilityAddTraits(active ? .isSelected : [])
@@ -1208,7 +1208,7 @@ struct PopoverView: View {
     }
 
     private func beginDpiStageEdit(index: Int, value: Int) {
-        guard supportsBasiliskBluetooth, !controller.isUpdatingDpiStages else { return }
+        guard controller.supportsDpiStageEditing, !controller.isUpdatingDpiStages else { return }
         dpiStageError = nil
         dpiStageDraft = String(value)
         editingDpiStage = index
