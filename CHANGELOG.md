@@ -6,6 +6,11 @@ expect rough edges until 1.0.
 
 ## [Unreleased]
 
+### Changed
+- **Four more mice are fully verified.** Test reports confirmed what was still missing on the
+  Basilisk X HyperSpeed, DeathAdder V2 Pro and DeathAdder V3 HyperSpeed (over the dongle) and
+  the Viper Ultimate on its cable. MacRazer no longer asks their owners to run the test.
+
 ## [0.7.0] — 2026-11-03
 
 ### Added

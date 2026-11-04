@@ -161,10 +161,10 @@ final class RazerDevicesTests: XCTestCase {
     func testVerifiedAndUnverifiedFeatures() {
         XCTAssertEqual(RazerDevices.unverified(pid: 0x00DB), [])
         XCTAssertTrue(RazerDevices.fullySupported(pid: 0x00DB))
-        XCTAssertEqual(RazerDevices.unverified(pid: 0x00C5), [.battery])
-        XCTAssertFalse(RazerDevices.fullySupported(pid: 0x00C5))
+        XCTAssertEqual(RazerDevices.unverified(pid: 0x00E3), [.polling])
+        XCTAssertFalse(RazerDevices.fullySupported(pid: 0x00E3))
         XCTAssertNil(RazerDevices.unverified(pid: 0x9999))
-        XCTAssertEqual(RazerDevices.verified(pid: 0x00C5), [.dpi, .polling], "no lighting on the mouse at all")
+        XCTAssertEqual(RazerDevices.verified(pid: 0x00C5), [.battery, .dpi, .polling], "no lighting on the mouse at all")
         XCTAssertEqual(RazerDevices.verified(pid: 0x0067), [.dpi, .polling, .lighting], "wired only: no battery")
         XCTAssertEqual(RazerDevices.verified(pid: 0x0053), [.dpi, .polling], "lighting is hidden and unverified")
         XCTAssertEqual(RazerDevices.verified(pid: 0x9999), [])

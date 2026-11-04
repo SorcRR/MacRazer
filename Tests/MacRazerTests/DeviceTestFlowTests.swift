@@ -103,8 +103,7 @@ final class DeviceTestFlowTests: XCTestCase {
         XCTAssertEqual(support(0x00DB), .full, "Cobra HyperSpeed")
         XCTAssertEqual(support(0x00E3), .partly(works: [.battery, .dpi, .lighting], missing: [.polling]), "Basilisk V4 Pro")
         XCTAssertEqual(support(0x0053), .partly(works: [.dpi, .polling], missing: [.lighting]), "Naga Chroma")
-        XCTAssertEqual(support(0x007D), .partly(works: [.battery], missing: [.dpi, .polling, .lighting]),
-                       "DeathAdder V2 Pro: only the battery was tested")
+        XCTAssertEqual(support(0x0034), .partly(works: [.dpi, .polling], missing: [.lighting]), "Taipan")
         XCTAssertEqual(support(0x008F), .unknown, "Naga Pro (Wired): on record, but nothing shown working yet")
         XCTAssertEqual(support(0x9999), .unknown)
     }
