@@ -580,6 +580,12 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         }
     }
 
+    /// The online support list changed what the connected mouse still needs (`SupportList`).
+    /// Main thread, like every publish.
+    func supportListChanged() {
+        update(\.deviceSupported, deviceID.map(RazerDevices.fullySupported(pid:)) ?? true)
+    }
+
     /// Full refresh (battery + settings) with the spinner — used by the refresh button.
     /// Re-reads DPI/poll so on-mouse changes (e.g. middle-button DPI cycling) show up.
     func refreshAll() {

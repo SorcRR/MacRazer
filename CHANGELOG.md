@@ -15,6 +15,11 @@ expect rough edges until 1.0.
   you meant never changed. Clicking a stage chip now also makes it the mouse's active stage,
   so its DPI button carries on from there. It's offered on mice whose DPI is verified. Every
   change is read back, and the popover says so if the mouse didn't keep it.
+- **Test prompts end sooner.** MacRazer now fetches the latest support list from
+  reports.macrazer.com. When a test report confirms a feature after a release, you stop being
+  asked to test it without waiting for the next update. The list can only drop a request,
+  never add one, and it never changes how the app talks to your mouse. Nothing about you or your
+  mice is sent with the request. Offline, the app uses its own list.
 
 ### Changed
 - **Four more mice are fully verified.** Test reports confirmed what was still missing on the
