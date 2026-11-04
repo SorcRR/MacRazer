@@ -238,7 +238,9 @@ enum RazerDevices {
         .init(pid: 0x00A4, name: "Razer Mouse Dock Pro", unverified: [.polling], hasBattery: true, hasLighting: true, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, acceptsClassicPolling: false),
         // HyperFlux V2 charging mat: like the Mouse Dock Pro, the mat is the receiver for the
         // mouse on it, so what answers is that mouse. The one report (no credit given) passed
-        // battery, DPI and stages, and polling with 0x1f (0x80 times out). The mouse behind it
+        // battery, DPI and stages, and polling with 0x1f. 0x80 times out, and 0xFF answers with
+        // a different firmware (v1.0.16, likely the mat itself) and times out on every lighting
+        // read, so 0xFF reaches another device than 0x1f does. The mouse behind it
         // has a tilt wheel and answers Smart Reel, but the report doesn't name it. LOGO and
         // SCROLL answer brightness and the static red showed, but the tester skipped the
         // lighting check, so lighting stays unverified. Brightness stays on LOGO_LED alone, as
