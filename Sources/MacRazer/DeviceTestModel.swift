@@ -132,24 +132,45 @@ final class DeviceTestModel: ObservableObject {
     typealias Support = RazerDevices.LinkSupport
 
     var support: Support {
-        testedPID.map { RazerDevices.support(pid: $0) } ?? .unknown
+        pinned?.support ?? testedPID.map { RazerDevices.support(pid: $0) } ?? .unknown
     }
 
     /// Whether the connected model is already on the verified list. Decides the window title.
     var isKnownSupported: Bool { support == .full }
     /// The connected mouse's other links still worth a report, for the intro.
     var linksToTest: [RazerDevices.LinkToTest] {
-        testedPID.map { RazerDevices.linksToTest(besides: $0) } ?? []
+        pinned?.links ?? testedPID.map { RazerDevices.linksToTest(besides: $0) } ?? []
     }
     /// What no report has shown working on this link yet: everything for a model not on record.
     /// Polling is left out on a mouse whose row already says it refuses the classic command:
     /// running it again only records the same refusal.
     var missingFeatures: [RazerFeature] {
+        if let pinned { return pinned.missing }
         guard let pid = testedPID, let unverified = RazerDevices.unverified(pid: pid) else { return RazerFeature.allCases }
         return RazerDevices.acceptsClassicPolling(pid: pid) ? unverified : unverified.filter { $0 != .polling }
     }
     /// Skipping this step leaves out data the registry still lacks, so Skip asks first.
     var skipNeedsConfirming: Bool { DeviceTestFlow.skipNeedsConfirming(stage, missing: missingFeatures) }
+    /// What the registry said when this run began. The online support list can land mid-run
+    /// (`SupportList`), and the title, the intro and what Skip asks shouldn't change under it.
+    /// Nil at the intro, which follows the registry as it stands.
+    private var pinned: Pinned?
+    private struct Pinned {
+        let support: Support
+        let links: [RazerDevices.LinkToTest]
+        let missing: [RazerFeature]
+    }
+
+    private func pin() {
+        pinned = nil
+        pinned = Pinned(support: support, links: linksToTest, missing: missingFeatures)
+    }
+
+    #if DEBUG
+    /// `pin()`, which `begin()` calls, for the test that a run keeps what it started with.
+    func pinForTesting() { pin() }
+    #endif
+
     /// Set only by `loadPreview`, to render each intro without a device.
     private var previewPID: Int?
     /// The mouse the registry is asked about: the preview's, else the connected one.
@@ -163,6 +184,30 @@ final class DeviceTestModel: ObservableObject {
     /// What a step left out of a focused run records, so the report doesn't read as if the
     /// person skipped it.
     static let alreadyVerified = "Already verified on this mouse, so this run left it out."
+    /// What a step records for something the mouse doesn't have (`RazerDeviceInfo.notOnMouse`).
+    nonisolated static func notOnMouseNote(_ feature: RazerFeature) -> String {
+        feature == .battery ? "This mouse has no battery, so the test left it out."
+            : "This mouse has no lights, so the test left it out."
+    }
+
+    /// What the identified mouse doesn't have, for this run: the registry's `notOnMouse`, less
+    /// anything the mouse itself contradicts. Set once identify is done.
+    @Published private(set) var lacking: Set<RazerFeature> = []
+
+    /// The feature behind `stage`, when the identified mouse doesn't have it. That step then
+    /// says so and offers Next instead of running.
+    func notOnMouse(_ stage: Stage) -> RazerFeature? {
+        lacking.first { DeviceTestFlow.stage(for: $0) == stage }
+    }
+
+    /// The registry's `notOnMouse` for `pid`, less what the identify sweep contradicts: an LED
+    /// group that answered brightness means the mouse has lights after all, so the lighting
+    /// step runs and its report is what corrects the row.
+    nonisolated static func lacking(pid: Int, sweep: [DeviceProbe.LEDAnswer]?) -> Set<RazerFeature> {
+        var lacking = RazerDevices.notOnMouse(pid: pid)
+        if sweep?.contains(where: { (try? $0.result.get()) != nil }) == true { lacking.remove(.lighting) }
+        return lacking
+    }
     var deviceName: String { report?.device.name ?? controller.deviceName ?? "your mouse" }
     var emailProblem: String? { DeviceReportOutput.emailProblem(replyEmail) }
 
@@ -229,6 +274,9 @@ final class DeviceTestModel: ObservableObject {
         report = Self.emptyReport(pid: pid, name: product?.product ?? "Razer mouse",
                                   interfaces: interfaces, control: control,
                                   identify: .init(outcome: .skipped, error: "Input Monitoring wasn't granted."))
+        // Known without reading anything, so it holds here too.
+        lacking = Self.lacking(pid: pid, sweep: nil)
+        if var marked = report { Self.markNotOnMouse(&marked, lacking: lacking); report = marked }
         stage = .review
     }
 
@@ -238,6 +286,7 @@ final class DeviceTestModel: ObservableObject {
             controller.beginDeviceTest()
             sessionOpen = true
         }
+        pin()
         stage = .identify
         Task { await runIdentify() }
     }
@@ -277,6 +326,7 @@ final class DeviceTestModel: ObservableObject {
             controller.beginDeviceTest()
             sessionOpen = true
         }
+        pin()
         stage = .bluetooth
         Task { await runBluetooth(name: mouse.name) }
     }
@@ -331,6 +381,9 @@ final class DeviceTestModel: ObservableObject {
                     leaveOut(feature)
                 }
             }
+            // After the focus: what the mouse lacks is "not on this mouse", not "already verified".
+            lacking = Self.lacking(pid: result.pid, sweep: result.sweep)
+            if var marked = report { Self.markNotOnMouse(&marked, lacking: lacking); report = marked }
             // Known models say how they connect; only an unknown one needs asking.
             switch info?.connection {
             case .wired?: connection = .cable
@@ -354,8 +407,8 @@ final class DeviceTestModel: ObservableObject {
         }
     }
 
-    private static func emptyReport(pid: Int, name: String, interfaces: [DeviceProbe.Interface], control: Int?,
-                                    identify: DeviceReport.StepRecord<DeviceReport.IdentifyData>) -> DeviceReport {
+    nonisolated static func emptyReport(pid: Int, name: String, interfaces: [DeviceProbe.Interface], control: Int?,
+                            identify: DeviceReport.StepRecord<DeviceReport.IdentifyData>) -> DeviceReport {
         DeviceReport(appVersion: AppInfo.displayVersion, macOSVersion: DeviceReport.currentMacOSVersion,
                      device: .init(vendorID: Razer.vendorId, productID: pid, name: name, connection: nil,
                                    interfaces: interfaces, controlInterface: control),
@@ -379,6 +432,27 @@ final class DeviceTestModel: ObservableObject {
     func runBattery() async {
         let expects = report?.registry?.hasBattery
         await run(\.battery) { DeviceTestSteps.battery($0, expectsBattery: expects) }
+    }
+
+    /// The battery read on a mouse the registry says has none. Read-only, so it still runs,
+    /// out of sight: a level means the row is wrong, and the step then shows it as usual so
+    /// the report corrects the row. Anything else keeps the note, with what was exchanged.
+    private func checkBatteryQuietly() async {
+        await runBattery()
+        guard var record = report?.battery else { return }
+        if Self.batteryContradicts(record) {
+            lacking.remove(.battery)
+        } else {
+            record.outcome = .notSupported
+            // The read's own error stays after the note, for whoever reads the report.
+            record.error = [Self.notOnMouseNote(.battery), record.error].compactMap { $0 }.joined(separator: " ")
+            report?.battery = record
+        }
+    }
+
+    /// Whether a battery read shows a battery: it passed, or it says the mouse is charging.
+    nonisolated static func batteryContradicts(_ record: DeviceReport.StepRecord<DeviceReport.BatteryData>) -> Bool {
+        record.outcome == .passed || record.data?.charging == true
     }
 
     func runDPI() async {
@@ -419,6 +493,19 @@ final class DeviceTestModel: ObservableObject {
         guard let focus else { return [] }
         let labels = RazerFeature.allCases.filter { !focus.contains($0) }.map(\.label)
         return verdict.skipped.filter(labels.contains)
+    }
+
+    /// Records each step for something the mouse doesn't have, without touching the mouse.
+    nonisolated static func markNotOnMouse(_ report: inout DeviceReport, lacking: Set<RazerFeature>) {
+        for feature in lacking {
+            let note = notOnMouseNote(feature)
+            switch feature {
+            case .battery: report.battery = .init(outcome: .notSupported, error: note)
+            case .dpi: report.dpi = .init(outcome: .notSupported, error: note)
+            case .polling: report.polling = .init(outcome: .notSupported, error: note)
+            case .lighting: report.lighting = .init(outcome: .notSupported, error: note)
+            }
+        }
     }
 
     /// Records a step a focused run doesn't visit.
@@ -472,7 +559,8 @@ final class DeviceTestModel: ObservableObject {
         if stage == .buttons { stopListening() }
         stage = target
         switch target {
-        case .battery where report?.battery.data == nil: Task { await runBattery() }
+        case .battery where report?.battery.data == nil:
+            if notOnMouse(.battery) == nil { Task { await runBattery() } } else { Task { await checkBatteryQuietly() } }
         case .buttons: startListening()
         default: break
         }
@@ -585,6 +673,8 @@ final class DeviceTestModel: ObservableObject {
     func reset() {
         endSession()
         stage = .intro
+        lacking = []
+        pinned = nil
         focus = nil
         report = nil
         blocker = nil
@@ -646,6 +736,8 @@ extension DeviceTestModel {
         connection = .dongle
         // A known model's verdict comes from its registry entry, as in a real run.
         report.registry = RazerDevices.info(pid: pid).map(DeviceReport.Registry.init)
+        lacking = Self.lacking(pid: pid, sweep: nil)
+        Self.markNotOnMouse(&report, lacking: lacking)
         self.report = report
         self.report?.device.connection = .dongle
         self.stage = stage

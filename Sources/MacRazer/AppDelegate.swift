@@ -43,6 +43,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     private let usageStats = UsageStats.shared
     /// The connected mouse models for the reports page, anonymous and in the background.
     private let mouseCountReporter = MouseCountReporter()
+    private let supportList = SupportListUpdater()
+    private var supportListObserver: NSObjectProtocol?
     /// Closing it re-asks the auto-install gate, for the same reason as `updatedWindow`.
     private lazy var usageStatsWindow = UsageStatsWindowController(
         stats: usageStats, onClosed: { [weak self] in self?.autoInstallIfEnabled() })
@@ -98,6 +100,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         // Button remapping additionally needs Accessibility (optional; surfaced in the same window).
         // A mouse MacRazer controls over Bluetooth needs neither, so it doesn't trigger the window.
         permissions.recheck()
+        // Before any mouse is read, so the first prompt decision already has the kept list.
+        startSupportList()
         // Explicit, not a side effect of constructing the model — see the doc comment there.
         launchAtLogin.applyDefaultOnFirstRun()
         LowBatteryNotifier.configureNotifications(delegate: self)
@@ -343,6 +347,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         startUpdateTriggers()
     }
 
+    /// What's been confirmed on each mouse since this build, from the Worker. The kept list
+    /// first, then a fetch on the update check's triggers; see `SupportListUpdater`.
+    private func startSupportList() {
+        supportListObserver = NotificationCenter.default.addObserver(
+            forName: RazerDevices.supportChanged, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.controller.supportListChanged() }
+        }
+        supportList.applyCached()
+        Task { await supportList.refreshIfDue() }
+    }
+
+    /// The update check and the support list, each behind its own throttle, and a mouse count
+    /// that hasn't gone out today.
+    private func checkOnlineIfDue() {
+        Task { await updateChecker.checkForUpdatesIfDue() }
+        Task { await supportList.refreshIfDue() }
+        Task { await mouseCountReporter.reportIfNeeded() }
+    }
+
     /// Everything that asks "is a check due?" after launch. Each only asks: the throttle in
     /// `UpdateChecker` decides, and a check already running is shared rather than repeated.
     private func startUpdateTriggers() {
@@ -350,14 +374,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         // three hours fires a moment before the throttle opens, because the check it follows
         // finished a little after it started, and so waited a whole extra period each time.
         // A timer also stops counting while the Mac sleeps.
-        // The same tick retries a mouse count that hasn't gone out today.
         let timer = Timer(timeInterval: 15 * 60, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                async let check: Void = self.updateChecker.checkForUpdatesIfDue()
-                async let mice: Void = self.mouseCountReporter.reportIfNeeded()
-                _ = await (check, mice)
-            }
+            MainActor.assumeIsolated { self?.checkOnlineIfDue() }
         }
         timer.tolerance = 60
         RunLoop.main.add(timer, forMode: .common)
@@ -369,9 +387,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
             forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
-                guard let self else { return }
-                Task { await self.updateChecker.checkForUpdatesIfDue() }
-                Task { await self.mouseCountReporter.reportIfNeeded() }
+                self?.checkOnlineIfDue()
             }
         }
 
@@ -385,8 +401,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
                 guard let self else { return }
                 defer { self.wasOnline = online }
                 guard self.wasOnline == false, online else { return }
-                Task { await self.updateChecker.checkForUpdatesIfDue() }
-                Task { await self.mouseCountReporter.reportIfNeeded() }
+                self.checkOnlineIfDue()
             }
         }
         pathMonitor.start(queue: .main)
@@ -460,7 +475,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
             controller.refreshAll()
             // Someone looking at the popover is the person an update card is for. Throttled,
             // so opening it often costs nothing.
-            Task { await updateChecker.checkForUpdatesIfDue() }
+            checkOnlineIfDue()
         }
     }
 

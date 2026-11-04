@@ -6,7 +6,26 @@ expect rough edges until 1.0.
 
 ## [Unreleased]
 
+### Added
+- **Edit DPI stages over the dongle or cable.** Click **Edit** on the DPI card, then
+  click a stage to change it on the mouse itself, as you already could over Bluetooth.
+  Right-clicking a stage still works too. The field takes numbers only, and each stage has to
+  stay above the one before it and below the one after it. Before, the
+  slider only set the current DPI, so a custom value showed up on the last chip and the stage
+  you meant never changed. Clicking a stage chip now also makes it the mouse's active stage,
+  so its DPI button carries on from there. It's offered on mice whose DPI is verified. Every
+  change is read back, and the popover says so if the mouse didn't keep it.
+- **Test prompts end sooner.** MacRazer now fetches the latest support list from
+  reports.macrazer.com. When a test report confirms a feature after a release, you stop being
+  asked to test it without waiting for the next update. The list can only drop a request,
+  never add one, and it never changes how the app talks to your mouse. Nothing about you or your
+  mice is sent with the request. Offline, the app uses its own list.
+
 ### Changed
+- **The device test knows what your mouse doesn't have.** On a wired-only mouse the
+  battery step now says it has no battery, and on a mouse without lights the lighting step
+  says so. Click Next to go on. Nothing is sent to the mouse for those steps, and the report
+  lists them as not on this mouse.
 - **The mouse model count now catches every Mac.** It used to go with the update check, which
   runs at launch before the app has found the mouse, and then only every few hours. So about
   half the mice in use were never counted. Now the app sends the connected model as soon as it

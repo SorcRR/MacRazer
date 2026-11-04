@@ -67,6 +67,8 @@ struct DeviceReport: Codable, Equatable {
 
         init(_ info: RazerDeviceInfo) {
             name = info.name
+            // As this build shipped, not as the online support list narrowed it: the report
+            // says what the app had, and the maintainer reads it against that version.
             fullySupported = info.fullySupported
             hasBattery = info.hasBattery
             hasLighting = info.hasLighting

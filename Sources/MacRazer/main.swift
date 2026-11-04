@@ -331,7 +331,7 @@ case "render-about":
 
 case "render-device-test":
     // One screen of the device test, for checking layout and wording without a mouse:
-    // `render-device-test <stage> [unknown|partly] [ran] [sent|failed] [path.png]`, stage one of
+    // `render-device-test <stage> [unknown|partly|unlit|wiredonly] [ran] [sent|failed] [path.png]`, stage one of
     // intro, permission, identify, battery, dpi, polling, lighting, buttons, review.
     _ = NSApplication.shared
     let path = outputPath(args.dropFirst(), default: "device-test-preview.png")
@@ -346,8 +346,10 @@ case "render-device-test":
     let model = DeviceTestModel(controller: controller, permissions: PermissionsModel(),
                                 reportEndpoint: args.contains("noworker") ? nil : URL(string: "https://reports.example/"))
     // `unknown` and `partly` pick the intro: a model off the registry, and the Basilisk V4 Pro,
-    // whose polling rate is still unverified.
-    let pid = args.contains("unknown") ? 0x9999 : args.contains("partly") ? 0x00E3 : 0x00DB
+    // whose polling rate is still unverified. `unlit` and `wiredonly` show the steps for what a
+    // mouse doesn't have: the Viper V3 HyperSpeed's lights and the Naga Trinity's battery.
+    let pid = args.contains("unknown") ? 0x9999 : args.contains("partly") ? 0x00E3
+        : args.contains("unlit") ? 0x00B8 : args.contains("wiredonly") ? 0x0067 : 0x00DB
     model.loadPreview(stage, pid: pid, ranSteps: args.contains("ran"))
     if args.contains("sent") { model.previewSendState(.sent) }
     if args.contains("failed") { model.previewSendState(.failed(.tooMany)) }
