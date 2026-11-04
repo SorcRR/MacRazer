@@ -239,14 +239,25 @@ final class DeviceTestModel: ObservableObject {
         return .init(pid: pid, locationID: location)
     }
 
-    /// The picker's label for each device: its name, numbered when two share one.
+    /// The picker's label for each device: its name. When two share one, the link the registry
+    /// knows it by tells them apart (a mouse on its cable and its dongle at once), and a number
+    /// when that doesn't (two of the same).
     nonisolated static func deviceLabels(_ devices: [HIDDeviceSelection.Candidate]) -> [String] {
+        func repeated(_ names: [String]) -> Set<String> {
+            Set(Dictionary(grouping: names, by: { $0 }).filter { $0.value.count > 1 }.keys)
+        }
+        let sameName = repeated(devices.map(\.name))
+        let linked = devices.map { device -> String in
+            guard sameName.contains(device.name),
+                  let link = RazerDevices.connection(pid: device.key.pid) else { return device.name }
+            return "\(RazerDevices.modelName(device.name)) (\(link.label))"
+        }
+        let stillSame = repeated(linked)
         var seen: [String: Int] = [:]
-        let repeated = Set(Dictionary(grouping: devices, by: \.name).filter { $0.value.count > 1 }.keys)
-        return devices.map { device in
-            guard repeated.contains(device.name) else { return device.name }
-            seen[device.name, default: 0] += 1
-            return "\(device.name) (\(seen[device.name]!))"
+        return linked.map { label in
+            guard stillSame.contains(label) else { return label }
+            seen[label, default: 0] += 1
+            return "\(label) \(seen[label]!)"
         }
     }
 
@@ -287,23 +298,33 @@ final class DeviceTestModel: ObservableObject {
     }
     var testsDock: Bool { report.map { Self.isDock(name: $0.device.name) } ?? false }
 
+    /// How long the dock field may be.
+    nonisolated static let maxDockMouse = 64
+
     /// How long the comment may be: the report's cap, less the dock line that goes ahead of it.
-    var commentLimit: Int {
-        guard testsDock else { return DeviceReportOutput.maxComment }
-        return Self.commentLimit(dockMouse: dockMouse)
-    }
-    nonisolated static func commentLimit(dockMouse: String) -> Int {
-        let line = commentWithDockMouse("", dockMouse: dockMouse)
-        return DeviceReportOutput.maxComment - (line.isEmpty ? 0 : line.count + 2)
+    var commentLimit: Int { Self.commentLimit(dockMouse: testsDock ? dockMouse : nil) }
+    nonisolated static func commentLimit(dockMouse: String?) -> Int {
+        guard let line = dockLine(dockMouse) else { return DeviceReportOutput.maxComment }
+        return DeviceReportOutput.maxComment - line.count - 2
     }
 
-    /// The comment as sent: the dock's mouse first, so trimming a long comment can't drop it.
-    nonisolated static func commentWithDockMouse(_ comment: String, dockMouse: String?) -> String {
-        let mouse = dockMouse?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard !mouse.isEmpty else { return comment }
-        let line = "Mouse on the dock: \(mouse)"
-        let rest = comment.trimmingCharacters(in: .whitespacesAndNewlines)
-        return rest.isEmpty ? line : line + "\n\n" + rest
+    /// "Mouse on the dock: …", or nil with nothing filled in.
+    nonisolated static func dockLine(_ dockMouse: String?) -> String? {
+        DeviceReportOutput.cleaned(dockMouse ?? "", max: maxDockMouse, units: maxDockMouse * 4, singleLine: true)
+            .map { "Mouse on the dock: \($0)" }
+    }
+
+    /// The comment as the report carries it, cleaned and capped: the dock's mouse first, then
+    /// the comment, cut to what's left of both caps so the dock line is never what's dropped.
+    nonisolated static func reportComment(_ comment: String, dockMouse: String?) -> String? {
+        guard let line = dockLine(dockMouse) else {
+            return DeviceReportOutput.cleaned(comment, max: DeviceReportOutput.maxComment,
+                                              units: DeviceReportOutput.maxCommentUnits, singleLine: false)
+        }
+        let rest = DeviceReportOutput.cleaned(comment, max: DeviceReportOutput.maxComment - line.count - 2,
+                                              units: DeviceReportOutput.maxCommentUnits - line.utf16.count - 2,
+                                              singleLine: false)
+        return rest.map { line + "\n\n" + $0 } ?? line
     }
     var emailProblem: String? { DeviceReportOutput.emailProblem(replyEmail) }
 
@@ -669,9 +690,7 @@ final class DeviceTestModel: ObservableObject {
     /// the verdict worked out.
     func finalReport() -> DeviceReport? {
         guard var report else { return nil }
-        let comment = Self.commentWithDockMouse(self.comment, dockMouse: testsDock ? dockMouse : nil)
-        report.comment = DeviceReportOutput.cleaned(comment, max: DeviceReportOutput.maxComment,
-                                                    units: DeviceReportOutput.maxCommentUnits, singleLine: false)
+        report.comment = Self.reportComment(comment, dockMouse: testsDock ? dockMouse : nil)
         report.credit = DeviceReportOutput.cleaned(credit, max: DeviceReportOutput.maxCredit,
                                                    units: DeviceReportOutput.maxCreditUnits, singleLine: true)
         report.replyEmail = emailProblem == nil
@@ -733,6 +752,7 @@ final class DeviceTestModel: ObservableObject {
             controller.endDeviceTest()
             sessionOpen = false
         }
+        controller.endUSBPickOverride()
     }
 
     /// The link worth testing next, or nil. A mouse is a different product id on its cable and

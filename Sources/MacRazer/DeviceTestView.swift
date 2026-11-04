@@ -493,7 +493,7 @@ struct DeviceTestView: View {
                 // The report names only the dock: the mouse on it answers under the dock's ID.
                 TextField("Which mouse is on the dock? (optional)", text: Binding(
                     get: { model.dockMouse },
-                    set: { model.dockMouse = String($0.prefix(DeviceReportOutput.maxCredit)) }))
+                    set: { model.dockMouse = String($0.prefix(DeviceTestModel.maxDockMouse)) }))
                     .inputBox()
             }
             TextField("Name or GitHub handle to credit (optional)", text: $model.credit)
@@ -518,7 +518,13 @@ struct DeviceTestView: View {
                     .editorBox(placeholder: "Comments or feedback (optional)", isEmpty: model.comment.isEmpty)
                 // Verbatim: a localized number would print 2000 as "2.000" in some regions.
                 Text(verbatim: "\(model.comment.count) / \(model.commentLimit)")
-                    .font(.system(size: 10)).foregroundStyle(.secondary)
+                    .font(.system(size: 10))
+                    .foregroundStyle(model.comment.count > model.commentLimit ? Color.batteryMid : .secondary)
+                // The dock field grew after the comment was written: say what gets cut.
+                if model.comment.count > model.commentLimit {
+                    Text("The end of your comment won't fit with the dock's mouse and will be cut.")
+                        .font(.system(size: 10)).foregroundStyle(Color.batteryMid)
+                }
             }
             if model.copied { note("Copied.") }
             if model.issueOpened { note("The full report is on your clipboard. Paste it into the issue before you submit it.") }

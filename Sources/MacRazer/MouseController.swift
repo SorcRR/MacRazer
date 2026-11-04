@@ -538,7 +538,8 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         guard let current = device, !current.isBluetooth else { return }
         let best = try? HIDDevice.controlInterface(vendorId: Razer.vendorId)
         guard Self.isOutranked(currentPID: current.productID, currentLocation: current.locationID,
-                               best: best.map { (HIDDevice.productID(of: $0), HIDDevice.locationID(of: $0)) })
+                               best: best.map { (HIDDevice.productID(of: $0), HIDDevice.locationID(of: $0)) },
+                               preferred: HIDDevice.preferredDevice)
         else { return }
         current.close()
         device = nil
@@ -547,8 +548,12 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// Whether the open device should give way to `best`, selection's pick right now: only an
     /// unknown device, and only to a mouse the registry knows. Not when selection finds
     /// nothing: an unplugged device fails its own reads.
-    static func isOutranked(currentPID: Int, currentLocation: Int, best: (pid: Int, location: Int)?) -> Bool {
+    /// The device picked in the test (`preferred`) also takes over when it's back: unplugged
+    /// for a moment, it handed over to another, and coming back it should be used again.
+    static func isOutranked(currentPID: Int, currentLocation: Int, best: (pid: Int, location: Int)?,
+                            preferred: HIDDeviceSelection.DeviceKey? = nil) -> Bool {
         guard let best, best.pid != currentPID || best.location != currentLocation else { return false }
+        if let preferred, preferred.pid == best.pid, preferred.locationID == best.location { return true }
         return RazerDevices.info(pid: currentPID) == nil && RazerDevices.info(pid: best.pid) != nil
     }
 
@@ -969,6 +974,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             userCommand { [weak self] in
                 guard let self else { return done.resume(returning: false) }
                 HIDDevice.preferredDevice = key
+                self.pickOverridesBluetooth = true
                 if !Self.isOpen(key, self.device) { self.closeDeviceForSwitch() }
                 _ = try? self.ensureDevice()
                 let ok = Self.isOpen(key, self.device)
@@ -984,6 +990,16 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         // everything again when it ends.
         if !deviceTestActive { refreshAll() }
         return opened
+    }
+
+    /// io-queue only. From a pick until the test window is done with it, the picked device is
+    /// used even when the mouse is also on Bluetooth: the test can't use Bluetooth. After that
+    /// the usual link choice is back, and the pick only says which USB device to use.
+    private var pickOverridesBluetooth = false
+
+    /// The test window is done: closed, or a run has ended.
+    func endUSBPickOverride() {
+        io.async { [weak self] in self?.pickOverridesBluetooth = false }
     }
 
     /// Whether `device` is the USB device `key` names.
@@ -1713,8 +1729,8 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             // Decided before opening, so an idle dongle isn't opened and closed on every poll.
             let usb = try HIDDevice.controlInterface(vendorId: Razer.vendorId) // any Razer mouse
             let connection = RazerDevices.connection(pid: HIDDevice.productID(of: usb))
-            // A device picked in the test is used as picked, even with the mouse on Bluetooth.
-            let picked = HIDDevice.preferredDevice == HIDDeviceSelection.DeviceKey(
+            // A device just picked in the test is used as picked, even with the mouse on Bluetooth.
+            let picked = pickOverridesBluetooth && HIDDevice.preferredDevice == HIDDeviceSelection.DeviceKey(
                 pid: HIDDevice.productID(of: usb), locationID: HIDDevice.locationID(of: usb))
             if picked || !Self.prefersBluetooth(over: connection, bluetoothControllable: bt != nil) {
                 return try HIDDevice.open(usb)

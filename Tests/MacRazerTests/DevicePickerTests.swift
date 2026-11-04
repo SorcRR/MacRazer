@@ -57,8 +57,8 @@ final class DevicePickerTests: XCTestCase {
             .init(pid: 0x0088, locationID: 0x1300000, usagePage: 0x01, usage: 0x02, maxFeatureReportSize: 90, productName: "Razer Basilisk Ultimate Dongle"),
         ])
         XCTAssertEqual(DeviceTestModel.deviceLabels(candidates), [
-            "Razer Mouse Dock", "Razer Basilisk Ultimate Dongle (1)", "Razer Basilisk Ultimate Dongle (2)",
-        ])
+            "Razer Mouse Dock", "Razer Basilisk Ultimate Dongle 1", "Razer Basilisk Ultimate Dongle 2",
+        ], "not in the registry, so numbered")
     }
 
     func testDocksAreRecognised() {
@@ -69,19 +69,57 @@ final class DevicePickerTests: XCTestCase {
     }
 
     func testTheDocksMouseLeadsTheComment() {
-        XCTAssertEqual(DeviceTestModel.commentWithDockMouse("Works well", dockMouse: " DeathAdder V3 Pro "),
+        XCTAssertEqual(DeviceTestModel.reportComment("Works well", dockMouse: " DeathAdder V3 Pro "),
                        "Mouse on the dock: DeathAdder V3 Pro\n\nWorks well")
-        XCTAssertEqual(DeviceTestModel.commentWithDockMouse("", dockMouse: "Viper V2 Pro"), "Mouse on the dock: Viper V2 Pro")
-        XCTAssertEqual(DeviceTestModel.commentWithDockMouse("Works well", dockMouse: "  "), "Works well")
-        XCTAssertEqual(DeviceTestModel.commentWithDockMouse("Works well", dockMouse: nil), "Works well")
+        XCTAssertEqual(DeviceTestModel.reportComment("", dockMouse: "Viper V2 Pro"), "Mouse on the dock: Viper V2 Pro")
+        XCTAssertEqual(DeviceTestModel.reportComment("Works well", dockMouse: "  "), "Works well")
+        XCTAssertEqual(DeviceTestModel.reportComment("Works well", dockMouse: nil), "Works well")
+        XCTAssertNil(DeviceTestModel.reportComment(" ", dockMouse: nil))
     }
 
     func testTheDockLineComesOutOfTheCommentCap() {
-        XCTAssertEqual(DeviceTestModel.commentLimit(dockMouse: ""), DeviceReportOutput.maxComment)
+        XCTAssertEqual(DeviceTestModel.commentLimit(dockMouse: nil), DeviceReportOutput.maxComment)
+        XCTAssertEqual(DeviceTestModel.commentLimit(dockMouse: " "), DeviceReportOutput.maxComment)
         let limit = DeviceTestModel.commentLimit(dockMouse: "Viper V2 Pro")
         let full = String(repeating: "a", count: limit)
-        XCTAssertEqual(DeviceTestModel.commentWithDockMouse(full, dockMouse: "Viper V2 Pro").count,
+        XCTAssertEqual(DeviceTestModel.reportComment(full, dockMouse: "Viper V2 Pro")?.count,
                        DeviceReportOutput.maxComment, "a full comment and the dock line fit exactly")
+        let tooLong = DeviceTestModel.reportComment(full + "zzz", dockMouse: "Viper V2 Pro")!
+        XCTAssertTrue(tooLong.hasPrefix("Mouse on the dock: Viper V2 Pro"))
+        XCTAssertFalse(tooLong.contains("z"), "the comment's end is what's cut")
+    }
+
+    /// Emoji count as one character each but several UTF-16 units, which is what the Worker caps.
+    func testTheDockLineFitsTheUnitCapToo() {
+        let emoji = String(repeating: "👨‍👩‍👧‍👦", count: DeviceReportOutput.maxCommentUnits / 11)
+        let comment = DeviceTestModel.reportComment(emoji, dockMouse: "Viper V2 Pro")!
+        XCTAssertTrue(comment.hasPrefix("Mouse on the dock: Viper V2 Pro"))
+        XCTAssertLessThanOrEqual(comment.utf16.count, DeviceReportOutput.maxCommentUnits)
+    }
+
+    func testCableAndDongleOfOneMouseAreLabelledByLink() {
+        let cobra = [
+            HIDDeviceSelection.Candidate(key: .init(pid: 0x00DB, locationID: 1), name: "Razer Cobra HyperSpeed", index: 0),
+            HIDDeviceSelection.Candidate(key: .init(pid: 0x00DA, locationID: 2), name: "Razer Cobra HyperSpeed", index: 1),
+        ]
+        XCTAssertEqual(DeviceTestModel.deviceLabels(cobra),
+                       ["Razer Cobra HyperSpeed (2.4 GHz)", "Razer Cobra HyperSpeed (Wired)"])
+        let twoDongles = [
+            HIDDeviceSelection.Candidate(key: .init(pid: 0x00DB, locationID: 1), name: "Razer Cobra HyperSpeed", index: 0),
+            HIDDeviceSelection.Candidate(key: .init(pid: 0x00DB, locationID: 2), name: "Razer Cobra HyperSpeed", index: 1),
+        ]
+        XCTAssertEqual(DeviceTestModel.deviceLabels(twoDongles),
+                       ["Razer Cobra HyperSpeed (2.4 GHz) 1", "Razer Cobra HyperSpeed (2.4 GHz) 2"])
+    }
+
+    /// The device picked in the test takes over again when it comes back.
+    func testAReturningPickTakesOver() {
+        let dock = HIDDeviceSelection.DeviceKey(pid: 0x00CF, locationID: 2)
+        XCTAssertTrue(MouseController.isOutranked(currentPID: 0x00C5, currentLocation: 1, best: (0x00CF, 2), preferred: dock))
+        XCTAssertFalse(MouseController.isOutranked(currentPID: 0x00CF, currentLocation: 2, best: (0x00CF, 2), preferred: dock),
+                       "already on it")
+        XCTAssertFalse(MouseController.isOutranked(currentPID: 0x00C5, currentLocation: 1, best: (0x00CF, 2), preferred: nil),
+                       "no pick: a known mouse isn't dropped for another")
     }
 
     func testAPickSwitchesOnlyOnTheIntroWithNothingRunning() {
