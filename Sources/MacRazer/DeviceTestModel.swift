@@ -222,6 +222,8 @@ final class DeviceTestModel: ObservableObject {
     @Published private(set) var devices: [HIDDeviceSelection.Candidate] = []
     /// A switch the person asked for is on its way to the device queue.
     @Published private(set) var switchingDevice = false
+    /// Why the last pick didn't take, for the intro to say.
+    @Published private(set) var switchProblem: String?
 
     /// Lists the devices again: when the intro shows, and after a switch.
     func refreshDevices() {
@@ -251,22 +253,49 @@ final class DeviceTestModel: ObservableObject {
     /// Switches the test, and the app, to `key`. Only on the intro: a run must stay on the
     /// device it started on.
     func choose(_ key: HIDDeviceSelection.DeviceKey) {
-        guard stage == .intro, !running, !switchingDevice, key != chosenDevice else { return }
+        guard Self.canSwitch(to: key, stage: stage, running: running, switching: switchingDevice,
+                             chosen: chosenDevice) else { return }
+        let name = devices.first { $0.key == key }?.name ?? "That device"
         switchingDevice = true
+        switchProblem = nil
         Task {
-            await controller.useUSBDevice(key)
+            if await !controller.useUSBDevice(key) {
+                switchProblem = "\(name) didn't open, so MacRazer stayed on the device it had."
+            }
             switchingDevice = false
             refreshDevices()
         }
     }
 
+    /// Whether a pick may switch devices now: only on the intro, with nothing running or
+    /// switching, and only to a device other than the one open.
+    nonisolated static func canSwitch(to key: HIDDeviceSelection.DeviceKey, stage: Stage, running: Bool,
+                                      switching: Bool, chosen: HIDDeviceSelection.DeviceKey?) -> Bool {
+        stage == .intro && !running && !switching && key != chosen
+    }
+
+    /// A Razer device was plugged in or unplugged. Lists them again if the intro is showing.
+    func devicesMayHaveChanged() {
+        if stage == .intro, !switchingDevice { refreshDevices() }
+    }
+
     /// A dock or charging mat that passes commands to the mouse on it. Its product ID is the
     /// dock's whatever mouse is on it, so the review asks which one.
-    nonisolated static func isDock(pid: Int, name: String) -> Bool {
+    nonisolated static func isDock(name: String) -> Bool {
         let lower = name.lowercased()
-        return [0x00A4, 0x00CF, 0x007E].contains(pid) || lower.contains("dock") || lower.contains("hyperflux")
+        return lower.contains("dock") || lower.contains("hyperflux")
     }
-    var testsDock: Bool { report.map { Self.isDock(pid: $0.device.productID, name: $0.device.name) } ?? false }
+    var testsDock: Bool { report.map { Self.isDock(name: $0.device.name) } ?? false }
+
+    /// How long the comment may be: the report's cap, less the dock line that goes ahead of it.
+    var commentLimit: Int {
+        guard testsDock else { return DeviceReportOutput.maxComment }
+        return Self.commentLimit(dockMouse: dockMouse)
+    }
+    nonisolated static func commentLimit(dockMouse: String) -> Int {
+        let line = commentWithDockMouse("", dockMouse: dockMouse)
+        return DeviceReportOutput.maxComment - (line.isEmpty ? 0 : line.count + 2)
+    }
 
     /// The comment as sent: the dock's mouse first, so trimming a long comment can't drop it.
     nonisolated static func commentWithDockMouse(_ comment: String, dockMouse: String?) -> String {
@@ -755,6 +784,7 @@ final class DeviceTestModel: ObservableObject {
         buttonsSeen = []
         comment = ""
         dockMouse = ""
+        switchProblem = nil
         credit = ""
         replyEmail = ""
         copied = false

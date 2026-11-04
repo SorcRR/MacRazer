@@ -62,10 +62,10 @@ final class DevicePickerTests: XCTestCase {
     }
 
     func testDocksAreRecognised() {
-        XCTAssertTrue(DeviceTestModel.isDock(pid: 0x00A4, name: "Razer Mouse Dock Pro"))
-        XCTAssertTrue(DeviceTestModel.isDock(pid: 0x00CF, name: "Razer HyperFlux V2"))
-        XCTAssertTrue(DeviceTestModel.isDock(pid: 0x9999, name: "Razer Mouse Dock Something"))
-        XCTAssertFalse(DeviceTestModel.isDock(pid: 0x00DB, name: "Razer Cobra HyperSpeed"))
+        XCTAssertTrue(DeviceTestModel.isDock(name: "Razer Mouse Dock Pro"))
+        XCTAssertTrue(DeviceTestModel.isDock(name: "Razer HyperFlux V2"))
+        XCTAssertTrue(DeviceTestModel.isDock(name: "Razer Mouse Dock"))
+        XCTAssertFalse(DeviceTestModel.isDock(name: "Razer Cobra HyperSpeed"))
     }
 
     func testTheDocksMouseLeadsTheComment() {
@@ -74,5 +74,41 @@ final class DevicePickerTests: XCTestCase {
         XCTAssertEqual(DeviceTestModel.commentWithDockMouse("", dockMouse: "Viper V2 Pro"), "Mouse on the dock: Viper V2 Pro")
         XCTAssertEqual(DeviceTestModel.commentWithDockMouse("Works well", dockMouse: "  "), "Works well")
         XCTAssertEqual(DeviceTestModel.commentWithDockMouse("Works well", dockMouse: nil), "Works well")
+    }
+
+    func testTheDockLineComesOutOfTheCommentCap() {
+        XCTAssertEqual(DeviceTestModel.commentLimit(dockMouse: ""), DeviceReportOutput.maxComment)
+        let limit = DeviceTestModel.commentLimit(dockMouse: "Viper V2 Pro")
+        let full = String(repeating: "a", count: limit)
+        XCTAssertEqual(DeviceTestModel.commentWithDockMouse(full, dockMouse: "Viper V2 Pro").count,
+                       DeviceReportOutput.maxComment, "a full comment and the dock line fit exactly")
+    }
+
+    func testAPickSwitchesOnlyOnTheIntroWithNothingRunning() {
+        let dock = HIDDeviceSelection.DeviceKey(pid: 0x007E, locationID: 1)
+        let dongle = HIDDeviceSelection.DeviceKey(pid: 0x0088, locationID: 2)
+        XCTAssertTrue(DeviceTestModel.canSwitch(to: dongle, stage: .intro, running: false, switching: false, chosen: dock))
+        XCTAssertTrue(DeviceTestModel.canSwitch(to: dongle, stage: .intro, running: false, switching: false, chosen: nil))
+        XCTAssertFalse(DeviceTestModel.canSwitch(to: dock, stage: .intro, running: false, switching: false, chosen: dock), "already open")
+        XCTAssertFalse(DeviceTestModel.canSwitch(to: dongle, stage: .battery, running: false, switching: false, chosen: dock), "mid-run")
+        XCTAssertFalse(DeviceTestModel.canSwitch(to: dongle, stage: .intro, running: true, switching: false, chosen: dock))
+        XCTAssertFalse(DeviceTestModel.canSwitch(to: dongle, stage: .intro, running: false, switching: true, chosen: dock))
+    }
+
+    /// What decides whether a pick took: the open device is that USB device.
+    func testAPickTookOnlyWhenThatUSBDeviceIsOpen() {
+        final class Fake: RazerTransport {
+            let productID: Int, locationID: Int, isBluetooth: Bool
+            let productName = "Fake"
+            init(_ pid: Int, _ location: Int, bluetooth: Bool = false) { productID = pid; locationID = location; isBluetooth = bluetooth }
+            func sendWithRetry(_ report: RazerReport) throws -> RazerReport { report }
+            func close() {}
+        }
+        let key = HIDDeviceSelection.DeviceKey(pid: 0x0088, locationID: 2)
+        XCTAssertTrue(MouseController.isOpen(key, Fake(0x0088, 2)))
+        XCTAssertFalse(MouseController.isOpen(key, Fake(0x0088, 3)), "same model, other port")
+        XCTAssertFalse(MouseController.isOpen(key, Fake(0x007E, 1)), "selection's own pick")
+        XCTAssertFalse(MouseController.isOpen(key, Fake(0x0088, 2, bluetooth: true)))
+        XCTAssertFalse(MouseController.isOpen(key, nil), "nothing opened")
     }
 }

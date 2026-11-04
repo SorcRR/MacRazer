@@ -146,6 +146,7 @@ struct DeviceTestView: View {
             .pickerStyle(.menu)
             .disabled(model.switchingDevice || model.finishingEarlierTest)
             .font(.system(size: 12))
+            if let problem = model.switchProblem { warning(problem) }
             note(model.switchingDevice
                 ? "Switching…"
                 : "More than one Razer device here could be your mouse. Pick the one to test. MacRazer controls it until you quit.")
@@ -513,10 +514,10 @@ struct DeviceTestView: View {
             }
             VStack(alignment: .trailing, spacing: 2) {
                 TextEditor(text: Binding(get: { model.comment },
-                                         set: { model.comment = String($0.prefix(DeviceReportOutput.maxComment)) }))
+                                         set: { model.comment = String($0.prefix(model.commentLimit)) }))
                     .editorBox(placeholder: "Comments or feedback (optional)", isEmpty: model.comment.isEmpty)
                 // Verbatim: a localized number would print 2000 as "2.000" in some regions.
-                Text(verbatim: "\(model.comment.count) / \(DeviceReportOutput.maxComment)")
+                Text(verbatim: "\(model.comment.count) / \(model.commentLimit)")
                     .font(.system(size: 10)).foregroundStyle(.secondary)
             }
             if model.copied { note("Copied.") }

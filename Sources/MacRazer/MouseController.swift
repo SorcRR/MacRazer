@@ -962,26 +962,42 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// Switches to the USB device the person picked in the device test, when more than one
     /// could be the mouse (a dock next to its own dongle, two mice). The choice holds for this
     /// launch, for the popover too: the test reports on the device the app controls. Returns
-    /// once the device is open, or opening it failed.
-    func useUSBDevice(_ key: HIDDeviceSelection.DeviceKey) async {
-        await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+    /// whether the picked device is the one open now. When it won't open, the pick is dropped
+    /// and the app goes back to selection's own choice, so it isn't left with no mouse.
+    func useUSBDevice(_ key: HIDDeviceSelection.DeviceKey) async -> Bool {
+        let opened = await withCheckedContinuation { (done: CheckedContinuation<Bool, Never>) in
             userCommand { [weak self] in
-                defer { done.resume() }
-                guard let self else { return }
+                guard let self else { return done.resume(returning: false) }
                 HIDDevice.preferredDevice = key
-                if let current = self.device,
-                   current.isBluetooth || current.productID != key.pid || current.locationID != key.locationID {
-                    current.close()
-                    self.device = nil
-                    // The cached serial belongs to the device just closed.
-                    self.knownSerial = nil
-                }
+                if !Self.isOpen(key, self.device) { self.closeDeviceForSwitch() }
                 _ = try? self.ensureDevice()
+                let ok = Self.isOpen(key, self.device)
+                if !ok {
+                    HIDDevice.preferredDevice = nil
+                    self.closeDeviceForSwitch()
+                    _ = try? self.ensureDevice()
+                }
+                done.resume(returning: ok)
             }
         }
         // Outside a test the popover should show the device it now controls; a test reads
         // everything again when it ends.
         if !deviceTestActive { refreshAll() }
+        return opened
+    }
+
+    /// Whether `device` is the USB device `key` names.
+    static func isOpen(_ key: HIDDeviceSelection.DeviceKey, _ device: (any RazerTransport)?) -> Bool {
+        guard let device, !device.isBluetooth else { return false }
+        return device.productID == key.pid && device.locationID == key.locationID
+    }
+
+    /// Must be called on `io`. Lets go of the open device so the next open picks again.
+    private func closeDeviceForSwitch() {
+        device?.close()
+        device = nil
+        // The cached serial belongs to the device just closed.
+        knownSerial = nil
     }
 
     /// Must be called on `io`, which knows the link for certain; the published
@@ -1697,7 +1713,10 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             // Decided before opening, so an idle dongle isn't opened and closed on every poll.
             let usb = try HIDDevice.controlInterface(vendorId: Razer.vendorId) // any Razer mouse
             let connection = RazerDevices.connection(pid: HIDDevice.productID(of: usb))
-            if !Self.prefersBluetooth(over: connection, bluetoothControllable: bt != nil) {
+            // A device picked in the test is used as picked, even with the mouse on Bluetooth.
+            let picked = HIDDevice.preferredDevice == HIDDeviceSelection.DeviceKey(
+                pid: HIDDevice.productID(of: usb), locationID: HIDDevice.locationID(of: usb))
+            if picked || !Self.prefersBluetooth(over: connection, bluetoothControllable: bt != nil) {
                 return try HIDDevice.open(usb)
             }
         } catch {
