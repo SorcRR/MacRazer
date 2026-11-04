@@ -7,7 +7,7 @@ expect rough edges until 1.0.
 ## [Unreleased]
 
 ### Added
-- **Edit DPI stages over the dongle or cable.** Click **Edit stages** on the DPI card, then
+- **Edit DPI stages over the dongle or cable.** Click **Edit** on the DPI card, then
   click a stage to change it on the mouse itself, as you already could over Bluetooth.
   Right-clicking a stage still works too. The field takes numbers only, and each stage has to
   stay above the one before it and below the one after it. Before, the

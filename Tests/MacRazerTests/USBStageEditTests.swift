@@ -118,6 +118,13 @@ final class StageEditorLimitTests: XCTestCase {
         XCTAssertEqual(PopoverView.stageRange(stages: [800, 820, 840], index: 1, maxDPI: 26000), 820...820)
     }
 
+    func testAnUnsortedTableOnlyUsesNeighboursInOrder() {
+        let mixed = [1600, 800, 3200, 6400, 400]
+        XCTAssertEqual(PopoverView.stageRange(stages: mixed, index: 1, maxDPI: 26000), 100...3150,
+                       "1600 before 800 bounds nothing; 3200 after still does")
+        XCTAssertEqual(PopoverView.stageRange(stages: mixed, index: 3, maxDPI: 26000), 3250...26000)
+    }
+
     func testOnlyDigitsAreTyped() {
         XCTAssertEqual(PopoverView.digitsOnly("1,6a00 ", maxDPI: 26000), "1600")
         XCTAssertEqual(PopoverView.digitsOnly("123456", maxDPI: 26000), "12345", "no more digits than the max has")

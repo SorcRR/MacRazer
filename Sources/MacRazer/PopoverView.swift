@@ -95,7 +95,9 @@ struct PopoverView: View {
     @State private var customDPI: Int = 8000
     @State private var editingDpiStage: Int?
     /// The DPI card's Edit mode: clicking a stage chip opens its editor instead of selecting it.
+    /// Read through `inStageEditMode`, which drops it when the mouse can't be edited any more.
     @State private var editingDpiStages = false
+    private var inStageEditMode: Bool { editingDpiStages && controller.supportsDpiStageEditing }
     @State private var dpiStageDraft = ""
     @State private var dpiStageError: String?
     @FocusState private var dpiStageFieldFocused: Bool
@@ -1145,7 +1147,7 @@ struct PopoverView: View {
             }
             if let dpiStageError {
                 Text(dpiStageError).font(.system(size: 10.5)).foregroundStyle(Color.batteryLow)
-            } else if editingDpiStages || editingDpiStage != nil {
+            } else if inStageEditMode || editingDpiStage != nil {
                 Text(editingDpiStage.map { stageRangeHint(index: $0) }
                      ?? "Click a stage to change its DPI. Press Return to save it.")
                     .font(.system(size: 10.5)).foregroundStyle(.secondary)
@@ -1153,6 +1155,9 @@ struct PopoverView: View {
                 Text(error).font(.system(size: 10.5)).foregroundStyle(Color.batteryLow)
             }
         }
+        // Esc can close the popover before the field sees it: leave nothing half-edited for
+        // the next time it opens.
+        .onDisappear { cancelDpiStageEdit(); editingDpiStages = false }
         }
     }
 
@@ -1162,8 +1167,7 @@ struct PopoverView: View {
             editingDpiStages.toggle()
             if !editingDpiStages { cancelDpiStageEdit() }
         } label: {
-            Label(editingDpiStages ? "Done" : "Edit stages",
-                  systemImage: editingDpiStages ? "checkmark" : "pencil")
+            Label(editingDpiStages ? "Done" : "Edit", systemImage: editingDpiStages ? "checkmark" : "pencil")
                 .font(.system(size: 10.5, weight: .medium))
         }
         .buttonStyle(.borderless)
@@ -1177,9 +1181,13 @@ struct PopoverView: View {
     /// closer than that can only keep the value it has.
     nonisolated static func stageRange(stages: [Int], index: Int, maxDPI: Int) -> ClosedRange<Int> {
         guard stages.indices.contains(index) else { return 100...maxDPI }
-        let low = index > 0 ? stages[index - 1] + 50 : 100
-        let high = index < stages.count - 1 ? stages[index + 1] - 50 : maxDPI
         let value = stages[index]
+        // A neighbour only bounds the stage when the table is in order around it: a table set
+        // elsewhere in another order would otherwise lock the stage to its own value.
+        let before = index > 0 ? stages[index - 1] : nil
+        let after = index < stages.count - 1 ? stages[index + 1] : nil
+        let low = before.flatMap { $0 < value ? $0 + 50 : nil } ?? 100
+        let high = after.flatMap { $0 > value ? $0 - 50 : nil } ?? maxDPI
         return low <= high ? low...high : value...value
     }
 
@@ -1190,6 +1198,9 @@ struct PopoverView: View {
 
     private func stageRangeHint(index: Int) -> String {
         let range = Self.stageRange(stages: controller.dpiStages, index: index, maxDPI: controller.deviceMaxDPI)
+        guard range.lowerBound < range.upperBound else {
+            return "The stages next to stage \(index + 1) leave it no room. Change one of them first."
+        }
         return "Stage \(index + 1) can be \(range.lowerBound) to \(range.upperBound). Return saves, Esc cancels."
     }
 
@@ -1218,7 +1229,7 @@ struct PopoverView: View {
                     .onAppear { dpiStageFieldFocused = true }
             } else {
                 Button {
-                    if editingDpiStages { return beginDpiStageEdit(index: index, value: value) }
+                    if inStageEditMode { return beginDpiStageEdit(index: index, value: value) }
                     dpiValue = Double(value)
                     controller.selectDPIStage(index, value: value)
                 } label: {
@@ -1240,7 +1251,7 @@ struct PopoverView: View {
         .background(active ? accent.color : Color.primary.opacity(0.08),
                     in: RoundedRectangle(cornerRadius: 6))
         .overlay {
-            if editingDpiStages {
+            if inStageEditMode {
                 // Edit mode: a dashed outline on every chip says each one opens an editor.
                 RoundedRectangle(cornerRadius: 6)
                     .strokeBorder(editing ? Color.razerGreen : accent.color,
@@ -1255,8 +1266,8 @@ struct PopoverView: View {
                 Button("Edit DPI") { beginDpiStageEdit(index: index, value: value) }
             }
         }
-        .help(editingDpiStages ? "Stage \(index + 1) · Click to change its DPI"
-              : controller.supportsDpiStageEditing ? "Stage \(index + 1) · Right-click or Edit stages to change it"
+        .help(inStageEditMode ? "Stage \(index + 1) · Click to change its DPI"
+              : controller.supportsDpiStageEditing ? "Stage \(index + 1) · Right-click or use Edit to change it"
               : "Stage \(index + 1)")
         .accessibilityLabel(editing ? "Stage \(index + 1) DPI" : DPIStageAccent.accessibilityLabel(
             value: value, stageIndex: index))
@@ -1283,7 +1294,9 @@ struct PopoverView: View {
         let range = Self.stageRange(stages: controller.dpiStages, index: index, maxDPI: controller.deviceMaxDPI)
         guard let value = Int(dpiStageDraft), range.contains(value) else {
             // Keep the field open so the number can be fixed, with the range that fits.
-            dpiStageError = "Stage \(index + 1) must be between \(range.lowerBound) and \(range.upperBound)."
+            dpiStageError = range.lowerBound < range.upperBound
+                ? "Stage \(index + 1) must be between \(range.lowerBound) and \(range.upperBound)."
+                : "The stages next to stage \(index + 1) leave it no room. Change one of them first."
             return
         }
         defer { editingDpiStage = nil; dpiStageFieldFocused = false }
