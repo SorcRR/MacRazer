@@ -532,8 +532,8 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// plugged in after the app opened something else (a keypad, a pad, a device it doesn't
     /// know) never took over until relaunch (#75). On a plug event, let go of an open device
     /// the registry doesn't know when selection now picks a known mouse; the check that
-    /// follows opens it. A known mouse is never dropped this way: a cable plugged into a mouse
-    /// on its dongle is the same mouse, and the link logic already handles that.
+    /// follows opens it. A known mouse is dropped this way only for its own cable, or for the
+    /// device picked in the test.
     private func releaseDeviceIfOutranked() {
         guard let current = device, !current.isBluetooth else { return }
         let best = try? HIDDevice.controlInterface(vendorId: Razer.vendorId)
@@ -554,6 +554,8 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                             preferred: HIDDeviceSelection.DeviceKey? = nil) -> Bool {
         guard let best, best.pid != currentPID || best.location != currentLocation else { return false }
         if let preferred, preferred.pid == best.pid, preferred.locationID == best.location { return true }
+        // The cable plugged into a mouse on its dongle: the same mouse, moved to the better link.
+        if RazerDevices.isCable(best.pid, ofDongle: currentPID) { return true }
         return RazerDevices.info(pid: currentPID) == nil && RazerDevices.info(pid: best.pid) != nil
     }
 

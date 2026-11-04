@@ -97,6 +97,26 @@ final class DevicePickerTests: XCTestCase {
         XCTAssertLessThanOrEqual(comment.utf16.count, DeviceReportOutput.maxCommentUnits)
     }
 
+    func testTheCableWinsOverItsOwnDongle() {
+        let dongle: [HIDInterfaceInfo] = [
+            .init(pid: 0x00DB, locationID: 0x1000000, usagePage: 0x01, usage: 0x02, maxFeatureReportSize: 90, productName: "Razer Cobra HyperSpeed"),
+        ]
+        let cable: [HIDInterfaceInfo] = [
+            .init(pid: 0x00DA, locationID: 0x2000000, usagePage: 0x01, usage: 0x02, maxFeatureReportSize: 90, productName: "Razer Cobra HyperSpeed"),
+        ]
+        // The dongle sits on the lower port, which used to win.
+        XCTAssertEqual(HIDDeviceSelection.candidates(interfaces: dongle + cable).map(\.key.pid), [0x00DA])
+        let both = dongle + cable
+        XCTAssertEqual(both[HIDDeviceSelection.controlInterfaceIndex(interfaces: both)!].pid, 0x00DA)
+        // A different known mouse's dongle stays: it isn't this cable's mouse.
+        let other: [HIDInterfaceInfo] = [
+            .init(pid: 0x00C5, locationID: 0x3000000, usagePage: 0x01, usage: 0x02, maxFeatureReportSize: 90, productName: "Razer DeathAdder V3 HyperSpeed"),
+        ]
+        XCTAssertEqual(HIDDeviceSelection.candidates(interfaces: both + other).map(\.key.pid), [0x00DA, 0x00C5])
+        XCTAssertTrue(RazerDevices.isCable(0x00C4, ofDongle: 0x00C5), "same name on both rows")
+        XCTAssertFalse(RazerDevices.isCable(0x00DB, ofDongle: 0x00DA))
+    }
+
     func testCableAndDongleOfOneMouseAreLabelledByLink() {
         let cobra = [
             HIDDeviceSelection.Candidate(key: .init(pid: 0x00DB, locationID: 1), name: "Razer Cobra HyperSpeed", index: 0),

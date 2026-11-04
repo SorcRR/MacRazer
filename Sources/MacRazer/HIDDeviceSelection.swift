@@ -38,6 +38,7 @@ enum HIDDeviceSelection {
     /// 3. ties break on lowest locationID, then lowest PID (reachable when devices don't
     ///    report a LocationID and default to 0) — so which of two identical mice wins is
     ///    stable across reconnects instead of following Set/Dictionary iteration order.
+    /// A known mouse's dongle is left out while the same model's cable is plugged in.
     /// Within the winning device, the interface with the best `controlScore` is chosen.
     ///
     /// `preferred` is a device the person picked in the device test: when it's still plugged
@@ -86,6 +87,11 @@ enum HIDDeviceSelection {
             entries.append((deviceRank(members), controlScore(interfaces[top]),
                             Candidate(key: key, name: first.productName, index: top)))
         }
+        // A mouse on its cable with its dongle still plugged in is one mouse on two links: the
+        // cable is used and the dongle isn't offered. (Two units of one model, one on each, lose
+        // the dongle one too; picking a unit is rarer than plugging a cable into a dongle mouse.)
+        let pids = entries.map(\.candidate.key.pid)
+        entries.removeAll { entry in pids.contains { RazerDevices.isCable($0, ofDongle: entry.candidate.key.pid) } }
         // Total order even when everything else ties (two LocationID-less devices):
         // Dictionary iteration order varies per process and must not pick the winner.
         return entries.sorted { a, b in

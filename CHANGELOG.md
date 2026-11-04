@@ -25,6 +25,9 @@ expect rough edges until 1.0.
   plugged in, like a charging dock next to its own dongle, the device test now asks which one
   to test. Before, it took whichever sat on the lower USB port, so a dock could get tested in
   place of the mouse. MacRazer keeps controlling the one you pick until you quit.
+- **The cable wins over the dongle.** With a mouse on its cable and its dongle still plugged
+  in, MacRazer now always uses the cable, and moves to it as soon as you plug it in. Before,
+  whichever sat on the lower USB port won.
 - **The test asks which mouse is on a dock.** A dock or charging mat answers under its own
   name, whatever mouse is on it. On the Mouse Dock Pro, the HyperFlux V2 and other docks, the
   review now asks which mouse it is, and the report puts that first in the comment.
