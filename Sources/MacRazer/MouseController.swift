@@ -115,6 +115,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     @Published private(set) var lastWriteFailure: Date?
     /// Product ID of the connected mouse (nil when none) — drives feature gating.
     @Published private(set) var deviceID: Int?
+    /// Where the connected mouse sits on the USB bus, with `deviceID` naming the device the
+    /// test's picker shows as chosen. Nil on Bluetooth and when none is connected.
+    @Published private(set) var deviceLocation: Int?
     /// Stable per-unit key (serial number if available, else PID) — drives per-device settings.
     @Published private(set) var deviceKey: String?
     /// The connected mouse is on Bluetooth. Read through the `supports…` properties below.
@@ -749,6 +752,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 if gone {
                     self.update(\.deviceName, nil)
                     self.update(\.deviceID, nil)
+                    self.update(\.deviceLocation, nil)
                     self.update(\.deviceKey, nil)
                     self.update(\.deviceIsBluetooth, false)
                     self.update(\.activeDpiStage, nil)
@@ -953,6 +957,31 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 }
             }
         }
+    }
+
+    /// Switches to the USB device the person picked in the device test, when more than one
+    /// could be the mouse (a dock next to its own dongle, two mice). The choice holds for this
+    /// launch, for the popover too: the test reports on the device the app controls. Returns
+    /// once the device is open, or opening it failed.
+    func useUSBDevice(_ key: HIDDeviceSelection.DeviceKey) async {
+        await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+            userCommand { [weak self] in
+                defer { done.resume() }
+                guard let self else { return }
+                HIDDevice.preferredDevice = key
+                if let current = self.device,
+                   current.isBluetooth || current.productID != key.pid || current.locationID != key.locationID {
+                    current.close()
+                    self.device = nil
+                    // The cached serial belongs to the device just closed.
+                    self.knownSerial = nil
+                }
+                _ = try? self.ensureDevice()
+            }
+        }
+        // Outside a test the popover should show the device it now controls; a test reads
+        // everything again when it ends.
+        if !deviceTestActive { refreshAll() }
     }
 
     /// Must be called on `io`, which knows the link for certain; the published
@@ -1816,12 +1845,14 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             }
         }
         let name = d.productName
+        let location = d.locationID
         let battery = RazerDevices.hasBattery(pid: pid)
         let bluetooth = d.isBluetooth
         ioHasBattery = battery
         publish {
             self.update(\.deviceIsBluetooth, bluetooth)
             self.update(\.deviceID, pid)
+            self.update(\.deviceLocation, bluetooth ? nil : location)
             self.update(\.deviceKey, key)
             self.update(\.deviceName, name)
             self.update(\.deviceSupported, RazerDevices.fullySupported(pid: pid))

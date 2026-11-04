@@ -4,6 +4,7 @@
 import Foundation
 import IOKit
 import IOKit.hid
+import os
 
 /// Thin wrapper over IOKit's HID Manager for talking to the Razer dongle.
 ///
@@ -232,7 +233,7 @@ final class HIDDevice {
         // before a better one was plugged in, and the report must name the one it probed.
         let chosen = HIDDeviceSelection.reportedControlIndex(
             registryIDs: devices.map(registryID(of:)), opened: opened?.registryID,
-            selected: { HIDDeviceSelection.controlInterfaceIndex(interfaces: interfaceInfos(devices)) }
+            selected: { HIDDeviceSelection.controlInterfaceIndex(interfaces: interfaceInfos(devices), preferred: preferredDevice) }
         ).map { summaries[$0] }
         let sorted = summaries.sorted {
             ($0.productID, $0.usagePage, $0.usage, $0.maxFeatureReportSize, $0.maxInputReportSize)
@@ -270,10 +271,26 @@ final class HIDDevice {
         let devices = matchingDevices(vendorId: vendorId)
         guard !devices.isEmpty else { throw HIDError.notFound }
 
-        guard let idx = HIDDeviceSelection.controlInterfaceIndex(interfaces: interfaceInfos(devices)) else {
+        guard let idx = HIDDeviceSelection.controlInterfaceIndex(interfaces: interfaceInfos(devices),
+                                                                 preferred: preferredDevice) else {
             throw HIDError.notFound
         }
         return devices[idx]
+    }
+
+    /// The device the person picked in the device test, when more than one could be the
+    /// mouse. Every open honors it while it stays plugged in; otherwise selection ranks as
+    /// usual. Kept for this launch only: it says which device to use, not which one is right.
+    static var preferredDevice: HIDDeviceSelection.DeviceKey? {
+        get { preferred.withLock { $0 } }
+        set { preferred.withLock { $0 = newValue } }
+    }
+    private static let preferred = OSAllocatedUnfairLock<HIDDeviceSelection.DeviceKey?>(initialState: nil)
+
+    /// Every device plugged in by cable or dongle that could be the mouse, best first. Listing
+    /// opens nothing, so it needs no permission.
+    static func mouseCandidates() -> [HIDDeviceSelection.Candidate] {
+        HIDDeviceSelection.candidates(interfaces: interfaceInfos(matchingDevices(vendorId: Razer.vendorId)))
     }
 
     /// The control interface of every accessory `RazerAccessories` knows, without opening

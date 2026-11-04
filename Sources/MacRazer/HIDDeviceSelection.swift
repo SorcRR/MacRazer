@@ -39,8 +39,31 @@ enum HIDDeviceSelection {
     ///    report a LocationID and default to 0) — so which of two identical mice wins is
     ///    stable across reconnects instead of following Set/Dictionary iteration order.
     /// Within the winning device, the interface with the best `controlScore` is chosen.
-    static func controlInterfaceIndex(interfaces: [HIDInterfaceInfo]) -> Int? {
-        struct DeviceKey: Hashable { let pid: Int; let locationID: Int }
+    ///
+    /// `preferred` is a device the person picked in the device test: when it's still plugged
+    /// in and could be the mouse, it wins over the ranking.
+    static func controlInterfaceIndex(interfaces: [HIDInterfaceInfo], preferred: DeviceKey? = nil) -> Int? {
+        let ranked = candidates(interfaces: interfaces)
+        if let preferred, let chosen = ranked.first(where: { $0.key == preferred }) { return chosen.index }
+        return ranked.first?.index
+    }
+
+    /// One physical device: interfaces grouped by product and USB location.
+    struct DeviceKey: Hashable, Sendable {
+        let pid: Int
+        let locationID: Int
+    }
+
+    /// A device that could be the mouse, with the interface selection would open on it.
+    struct Candidate: Equatable {
+        let key: DeviceKey
+        let name: String
+        /// Index into the `interfaces` passed in.
+        let index: Int
+    }
+
+    /// Every device that could be the mouse, best first, in the order described above.
+    static func candidates(interfaces: [HIDInterfaceInfo]) -> [Candidate] {
         let groups = Dictionary(grouping: interfaces.indices) {
             DeviceKey(pid: interfaces[$0].pid, locationID: interfaces[$0].locationID)
         }
@@ -51,7 +74,7 @@ enum HIDDeviceSelection {
             return 0
         }
 
-        var best: (rank: Int, locationID: Int, score: Int, index: Int)?
+        var entries: [(rank: Int, score: Int, candidate: Candidate)] = []
         for (key, members) in groups {
             let first = interfaces[members[0]]
             if RazerDevices.info(pid: first.pid) == nil, !couldBeMouse(productName: first.productName) { continue }
@@ -60,22 +83,19 @@ enum HIDDeviceSelection {
             let candidates = members.filter { interfaces[$0].maxFeatureReportSize >= controlReportSize }
             guard let top = candidates.max(by: { controlScore(interfaces[$0]) < controlScore(interfaces[$1]) })
             else { continue } // this device has no interface that can carry the control report
-            let entry = (rank: deviceRank(members), locationID: key.locationID,
-                         score: controlScore(interfaces[top]), index: top)
-            guard let current = best else { best = entry; continue }
-            if entry.rank != current.rank {
-                if entry.rank > current.rank { best = entry }
-            } else if entry.locationID != current.locationID {
-                if entry.locationID < current.locationID { best = entry }
-            } else if entry.score != current.score {
-                if entry.score > current.score { best = entry }
-            } else if interfaces[entry.index].pid < interfaces[current.index].pid {
-                // Total order even when everything else ties (two LocationID-less devices):
-                // Dictionary iteration order varies per process and must not pick the winner.
-                best = entry
-            }
+            entries.append((deviceRank(members), controlScore(interfaces[top]),
+                            Candidate(key: key, name: first.productName, index: top)))
         }
-        return best?.index
+        // Total order even when everything else ties (two LocationID-less devices):
+        // Dictionary iteration order varies per process and must not pick the winner.
+        return entries.sorted { a, b in
+            if a.rank != b.rank { return a.rank > b.rank }
+            if a.candidate.key.locationID != b.candidate.key.locationID {
+                return a.candidate.key.locationID < b.candidate.key.locationID
+            }
+            if a.score != b.score { return a.score > b.score }
+            return a.candidate.key.pid < b.candidate.key.pid
+        }.map(\.candidate)
     }
 
     /// Razer product lines that are not mice but may expose a pointer interface: keyboards,

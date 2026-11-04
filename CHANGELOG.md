@@ -21,6 +21,14 @@ expect rough edges until 1.0.
   never add one, and it never changes how the app talks to your mouse. Nothing about you or your
   mice is sent with the request. Offline, the app uses its own list.
 
+- **Pick which device to test.** With more than one Razer device that could be the mouse
+  plugged in, like a charging dock next to its own dongle, the device test now asks which one
+  to test. Before, it took whichever sat on the lower USB port, so a dock could get tested in
+  place of the mouse. MacRazer keeps controlling the one you pick until you quit.
+- **The test asks which mouse is on a dock.** A dock or charging mat answers under its own
+  name, whatever mouse is on it. On the Mouse Dock Pro, the HyperFlux V2 and other docks, the
+  review now asks which mouse it is, and the report puts that first in the comment.
+
 ### Changed
 - **The device test knows what your mouse doesn't have.** On a wired-only mouse the
   battery step now says it has no battery, and on a mouse without lights the lighting step
