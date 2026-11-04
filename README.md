@@ -210,8 +210,9 @@ Download [`MacRazer.dmg`](https://reports.macrazer.com/v1/download?via=site&page
 
 This build is unsigned (no paid Apple Developer ID), so the first time you open it macOS
 blocks it. You'll see "MacRazer Not Opened" with only a **Done** button, or on older macOS
-"cannot be opened because it is from an unidentified developer". It's the standard warning
-for any app without a paid Apple ID, not a real problem. To open it anyway, do **one** of:
+"cannot be opened because it is from an unidentified developer" or "is damaged and can't be
+opened". It's the standard warning for any app without a paid Apple Developer ID, not a real
+problem. To open it anyway, do **one** of:
 
 - Click **Done**, then go to System Settings > Privacy & Security, scroll to the bottom and
   click **Open Anyway** next to the MacRazer message. Confirm with your password or Touch ID.
