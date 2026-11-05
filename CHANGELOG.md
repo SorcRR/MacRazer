@@ -32,8 +32,13 @@ expect rough edges until 1.0.
 - **The test asks which mouse is on a dock.** A dock or charging mat answers under its own
   name, whatever mouse is on it. On the Mouse Dock Pro, the HyperFlux V2 and other docks, the
   review now asks which mouse it is, and the report puts that first in the comment.
+- **A tip button after the test.** Once your report is sent, the thank-you screen has a
+  "Leave a tip" button next to Done. It opens MacRazer's Ko-fi page. Nothing changes if you
+  don't use it.
 
 ### Changed
+- **Bigger buttons in the device test.** The buttons along the bottom of every test screen
+  are taller and easier to hit.
 - **The device test knows what your mouse doesn't have.** On a wired-only mouse the
   battery step now says it has no battery, and on a mouse without lights the lighting step
   says so. Click Next to go on. Nothing is sent to the mouse for those steps, and the report
