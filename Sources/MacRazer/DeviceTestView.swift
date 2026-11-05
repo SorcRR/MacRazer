@@ -435,6 +435,9 @@ struct DeviceTestView: View {
                         .font(.system(size: 13)).fixedSize(horizontal: false, vertical: true)
                 }
             }
+            // Only once the report is sent: the person has just helped, and the ask is the
+            // footer's quiet button, not a banner.
+            note("MacRazer is free. If it saves you a trip to Windows, a tip keeps it going.")
         }
     }
 
@@ -566,6 +569,14 @@ struct DeviceTestView: View {
                 Button("Next") { model.next() }.disabled(model.running)
                     .keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
             case .review where model.sendState == .sent:
+                Button { NSWorkspace.shared.open(ProjectLinks.tip) } label: {
+                    Label {
+                        Text("Leave a tip")
+                    } icon: {
+                        Image(systemName: "heart.fill").foregroundStyle(Color(nsColor: .systemRed))
+                    }
+                }
+                .help("Opens MacRazer's Ko-fi page in your browser")
                 if model.otherLink != nil { Button("Test again") { model.testAgain() } }
                 Spacer()
                 Button("Done", action: onClose).keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
