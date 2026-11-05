@@ -95,8 +95,8 @@ struct RazerProminentButtonStyle: ButtonStyle {
         var body: some View {
             let small = controlSize == .small || controlSize == .mini
             // Large matches the system's large bordered button, 28 pt tall, so a footer of
-            // both kinds lines up.
-            let large = controlSize == .large || controlSize == .extraLarge
+            // both kinds lines up. Not extraLarge: a bordered button measures like regular there.
+            let large = controlSize == .large
             let shape = RoundedRectangle(cornerRadius: small ? 5 : large ? 7 : 6, style: .continuous)
             configuration.label
                 .font(font ?? .system(size: small ? 11 : 13))

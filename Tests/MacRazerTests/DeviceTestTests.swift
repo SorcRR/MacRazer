@@ -505,4 +505,11 @@ final class DeviceTestTests: XCTestCase {
         XCTAssertFalse(json.lowercased().contains("serial"))
         XCTAssertLessThan(json.utf8.count, 16 * 1024, "the Worker's cap, with room to spare")
     }
+
+    /// A mouse MacRazer can't control yet isn't saving anyone a trip to Windows.
+    @MainActor func testTheTipLineFitsWhatMacRazerCanDoForTheMouse() {
+        XCTAssertFalse(DeviceTestView.tipLine(.unknown).contains("Windows"))
+        XCTAssertTrue(DeviceTestView.tipLine(.full).contains("Windows"))
+        XCTAssertTrue(DeviceTestView.tipLine(.partly(works: [.battery], missing: [.lighting])).contains("Windows"))
+    }
 }

@@ -537,7 +537,16 @@ struct DeviceTestView: View {
 
     // MARK: Footer
 
-    @ViewBuilder private var footer: some View {
+    /// Large buttons, unless a screen's row doesn't fit at that size: the start screen of a
+    /// partly supported mouse that also offers the Bluetooth test has 12 pt to spare.
+    private var footer: some View {
+        ViewThatFits(in: .horizontal) {
+            footerRow.controlSize(.large)
+            footerRow.controlSize(.regular)
+        }
+    }
+
+    @ViewBuilder private var footerRow: some View {
         HStack {
             switch model.stage {
             case .intro where model.support == .full:
@@ -579,9 +588,7 @@ struct DeviceTestView: View {
             case .review where model.sendState == .sent:
                 // The next step the screen asks for comes first.
                 if model.otherLink != nil { Button("Test again") { model.testAgain() } }
-                // A Button, not a Link: Link ignores the bordered style the footer's buttons
-                // share. It still reads as a link to VoiceOver.
-                Button { NSWorkspace.shared.open(ProjectLinks.tip) } label: {
+                Link(destination: ProjectLinks.tip) {
                     Label {
                         Text("Leave a tip")
                     } icon: {
@@ -590,7 +597,7 @@ struct DeviceTestView: View {
                             .foregroundStyle(Color(nsColor: .systemRed))
                     }
                 }
-                .accessibilityRemoveTraits(.isButton).accessibilityAddTraits(.isLink)
+                .buttonStyle(.bordered)
                 .help("Opens MacRazer's Ko-fi page in your browser")
                 Spacer()
                 Button("Done", action: onClose).keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
@@ -618,8 +625,6 @@ struct DeviceTestView: View {
                 stepButtons
             }
         }
-        // Large: the footer is the window's main controls, and regular ones read as cramped.
-        .controlSize(.large)
     }
 
     /// Run and Skip for steps that change something and haven't run yet; Next otherwise.
