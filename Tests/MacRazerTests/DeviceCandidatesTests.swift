@@ -104,6 +104,28 @@ final class DeviceCandidatesTests: XCTestCase {
         XCTAssertFalse(RazerDevices.isCable(0x00DB, ofDongle: 0x00DA))
     }
 
+    /// What `openCableOrItsDongle` does with the cable and its dongle, without IOHID.
+    func testTheCableIsKeptUnlessTheDongleCanTakeOver() throws {
+        var closed: [String] = []
+        func open(cableAnswers: Bool, dongle: (() throws -> String)?) throws -> (device: String, onDongle: Bool) {
+            try MouseController.openPreferringCable(cable: { "cable" }, dongle: dongle,
+                                                    answers: { _ in cableAnswers }, close: { closed.append($0) })
+        }
+        struct Failed: Error {}
+        let ok = try open(cableAnswers: true, dongle: { "dongle" })
+        XCTAssertEqual(ok.device, "cable"); XCTAssertFalse(ok.onDongle)
+        let alone = try open(cableAnswers: false, dongle: nil)
+        XCTAssertEqual(alone.device, "cable", "no dongle: the cable is all there is")
+        XCTAssertTrue(closed.isEmpty)
+        let fellBack = try open(cableAnswers: false, dongle: { "dongle" })
+        XCTAssertEqual(fellBack.device, "dongle"); XCTAssertTrue(fellBack.onDongle)
+        XCTAssertEqual(closed, ["cable"])
+        let stuck = try open(cableAnswers: false, dongle: { throw Failed() })
+        XCTAssertEqual(stuck.device, "cable", "a dongle that won't open leaves the cable open")
+        XCTAssertFalse(stuck.onDongle)
+        XCTAssertEqual(closed, ["cable"])
+    }
+
     func testCableAndDongleOfOneMouseAreLabelledByLink() {
         let cobra = [
             HIDDeviceSelection.Candidate(key: .init(pid: 0x00DB, locationID: 1), name: "Razer Cobra HyperSpeed", index: 0),

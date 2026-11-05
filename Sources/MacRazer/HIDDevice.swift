@@ -276,11 +276,16 @@ final class HIDDevice {
         return devices[idx]
     }
 
-    /// The dongle of the mouse whose cable is `cable`, when it's plugged in too. Not opened.
-    static func dongle(ofCable cable: IOHIDDevice) -> IOHIDDevice? {
-        let devices = matchingDevices(vendorId: Razer.vendorId)
-        return HIDDeviceSelection.dongleIndex(ofCable: productID(of: cable), interfaces: interfaceInfos(devices))
-            .map { devices[$0] }
+    /// `controlInterface(vendorId:)`'s pick, plus the dongle of the same mouse when the pick
+    /// is its cable and both are plugged in. One listing for both. Nothing is opened.
+    static func controlInterfaceAndDongle(vendorId: Int) throws -> (pick: IOHIDDevice, dongle: IOHIDDevice?) {
+        let devices = matchingDevices(vendorId: vendorId)
+        let infos = interfaceInfos(devices)
+        guard let idx = HIDDeviceSelection.controlInterfaceIndex(interfaces: infos) else {
+            throw HIDError.notFound
+        }
+        let dongle = HIDDeviceSelection.dongleIndex(ofCable: infos[idx].pid, interfaces: infos).map { devices[$0] }
+        return (devices[idx], dongle)
     }
 
     /// Every device plugged in by cable or dongle that could be the mouse, best first. Listing

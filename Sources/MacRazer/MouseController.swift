@@ -518,6 +518,8 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             // A plug event is the only way a different unit can turn up on an interface we
             // already know, so the cached serial is no longer evidence of which mouse it is.
             self.knownSerial = nil
+            // A cable plugged in may take a few seconds to answer (`scheduleCableRecheck`).
+            self.cableRechecksLeft = Self.cableRechecks
             // Not mid-test: the steps must all talk to the device the test started on. Read
             // here on `io`, not when the event came in, so a test that began in between counts.
             if !self.deviceTestActiveForIO { self.releaseDeviceIfOutranked() }
@@ -529,28 +531,41 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// plugged in after the app opened something else (a keypad, a pad, a device it doesn't
     /// know) never took over until relaunch (#75). On a plug event, let go of an open device
     /// the registry doesn't know when selection now picks a known mouse; the check that
-    /// follows opens it. A known mouse is dropped this way only for its own cable.
+    /// follows opens it. A known mouse is dropped this way only for its own cable, and the
+    /// open that follows goes back to the dongle if the cable doesn't answer yet
+    /// (`openCableOrItsDongle`).
     private func releaseDeviceIfOutranked() {
         guard let current = device, !current.isBluetooth else { return }
         let best = try? HIDDevice.controlInterface(vendorId: Razer.vendorId)
         guard Self.isOutranked(currentPID: current.productID, currentLocation: current.locationID,
                                best: best.map { (HIDDevice.productID(of: $0), HIDDevice.locationID(of: $0)) })
         else { return }
-        // Its own cable: only once the cable answers. A cable that only charges, or a mouse
-        // still switching over, would leave the app on a link that doesn't answer.
-        if let best, RazerDevices.isCable(HIDDevice.productID(of: best), ofDongle: current.productID) {
-            guard let cable = try? HIDDevice.open(best, as: "cable check") else { return }
-            let answers = Self.answers(cable)
-            cable.close()
-            guard answers else { return }
-        }
         current.close()
         device = nil
     }
 
-    /// Whether the open device should give way to `best`, selection's pick right now: only an
-    /// unknown device, and only to a mouse the registry knows. Not when selection finds
-    /// nothing: an unplugged device fails its own reads.
+    /// How many more times to try the cable after a fall back to its dongle. Reset on each
+    /// plug event, so a cable that never answers costs a few reopens, not one every poll.
+    private var cableRechecksLeft = 0
+    private static let cableRechecks = 5
+    private static let cableRecheckDelay: TimeInterval = 2
+
+    /// Must be called on `io`. The open fell back to the dongle because the cable didn't
+    /// answer, often a mouse still switching over. A plug event checks only once, and a
+    /// dongle that keeps answering never errors into a reopen, so try the cable again soon.
+    private func scheduleCableRecheck() {
+        guard cableRechecksLeft > 0 else { return }
+        cableRechecksLeft -= 1
+        io.asyncAfter(deadline: .now() + Self.cableRecheckDelay) { [weak self] in
+            guard let self, !self.deviceTestActiveForIO else { return }
+            self.releaseDeviceIfOutranked()
+            if self.device == nil { self.checkNow(immediateOffline: false) }
+        }
+    }
+
+    /// Whether the open device should give way to `best`, selection's pick right now: an
+    /// unknown device to a mouse the registry knows, or a dongle to its own mouse's cable.
+    /// Not when selection finds nothing: an unplugged device fails its own reads.
     static func isOutranked(currentPID: Int, currentLocation: Int, best: (pid: Int, location: Int)?) -> Bool {
         guard let best, best.pid != currentPID || best.location != currentLocation else { return false }
         // The cable plugged into a mouse on its dongle: the same mouse, moved to the better link.
@@ -1675,10 +1690,12 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         var usbError: Error?
         do {
             // Decided before opening, so an idle dongle isn't opened and closed on every poll.
-            let usb = try HIDDevice.controlInterface(vendorId: Razer.vendorId) // any Razer mouse
-            let connection = RazerDevices.connection(pid: HIDDevice.productID(of: usb))
+            let usb = try HIDDevice.controlInterfaceAndDongle(vendorId: Razer.vendorId) // any Razer mouse
+            let connection = RazerDevices.connection(pid: HIDDevice.productID(of: usb.pick))
             if !Self.prefersBluetooth(over: connection, bluetoothControllable: bt != nil) {
-                return try Self.openCableOrItsDongle(usb)
+                let opened = try Self.openCableOrItsDongle(usb.pick, dongle: usb.dongle)
+                if opened.onDongle { scheduleCableRecheck() }
+                return opened.device
             }
         } catch {
             // Whatever stopped USB (nothing there, or Input Monitoring not granted, which
@@ -1714,15 +1731,26 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         }
     }
 
-    /// Opens `usb`, selection's pick. When that's a mouse's cable with its dongle plugged in
-    /// too, the cable has to answer first: one that only charges, or a mouse still switching
-    /// over, gets the dongle instead, which still works. Checked on each open, so the cable
-    /// takes over by the next reopen once it answers.
-    private static func openCableOrItsDongle(_ usb: IOHIDDevice) throws -> HIDDevice {
-        let opened = try HIDDevice.open(usb)
-        guard let dongle = HIDDevice.dongle(ofCable: usb), !answers(opened) else { return opened }
-        opened.close()
-        return try HIDDevice.open(dongle)
+    /// Opens `usb`, selection's pick. When that's a mouse's cable with its `dongle` plugged in
+    /// too, the cable has to answer first: a mouse still switching over gets the dongle
+    /// instead, which still works, and `scheduleCableRecheck` tries the cable again.
+    private static func openCableOrItsDongle(_ usb: IOHIDDevice, dongle: IOHIDDevice?) throws
+        -> (device: HIDDevice, onDongle: Bool) {
+        try openPreferringCable(cable: { try HIDDevice.open(usb) },
+                                dongle: dongle.map { d in { try HIDDevice.open(d) } },
+                                answers: answers, close: { $0.close() })
+    }
+
+    /// The decision `openCableOrItsDongle` makes, apart from IOHID so it can be tested. The
+    /// cable stays open until the dongle has opened: if the dongle won't, the cable is
+    /// still better than nothing.
+    static func openPreferringCable<Device>(cable: () throws -> Device, dongle: (() throws -> Device)?,
+                                            answers: (Device) -> Bool,
+                                            close: (Device) -> Void) throws -> (device: Device, onDongle: Bool) {
+        let opened = try cable()
+        guard let dongle, !answers(opened), let fallback = try? dongle() else { return (opened, false) }
+        close(opened)
+        return (fallback, true)
     }
 
     /// One quick read, to tell a link that answers from one that only enumerates.
