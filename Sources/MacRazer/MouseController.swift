@@ -531,15 +531,20 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// plugged in after the app opened something else (a keypad, a pad, a device it doesn't
     /// know) never took over until relaunch (#75). On a plug event, let go of an open device
     /// the registry doesn't know when selection now picks a known mouse; the check that
-    /// follows opens it. A known mouse is dropped this way only for its own cable, and the
-    /// open that follows goes back to the dongle if the cable doesn't answer yet
-    /// (`openCableOrItsDongle`).
+    /// follows opens it. A known mouse is dropped this way only for its own cable, and only
+    /// once the cable answers: until then the dongle, which works, is left alone and the
+    /// cable is tried again soon (`scheduleCableRecheck`).
     private func releaseDeviceIfOutranked() {
         guard let current = device, !current.isBluetooth else { return }
         let best = try? HIDDevice.controlInterface(vendorId: Razer.vendorId)
         guard Self.isOutranked(currentPID: current.productID, currentLocation: current.locationID,
                                best: best.map { (HIDDevice.productID(of: $0), HIDDevice.locationID(of: $0)) })
         else { return }
+        if let best, RazerDevices.isCable(HIDDevice.productID(of: best), ofDongle: current.productID),
+           !HIDDevice.cableAnswers(best) {
+            scheduleCableRecheck()
+            return
+        }
         current.close()
         device = nil
     }
@@ -550,9 +555,10 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     private static let cableRechecks = 5
     private static let cableRecheckDelay: TimeInterval = 2
 
-    /// Must be called on `io`. The open fell back to the dongle because the cable didn't
-    /// answer, often a mouse still switching over. A plug event checks only once, and a
-    /// dongle that keeps answering never errors into a reopen, so try the cable again soon.
+    /// Must be called on `io`. The cable didn't answer, often a mouse still switching over,
+    /// so the app stayed on (or went back to) the dongle. A plug event checks only once, and
+    /// a dongle that keeps answering never errors into a reopen, so try the cable again soon.
+    /// A recheck that lands mid-test is skipped; `endDeviceTest` starts them over.
     private func scheduleCableRecheck() {
         guard cableRechecksLeft > 0 else { return }
         cableRechecksLeft -= 1
@@ -939,7 +945,13 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     func endDeviceTest() {
         guard deviceTestActive else { return }
         deviceTestActive = false
-        io.async { [weak self] in self?.deviceTestActiveForIO = false }
+        io.async { [weak self] in
+            guard let self else { return }
+            self.deviceTestActiveForIO = false
+            // Rechecks that came due mid-test were skipped: the cable may answer by now.
+            self.cableRechecksLeft = Self.cableRechecks
+            self.releaseDeviceIfOutranked()
+        }
         refreshAll()
         scheduleNextPoll(after: BatteryPollStateMachine.Cadence.settling)
         // A popover opened during the test didn't start its live reads; start them now.
@@ -1693,7 +1705,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             let usb = try HIDDevice.controlInterfaceAndDongle(vendorId: Razer.vendorId) // any Razer mouse
             let connection = RazerDevices.connection(pid: HIDDevice.productID(of: usb.pick))
             if !Self.prefersBluetooth(over: connection, bluetoothControllable: bt != nil) {
-                let opened = try Self.openCableOrItsDongle(usb.pick, dongle: usb.dongle)
+                let opened = try HIDDevice.openCableOrItsDongle(usb.pick, dongle: usb.dongle)
                 if opened.onDongle { scheduleCableRecheck() }
                 return opened.device
             }
@@ -1729,33 +1741,6 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                Date().timeIntervalSince(started) > 1 { bluetoothOpenFailedAt = Date() }
             throw reportable ?? error
         }
-    }
-
-    /// Opens `usb`, selection's pick. When that's a mouse's cable with its `dongle` plugged in
-    /// too, the cable has to answer first: a mouse still switching over gets the dongle
-    /// instead, which still works, and `scheduleCableRecheck` tries the cable again.
-    private static func openCableOrItsDongle(_ usb: IOHIDDevice, dongle: IOHIDDevice?) throws
-        -> (device: HIDDevice, onDongle: Bool) {
-        try openPreferringCable(cable: { try HIDDevice.open(usb) },
-                                dongle: dongle.map { d in { try HIDDevice.open(d) } },
-                                answers: answers, close: { $0.close() })
-    }
-
-    /// The decision `openCableOrItsDongle` makes, apart from IOHID so it can be tested. The
-    /// cable stays open until the dongle has opened: if the dongle won't, the cable is
-    /// still better than nothing.
-    static func openPreferringCable<Device>(cable: () throws -> Device, dongle: (() throws -> Device)?,
-                                            answers: (Device) -> Bool,
-                                            close: (Device) -> Void) throws -> (device: Device, onDongle: Bool) {
-        let opened = try cable()
-        guard let dongle, !answers(opened), let fallback = try? dongle() else { return (opened, false) }
-        close(opened)
-        return (fallback, true)
-    }
-
-    /// One quick read, to tell a link that answers from one that only enumerates.
-    private static func answers(_ device: HIDDevice) -> Bool {
-        (try? device.sendWithRetry(RazerCommands.getFirmwareVersion(), attempts: 1)) != nil
     }
 
     /// Must be called on `io`.

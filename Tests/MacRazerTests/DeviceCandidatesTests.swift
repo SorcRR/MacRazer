@@ -108,7 +108,7 @@ final class DeviceCandidatesTests: XCTestCase {
     func testTheCableIsKeptUnlessTheDongleCanTakeOver() throws {
         var closed: [String] = []
         func open(cableAnswers: Bool, dongle: (() throws -> String)?) throws -> (device: String, onDongle: Bool) {
-            try MouseController.openPreferringCable(cable: { "cable" }, dongle: dongle,
+            try HIDDevice.openPreferringCable(cable: { "cable" }, dongle: dongle,
                                                     answers: { _ in cableAnswers }, close: { closed.append($0) })
         }
         struct Failed: Error {}
