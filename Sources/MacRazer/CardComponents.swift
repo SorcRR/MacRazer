@@ -94,12 +94,15 @@ struct RazerProminentButtonStyle: ButtonStyle {
 
         var body: some View {
             let small = controlSize == .small || controlSize == .mini
-            let shape = RoundedRectangle(cornerRadius: small ? 5 : 6, style: .continuous)
+            // Large matches the system's large bordered button, 28 pt tall, so a footer of
+            // both kinds lines up.
+            let large = controlSize == .large || controlSize == .extraLarge
+            let shape = RoundedRectangle(cornerRadius: small ? 5 : large ? 7 : 6, style: .continuous)
             configuration.label
                 .font(font ?? .system(size: small ? 11 : 13))
                 .foregroundStyle(Color.onRazerGreen)
-                .padding(.horizontal, small ? 8 : 10)
-                .padding(.vertical, small ? 2 : 3)
+                .padding(.horizontal, small ? 8 : large ? 14 : 10)
+                .padding(.vertical, small ? 2 : large ? 6 : 3)
                 .background(Color.razerGreen, in: shape)
                 .overlay(shape.fill(Color.black.opacity(configuration.isPressed ? 0.18 : 0)))
                 .hoverHighlight(shape)

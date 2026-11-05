@@ -37,6 +37,8 @@ expect rough edges until 1.0.
   don't use it.
 
 ### Changed
+- **Bigger buttons in the device test.** The buttons along the bottom of every test screen
+  are taller and easier to hit.
 - **The device test knows what your mouse doesn't have.** On a wired-only mouse the
   battery step now says it has no battery, and on a mouse without lights the lighting step
   says so. Click Next to go on. Nothing is sent to the mouse for those steps, and the report

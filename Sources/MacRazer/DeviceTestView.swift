@@ -618,7 +618,8 @@ struct DeviceTestView: View {
                 stepButtons
             }
         }
-        .controlSize(.regular)
+        // Large: the footer is the window's main controls, and regular ones read as cramped.
+        .controlSize(.large)
     }
 
     /// Run and Skip for steps that change something and haven't run yet; Next otherwise.
