@@ -104,7 +104,8 @@ final class DeviceTestFlowTests: XCTestCase {
         XCTAssertEqual(support(0x00E3), .partly(works: [.battery, .dpi, .lighting], missing: [.polling]), "Basilisk V4 Pro")
         XCTAssertEqual(support(0x0053), .partly(works: [.dpi, .polling], missing: [.lighting]), "Naga Chroma")
         XCTAssertEqual(support(0x0034), .partly(works: [.dpi, .polling], missing: [.lighting]), "Taipan")
-        XCTAssertEqual(support(0x008F), .unknown, "Naga Pro (Wired): on record, but nothing shown working yet")
+        XCTAssertEqual(support(0x008F), .full, "Naga Pro (Wired)")
+        XCTAssertEqual(support(0x006E), .unknown, "DeathAdder Essential (2018): on record, but nothing shown working yet")
         XCTAssertEqual(support(0x9999), .unknown)
     }
 

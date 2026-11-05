@@ -207,8 +207,10 @@ enum RazerDevices {
         // three lit zones and LOGO, SCROLL and BACKLIGHT all answer brightness (ZERO refuses),
         // so the slider writes all three.
         .init(pid: 0x0090, name: "Razer Naga Pro (Wireless)", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 20000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed, Razer.backlightLed], connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
-        // Naga Pro on the cable: same ids as the dongle per razermouse_driver.c. Not verified.
-        .init(pid: 0x008F, name: "Razer Naga Pro (Wired)", unverified: [.battery, .dpi, .polling, .lighting], hasBattery: true, hasLighting: true, maxDPI: 20000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed, Razer.backlightLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
+        // Naga Pro on the cable (in-app report on firmware v2.2, no credit given): battery, DPI
+        // and stages, polling, static color and brightness all passed with 0x1f, and every id
+        // answers. LOGO, SCROLL and BACKLIGHT answer brightness, as over the dongle.
+        .init(pid: 0x008F, name: "Razer Naga Pro (Wired)", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 20000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed, Razer.backlightLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
         // Naga V3 Pro over the dongle (#33, report from chris-agnew): battery, DPI and stages,
         // polling, static color and brightness all passed with 0x1f. 0xFF and 0x80 time out.
         // Same three-zone lighting as the Naga Pro, so the slider writes all three. The
@@ -261,6 +263,11 @@ enum RazerDevices {
         // "not supported" (0x05), the same gap as the V4 HyperSpeed, so the row stays
         // unverified. The 26000 ceiling is the app's default, not a measured value.
         .init(pid: 0x00E3, name: "Razer Basilisk V4 Pro (Wireless)", unverified: [.polling], hasBattery: true, hasLighting: true, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, acceptsClassicPolling: false),
+        // Basilisk V4 Pro on the cable (in-app report on firmware v1.1 from by_hlz): battery,
+        // DPI and stages, static color and brightness passed with 0x1f, and every id answers.
+        // LOGO and SCROLL answer brightness. The classic polling command answers 0x05, as over
+        // the dongle. Its control interface is the fourth one. Same 26000 default as the dongle.
+        .init(pid: 0x00E2, name: "Razer Basilisk V4 Pro (Wired)", unverified: [.polling], hasBattery: true, hasLighting: true, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, acceptsClassicPolling: false),
         // DeathAdder V3 HyperSpeed over the dongle (in-app report, no credit given): DPI and
         // stages and polling passed with 0x1f. It has no lighting (every group answers 0x05).
         // The battery read timed out in the first report and in a 0.7.0 run on firmware v1.10,
@@ -306,6 +313,28 @@ enum RazerDevices {
         // and polling passed with 0x1f. 0xFF and 0x80 time out. No lighting (every group
         // returns 0x03). 30000 is the vendor spec, as for the Vertical Edition.
         .init(pid: 0x00D1, name: "Razer Pro Click V2", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.lighting]),
+        // Pro Click over the dongle and on the cable (in-app reports on firmware v1.2, no credit
+        // given): battery, DPI and stages, and polling passed with 0x1f, and every id answers.
+        // No lighting: every group answers 0x05. The firmware echoed a 45000 DPI write; 16000
+        // is the vendor spec. Both rows carry the name the mouse reports, so usage stats count
+        // it as one model.
+        .init(pid: 0x0077, name: "Razer Pro Click", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 16000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.lighting]),
+        .init(pid: 0x0080, name: "Razer Pro Click", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 16000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.lighting]),
+        // Viper (in-app report on firmware v1.3, no credit given): a wired-only mouse. DPI and
+        // stages, polling, static color and brightness passed with 0x1f, and every id answers.
+        // The battery read answers 0x05. Only LOGO answers brightness. 16000 is the vendor
+        // spec. The owner found the two left side buttons not detected for remapping.
+        .init(pid: 0x0078, name: "Razer Viper", unverified: [], hasBattery: false, hasLighting: true, maxDPI: 16000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
+        // DeathAdder V3 Pro over its newer dongle (in-app report on firmware v2.0, no credit
+        // given): battery, DPI and stages, and polling passed with 0x1f. 0x80 times out. No
+        // lighting: every group returns 0x03. It also answers the polling_rate2 read, but the
+        // classic command works. 30000 is the vendor spec. Its cable has no row yet.
+        .init(pid: 0x00C3, name: "Razer DeathAdder V3 Pro", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.lighting]),
+        // Naga V2 HyperSpeed over the dongle (two in-app reports on firmware v1.1, no credit
+        // given): battery, DPI and stages, and polling passed with 0x1f. 0xFF and 0x80 time out.
+        // No lighting: every group answers 0x05. The charging read answers 0x05 too: it runs on
+        // an AA cell, so it has no cable mode to ask about. 30000 is the vendor spec.
+        .init(pid: 0x00B4, name: "Razer Naga V2 HyperSpeed", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, hasCableLink: false, notOnMouse: [.lighting]),
         // Naga V2 Pro on the cable (in-app report, no credit given): battery, DPI and stages,
         // polling, static color and brightness all passed with 0x1f, and every id answers.
         // LOGO and BACKLIGHT answer brightness (SCROLL and ZERO return 0x03), so the slider

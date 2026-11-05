@@ -80,6 +80,7 @@ says so.
 | Razer Basilisk V3 X HyperSpeed | Battery, DPI, DPI stages, polling, lighting, brightness | [@joelday](https://github.com/joelday) |
 | Razer Viper Ultimate (Wireless) | Battery, DPI, polling, brightness | [@raphaelchenouard](https://github.com/raphaelchenouard) |
 | Razer Naga Pro (Wireless) | Battery, DPI, DPI stages, polling, lighting, brightness | [@sidneylopes](https://github.com/sidneylopes) |
+| Razer Naga Pro (Wired) | Battery, DPI, DPI stages, polling, lighting, brightness | anonymous report |
 | Razer Naga V3 Pro (Wireless) | Battery, DPI, DPI stages, polling, lighting, brightness | [@chris-agnew](https://github.com/chris-agnew) |
 | Razer Naga V3 Pro (Wired) | Battery, DPI, DPI stages, polling, lighting, brightness | [@chris-agnew](https://github.com/chris-agnew) |
 | Razer Naga Trinity | DPI, DPI stages, polling, lighting, brightness | anonymous report |
@@ -88,6 +89,10 @@ says so.
 | Razer DeathAdder Essential | DPI, DPI stages, polling, brightness (its one light is green only) | anonymous report |
 | Razer Naga V2 Pro (Wired) | Battery, DPI, DPI stages, polling, lighting, brightness | anonymous report |
 | Razer Pro Click V2 | Battery, DPI, DPI stages, polling | anonymous report |
+| Razer Pro Click (wired + wireless) | Battery, DPI, DPI stages, polling (it has no lighting) | anonymous reports |
+| Razer Viper | DPI, DPI stages, polling, lighting, brightness (wired only) | anonymous report |
+| Razer DeathAdder V3 Pro (Wireless) | Battery, DPI, DPI stages, polling (it has no lighting) | anonymous report |
+| Razer Naga V2 HyperSpeed | Battery, DPI, DPI stages, polling (it has no lighting) | anonymous reports |
 | Razer Basilisk X HyperSpeed | Battery, DPI, DPI stages, polling (it has no lighting) | MagnetTileMan |
 | Razer DeathAdder V3 HyperSpeed (wired + wireless) | Battery, DPI, DPI stages, polling (it has no lighting) | fxaxg and anonymous reports |
 | Razer DeathAdder V2 Pro (Wireless) | Battery, DPI, polling, lighting | anonymous reports |
@@ -95,7 +100,7 @@ says so.
 | Razer Taipan | DPI, polling; lighting not working yet | anonymous report |
 | Razer Basilisk V4 HyperSpeed (wired + wireless) | Battery, DPI, DPI stages; polling not working yet | anonymous reports |
 | Razer Viper V4 Pro (wired + wireless) | Battery, DPI, DPI stages; polling not working yet | Robotxm and an anonymous report |
-| Razer Basilisk V4 Pro (Wireless) | Battery, DPI, DPI stages, lighting, brightness; polling not working yet | anonymous report |
+| Razer Basilisk V4 Pro (wired + wireless) | Battery, DPI, DPI stages, lighting, brightness; polling not working yet | by_hlz and an anonymous report |
 | Razer Mouse Dock Pro (with a Naga V3 Pro) | Battery, DPI, lighting, brightness; polling not working yet | anonymous report |
 | Razer HyperFlux V2 (with the mouse on it) | Battery, DPI, DPI stages, polling; lighting not confirmed yet | anonymous report |
 | Razer Naga Chroma | DPI, polling; lighting not working yet | anonymous report |
@@ -103,7 +108,6 @@ says so.
 | Razer Orochi 2013 | DPI only | [@raphaelchenouard](https://github.com/raphaelchenouard) |
 | Razer DeathAdder Essential (2018, White Edition) | Nothing; values from OpenRazer | — |
 | Razer Cobra, Cobra Pro (wired + wireless) | Nothing; same protocol family, values from OpenRazer | — |
-| Razer Naga Pro (Wired) | Nothing; its wireless sibling is verified | — |
 | Any other Razer mouse | Nothing; detected and named, controls attempted | — |
 
 An unverified mouse is not a broken one. Detection and naming work for any Razer mouse, and

@@ -145,15 +145,16 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(refusing.sent.map { $0.arguments[1] }, [Razer.logoLed, Razer.scrollLed])
     }
 
-    /// Which link is still worth a report: the Naga Pro is verified over its dongle only.
+    /// Which link is still worth a report: the Basilisk V4 HyperSpeed's cable still lacks polling.
     func testFullySupportedOnAnotherLink() {
         XCTAssertEqual(RazerDevices.modelName("Razer Naga Pro (Wired)"), "Razer Naga Pro")
         XCTAssertEqual(RazerDevices.modelName("Razer Cobra HyperSpeed"), "Razer Cobra HyperSpeed")
         XCTAssertTrue(RazerDevices.fullySupported(modelOf: 0x008F, on: .wirelessDongle))
-        XCTAssertFalse(RazerDevices.fullySupported(modelOf: 0x0090, on: .wired))
+        XCTAssertTrue(RazerDevices.fullySupported(modelOf: 0x0090, on: .wired), "Naga Pro (Wired), verified now")
+        XCTAssertFalse(RazerDevices.fullySupported(modelOf: 0x00EA, on: .wired), "Basilisk V4 HyperSpeed (Wired)")
         XCTAssertTrue(RazerDevices.fullySupported(modelOf: 0x00DB, on: .wired), "Cobra HyperSpeed (Wired)")
         XCTAssertTrue(RazerDevices.fullySupported(modelOf: 0x00E8, on: .wired), "Naga V3 Pro (Wired)")
-        XCTAssertFalse(RazerDevices.fullySupported(modelOf: 0x00E3, on: .wired), "no cable row at all")
+        XCTAssertFalse(RazerDevices.fullySupported(modelOf: 0x00C3, on: .wired), "no cable row at all")
         XCTAssertFalse(RazerDevices.fullySupported(modelOf: 0x9999, on: .wired))
     }
 
@@ -166,7 +167,7 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertNil(RazerDevices.unverified(pid: 0x9999))
         // Verified from 0.7.0 reports. The DeathAdder V2 Pro has no cable row yet, so it
         // still asks for that link; the others have nothing left to ask.
-        for pid in [0x0083, 0x007D, 0x00C5, 0x007a, 0x00C4] {
+        for pid in [0x0083, 0x007D, 0x00C5, 0x007a, 0x00C4, 0x008F, 0x0077, 0x0080, 0x0078, 0x00C3, 0x00B4] {
             XCTAssertEqual(RazerDevices.support(pid: pid), .full, String(pid, radix: 16))
         }
         XCTAssertFalse(RazerDevices.needsReport(pid: 0x0083), "no cable mode")
@@ -185,6 +186,11 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertTrue(RazerDevices.hasLighting(pid: 0x00CF), "brightness and colour answered, so it's offered")
         XCTAssertEqual(RazerDevices.verified(pid: 0x00C5), [.battery, .dpi, .polling], "no lighting on the mouse at all")
         XCTAssertEqual(RazerDevices.verified(pid: 0x0067), [.dpi, .polling, .lighting], "wired only: no battery")
+        XCTAssertEqual(RazerDevices.verified(pid: 0x0078), [.dpi, .polling, .lighting], "Viper: wired only, no battery")
+        XCTAssertEqual(RazerDevices.verified(pid: 0x0080), [.battery, .dpi, .polling], "Pro Click: no lighting")
+        XCTAssertEqual(RazerDevices.unverified(pid: 0x00E2), [.polling], "Basilisk V4 Pro cable, as its dongle")
+        XCTAssertTrue(RazerDevices.isCable(0x0080, ofDongle: 0x0077), "Pro Click: same name on both rows")
+        XCTAssertTrue(RazerDevices.isCable(0x00E2, ofDongle: 0x00E3), "Basilisk V4 Pro")
         XCTAssertEqual(RazerDevices.verified(pid: 0x0053), [.dpi, .polling], "lighting is hidden and unverified")
         XCTAssertEqual(RazerDevices.verified(pid: 0x9999), [])
     }
@@ -192,38 +198,42 @@ final class RazerDevicesTests: XCTestCase {
     /// Whether a report would still help, on this link or another.
     func testNeedsReport() {
         XCTAssertFalse(RazerDevices.needsReport(pid: 0x00DB), "verified on every link")
-        XCTAssertTrue(RazerDevices.needsReport(pid: 0x0090), "verified, but the cable row isn't")
+        XCTAssertFalse(RazerDevices.needsReport(pid: 0x0090), "verified on both links")
+        XCTAssertTrue(RazerDevices.needsReport(pid: 0x00C3), "verified, but its cable has no row yet")
         XCTAssertTrue(RazerDevices.needsReport(pid: 0x00E3), "partly verified")
         XCTAssertTrue(RazerDevices.needsReport(pid: 0x9999), "unknown")
         XCTAssertEqual(RazerDevices.support(pid: 0x0090), .full)
-        XCTAssertEqual(RazerDevices.support(pid: 0x008F), .unknown, "on record, nothing shown working")
+        XCTAssertEqual(RazerDevices.support(pid: 0x006E), .unknown, "on record, nothing shown working")
     }
 
     /// Which other links of a mouse the intro asks for.
     func testLinksToTest() {
         typealias Link = RazerDevices.LinkToTest
         // A row for the other link that isn't fully supported: named, with what it needs.
-        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x0090),
-                       [Link(connection: .wired, missing: [.battery, .dpi, .polling, .lighting])])
+        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00EA),
+                       [Link(connection: .wired, missing: [.polling])])
         // Fully supported on every link it has a row for.
         XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00E8), [])
+        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x0090), [], "Naga Pro, both links verified")
+        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x0077), [], "Pro Click, both links verified")
         XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00DB), [])
         // No row for the cable, and a battery: worth asking, worded with an "if".
-        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00E3), [Link(connection: .wired, missing: nil)])
+        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00C3), [Link(connection: .wired, missing: nil)])
         // AA-cell mice have no cable mode, so there's nothing to suggest.
         XCTAssertEqual(RazerDevices.linksToTest(besides: 0x0062), [], "Atheris")
         XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00B9), [], "Basilisk V3 X HyperSpeed")
+        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00B4), [], "Naga V2 HyperSpeed")
         // Wired only, and Bluetooth never suggested without a row.
         XCTAssertEqual(RazerDevices.linksToTest(besides: 0x0067), [])
         XCTAssertEqual(RazerDevices.linksToTest(besides: 0x9999), [])
     }
 
-    /// A cable report from a Naga Pro answers the dongle row's ask for a cable test, whether
-    /// the cable's product id is on record or not. A report from the dongle answers nothing.
+    /// A cable report answers a verified dongle row's ask for a cable test, even when the
+    /// cable's product id isn't on record. A report from the dongle answers nothing.
     func testReportAnswersTheRowThatAskedForIt() {
-        XCTAssertEqual(RazerDevices.rowsAnswered(byReportFrom: 0x008F, name: "Razer Naga Pro", on: .wired), [0x0090])
-        XCTAssertEqual(RazerDevices.rowsAnswered(byReportFrom: 0xFFF0, name: "Razer Naga Pro", on: .wired), [0x0090])
-        XCTAssertEqual(RazerDevices.rowsAnswered(byReportFrom: 0x0090, name: "Razer Naga Pro", on: .wirelessDongle), [])
+        XCTAssertEqual(RazerDevices.rowsAnswered(byReportFrom: 0xFFF0, name: "Razer DeathAdder V3 Pro", on: .wired), [0x00C3])
+        XCTAssertEqual(RazerDevices.rowsAnswered(byReportFrom: 0x00C3, name: "Razer DeathAdder V3 Pro", on: .wirelessDongle), [])
+        XCTAssertEqual(RazerDevices.rowsAnswered(byReportFrom: 0x008F, name: "Razer Naga Pro", on: .wired), [], "nothing left to ask")
         XCTAssertEqual(RazerDevices.rowsAnswered(byReportFrom: 0xFFF0, name: "Razer Something Else", on: .wired), [])
     }
 
