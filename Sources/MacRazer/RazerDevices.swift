@@ -495,6 +495,14 @@ enum RazerDevices {
     static func connection(pid: Int?) -> RazerConnection? {
         pid.flatMap { info(pid: $0)?.connection }
     }
+    /// Whether `wired` is the cable of the same model `dongle` is the dongle of: two rows of
+    /// one mouse, so with both plugged in the cable is the one to use. It carries everything,
+    /// and with the cable in, the dongle has nothing to add.
+    static func isCable(_ wired: Int, ofDongle dongle: Int) -> Bool {
+        guard let cable = info(pid: wired), let receiver = info(pid: dongle),
+              cable.connection == .wired, receiver.connection == .wirelessDongle else { return false }
+        return modelName(of: cable) == modelName(of: receiver)
+    }
     static func silhouette(pid: Int?) -> RazerMouseSilhouette { pid.flatMap { info(pid: $0)?.silhouette } ?? .cobra }
     static func dischargeCurveModelKey(pid: Int) -> String? { info(pid: pid)?.dischargeCurveModelKey }
     /// LED group for brightness get/set. Unknown models fall back to LOGO_LED, the id the

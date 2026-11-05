@@ -85,6 +85,9 @@ final class DeviceTestModel: ObservableObject {
     /// presses (no Input Monitoring, or the mouse went away), and the step says so.
     @Published private(set) var listening = false
     @Published var comment = ""
+    /// Which mouse sits on the dock or mat under test. Its PID is the dock's, so the report
+    /// can't tell otherwise. Sent as the first line of the comment.
+    @Published var dockMouse = ""
     @Published var credit = ""
     @Published var replyEmail = ""
     @Published private(set) var copied = false
@@ -209,6 +212,98 @@ final class DeviceTestModel: ObservableObject {
         return lacking
     }
     var deviceName: String { report?.device.name ?? controller.deviceName ?? "your mouse" }
+
+    // MARK: - Other devices
+
+    /// Every device plugged in that could be the mouse, when there's more than one. The intro
+    /// asks to unplug all but one: the test runs on whichever selection opens, and with a dock
+    /// next to its own dongle that may not be the one meant. Empty with one or none.
+    @Published private(set) var devices: [HIDDeviceSelection.Candidate] = []
+
+    /// Lists the devices again: when the intro shows, and on a plug event.
+    func refreshDevices() {
+        let found = HIDDevice.mouseCandidates()
+        let shown = found.count > 1 ? found : []
+        // Not `index`: it points into an IOHID set whose order changes between listings.
+        func same(_ a: [HIDDeviceSelection.Candidate], _ b: [HIDDeviceSelection.Candidate]) -> Bool {
+            a.map(\.key) == b.map(\.key) && a.map(\.name) == b.map(\.name)
+        }
+        if !same(shown, devices) { devices = shown }
+    }
+
+    /// A Razer device was plugged in or unplugged. Lists them again if the intro is showing.
+    func devicesMayHaveChanged() {
+        if stage == .intro { refreshDevices() }
+    }
+
+    /// The devices as the hint names them: each by its name, with the link the registry knows
+    /// it by when two share a name, and a number when that doesn't tell them apart either.
+    nonisolated static func deviceLabels(_ devices: [HIDDeviceSelection.Candidate]) -> [String] {
+        func repeated(_ names: [String]) -> Set<String> {
+            Set(Dictionary(grouping: names, by: { $0 }).filter { $0.value.count > 1 }.keys)
+        }
+        let sameName = repeated(devices.map(\.name))
+        let linked = devices.map { device -> String in
+            guard sameName.contains(device.name),
+                  let link = RazerDevices.connection(pid: device.key.pid) else { return device.name }
+            return "\(RazerDevices.modelName(device.name)) (\(link.label))"
+        }
+        let stillSame = repeated(linked)
+        var seen: [String: Int] = [:]
+        return linked.map { label in
+            guard stillSame.contains(label) else { return label }
+            seen[label, default: 0] += 1
+            return "\(label) \(seen[label]!)"
+        }
+    }
+
+    /// The intro's hint with more than one device plugged in. `testing` is the device the app
+    /// has open, which the test runs on.
+    nonisolated static func unplugHint(_ devices: [HIDDeviceSelection.Candidate], testing: String?) -> String {
+        let names = deviceLabels(devices)
+        let list = names.count == 2 ? "\(names[0]) and \(names[1])"
+            : names.dropLast().joined(separator: ", ") + ", and " + (names.last ?? "")
+        var hint = "More than one Razer device that could be a mouse is plugged in: \(list). For an accurate test, unplug all but the one you want to test."
+        if let testing { hint += " The test will run on \(testing)." }
+        return hint
+    }
+
+    /// A dock or charging mat that passes commands to the mouse on it. Its product ID is the
+    /// dock's whatever mouse is on it, so the review asks which one.
+    nonisolated static func isDock(name: String) -> Bool {
+        let lower = name.lowercased()
+        return lower.contains("dock") || lower.contains("hyperflux")
+    }
+    var testsDock: Bool { report.map { Self.isDock(name: $0.device.name) } ?? false }
+
+    /// How long the dock field may be.
+    nonisolated static let maxDockMouse = 64
+
+    /// How long the comment may be: the report's cap, less the dock line that goes ahead of it.
+    var commentLimit: Int { Self.commentLimit(dockMouse: testsDock ? dockMouse : nil) }
+    nonisolated static func commentLimit(dockMouse: String?) -> Int {
+        guard let line = dockLine(dockMouse) else { return DeviceReportOutput.maxComment }
+        return DeviceReportOutput.maxComment - line.count - 2
+    }
+
+    /// "Mouse on the dock: …", or nil with nothing filled in.
+    nonisolated static func dockLine(_ dockMouse: String?) -> String? {
+        DeviceReportOutput.cleaned(dockMouse ?? "", max: maxDockMouse, units: maxDockMouse * 4, singleLine: true)
+            .map { "Mouse on the dock: \($0)" }
+    }
+
+    /// The comment as the report carries it, cleaned and capped: the dock's mouse first, then
+    /// the comment, cut to what's left of both caps so the dock line is never what's dropped.
+    nonisolated static func reportComment(_ comment: String, dockMouse: String?) -> String? {
+        guard let line = dockLine(dockMouse) else {
+            return DeviceReportOutput.cleaned(comment, max: DeviceReportOutput.maxComment,
+                                              units: DeviceReportOutput.maxCommentUnits, singleLine: false)
+        }
+        let rest = DeviceReportOutput.cleaned(comment, max: DeviceReportOutput.maxComment - line.count - 2,
+                                              units: DeviceReportOutput.maxCommentUnits - line.utf16.count - 2,
+                                              singleLine: false)
+        return rest.map { line + "\n\n" + $0 } ?? line
+    }
     var emailProblem: String? { DeviceReportOutput.emailProblem(replyEmail) }
 
     // MARK: - Starting
@@ -249,7 +344,7 @@ final class DeviceTestModel: ObservableObject {
     /// Called when the window comes back to the front: the person may have just granted it in
     /// System Settings.
     func recheckAccess() {
-        if stage == .intro { refreshBluetoothOffer() }
+        if stage == .intro { refreshBluetoothOffer(); refreshDevices() }
         if stage == .permission, !needsRelaunch, Self.inputMonitoringGranted { begin() }
     }
 
@@ -572,8 +667,7 @@ final class DeviceTestModel: ObservableObject {
     /// the verdict worked out.
     func finalReport() -> DeviceReport? {
         guard var report else { return nil }
-        report.comment = DeviceReportOutput.cleaned(comment, max: DeviceReportOutput.maxComment,
-                                                    units: DeviceReportOutput.maxCommentUnits, singleLine: false)
+        report.comment = Self.reportComment(comment, dockMouse: testsDock ? dockMouse : nil)
         report.credit = DeviceReportOutput.cleaned(credit, max: DeviceReportOutput.maxCredit,
                                                    units: DeviceReportOutput.maxCreditUnits, singleLine: true)
         report.replyEmail = emailProblem == nil
@@ -685,6 +779,7 @@ final class DeviceTestModel: ObservableObject {
         turnedRed = nil
         buttonsSeen = []
         comment = ""
+        dockMouse = ""
         credit = ""
         replyEmail = ""
         copied = false
@@ -700,6 +795,11 @@ extension DeviceTestModel {
     func previewSendState(_ state: SendState) {
         sendState = state
         replyEmail = state == .sent ? "you@example.com" : replyEmail
+    }
+
+    /// The intro's hint as it shows with `devices` plugged in.
+    func loadPreviewDevices(_ devices: [HIDDeviceSelection.Candidate]) {
+        self.devices = devices
     }
 
     /// `pid` picks the intro: a fully supported model, a partly supported one, or one the

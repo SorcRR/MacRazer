@@ -718,6 +718,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
             self.razerMiceOnUSB = self.listRazerMiceIfNeeded()
+            // The test's intro names every device that could be the mouse; a plug changes that.
+            if self.deviceTestWindow.isVisible { self.deviceTestWindow.model.devicesMayHaveChanged() }
         }
         relistRazerMiceWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 1, execute: work)

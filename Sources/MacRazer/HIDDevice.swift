@@ -260,8 +260,45 @@ final class HIDDevice {
     /// interfaces) wins is decided by `HIDDeviceSelection` — matching is vendor-wide, so
     /// with a Razer keyboard or second mouse attached, the mouse must be picked by rank
     /// (registry-known PID → mouse-usage device → score), not by raw interface score.
+    /// A mouse's cable with its dongle also plugged in gets the dongle while the cable
+    /// doesn't answer (`openCableOrItsDongle`).
     static func open(vendorId: Int) throws -> HIDDevice {
-        try open(controlInterface(vendorId: vendorId))
+        let usb = try controlInterfaceAndDongle(vendorId: vendorId)
+        return try openCableOrItsDongle(usb.pick, dongle: usb.dongle).device
+    }
+
+    /// Opens `usb`, selection's pick. When that's a mouse's cable with its `dongle` plugged in
+    /// too, the cable has to answer first: a mouse still switching over gets the dongle
+    /// instead, which still works. `onDongle` says it did, so the app can try the cable again.
+    static func openCableOrItsDongle(_ usb: IOHIDDevice, dongle: IOHIDDevice?) throws
+        -> (device: HIDDevice, onDongle: Bool) {
+        try openPreferringCable(cable: { try open(usb) },
+                                dongle: dongle.map { d in { try open(d) } },
+                                answers: answers, close: { $0.close() })
+    }
+
+    /// The decision `openCableOrItsDongle` makes, apart from IOHID so it can be tested. The
+    /// cable stays open until the dongle has opened: if the dongle won't, the cable is
+    /// still better than nothing.
+    static func openPreferringCable<Device>(cable: () throws -> Device, dongle: (() throws -> Device)?,
+                                            answers: (Device) -> Bool,
+                                            close: (Device) -> Void) throws -> (device: Device, onDongle: Bool) {
+        let opened = try cable()
+        guard let dongle, !answers(opened), let fallback = try? dongle() else { return (opened, false) }
+        close(opened)
+        return (fallback, true)
+    }
+
+    /// One quick read, to tell a link that answers from one that only enumerates.
+    static func answers(_ device: HIDDevice) -> Bool {
+        (try? device.sendWithRetry(RazerCommands.getFirmwareVersion(), attempts: 1)) != nil
+    }
+
+    /// Whether `cable` answers, opened just for the read and closed again.
+    static func cableAnswers(_ cable: IOHIDDevice) -> Bool {
+        guard let opened = try? open(cable, as: "cable check") else { return false }
+        defer { opened.close() }
+        return answers(opened)
     }
 
     /// The control interface `open(vendorId:)` would pick, without opening it — so a caller
@@ -274,6 +311,24 @@ final class HIDDevice {
             throw HIDError.notFound
         }
         return devices[idx]
+    }
+
+    /// `controlInterface(vendorId:)`'s pick, plus the dongle of the same mouse when the pick
+    /// is its cable and both are plugged in. One listing for both. Nothing is opened.
+    static func controlInterfaceAndDongle(vendorId: Int) throws -> (pick: IOHIDDevice, dongle: IOHIDDevice?) {
+        let devices = matchingDevices(vendorId: vendorId)
+        let infos = interfaceInfos(devices)
+        guard let idx = HIDDeviceSelection.controlInterfaceIndex(interfaces: infos) else {
+            throw HIDError.notFound
+        }
+        let dongle = HIDDeviceSelection.dongleIndex(ofCable: infos[idx].pid, interfaces: infos).map { devices[$0] }
+        return (devices[idx], dongle)
+    }
+
+    /// Every device plugged in by cable or dongle that could be the mouse, best first. Listing
+    /// opens nothing, so it needs no permission.
+    static func mouseCandidates() -> [HIDDeviceSelection.Candidate] {
+        HIDDeviceSelection.candidates(interfaces: interfaceInfos(matchingDevices(vendorId: Razer.vendorId)))
     }
 
     /// The control interface of every accessory `RazerAccessories` knows, without opening

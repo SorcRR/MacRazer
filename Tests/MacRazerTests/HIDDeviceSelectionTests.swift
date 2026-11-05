@@ -132,8 +132,12 @@ final class HIDDeviceSelectionTests: XCTestCase {
         XCTAssertFalse(MouseController.isOutranked(currentPID: 0x0C04, currentLocation: 1, best: nil))
         XCTAssertFalse(MouseController.isOutranked(currentPID: 0x0C04, currentLocation: 1, best: (0xFFF0, 2)),
                        "only a known mouse is worth the switch")
-        XCTAssertFalse(MouseController.isOutranked(currentPID: 0x00DB, currentLocation: 1, best: (0x00DA, 2)),
-                       "a known mouse is never dropped: its dongle and cable are the same mouse")
+        XCTAssertTrue(MouseController.isOutranked(currentPID: 0x00DB, currentLocation: 1, best: (0x00DA, 2)),
+                      "its own cable takes over from the dongle")
+        XCTAssertFalse(MouseController.isOutranked(currentPID: 0x00DA, currentLocation: 2, best: (0x00DB, 1)),
+                       "never the other way")
+        XCTAssertFalse(MouseController.isOutranked(currentPID: 0x00DB, currentLocation: 1, best: (0x0099, 2)),
+                       "another known mouse doesn't take over")
     }
 
     /// A report names the interface the test opened, even when selection would pick another.

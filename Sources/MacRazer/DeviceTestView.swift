@@ -89,6 +89,12 @@ struct DeviceTestView: View {
 
     private var intro: some View {
         VStack(alignment: .leading, spacing: 12) {
+            // First: the rest of the intro describes the device the test will run on.
+            if !model.devices.isEmpty {
+                // On Bluetooth the test can't use the open mouse, so it names none.
+                warning(DeviceTestModel.unplugHint(model.devices, testing: model.controller.deviceIsBluetooth
+                                                   ? nil : model.controller.deviceName))
+            }
             switch model.support {
             case .full:
                 tag("Fully supported", color: .razerGreenText)
@@ -463,6 +469,13 @@ struct DeviceTestView: View {
                 }
                 .font(.system(size: 11))
             }
+            if model.testsDock {
+                // The report names only the dock: the mouse on it answers under the dock's ID.
+                TextField("Which mouse is on the dock? (optional)", text: Binding(
+                    get: { model.dockMouse },
+                    set: { model.dockMouse = String($0.prefix(DeviceTestModel.maxDockMouse)) }))
+                    .inputBox()
+            }
             TextField("Name or GitHub handle to credit (optional)", text: $model.credit)
                 .inputBox()
             // Only Send carries it, so without the Worker there's nowhere for it to go.
@@ -481,11 +494,17 @@ struct DeviceTestView: View {
             }
             VStack(alignment: .trailing, spacing: 2) {
                 TextEditor(text: Binding(get: { model.comment },
-                                         set: { model.comment = String($0.prefix(DeviceReportOutput.maxComment)) }))
+                                         set: { model.comment = String($0.prefix(model.commentLimit)) }))
                     .editorBox(placeholder: "Comments or feedback (optional)", isEmpty: model.comment.isEmpty)
                 // Verbatim: a localized number would print 2000 as "2.000" in some regions.
-                Text(verbatim: "\(model.comment.count) / \(DeviceReportOutput.maxComment)")
-                    .font(.system(size: 10)).foregroundStyle(.secondary)
+                Text(verbatim: "\(model.comment.count) / \(model.commentLimit)")
+                    .font(.system(size: 10))
+                    .foregroundStyle(model.comment.count > model.commentLimit ? Color.batteryMid : .secondary)
+                // The dock field grew after the comment was written: say what gets cut.
+                if model.comment.count > model.commentLimit {
+                    Text("The end of your comment won't fit with the dock's mouse and will be cut.")
+                        .font(.system(size: 10)).foregroundStyle(Color.batteryMid)
+                }
             }
             if model.copied { note("Copied.") }
             if model.issueOpened { note("The full report is on your clipboard. Paste it into the issue before you submit it.") }

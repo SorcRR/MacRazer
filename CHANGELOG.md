@@ -20,6 +20,18 @@ expect rough edges until 1.0.
   asked to test it without waiting for the next update. The list can only drop a request,
   never add one, and it never changes how the app talks to your mouse. Nothing about you or your
   mice is sent with the request. Offline, the app uses its own list.
+- **The test asks you to unplug extra devices.** With more than one Razer device that could
+  be the mouse plugged in, like a charging dock next to its own dongle, the device test now
+  names them, asks you to unplug all but the one you want to test, and says which one it will
+  run on. Before, it quietly took whichever sat on the lower USB port, so a dock could get
+  tested in place of the mouse. Keyboards and mousepads don't count.
+- **The cable wins over the dongle.** With a mouse on its cable and its dongle still plugged
+  in, MacRazer now uses the cable. It moves over once the cable answers, which can take a few
+  seconds after you plug it in. Until then it stays on the dongle. Before, whichever sat on
+  the lower USB port won.
+- **The test asks which mouse is on a dock.** A dock or charging mat answers under its own
+  name, whatever mouse is on it. On the Mouse Dock Pro, the HyperFlux V2 and other docks, the
+  review now asks which mouse it is, and the report puts that first in the comment.
 
 ### Changed
 - **The device test knows what your mouse doesn't have.** On a wired-only mouse the
