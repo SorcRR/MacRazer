@@ -421,6 +421,9 @@ struct DeviceTestView: View {
             }
             note(report.replyEmail.map { "Your report is on its way to the maintainer, who can reply to \($0)." }
                  ?? "Your report is on its way to the maintainer.")
+            // Only once the report is sent: the person has just helped, and the ask is the
+            // footer's quiet button, not a banner. Before the test-again cards' next steps.
+            note(Self.tipLine(model.support))
             if report.device.connection == .bluetooth {
                 card {
                     Text("Over its dongle or cable, MacRazer can run the full test. If your mouse has either, switch to it and run the test again from the menu.")
@@ -435,9 +438,6 @@ struct DeviceTestView: View {
                         .font(.system(size: 13)).fixedSize(horizontal: false, vertical: true)
                 }
             }
-            // Only once the report is sent: the person has just helped, and the ask is the
-            // footer's quiet button, not a banner.
-            note("MacRazer is free. If it saves you a trip to Windows, a tip keeps it going.")
         }
     }
 
@@ -519,6 +519,14 @@ struct DeviceTestView: View {
         }
     }
 
+    /// The thank-you screen's line for the tip button. A mouse MacRazer can't control yet
+    /// isn't saving anyone a trip to Windows, so its line says what a tip does instead.
+    static func tipLine(_ support: RazerDevices.LinkSupport) -> String {
+        support == .unknown
+            ? "MacRazer is free and built in spare time. Tips help it learn more mice like yours."
+            : "MacRazer is free. If it saves you a trip to Windows, a tip keeps it going."
+    }
+
     static func sendFailure(_ outcome: DeviceReportSender.Outcome) -> String {
         switch outcome {
         case .tooMany: return "Too many reports from here today. Try again tomorrow, or open a GitHub issue instead."
@@ -569,15 +577,21 @@ struct DeviceTestView: View {
                 Button("Next") { model.next() }.disabled(model.running)
                     .keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
             case .review where model.sendState == .sent:
+                // The next step the screen asks for comes first.
+                if model.otherLink != nil { Button("Test again") { model.testAgain() } }
+                // A Button, not a Link: Link ignores the bordered style the footer's buttons
+                // share. It still reads as a link to VoiceOver.
                 Button { NSWorkspace.shared.open(ProjectLinks.tip) } label: {
                     Label {
                         Text("Leave a tip")
                     } icon: {
-                        Image(systemName: "heart.fill").foregroundStyle(Color(nsColor: .systemRed))
+                        // Multicolor: a bordered button tints a plain symbol with its label color.
+                        Image(systemName: "heart.fill").symbolRenderingMode(.multicolor)
+                            .foregroundStyle(Color(nsColor: .systemRed))
                     }
                 }
+                .accessibilityRemoveTraits(.isButton).accessibilityAddTraits(.isLink)
                 .help("Opens MacRazer's Ko-fi page in your browser")
-                if model.otherLink != nil { Button("Test again") { model.testAgain() } }
                 Spacer()
                 Button("Done", action: onClose).keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
             case .review:
