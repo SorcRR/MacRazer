@@ -292,6 +292,11 @@ final class RazerDevicesTests: XCTestCase {
                        "polling never counts as working over Bluetooth")
         XCTAssertEqual(RazerDevices.askable([.dpi, .lighting], on: .bluetooth), [],
                        "a read-only Bluetooth report can't confirm DPI or lighting")
+        XCTAssertEqual(RazerDevices.onlyOtherLinksConfirm(pid: 0x00CE), [.dpi, .lighting])
+        XCTAssertEqual(RazerDevices.onlyOtherLinksConfirm(pid: 0x00E3), [], "a USB test checks its own link")
+        XCTAssertFalse(RazerDevices.writesDPI(pid: 0x00CE), "nobody has set its DPI over Bluetooth")
+        XCTAssertTrue(RazerDevices.writesDPI(pid: 0x00BA), "the V3 X's Bluetooth DPI is verified")
+        XCTAssertTrue(RazerDevices.writesDPI(pid: 0x00E3), "over USB an unverified DPI is still offered")
         XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00CE).map(\.connection), [.wired],
                        "its cable still has lighting to confirm, so that's what it asks for")
         XCTAssertFalse(RazerDevices.linksToTest(besides: 0x00CC).contains { $0.connection == .bluetooth },

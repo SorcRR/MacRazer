@@ -1291,12 +1291,14 @@ struct PopoverView: View {
         }
         .help(inStageEditMode ? "Stage \(index + 1) · Click to change its DPI"
               : controller.supportsDpiStageEditing ? "Stage \(index + 1) · Right-click or use Edit to change it"
-              : "Stage \(index + 1)")
+              : controller.supportsDPIWrites ? "Stage \(index + 1)"
+              : "Stage \(index + 1) · Use the mouse's DPI button. Switching stages over Bluetooth isn't tested on this mouse yet.")
         .accessibilityLabel(editing ? "Stage \(index + 1) DPI" : DPIStageAccent.accessibilityLabel(
             value: value, stageIndex: index))
         .accessibilityAddTraits(active ? .isSelected : [])
         // In Edit mode another chip stays clickable while a field is open: it moves the editor.
-        .disabled(controller.isUpdatingDpiStages || (editingDpiStage != nil && !editing && !inStageEditMode))
+        .disabled(controller.isUpdatingDpiStages || !controller.supportsDPIWrites
+                  || (editingDpiStage != nil && !editing && !inStageEditMode))
     }
 
     private func beginDpiStageEdit(index: Int, value: Int) {

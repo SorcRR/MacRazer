@@ -81,6 +81,17 @@ final class SupportPromptWordingTests: XCTestCase {
         XCTAssertTrue(links.detail.contains("its cable"), links.detail)
     }
 
+    /// On Bluetooth the test only reads. The Basilisk V3 Pro 35K there lacks only what it would
+    /// have to set, so it's asked about its cable, never sent to a test that can't help.
+    func testBluetoothRowMissingOnlySettingsPointsAtTheCable() {
+        XCTAssertTrue(RazerDevices.needsReport(pid: 0x00CE), "its cable still has lighting to confirm")
+        let card = SupportPromptView.card(pid: 0x00CE)
+        XCTAssertTrue(card.otherLinksOnly, "no test to run on Bluetooth")
+        XCTAssertEqual(card.title, "Test its other connection")
+        XCTAssertTrue(card.detail.contains("its cable"), card.detail)
+        XCTAssertFalse(SupportPromptView.card(pid: 0x00E3).otherLinksOnly, "a USB row still runs its own test")
+    }
+
     /// Over Bluetooth there's no cable or dongle in to unplug first.
     func testLinkTextFromBluetooth() {
         typealias Link = RazerDevices.LinkToTest

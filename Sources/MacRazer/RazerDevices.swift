@@ -507,6 +507,23 @@ enum RazerDevices {
         link == .bluetooth ? missing.filter { $0 == .battery } : missing
     }
 
+    /// What `pid`'s own link still needs that a test there can't confirm (`askable`), so only
+    /// another link's test can. Empty everywhere but a partly verified Bluetooth row.
+    static func onlyOtherLinksConfirm(pid: Int) -> [RazerFeature] {
+        guard let info = info(pid: pid) else { return [] }
+        let missing = unverified(info)
+        let here = askable(missing, on: info.connection)
+        return missing.filter { !here.contains($0) }
+    }
+
+    /// Whether the app may change `pid`'s DPI. Over USB an unverified DPI is still offered, as
+    /// the README says. Over Bluetooth it isn't: the Bluetooth test can't show it working, so
+    /// a model whose DPI nobody has set there only shows its stages.
+    static func writesDPI(pid: Int) -> Bool {
+        guard let info = info(pid: pid), info.connection == .bluetooth else { return true }
+        return !unverified(info).contains(.dpi)
+    }
+
     /// The other rows of a model whose only ask was a test on `connection`: fully supported
     /// themselves, with `connection` among their links to test. A report from that link
     /// answers them. `name` is the tested mouse's own name, for a product id not on record.

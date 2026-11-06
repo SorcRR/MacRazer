@@ -38,8 +38,10 @@ expect rough edges until 1.0.
   Pro on its cable work for everything but the polling rate.
 - **Orochi V2 on its dongle.** A test report passed battery, DPI, stages and polling, so it's
   fully supported. It runs on an AA or AAA cell, so it never asks for a cable test.
-- **Basilisk V3 Pro 35K over Bluetooth.** MacRazer now knows it there and shows its battery.
-  DPI and lighting over Bluetooth haven't been tried yet. For everything else, use its cable.
+- **Basilisk V3 Pro 35K over Bluetooth.** MacRazer now knows it there and shows its battery
+  and DPI stages. Nobody has changed DPI or lighting over Bluetooth on it yet, so the stages
+  only show, and the mouse's DPI button still switches them. For everything else, use its
+  cable. The test prompt asks for a cable test, since the Bluetooth test only reads.
 - **Naga Pro on its cable.** A test report passed battery, DPI, stages, polling and lighting,
   so it's fully supported on both the cable and the dongle, and it stops asking for a cable
   test.

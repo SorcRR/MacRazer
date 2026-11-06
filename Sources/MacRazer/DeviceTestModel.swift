@@ -138,6 +138,12 @@ final class DeviceTestModel: ObservableObject {
         pinned?.support ?? testedPID.map { RazerDevices.support(pid: $0) } ?? .unknown
     }
 
+    /// What this link still needs that only a test on another link can confirm
+    /// (`RazerDevices.onlyOtherLinksConfirm`): over Bluetooth, the settings it would have to set.
+    var onlyOtherLinksConfirm: [RazerFeature] {
+        testedPID.map(RazerDevices.onlyOtherLinksConfirm(pid:)) ?? []
+    }
+
     /// Whether the connected model is already on the verified list. Decides the window title.
     var isKnownSupported: Bool { support == .full }
     /// The connected mouse's other links still worth a report, for the intro.
