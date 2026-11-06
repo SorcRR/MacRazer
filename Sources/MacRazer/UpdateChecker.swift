@@ -256,7 +256,7 @@ final class UpdateChecker: ObservableObject {
         isChecking = true
         defer { isChecking = false }
         do {
-            // The mice go separately, from `MouseCountReporter`, once the controller has found them.
+            // The mice go separately, from `AnonymousCountReporter`, once the controller has found them.
             let releases = try await Self.fetchReleases(worker: WorkerEndpoint.releases(appVersion: AppInfo.version),
                                                         github: releaseAPIURL)
             // GitHub's `releases/latest` applied "no drafts, no prereleases" on its side. The

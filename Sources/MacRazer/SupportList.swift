@@ -86,6 +86,11 @@ final class SupportListUpdater {
     static let interval = UpdateChecker.checkInterval
     static let listKey = "supportList.data"
     static let fetchedKey = "supportList.fetchedAt"
+    /// When the Worker last answered with something this build couldn't use: an error status,
+    /// or a list it can't read (a newer schema). Asked again after `retryInterval`, not on
+    /// every trigger. A request that never got an answer (offline) isn't counted.
+    static let refusedKey = "supportList.refusedAt"
+    static let retryInterval: TimeInterval = 60 * 60
 
     private let defaults: UserDefaults
     private let endpoint: URL?
@@ -113,12 +118,14 @@ final class SupportListUpdater {
         guard let list = SupportList.decode(data), list.applies(to: version) else {
             defaults.removeObject(forKey: Self.listKey)
             defaults.removeObject(forKey: Self.fetchedKey)
+            defaults.removeObject(forKey: Self.refusedKey)
             return
         }
         apply(list.remaining)
     }
 
-    static func isDue(lastFetched: Date?, now: Date) -> Bool {
+    static func isDue(lastFetched: Date?, lastRefused: Date? = nil, now: Date) -> Bool {
+        if let lastRefused, now.timeIntervalSince(lastRefused) < retryInterval { return false }
         guard let lastFetched else { return true }
         return now.timeIntervalSince(lastFetched) >= interval
     }
@@ -127,7 +134,8 @@ final class SupportListUpdater {
     /// trigger the update check has; one request runs at a time.
     func refreshIfDue(now: Date = Date()) async {
         guard endpoint != nil,
-              Self.isDue(lastFetched: defaults.object(forKey: Self.fetchedKey) as? Date, now: now) else { return }
+              Self.isDue(lastFetched: defaults.object(forKey: Self.fetchedKey) as? Date,
+                         lastRefused: defaults.object(forKey: Self.refusedKey) as? Date, now: now) else { return }
         if let running { return await running.value }
         let task = Task { await fetch(now: now) }
         running = task
@@ -139,9 +147,13 @@ final class SupportListUpdater {
         guard let endpoint else { return }
         var request = URLRequest(url: endpoint, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 10)
         request.setValue("MacRazer/\(AppInfo.displayVersion)", forHTTPHeaderField: "User-Agent")
-        guard let (data, response) = try? await transport(request),
-              let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
-              let list = SupportList.decode(data) else { return }
+        guard let (data, response) = try? await transport(request) else { return }
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+              let list = SupportList.decode(data) else {
+            defaults.set(now, forKey: Self.refusedKey)
+            return
+        }
+        defaults.removeObject(forKey: Self.refusedKey)
         // A good answer counts against the interval even when it's for another version: asking
         // again sooner wouldn't change it until the Worker is regenerated.
         defaults.set(now, forKey: Self.fetchedKey)

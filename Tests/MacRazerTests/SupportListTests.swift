@@ -243,6 +243,29 @@ final class SupportListUpdaterTests: XCTestCase {
         XCTAssertNil(defaults.object(forKey: SupportListUpdater.fetchedKey))
     }
 
+    /// An answer the build can't use waits `retryInterval`; no answer at all (offline) doesn't.
+    func testARefusedAnswerBacksOffButOfflineDoesNot() async {
+        let requests = Requests()
+        let offline = updater(requests: requests) { throw URLError(.notConnectedToInternet) }
+        await offline.refreshIfDue(now: now)
+        await offline.refreshIfDue(now: now.addingTimeInterval(1))
+        XCTAssertEqual(requests.seen.count, 2, "offline asks again on the next trigger")
+        XCTAssertNil(defaults.object(forKey: SupportListUpdater.refusedKey))
+
+        let refusedRequests = Requests()
+        let newerSchema = Data(#"{"schema":2,"version":"0.7.0","commit":"x","mice":[]}"#.utf8)
+        let refused = updater(requests: refusedRequests) { (newerSchema, 200) }
+        await refused.refreshIfDue(now: now)
+        await refused.refreshIfDue(now: now.addingTimeInterval(SupportListUpdater.retryInterval - 1))
+        XCTAssertEqual(refusedRequests.seen.count, 1, "not on every popover open")
+        await refused.refreshIfDue(now: now.addingTimeInterval(SupportListUpdater.retryInterval))
+        XCTAssertEqual(refusedRequests.seen.count, 2)
+
+        let data = good
+        await updater { (data, 200) }.refreshIfDue(now: now.addingTimeInterval(2 * SupportListUpdater.retryInterval))
+        XCTAssertNil(defaults.object(forKey: SupportListUpdater.refusedKey), "a good answer clears it")
+    }
+
     func testAListForAnOlderAppIsDropped() async {
         defaults.set(good, forKey: SupportListUpdater.listKey)
         defaults.set(now, forKey: SupportListUpdater.fetchedKey)
