@@ -288,6 +288,14 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(RazerDevices.unverified(pid: 0x00CE), [.dpi, .lighting])
         XCTAssertFalse(RazerDevices.supportsStageEditing(pid: 0x00CE))
         XCTAssertEqual(RazerDevices.maxDPI(pid: 0x00CE), RazerDevices.maxDPI(pid: 0x00CC))
+        XCTAssertEqual(RazerDevices.support(pid: 0x00CE), .partly(works: [.battery], missing: [.dpi, .lighting]),
+                       "polling never counts as working over Bluetooth")
+        XCTAssertEqual(RazerDevices.askable([.dpi, .lighting], on: .bluetooth), [],
+                       "a read-only Bluetooth report can't confirm DPI or lighting")
+        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00CE).map(\.connection), [.wired],
+                       "its cable still has lighting to confirm, so that's what it asks for")
+        XCTAssertFalse(RazerDevices.linksToTest(besides: 0x00CC).contains { $0.connection == .bluetooth },
+                       "the cable isn't sent to a Bluetooth test that can't help")
     }
 
     /// The Viper V3 HyperSpeed has no lighting and a 26K sensor. Its firmware echoes DPI writes
@@ -406,8 +414,7 @@ final class RazerDevicesTests: XCTestCase {
     /// brightness (verified over BLE: LOGO answers, SCROLL refuses) and same discharge curve.
     func testBluetoothCobraHyperSpeed() {
         XCTAssertEqual(RazerDevices.bluetoothPIDs, [0x00BA, 0x00CE, 0x00DC])
-        XCTAssertEqual(RazerDevices.bluetoothModelNames,
-                       ["Razer Cobra HyperSpeed", "Razer Basilisk V3 X HyperSpeed", "Razer Basilisk V3 Pro 35K"],
+        XCTAssertEqual(RazerDevices.bluetoothModelNames, ["Razer Cobra HyperSpeed", "Razer Basilisk V3 X HyperSpeed"],
                        "user-facing text names the model, not the link")
         XCTAssertEqual(RazerDevices.brightnessLed(pid: 0x00DC), Razer.logoLed)
         XCTAssertEqual(RazerDevices.dischargeCurveModelKey(pid: 0x00DC),

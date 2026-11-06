@@ -202,9 +202,10 @@ a serial).
 macOS 14 or later, on Apple Silicon or Intel.
 
 **Connect over the 2.4 GHz dongle or a USB-C cable.** That's where Razer exposes its full
-control protocol. The **Cobra HyperSpeed also works over Bluetooth**: battery, DPI stages,
-brightness and a static lighting colour. Polling rate, other lighting effects, custom DPI
-values and profiles still need the dongle or a cable. MacRazer asks for Bluetooth access the
+control protocol. The **Cobra HyperSpeed and Basilisk V3 X HyperSpeed also work over
+Bluetooth**: battery, DPI stages, brightness and a static lighting colour. Polling rate, other
+lighting effects, custom DPI values and profiles still need the dongle or a cable. On the
+Basilisk V3 Pro 35K, only the battery is confirmed over Bluetooth so far. MacRazer asks for Bluetooth access the
 first time it finds the mouse there.
 
 Other models are a plain pointer over Bluetooth, so MacRazer can't read or change anything.

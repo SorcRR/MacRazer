@@ -394,8 +394,10 @@ enum RazerDevices {
     /// looks for before anything touches CoreBluetooth.
     static var bluetoothPIDs: Set<Int> { Set(known.filter { $0.connection == .bluetooth }.map(\.pid)) }
     /// Model names that work over Bluetooth, for user-facing text ("Razer Cobra HyperSpeed").
+    /// Only fully supported rows: a Bluetooth row with only its battery confirmed isn't one
+    /// to send people to Bluetooth for.
     static var bluetoothModelNames: [String] {
-        known.filter { $0.connection == .bluetooth }
+        known.filter { $0.connection == .bluetooth && fullySupported($0) }
             .map { $0.name.replacingOccurrences(of: " (Bluetooth)", with: "") }
     }
     static func fullySupported(pid: Int) -> Bool { info(pid: pid).map(fullySupported(_:)) ?? false }
@@ -468,6 +470,8 @@ enum RazerDevices {
         return RazerFeature.allCases.filter { feature in
             switch feature {
             case .battery where !info.hasBattery, .lighting where !info.hasLighting: return false
+            // Bluetooth has no polling command, so it never counts as working there.
+            case .polling where info.connection == .bluetooth: return false
             default: return !missing.contains(feature)
             }
         }
@@ -493,7 +497,14 @@ enum RazerDevices {
     /// Whether a report would still teach us something about this mouse: on this link, or on
     /// another way the same model connects. What the support prompt asks about.
     static func needsReport(pid: Int) -> Bool {
-        support(pid: pid) != .full || !linksToTest(besides: pid).isEmpty
+        guard let info = info(pid: pid) else { return true }
+        return !askable(unverified(info), on: info.connection).isEmpty || !linksToTest(besides: pid).isEmpty
+    }
+
+    /// What a report from `link` could confirm out of `missing`. The Bluetooth test only reads,
+    /// so there it can confirm the battery and nothing it would have to set.
+    static func askable(_ missing: [RazerFeature], on link: RazerConnection) -> [RazerFeature] {
+        link == .bluetooth ? missing.filter { $0 == .battery } : missing
     }
 
     /// The other rows of a model whose only ask was a test on `connection`: fully supported
@@ -528,7 +539,7 @@ enum RazerDevices {
         var links: [LinkToTest] = []
         for link in [RazerConnection.wired, .wirelessDongle, .bluetooth] where link != info.connection {
             if let row = siblings.first(where: { $0.connection == link }) {
-                let missing = unverified(row)
+                let missing = askable(unverified(row), on: link)
                 if !missing.isEmpty { links.append(.init(connection: link, missing: missing)) }
             } else if link != .bluetooth, info.connection != .bluetooth, info.hasBattery,
                       link != .wired || info.hasCableLink {
