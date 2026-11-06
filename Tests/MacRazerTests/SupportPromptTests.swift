@@ -17,8 +17,11 @@ final class SupportPromptPolicyTests: XCTestCase {
 
     func testAsksForUnknownAndUnverifiedModels() throws {
         XCTAssertTrue(ask(unknown))
-        guard let unverified = RazerDevices.known.first(where: { !$0.fullySupported })?.pid else {
-            throw XCTSkip("every registry row is verified")
+        // A USB row with nothing else to ask about, so it's its own link that asks.
+        guard let unverified = RazerDevices.known.first(where: {
+            !$0.fullySupported && $0.connection != .bluetooth && RazerDevices.linksToTest(besides: $0.pid).isEmpty
+        })?.pid else {
+            throw XCTSkip("no unverified USB row without other links to test")
         }
         XCTAssertTrue(ask(unverified), "a known row that isn't verified needs a report just as much")
     }
@@ -79,6 +82,17 @@ final class SupportPromptWordingTests: XCTestCase {
         let links = SupportPromptView.cardText(pid: 0x00C3)
         XCTAssertEqual(links.title, "Test its other connection")
         XCTAssertTrue(links.detail.contains("its cable"), links.detail)
+    }
+
+    /// On Bluetooth the test only reads. The Basilisk V3 Pro 35K there lacks only what it would
+    /// have to set, so it's asked about its cable, never sent to a test that can't help.
+    func testBluetoothRowMissingOnlySettingsPointsAtTheCable() {
+        XCTAssertTrue(RazerDevices.needsReport(pid: 0x00CE), "its cable still has lighting to confirm")
+        let card = SupportPromptView.card(pid: 0x00CE)
+        XCTAssertTrue(card.otherLinksOnly, "no test to run on Bluetooth")
+        XCTAssertEqual(card.title, "Test its other connection")
+        XCTAssertTrue(card.detail.contains("its cable"), card.detail)
+        XCTAssertFalse(SupportPromptView.card(pid: 0x00E3).otherLinksOnly, "a USB row still runs its own test")
     }
 
     /// Over Bluetooth there's no cable or dongle in to unplug first.

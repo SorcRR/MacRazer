@@ -14,8 +14,10 @@ struct SupportPromptView: View {
     var onNotNow: () -> Void
     var onDontAsk: () -> Void
     /// Looked up once: the body reads both several times per render.
-    private let support: RazerDevices.LinkSupport
-    private let links: [RazerDevices.LinkToTest]
+    private let ask: RazerDevices.LinkAsk
+    private var support: RazerDevices.LinkSupport { ask.support }
+    private var links: [RazerDevices.LinkToTest] { ask.links }
+    private var nothingToRunHere: Bool { ask.nothingToRunHere }
 
     init(mouse: UnsupportedMouse, onRunTest: @escaping () -> Void, onNotNow: @escaping () -> Void,
          onDontAsk: @escaping () -> Void) {
@@ -23,8 +25,7 @@ struct SupportPromptView: View {
         self.onRunTest = onRunTest
         self.onNotNow = onNotNow
         self.onDontAsk = onDontAsk
-        support = RazerDevices.support(pid: mouse.pid)
-        links = RazerDevices.linksToTest(besides: mouse.pid)
+        ask = RazerDevices.ask(pid: mouse.pid)
     }
 
     var body: some View {
@@ -36,7 +37,9 @@ struct SupportPromptView: View {
             } else {
                 switch support {
                 case .full: otherLinksBody
-                case .partly(let works, let missing): partlyBody(works: works, missing: missing)
+                case _ where nothingToRunHere: elsewhereBody
+                // Only what a test here can confirm: the rest is in the link cards' asks.
+                case .partly(let works, _): partlyBody(works: works, missing: ask.here)
                 case .unknown: readyBody
                 }
             }
@@ -46,7 +49,7 @@ struct SupportPromptView: View {
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                 Spacer()
-                if mouse.canControl && support == .full {
+                if mouse.canControl && nothingToRunHere {
                     // Nothing to run on this link. Got It ends the ask, like "Don't ask", but
                     // reads as the answer to a note rather than a refusal.
                     Button("Got It", action: onDontAsk)
@@ -68,9 +71,11 @@ struct SupportPromptView: View {
 
     private var title: String {
         guard mouse.canControl else { return "We found a new Razer mouse" }
+        if nothingToRunHere {
+            return links.count > 1 ? "Test your mouse's other connections" : "Test your mouse's other connection"
+        }
         switch support {
-        case .full: return links.count > 1 ? "Test your mouse's other connections" : "Test your mouse's other connection"
-        case .partly: return "Help finish support for your mouse"
+        case .full, .partly: return "Help finish support for your mouse"
         case .unknown: return "Help us support your mouse"
         }
     }
@@ -86,21 +91,23 @@ struct SupportPromptView: View {
     }
 
     static func card(pid: Int) -> Card {
-        let support = RazerDevices.support(pid: pid)
-        let text = cardText(pid: pid, support: support)
-        return Card(pid: pid, title: text.title, detail: text.detail, otherLinksOnly: support == .full)
+        let ask = RazerDevices.ask(pid: pid)
+        let text = cardText(ask)
+        return Card(pid: pid, title: text.title, detail: text.detail, otherLinksOnly: ask.nothingToRunHere)
     }
 
     static func cardText(pid: Int) -> (title: String, detail: String) {
-        cardText(pid: pid, support: RazerDevices.support(pid: pid))
+        cardText(RazerDevices.ask(pid: pid))
     }
 
-    private static func cardText(pid: Int, support: RazerDevices.LinkSupport) -> (title: String, detail: String) {
-        switch support {
-        case .full:
-            let links = RazerDevices.linksToTest(besides: pid)
-            return (links.count > 1 ? "Test its other connections" : "Test its other connection", linkSummary(links))
-        case .partly(_, let missing):
+    private static func cardText(_ ask: RazerDevices.LinkAsk) -> (title: String, detail: String) {
+        if ask.nothingToRunHere {
+            return (ask.links.count > 1 ? "Test its other connections" : "Test its other connection",
+                    linkSummary(ask.links))
+        }
+        switch ask.support {
+        case .full, .partly:
+            let missing = ask.here
             return ("Help finish support for this mouse",
                     "\(DeviceTestView.list(missing)) still \(missing.count == 1 ? "needs" : "need") testing. A short test checks just that.")
         case .unknown:
@@ -125,6 +132,16 @@ struct SupportPromptView: View {
     private var otherLinksBody: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("MacRazer fully supports this mouse over \(connectionPhrase). Other ways it connects show up to MacRazer as a different mouse, so each needs its own test.")
+                .font(.system(size: 13))
+                .fixedSize(horizontal: false, vertical: true)
+            linkCards
+        }
+    }
+
+    /// Partly supported here, but what's missing needs another link's test.
+    private var elsewhereBody: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Over \(connectionPhrase) MacRazer can't check \(DeviceTestView.list(ask.elsewhere).lowercased()) yet, because the test there only reads. Other ways it connects show up to MacRazer as a different mouse, so each needs its own test.")
                 .font(.system(size: 13))
                 .fixedSize(horizontal: false, vertical: true)
             linkCards

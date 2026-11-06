@@ -142,6 +142,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// The light has one colour of its own (`RazerDeviceInfo.fixedColor`): brightness only.
     var lightHasFixedColor: Bool { deviceID.map(RazerDevices.fixedColor(pid:)) ?? false }
     var supportsFreeDPI: Bool { !deviceIsBluetooth }
+    /// False over Bluetooth on a model whose DPI nobody has set there (`writesDPI`): the
+    /// stage chips show the mouse's stages but don't switch them.
+    var supportsDPIWrites: Bool { deviceID.map(RazerDevices.writesDPI(pid:)) ?? true }
     /// One stage's DPI can be changed from the popover: the Bluetooth stage table on models
     /// that have it, or the USB one on a model with verified DPI.
     var supportsDpiStageEditing: Bool {
@@ -1028,6 +1031,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     // mouse keeps its old config, and the next settings poll corrects it confusingly.
 
     func setDPI(_ value: Int) {
+        guard supportsDPIWrites else { return }
         let v = UInt16(max(100, min(value, 45000)))
         userCommand { [weak self] in
             guard let self else { return }

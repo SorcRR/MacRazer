@@ -757,12 +757,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     }
 
     /// The connected mouse if a report would still help, else one plugged in that the app can't
-    /// open. On Bluetooth only a mouse fully supported there, whose other links need a test: the
-    /// prompt then points at those, and the full test needs the cable or the dongle anyway.
+    /// open. On Bluetooth `needsReport` only counts what the read-only test can confirm, so a
+    /// mouse there is asked about only for that or for its other links.
     private var unsupportedMouse: UnsupportedMouse? {
         if controller.connected, let pid = controller.deviceID {
-            guard RazerDevices.needsReport(pid: pid),
-                  !controller.deviceIsBluetooth || RazerDevices.support(pid: pid) == .full else { return nil }
+            guard RazerDevices.needsReport(pid: pid) else { return nil }
             return UnsupportedMouse(pid: pid, name: controller.deviceName ?? "Razer Mouse", canControl: true)
         }
         return SupportPrompt.mouseWithoutAccess(among: razerMiceOnUSB,
