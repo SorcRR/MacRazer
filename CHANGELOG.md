@@ -44,6 +44,9 @@ expect rough edges until 1.0.
   don't use it.
 
 ### Changed
+- **A roomier popover.** It's 380 pt wide now, or 760 pt in two columns. The lighting
+  effect tabs, the DPI stage chips and the notes under them have more space, and so do the
+  keyboard and mousepad cards. The colour wheel is bigger too.
 - **Bigger buttons in the device test.** The buttons along the bottom of every test screen
   are taller and easier to hit.
 - **The device test knows what your mouse doesn't have.** On a wired-only mouse the
