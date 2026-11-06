@@ -134,9 +134,9 @@ final class AppearanceSettings: ObservableObject {
 enum PopoverLayout {
     /// The popover's width in two columns. Wide enough that the five lighting effects fit
     /// their tabs without crowding.
-    static let twoColumnWidth: CGFloat = 700
+    static let twoColumnWidth: CGFloat = 760
     /// The popover's width in one column.
-    static let oneColumnWidth: CGFloat = 350
+    static let oneColumnWidth: CGFloat = 380
 
     /// Two columns when the person picked them, and always with more than one Razer device
     /// connected: a keyboard or mousepad under the mouse's column would push the popover

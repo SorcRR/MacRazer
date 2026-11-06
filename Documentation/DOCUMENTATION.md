@@ -286,7 +286,7 @@ any Razer mouse); the registry adds what has been verified about the model. Unkn
  is up. A new window only has to conform to be counted.
 
 ### 6.2 Popover, `PopoverView.swift`
-A **350 pt** wide navigable container (700 pt in two columns), as tall as its content, with a main page and sub-pages (colour, Buttons,
+A **380 pt** wide navigable container (760 pt in two columns), as tall as its content, with a main page and sub-pages (colour, Buttons,
 Usage, Profiles, What's new) and a push/pop slide animation; each page is a `ScrollView` (so
 long content scrolls without resizing the popover):
 
@@ -299,7 +299,7 @@ long content scrolls without resizing the popover):
  card takes the left column and the accessories move right. The Buttons page then fills the
  width in two columns (the permission banner or "press a button" hint and how remapping works on the left; the
  buttons, the DPI button and model notes on the right), and the colour page
- puts a 220 pt wheel beside the title, device line, a swatch with its hex code and the
+ puts a 250 pt wheel beside the title, device line, a swatch with its hex code and the
  brightness slider. The other sub-pages are 440 pt wide, centred.
  - **Header card**: Razer logo (green) in a tinted tile + detected device name +
  connection state + status dot. Shows "No mouse connected" when none.

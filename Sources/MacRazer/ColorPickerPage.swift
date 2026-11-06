@@ -93,7 +93,7 @@ struct ColorPickerPage: View {
     }
 
     /// The wheel's height (and width, wide): bigger with a column of its own.
-    private var wheelSize: CGFloat { wide ? 220 : 180 }
+    private var wheelSize: CGFloat { wide ? 250 : 200 }
 
     private var brightnessSlider: some View {
         HStack(spacing: 8) {
