@@ -261,9 +261,13 @@ final class RazerDevicesTests: XCTestCase {
     }
 
     /// An AA-cell mouse has nothing to charge, so the poll skips that read.
-    func testOnlyMiceWithACableCanCharge() {
+    func testAACellMiceCannotCharge() {
         XCTAssertFalse(RazerDevices.canCharge(pid: 0x00B4), "Naga V2 HyperSpeed")
         XCTAssertFalse(RazerDevices.canCharge(pid: 0x00B8), "Viper V3 HyperSpeed")
+        XCTAssertFalse(RazerDevices.canCharge(pid: 0x0062), "Atheris")
+        XCTAssertFalse(RazerDevices.canCharge(pid: 0x00B9), "Basilisk V3 X HyperSpeed")
+        XCTAssertFalse(RazerDevices.canCharge(pid: 0x0083), "Basilisk X HyperSpeed")
+        XCTAssertTrue(RazerDevices.canCharge(pid: 0x00CF), "the HyperFlux V2 has no cable but charges")
         XCTAssertTrue(RazerDevices.canCharge(pid: 0x00DB))
         XCTAssertTrue(RazerDevices.canCharge(pid: 0x9999), "unknown models still ask")
     }

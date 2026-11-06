@@ -124,6 +124,16 @@ final class DeviceCandidatesTests: XCTestCase {
         XCTAssertEqual(stuck.device, "cable", "a dongle that won't open leaves the cable open")
         XCTAssertFalse(stuck.onDongle)
         XCTAssertEqual(closed, ["cable"])
+
+        // A cable that won't open: the dongle, which selection hid, takes over.
+        let cableFailed = try HIDDevice.openPreferringCable(cable: { throw Failed() }, dongle: { "dongle" },
+                                                            answers: { _ in true }, close: { closed.append($0) })
+        XCTAssertEqual(cableFailed.device, "dongle"); XCTAssertTrue(cableFailed.onDongle)
+        XCTAssertEqual(closed, ["cable"], "nothing to close")
+        XCTAssertThrowsError(try HIDDevice.openPreferringCable(cable: { throw Failed() }, dongle: { throw Failed() },
+                                                               answers: { _ in true }, close: { (_: String) in }))
+        XCTAssertThrowsError(try HIDDevice.openPreferringCable(cable: { throw Failed() }, dongle: nil,
+                                                               answers: { _ in true }, close: { (_: String) in }))
     }
 
     func testCableAndDongleOfOneMouseAreLabelledByLink() {

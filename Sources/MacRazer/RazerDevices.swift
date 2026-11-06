@@ -119,6 +119,10 @@ struct RazerDeviceInfo {
     /// False for a wireless mouse that never connects by cable (the AA-cell ones), so the
     /// device test and the support prompt don't ask for a cable test it can't have.
     var hasCableLink = true
+    /// False for a mouse that runs on an AA cell: it refuses the charging read every time
+    /// (0x05), so the poll skips it. Not the same as `hasCableLink`: the HyperFlux V2 mat has
+    /// no cable mode but charges the mouse on it.
+    var canCharge = true
     /// False for a mouse whose classic polling command answers "not supported" (0x05). The
     /// HyperPolling models want OpenRazer's polling_rate2 pair, which isn't implemented, so
     /// the popover hides the picker and a profile doesn't count the write as failed.
@@ -163,7 +167,7 @@ enum RazerDevices {
         .init(pid: 0x00B0, name: "Razer Cobra Pro (Wireless)", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobraPro, dischargeCurveModelKey: nil),
         // OpenRazer uses 0xFF for the Atheris, but 0x1f is what this app was hardware-tested
         // with (README) — verified behavior wins over the reference here.
-        .init(pid: 0x0062, name: "Razer Atheris", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 7200, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .atheris, dischargeCurveModelKey: nil, hasCableLink: false),
+        .init(pid: 0x0062, name: "Razer Atheris", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 7200, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .atheris, dischargeCurveModelKey: nil, hasCableLink: false, canCharge: false),
         // Basilisk V3 X HyperSpeed: AA-cell wireless (2.4 GHz dongle or Bluetooth — no
         // charging, so `is_charging` is always false). Scroll-wheel-only lighting. 0x1f
         // everywhere per razermouse_driver.c.
@@ -172,12 +176,12 @@ enum RazerDevices {
         // rate, lighting effects, and brightness on SCROLL_LED. The 18000 ceiling is the
         // vendor spec — the reporter exercised DPI at 6400, so the top of the range is the
         // one field here not demonstrated on a device.
-        .init(pid: 0x00B9, name: "Razer Basilisk V3 X HyperSpeed", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 18000, transactionId: 0x1f, matrixTransactionId: 0x1f, brightnessLed: Razer.scrollLed, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, hasCableLink: false),
+        .init(pid: 0x00B9, name: "Razer Basilisk V3 X HyperSpeed", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 18000, transactionId: 0x1f, matrixTransactionId: 0x1f, brightnessLed: Razer.scrollLed, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, hasCableLink: false, canCharge: false),
         // Basilisk X HyperSpeed: the older AA-cell sibling — no lighting at all, and
         // razermouse_driver.c gives it 0xFF for every command it supports. An in-app report
         // (credit MagnetTileMan) passed battery, DPI, stages and polling with 0xFF; every
         // lighting group answers 0x05.
-        .init(pid: 0x0083, name: "Razer Basilisk X HyperSpeed", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 16000, transactionId: 0xff, matrixTransactionId: 0xff, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, hasCableLink: false, notOnMouse: [.lighting]),
+        .init(pid: 0x0083, name: "Razer Basilisk X HyperSpeed", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 16000, transactionId: 0xff, matrixTransactionId: 0xff, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, hasCableLink: false, canCharge: false, notOnMouse: [.lighting]),
         // Basilisk V3 on the cable (in-app report by SuperSpacer54376): DPI, the stage table,
         // polling, static color and brightness all passed. It takes 0x1f everywhere except the
         // DPI-stages pair, which answers on 0xFF as razermouse_driver.c says. Battery answers
@@ -295,7 +299,7 @@ enum RazerDevices {
         // out). It has no lighting: every group answers 0x05. The firmware echoed a 45000 DPI
         // write, so the echo can't bound it: 26000 is the ceiling of its Focus X 26K sensor. It
         // runs on an AA cell, so it has no cable mode to ask about.
-        .init(pid: 0x00B8, name: "Razer Viper V3 HyperSpeed", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, hasCableLink: false, notOnMouse: [.lighting]),
+        .init(pid: 0x00B8, name: "Razer Viper V3 HyperSpeed", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, hasCableLink: false, canCharge: false, notOnMouse: [.lighting]),
         // Viper V4 Pro on the cable (in-app report, no credit given): battery and DPI and stages
         // passed with 0x1f (every id tried answers on the cable). It has no lighting: every group
         // answers 0x05. The classic polling command answers "not supported" (0x05), as on the
@@ -354,7 +358,7 @@ enum RazerDevices {
         // given): battery, DPI and stages, and polling passed with 0x1f. 0xFF and 0x80 time out.
         // No lighting: every group answers 0x05. The charging read answers 0x05 too: it runs on
         // an AA cell, so it has no cable mode to ask about. 30000 is the vendor spec.
-        .init(pid: 0x00B4, name: "Razer Naga V2 HyperSpeed", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, hasCableLink: false, notOnMouse: [.lighting]),
+        .init(pid: 0x00B4, name: "Razer Naga V2 HyperSpeed", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, hasCableLink: false, canCharge: false, notOnMouse: [.lighting]),
         // Naga V2 Pro on the cable (in-app report, no credit given): battery, DPI and stages,
         // polling, static color and brightness all passed with 0x1f, and every id answers.
         // LOGO and BACKLIGHT answer brightness (SCROLL and ZERO return 0x03), so the slider
@@ -528,8 +532,8 @@ enum RazerDevices {
     /// Defaults assume a full-featured mouse for unknown models (so we still attempt controls).
     static func hasBattery(pid: Int) -> Bool { info(pid: pid)?.hasBattery ?? true }
     static func hasLighting(pid: Int) -> Bool { info(pid: pid)?.hasLighting ?? true }
-    /// False for an AA-cell mouse (no cable mode), which has nothing to charge.
-    static func canCharge(pid: Int) -> Bool { info(pid: pid)?.hasCableLink ?? true }
+    /// False for an AA-cell mouse, which has nothing to charge.
+    static func canCharge(pid: Int) -> Bool { info(pid: pid)?.canCharge ?? true }
     static func maxDPI(pid: Int) -> Int { info(pid: pid)?.maxDPI ?? 26000 }
     static func supportsDpiButtonBinding(pid: Int) -> Bool { info(pid: pid)?.supportsDpiButtonBinding ?? false }
     static func supportsSleepTimeout(pid: Int) -> Bool { info(pid: pid)?.supportsSleepTimeout ?? false }

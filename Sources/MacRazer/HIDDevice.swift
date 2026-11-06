@@ -279,11 +279,19 @@ final class HIDDevice {
 
     /// The decision `openCableOrItsDongle` makes, apart from IOHID so it can be tested. The
     /// cable stays open until the dongle has opened: if the dongle won't, the cable is
-    /// still better than nothing.
+    /// still better than nothing. A cable that won't open at all gets the dongle too, since
+    /// selection hides the dongle while its cable is plugged in.
     static func openPreferringCable<Device>(cable: () throws -> Device, dongle: (() throws -> Device)?,
                                             answers: (Device) -> Bool,
                                             close: (Device) -> Void) throws -> (device: Device, onDongle: Bool) {
-        let opened = try cable()
+        let opened: Device
+        do {
+            opened = try cable()
+        } catch {
+            // The cable's error is the one worth reporting when the dongle fails too.
+            guard let dongle, let fallback = try? dongle() else { throw error }
+            return (fallback, true)
+        }
         guard let dongle, !answers(opened), let fallback = try? dongle() else { return (opened, false) }
         close(opened)
         return (fallback, true)
