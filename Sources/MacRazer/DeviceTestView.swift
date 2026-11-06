@@ -111,7 +111,11 @@ struct DeviceTestView: View {
                         row("Still needs testing", Self.list(missing), color: .batteryMid)
                     }
                 }
-                note("The test can check just what's missing. Keep the mouse on and nearby.")
+                if model.onlyOtherLinksConfirm.isEmpty {
+                    note("The test can check just what's missing. Keep the mouse on and nearby.")
+                } else {
+                    note("Over Bluetooth the test only reads, so it can't check these. Connect the cable or the dongle to test them.")
+                }
                 linkCards
                 privacyNotes
             case .unknown:

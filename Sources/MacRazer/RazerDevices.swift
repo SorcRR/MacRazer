@@ -154,6 +154,13 @@ enum RazerDevices {
         // stages and static lighting; the DPI Cycle assignment is handled by BluetoothDevice.
         // Its only lit zone is the scroll wheel, so brightness must target SCROLL_LED.
         .init(pid: 0x00BA, name: "Razer Basilisk V3 X HyperSpeed (Bluetooth)", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 18000, transactionId: 0x1f, matrixTransactionId: 0x1f, brightnessLed: Razer.scrollLed, connection: .bluetooth, silhouette: .cobra, dischargeCurveModelKey: nil, supportsDpiButtonBinding: true, supportsSleepTimeout: true, supportsStageEditing: true, verifiesBrightnessWrite: true),
+        // Basilisk V3 Pro 35K over Bluetooth (two in-app reports on 0.7.0, no credit given). The
+        // Bluetooth test is read-only: battery answered (99%), and so did the DPI stages read
+        // (five stages from 400), sleep timeout, low battery level, button table and lighting
+        // zones 0x00, 0x01, 0x04 and 0x0A over the shared BLE layer. Nobody has set DPI or
+        // lighting over Bluetooth yet, so both stay unverified, lighting stays hidden as on the
+        // cable, and stage editing stays off. Bluetooth has no polling command.
+        .init(pid: 0x00CE, name: "Razer Basilisk V3 Pro 35K (Bluetooth)", unverified: [.dpi, .lighting], hasBattery: true, hasLighting: false, maxDPI: 35000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .bluetooth, silhouette: .cobra, dischargeCurveModelKey: nil),
         // Plain Cobra per razermouse_driver.c: 0xFF for standard/misc (serial :1509,
         // polling :2011/:2193, DPI :2600/:2781) but 0x1f for every extended-matrix
         // command (brightness :4202/:4312, spectrum :4622, static :5085, none :5301).
@@ -178,6 +185,12 @@ enum RazerDevices {
         // (credit MagnetTileMan) passed battery, DPI, stages and polling with 0xFF; every
         // lighting group answers 0x05.
         .init(pid: 0x0083, name: "Razer Basilisk X HyperSpeed", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 16000, transactionId: 0xff, matrixTransactionId: 0xff, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, hasCableLink: false, notOnMouse: [.lighting]),
+        // Orochi V2 over the dongle (in-app report on 0.7.0, firmware v1.0, no credit given):
+        // battery, DPI and stages (400 to 6400), and polling passed with 0x1f, and every id
+        // answers. It runs on one AA or AAA cell, so there's no cable and no charging read. No
+        // lighting: every group answers 0x05. 18000 is the vendor spec. Its Bluetooth mode has
+        // no row yet.
+        .init(pid: 0x00E0, name: "Razer Orochi V2", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 18000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, hasCableLink: false, notOnMouse: [.lighting]),
         // Basilisk V3 on the cable (in-app report by SuperSpacer54376): DPI, the stage table,
         // polling, static color and brightness all passed. It takes 0x1f everywhere except the
         // DPI-stages pair, which answers on 0xFF as razermouse_driver.c says. Battery answers
@@ -381,8 +394,10 @@ enum RazerDevices {
     /// looks for before anything touches CoreBluetooth.
     static var bluetoothPIDs: Set<Int> { Set(known.filter { $0.connection == .bluetooth }.map(\.pid)) }
     /// Model names that work over Bluetooth, for user-facing text ("Razer Cobra HyperSpeed").
+    /// Only fully supported rows: a Bluetooth row with only its battery confirmed isn't one
+    /// to send people to Bluetooth for.
     static var bluetoothModelNames: [String] {
-        known.filter { $0.connection == .bluetooth }
+        known.filter { $0.connection == .bluetooth && fullySupported($0) }
             .map { $0.name.replacingOccurrences(of: " (Bluetooth)", with: "") }
     }
     static func fullySupported(pid: Int) -> Bool { info(pid: pid).map(fullySupported(_:)) ?? false }
@@ -451,10 +466,14 @@ enum RazerDevices {
     /// the mouse has it and the test is what would turn it on.
     static func verified(pid: Int) -> [RazerFeature] {
         guard let info = info(pid: pid) else { return [] }
-        let missing = unverified(info)
-        return RazerFeature.allCases.filter { feature in
+        return verified(info, missing: unverified(info))
+    }
+    private static func verified(_ info: RazerDeviceInfo, missing: [RazerFeature]) -> [RazerFeature] {
+        RazerFeature.allCases.filter { feature in
             switch feature {
             case .battery where !info.hasBattery, .lighting where !info.hasLighting: return false
+            // Bluetooth has no polling command, so it never counts as working there.
+            case .polling where info.connection == .bluetooth: return false
             default: return !missing.contains(feature)
             }
         }
@@ -471,16 +490,61 @@ enum RazerDevices {
     }
 
     static func support(pid: Int) -> LinkSupport {
-        guard let missing = unverified(pid: pid) else { return .unknown }
+        guard let info = info(pid: pid) else { return .unknown }
+        return support(info, missing: unverified(info))
+    }
+    private static func support(_ info: RazerDeviceInfo, missing: [RazerFeature]) -> LinkSupport {
         if missing.isEmpty { return .full }
-        let works = verified(pid: pid)
+        let works = verified(info, missing: missing)
         return works.isEmpty ? .unknown : .partly(works: works, missing: missing)
+    }
+
+    /// What a report would do for one link of a mouse, worked out once from one read of the
+    /// support list: the support prompt, its popover card and the device test all go by it.
+    struct LinkAsk: Equatable {
+        let support: LinkSupport
+        /// Still unverified on this link, and a test on it can confirm it (`askable`).
+        let here: [RazerFeature]
+        /// Still unverified on this link, but only another link's test can confirm it: over
+        /// Bluetooth, whatever the read-only test would have to set.
+        let elsewhere: [RazerFeature]
+        /// The model's other links still worth a report.
+        let links: [LinkToTest]
+        /// Not on record: everything is worth a test.
+        let unknownModel: Bool
+        /// A test here can teach nothing new: fully supported, or all it lacks needs another link.
+        var nothingToRunHere: Bool { !unknownModel && here.isEmpty }
+        /// Whether a report would still help, here or on another link. What the prompt asks about.
+        var needsReport: Bool { unknownModel || !here.isEmpty || !links.isEmpty }
+    }
+
+    static func ask(pid: Int) -> LinkAsk {
+        guard let info = info(pid: pid) else {
+            return LinkAsk(support: .unknown, here: [], elsewhere: [], links: [], unknownModel: true)
+        }
+        let missing = unverified(info)
+        let here = askable(missing, on: info.connection)
+        return LinkAsk(support: support(info, missing: missing), here: here,
+                       elsewhere: missing.filter { !here.contains($0) },
+                       links: linksToTest(besides: pid), unknownModel: false)
     }
 
     /// Whether a report would still teach us something about this mouse: on this link, or on
     /// another way the same model connects. What the support prompt asks about.
-    static func needsReport(pid: Int) -> Bool {
-        support(pid: pid) != .full || !linksToTest(besides: pid).isEmpty
+    static func needsReport(pid: Int) -> Bool { ask(pid: pid).needsReport }
+
+    /// What a report from `link` could confirm out of `missing`. The Bluetooth test only reads,
+    /// so there it can confirm the battery and nothing it would have to set.
+    static func askable(_ missing: [RazerFeature], on link: RazerConnection) -> [RazerFeature] {
+        link == .bluetooth ? missing.filter { $0 == .battery } : missing
+    }
+
+    /// Whether the app may change `pid`'s DPI. Over USB an unverified DPI is still offered, as
+    /// the README says. Over Bluetooth it isn't: the Bluetooth test can't show it working, so
+    /// a model whose DPI nobody has set there only shows its stages.
+    static func writesDPI(pid: Int) -> Bool {
+        guard let info = info(pid: pid), info.connection == .bluetooth else { return true }
+        return !unverified(info).contains(.dpi)
     }
 
     /// The other rows of a model whose only ask was a test on `connection`: fully supported
@@ -515,7 +579,7 @@ enum RazerDevices {
         var links: [LinkToTest] = []
         for link in [RazerConnection.wired, .wirelessDongle, .bluetooth] where link != info.connection {
             if let row = siblings.first(where: { $0.connection == link }) {
-                let missing = unverified(row)
+                let missing = askable(unverified(row), on: link)
                 if !missing.isEmpty { links.append(.init(connection: link, missing: missing)) }
             } else if link != .bluetooth, info.connection != .bluetooth, info.hasBattery,
                       link != .wired || info.hasCableLink {
