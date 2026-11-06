@@ -6,6 +6,8 @@ expect rough edges until 1.0.
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-11-07
+
 ### Added
 - **Edit DPI stages over the dongle or cable.** Click **Edit** on the DPI card, then
   click a stage to change it on the mouse itself, as you already could over Bluetooth.
