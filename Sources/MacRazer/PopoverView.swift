@@ -135,6 +135,10 @@ struct PopoverView: View {
     /// usage charts, the button list) would be squeezed into it. Below this they grow instead.
     /// Not the colour page: it's a fixed-size picker, centred, and would only gain empty space.
     private let subPageMinHeight: CGFloat = 560
+    /// The colour page only needs room for the picker itself: about 345 pt in one column with
+    /// a device line (the tallest it gets). A main page with no mouse and one collapsed
+    /// accessory can be shorter, so the page grows to this instead of clipping the slider.
+    private let colorPageMinHeight: CGFloat = 360
     @State private var mainHeight: CGFloat = 0
     /// The corner radius NSPopover gives its body, so the green edge sits on the outline.
     /// Measured from a capture on macOS 26; the content view is exactly the body.
@@ -152,7 +156,7 @@ struct PopoverView: View {
             }
         }
         .frame(width: popoverWidth)
-        .frame(height: page == .main ? nil : (mainHeight > 0 ? max(mainHeight, page == .color ? 0 : subPageMinHeight) : nil))
+        .frame(height: page == .main ? nil : (mainHeight > 0 ? max(mainHeight, page == .color ? colorPageMinHeight : subPageMinHeight) : nil))
         // While a sub-page is showing, the main page is unmounted and the preference reverts
         // to its 0 default — keep the last real measurement so sub-pages stay locked to the
         // main page's height instead of resizing once the transition finishes.
