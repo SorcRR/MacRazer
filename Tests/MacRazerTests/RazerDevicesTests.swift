@@ -268,6 +268,28 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertTrue(RazerDevices.canCharge(pid: 0x9999), "unknown models still ask")
     }
 
+    /// The Orochi V2 passed everything over its dongle and runs on one AA or AAA cell.
+    func testOrochiV2() {
+        XCTAssertEqual(RazerDevices.connection(pid: 0x00E0), .wirelessDongle)
+        XCTAssertEqual(RazerDevices.support(pid: 0x00E0), .full)
+        XCTAssertTrue(RazerDevices.hasBattery(pid: 0x00E0))
+        XCTAssertFalse(RazerDevices.canCharge(pid: 0x00E0), "AA cell, no charging read")
+        XCTAssertFalse(RazerDevices.hasLighting(pid: 0x00E0))
+        XCTAssertEqual(RazerDevices.notOnMouse(pid: 0x00E0), [.lighting])
+        XCTAssertEqual(RazerDevices.maxDPI(pid: 0x00E0), 18000)
+        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00E0), [], "no cable, and no Bluetooth row yet")
+    }
+
+    /// Over Bluetooth only the battery is confirmed: the Bluetooth test reads, it never writes.
+    func testBasiliskV3Pro35KBluetooth() {
+        XCTAssertEqual(RazerDevices.connection(pid: 0x00CE), .bluetooth)
+        XCTAssertTrue(RazerDevices.hasBattery(pid: 0x00CE))
+        XCTAssertFalse(RazerDevices.hasLighting(pid: 0x00CE), "hidden, as on its cable")
+        XCTAssertEqual(RazerDevices.unverified(pid: 0x00CE), [.dpi, .lighting])
+        XCTAssertFalse(RazerDevices.supportsStageEditing(pid: 0x00CE))
+        XCTAssertEqual(RazerDevices.maxDPI(pid: 0x00CE), RazerDevices.maxDPI(pid: 0x00CC))
+    }
+
     /// The Viper V3 HyperSpeed has no lighting and a 26K sensor. Its firmware echoes DPI writes
     /// far above that, so only the registry keeps the slider honest.
     func testViperV3HyperSpeedCapabilities() {
@@ -383,8 +405,9 @@ final class RazerDevicesTests: XCTestCase {
     /// The Bluetooth Cobra HyperSpeed is the same mouse as the dongle one: same LED for
     /// brightness (verified over BLE: LOGO answers, SCROLL refuses) and same discharge curve.
     func testBluetoothCobraHyperSpeed() {
-        XCTAssertEqual(RazerDevices.bluetoothPIDs, [0x00BA, 0x00DC])
-        XCTAssertEqual(RazerDevices.bluetoothModelNames, ["Razer Cobra HyperSpeed", "Razer Basilisk V3 X HyperSpeed"],
+        XCTAssertEqual(RazerDevices.bluetoothPIDs, [0x00BA, 0x00CE, 0x00DC])
+        XCTAssertEqual(RazerDevices.bluetoothModelNames,
+                       ["Razer Cobra HyperSpeed", "Razer Basilisk V3 X HyperSpeed", "Razer Basilisk V3 Pro 35K"],
                        "user-facing text names the model, not the link")
         XCTAssertEqual(RazerDevices.brightnessLed(pid: 0x00DC), Razer.logoLed)
         XCTAssertEqual(RazerDevices.dischargeCurveModelKey(pid: 0x00DC),

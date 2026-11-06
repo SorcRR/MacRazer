@@ -36,6 +36,10 @@ expect rough edges until 1.0.
   DeathAdder V3 Pro over either of its dongles, the Viper V3 Pro SE and the Naga V2
   HyperSpeed passed every check and are fully supported. The Viper 8KHz and the Basilisk V4
   Pro on its cable work for everything but the polling rate.
+- **Orochi V2 on its dongle.** A test report passed battery, DPI, stages and polling, so it's
+  fully supported. It runs on an AA or AAA cell, so it never asks for a cable test.
+- **Basilisk V3 Pro 35K over Bluetooth.** MacRazer now knows it there and shows its battery.
+  DPI and lighting over Bluetooth haven't been tried yet. For everything else, use its cable.
 - **Naga Pro on its cable.** A test report passed battery, DPI, stages, polling and lighting,
   so it's fully supported on both the cable and the dongle, and it stops asking for a cable
   test.

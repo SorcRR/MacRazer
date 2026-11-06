@@ -154,6 +154,13 @@ enum RazerDevices {
         // stages and static lighting; the DPI Cycle assignment is handled by BluetoothDevice.
         // Its only lit zone is the scroll wheel, so brightness must target SCROLL_LED.
         .init(pid: 0x00BA, name: "Razer Basilisk V3 X HyperSpeed (Bluetooth)", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 18000, transactionId: 0x1f, matrixTransactionId: 0x1f, brightnessLed: Razer.scrollLed, connection: .bluetooth, silhouette: .cobra, dischargeCurveModelKey: nil, supportsDpiButtonBinding: true, supportsSleepTimeout: true, supportsStageEditing: true, verifiesBrightnessWrite: true),
+        // Basilisk V3 Pro 35K over Bluetooth (two in-app reports on 0.7.0, no credit given). The
+        // Bluetooth test is read-only: battery answered (99%), and so did the DPI stages read
+        // (five stages from 400), sleep timeout, low battery level, button table and lighting
+        // zones 0x00, 0x01, 0x04 and 0x0A over the shared BLE layer. Nobody has set DPI or
+        // lighting over Bluetooth yet, so both stay unverified, lighting stays hidden as on the
+        // cable, and stage editing stays off. Bluetooth has no polling command.
+        .init(pid: 0x00CE, name: "Razer Basilisk V3 Pro 35K (Bluetooth)", unverified: [.dpi, .lighting], hasBattery: true, hasLighting: false, maxDPI: 35000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .bluetooth, silhouette: .cobra, dischargeCurveModelKey: nil),
         // Plain Cobra per razermouse_driver.c: 0xFF for standard/misc (serial :1509,
         // polling :2011/:2193, DPI :2600/:2781) but 0x1f for every extended-matrix
         // command (brightness :4202/:4312, spectrum :4622, static :5085, none :5301).
@@ -178,6 +185,12 @@ enum RazerDevices {
         // (credit MagnetTileMan) passed battery, DPI, stages and polling with 0xFF; every
         // lighting group answers 0x05.
         .init(pid: 0x0083, name: "Razer Basilisk X HyperSpeed", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 16000, transactionId: 0xff, matrixTransactionId: 0xff, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, hasCableLink: false, notOnMouse: [.lighting]),
+        // Orochi V2 over the dongle (in-app report on 0.7.0, firmware v1.0, no credit given):
+        // battery, DPI and stages (400 to 6400), and polling passed with 0x1f, and every id
+        // answers. It runs on one AA or AAA cell, so there's no cable and no charging read. No
+        // lighting: every group answers 0x05. 18000 is the vendor spec. Its Bluetooth mode has
+        // no row yet.
+        .init(pid: 0x00E0, name: "Razer Orochi V2", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 18000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, hasCableLink: false, notOnMouse: [.lighting]),
         // Basilisk V3 on the cable (in-app report by SuperSpacer54376): DPI, the stage table,
         // polling, static color and brightness all passed. It takes 0x1f everywhere except the
         // DPI-stages pair, which answers on 0xFF as razermouse_driver.c says. Battery answers
