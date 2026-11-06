@@ -99,7 +99,7 @@ final class USBStageEditTests: XCTestCase {
         XCTAssertTrue(RazerDevices.supportsUSBStageEditing(pid: 0x00EA), "Basilisk V4 HyperSpeed dongle")
         XCTAssertTrue(RazerDevices.supportsUSBStageEditing(pid: 0x00DB), "Cobra HyperSpeed dongle")
         XCTAssertFalse(RazerDevices.supportsUSBStageEditing(pid: 0x00DC), "Bluetooth has its own path")
-        XCTAssertFalse(RazerDevices.supportsUSBStageEditing(pid: 0x008F), "Naga Pro (Wired): DPI unverified")
+        XCTAssertFalse(RazerDevices.supportsUSBStageEditing(pid: 0x006E), "DeathAdder Essential (2018): DPI unverified")
         XCTAssertFalse(RazerDevices.supportsUSBStageEditing(pid: 0x9999))
     }
 }

@@ -83,6 +83,21 @@ final class SupportListOverlayTests: XCTestCase {
         XCTAssertTrue(RazerDevices.fullySupported(modelOf: pid, on: rows[1].connection))
     }
 
+    /// Verified on one link with the other's row still unverified: the verified row asks for
+    /// just what the other link's row is missing, and a report from that link answers it.
+    func testOneLinkVerifiedAsksForWhatTheOtherIsMissing() throws {
+        let rows = try modelStillAsking()
+        let (done, other) = (rows[0], rows[1])
+        RazerDevices.applySupportList([done.pid: []])
+        XCTAssertEqual(RazerDevices.support(pid: done.pid), .full)
+        XCTAssertEqual(RazerDevices.linksToTest(besides: done.pid),
+                       [.init(connection: other.connection, missing: other.unverified)])
+        XCTAssertTrue(RazerDevices.needsReport(pid: done.pid), "the other link still needs a report")
+        XCTAssertFalse(RazerDevices.fullySupported(modelOf: done.pid, on: other.connection))
+        XCTAssertEqual(RazerDevices.rowsAnswered(byReportFrom: other.pid, name: other.name, on: other.connection),
+                       [done.pid])
+    }
+
     func testNarrowingKeepsTheRest() throws {
         let row = try rowWithSeveral()
         let kept = Array(row.unverified.suffix(2))
