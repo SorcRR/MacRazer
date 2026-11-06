@@ -1159,7 +1159,12 @@ struct PopoverView: View {
                 }
             }
             // Errors first: a write the mouse didn't keep must show even in Edit mode.
-            if let dpiStageError {
+            if !controller.supportsDPIWrites {
+                // A disabled chip shows no tooltip, so the reason is spelled out here.
+                Text("Switch stages with the mouse's DPI button. Changing them over Bluetooth isn't tested on this mouse yet.")
+                    .font(.system(size: 10.5)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if let dpiStageError {
                 Text(dpiStageError).font(.system(size: 10.5)).foregroundStyle(Color.batteryLow)
             } else if let error = controller.dpiStagesError {
                 Text(error).font(.system(size: 10.5)).foregroundStyle(Color.batteryLow)
@@ -1291,8 +1296,7 @@ struct PopoverView: View {
         }
         .help(inStageEditMode ? "Stage \(index + 1) · Click to change its DPI"
               : controller.supportsDpiStageEditing ? "Stage \(index + 1) · Right-click or use Edit to change it"
-              : controller.supportsDPIWrites ? "Stage \(index + 1)"
-              : "Stage \(index + 1) · Use the mouse's DPI button. Switching stages over Bluetooth isn't tested on this mouse yet.")
+              : "Stage \(index + 1)")
         .accessibilityLabel(editing ? "Stage \(index + 1) DPI" : DPIStageAccent.accessibilityLabel(
             value: value, stageIndex: index))
         .accessibilityAddTraits(active ? .isSelected : [])

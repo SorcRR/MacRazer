@@ -139,9 +139,10 @@ final class DeviceTestModel: ObservableObject {
     }
 
     /// What this link still needs that only a test on another link can confirm
-    /// (`RazerDevices.onlyOtherLinksConfirm`): over Bluetooth, the settings it would have to set.
+    /// (`RazerDevices.LinkAsk.elsewhere`): over Bluetooth, the settings it would have to set.
+    /// From the pinned run when there is one, like `support` and `linksToTest`.
     var onlyOtherLinksConfirm: [RazerFeature] {
-        testedPID.map(RazerDevices.onlyOtherLinksConfirm(pid:)) ?? []
+        pinned?.elsewhere ?? testedPID.map { RazerDevices.ask(pid: $0).elsewhere } ?? []
     }
 
     /// Whether the connected model is already on the verified list. Decides the window title.
@@ -168,11 +169,13 @@ final class DeviceTestModel: ObservableObject {
         let support: Support
         let links: [RazerDevices.LinkToTest]
         let missing: [RazerFeature]
+        let elsewhere: [RazerFeature]
     }
 
     private func pin() {
         pinned = nil
-        pinned = Pinned(support: support, links: linksToTest, missing: missingFeatures)
+        pinned = Pinned(support: support, links: linksToTest, missing: missingFeatures,
+                        elsewhere: onlyOtherLinksConfirm)
     }
 
     #if DEBUG

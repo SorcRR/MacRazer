@@ -466,8 +466,10 @@ enum RazerDevices {
     /// the mouse has it and the test is what would turn it on.
     static func verified(pid: Int) -> [RazerFeature] {
         guard let info = info(pid: pid) else { return [] }
-        let missing = unverified(info)
-        return RazerFeature.allCases.filter { feature in
+        return verified(info, missing: unverified(info))
+    }
+    private static func verified(_ info: RazerDeviceInfo, missing: [RazerFeature]) -> [RazerFeature] {
+        RazerFeature.allCases.filter { feature in
             switch feature {
             case .battery where !info.hasBattery, .lighting where !info.hasLighting: return false
             // Bluetooth has no polling command, so it never counts as working there.
@@ -488,32 +490,53 @@ enum RazerDevices {
     }
 
     static func support(pid: Int) -> LinkSupport {
-        guard let missing = unverified(pid: pid) else { return .unknown }
+        guard let info = info(pid: pid) else { return .unknown }
+        return support(info, missing: unverified(info))
+    }
+    private static func support(_ info: RazerDeviceInfo, missing: [RazerFeature]) -> LinkSupport {
         if missing.isEmpty { return .full }
-        let works = verified(pid: pid)
+        let works = verified(info, missing: missing)
         return works.isEmpty ? .unknown : .partly(works: works, missing: missing)
+    }
+
+    /// What a report would do for one link of a mouse, worked out once from one read of the
+    /// support list: the support prompt, its popover card and the device test all go by it.
+    struct LinkAsk: Equatable {
+        let support: LinkSupport
+        /// Still unverified on this link, and a test on it can confirm it (`askable`).
+        let here: [RazerFeature]
+        /// Still unverified on this link, but only another link's test can confirm it: over
+        /// Bluetooth, whatever the read-only test would have to set.
+        let elsewhere: [RazerFeature]
+        /// The model's other links still worth a report.
+        let links: [LinkToTest]
+        /// Not on record: everything is worth a test.
+        let unknownModel: Bool
+        /// A test here can teach nothing new: fully supported, or all it lacks needs another link.
+        var nothingToRunHere: Bool { !unknownModel && here.isEmpty }
+        /// Whether a report would still help, here or on another link. What the prompt asks about.
+        var needsReport: Bool { unknownModel || !here.isEmpty || !links.isEmpty }
+    }
+
+    static func ask(pid: Int) -> LinkAsk {
+        guard let info = info(pid: pid) else {
+            return LinkAsk(support: .unknown, here: [], elsewhere: [], links: [], unknownModel: true)
+        }
+        let missing = unverified(info)
+        let here = askable(missing, on: info.connection)
+        return LinkAsk(support: support(info, missing: missing), here: here,
+                       elsewhere: missing.filter { !here.contains($0) },
+                       links: linksToTest(besides: pid), unknownModel: false)
     }
 
     /// Whether a report would still teach us something about this mouse: on this link, or on
     /// another way the same model connects. What the support prompt asks about.
-    static func needsReport(pid: Int) -> Bool {
-        guard let info = info(pid: pid) else { return true }
-        return !askable(unverified(info), on: info.connection).isEmpty || !linksToTest(besides: pid).isEmpty
-    }
+    static func needsReport(pid: Int) -> Bool { ask(pid: pid).needsReport }
 
     /// What a report from `link` could confirm out of `missing`. The Bluetooth test only reads,
     /// so there it can confirm the battery and nothing it would have to set.
     static func askable(_ missing: [RazerFeature], on link: RazerConnection) -> [RazerFeature] {
         link == .bluetooth ? missing.filter { $0 == .battery } : missing
-    }
-
-    /// What `pid`'s own link still needs that a test there can't confirm (`askable`), so only
-    /// another link's test can. Empty everywhere but a partly verified Bluetooth row.
-    static func onlyOtherLinksConfirm(pid: Int) -> [RazerFeature] {
-        guard let info = info(pid: pid) else { return [] }
-        let missing = unverified(info)
-        let here = askable(missing, on: info.connection)
-        return missing.filter { !here.contains($0) }
     }
 
     /// Whether the app may change `pid`'s DPI. Over USB an unverified DPI is still offered, as

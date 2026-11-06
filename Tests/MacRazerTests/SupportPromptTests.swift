@@ -17,8 +17,11 @@ final class SupportPromptPolicyTests: XCTestCase {
 
     func testAsksForUnknownAndUnverifiedModels() throws {
         XCTAssertTrue(ask(unknown))
-        guard let unverified = RazerDevices.known.first(where: { !$0.fullySupported })?.pid else {
-            throw XCTSkip("every registry row is verified")
+        // A USB row with nothing else to ask about, so it's its own link that asks.
+        guard let unverified = RazerDevices.known.first(where: {
+            !$0.fullySupported && $0.connection != .bluetooth && RazerDevices.linksToTest(besides: $0.pid).isEmpty
+        })?.pid else {
+            throw XCTSkip("no unverified USB row without other links to test")
         }
         XCTAssertTrue(ask(unverified), "a known row that isn't verified needs a report just as much")
     }

@@ -268,6 +268,20 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertTrue(RazerDevices.canCharge(pid: 0x9999), "unknown models still ask")
     }
 
+    /// A Bluetooth link with something its read-only test can still confirm keeps its test,
+    /// even when the rest needs another link. And a model not on record always has one.
+    func testNothingToRunHereOnlyWhenATestHereCanConfirmNothing() {
+        let mixed = RazerDevices.LinkAsk(support: .unknown, here: [.battery], elsewhere: [.dpi], links: [],
+                                         unknownModel: false)
+        XCTAssertFalse(mixed.nothingToRunHere, "the battery can still be read here")
+        XCTAssertTrue(mixed.needsReport)
+        let unknown = RazerDevices.ask(pid: 0xFFFE)
+        XCTAssertFalse(unknown.nothingToRunHere)
+        XCTAssertTrue(unknown.needsReport)
+        XCTAssertTrue(RazerDevices.ask(pid: 0x00DB).nothingToRunHere, "fully supported")
+        XCTAssertFalse(RazerDevices.ask(pid: 0x00DB).needsReport, "and every link verified")
+    }
+
     /// The Orochi V2 passed everything over its dongle and runs on one AA or AAA cell.
     func testOrochiV2() {
         XCTAssertEqual(RazerDevices.connection(pid: 0x00E0), .wirelessDongle)
@@ -292,8 +306,12 @@ final class RazerDevicesTests: XCTestCase {
                        "polling never counts as working over Bluetooth")
         XCTAssertEqual(RazerDevices.askable([.dpi, .lighting], on: .bluetooth), [],
                        "a read-only Bluetooth report can't confirm DPI or lighting")
-        XCTAssertEqual(RazerDevices.onlyOtherLinksConfirm(pid: 0x00CE), [.dpi, .lighting])
-        XCTAssertEqual(RazerDevices.onlyOtherLinksConfirm(pid: 0x00E3), [], "a USB test checks its own link")
+        let ask = RazerDevices.ask(pid: 0x00CE)
+        XCTAssertEqual(ask.elsewhere, [.dpi, .lighting])
+        XCTAssertEqual(ask.here, [])
+        XCTAssertTrue(ask.nothingToRunHere)
+        XCTAssertTrue(ask.needsReport, "its cable still has lighting to confirm")
+        XCTAssertEqual(RazerDevices.ask(pid: 0x00E3).elsewhere, [], "a USB test checks its own link")
         XCTAssertFalse(RazerDevices.writesDPI(pid: 0x00CE), "nobody has set its DPI over Bluetooth")
         XCTAssertTrue(RazerDevices.writesDPI(pid: 0x00BA), "the V3 X's Bluetooth DPI is verified")
         XCTAssertTrue(RazerDevices.writesDPI(pid: 0x00E3), "over USB an unverified DPI is still offered")
