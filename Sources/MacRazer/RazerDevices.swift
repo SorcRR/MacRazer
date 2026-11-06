@@ -131,6 +131,11 @@ struct RazerDeviceInfo {
     /// touching the mouse. Only from a report or the vendor spec, never from `hasBattery` or
     /// `hasLighting`, which also cover a mouse whose battery or lights the app can't drive yet.
     var notOnMouse: Set<RazerFeature> = []
+    /// The model this row belongs with, when its name alone can't say: two generations that
+    /// report the same name (the DeathAdder V3 Pro's) would otherwise pair one's cable with
+    /// the other's dongle. Nil means the name without its link in brackets. Only for pairing
+    /// rows; usage stats and the UI still use `name`.
+    var model: String? = nil
 }
 
 enum RazerDevices {
@@ -261,13 +266,13 @@ enum RazerDevices {
         // stages, static color and brightness passed with 0x1f. LOGO and SCROLL answer
         // brightness, ZERO and BACKLIGHT return 0x03. The classic polling command answers
         // "not supported" (0x05), the same gap as the V4 HyperSpeed, so the row stays
-        // unverified. The 26000 ceiling is the app's default, not a measured value.
-        .init(pid: 0x00E3, name: "Razer Basilisk V4 Pro (Wireless)", unverified: [.polling], hasBattery: true, hasLighting: true, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, acceptsClassicPolling: false),
+        // unverified. 35000 is the vendor spec (its Focus Pro 35K sensor).
+        .init(pid: 0x00E3, name: "Razer Basilisk V4 Pro (Wireless)", unverified: [.polling], hasBattery: true, hasLighting: true, maxDPI: 35000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, acceptsClassicPolling: false),
         // Basilisk V4 Pro on the cable (in-app report on firmware v1.1 from by_hlz): battery,
         // DPI and stages, static color and brightness passed with 0x1f, and every id answers.
         // LOGO and SCROLL answer brightness. The classic polling command answers 0x05, as over
-        // the dongle. Its control interface is the fourth one. Same 26000 default as the dongle.
-        .init(pid: 0x00E2, name: "Razer Basilisk V4 Pro (Wired)", unverified: [.polling], hasBattery: true, hasLighting: true, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, acceptsClassicPolling: false),
+        // the dongle. Its control interface is the fourth one. Same 35000 ceiling as the dongle.
+        .init(pid: 0x00E2, name: "Razer Basilisk V4 Pro (Wired)", unverified: [.polling], hasBattery: true, hasLighting: true, maxDPI: 35000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, acceptsClassicPolling: false),
         // DeathAdder V3 HyperSpeed over the dongle (in-app report, no credit given): DPI and
         // stages and polling passed with 0x1f. It has no lighting (every group answers 0x05).
         // The battery read timed out in the first report and in a 0.7.0 run on firmware v1.10,
@@ -325,11 +330,26 @@ enum RazerDevices {
         // The battery read answers 0x05. Only LOGO answers brightness. 16000 is the vendor
         // spec. The owner found the two left side buttons not detected for remapping.
         .init(pid: 0x0078, name: "Razer Viper", unverified: [], hasBattery: false, hasLighting: true, maxDPI: 16000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
-        // DeathAdder V3 Pro over its newer dongle (in-app report on firmware v2.0, no credit
-        // given): battery, DPI and stages, and polling passed with 0x1f. 0x80 times out. No
-        // lighting: every group returns 0x03. It also answers the polling_rate2 read, but the
-        // classic command works. 30000 is the vendor spec. Its cable has no row yet.
-        .init(pid: 0x00C3, name: "Razer DeathAdder V3 Pro", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.lighting]),
+        // DeathAdder V3 Pro over its first dongle (in-app report on firmware v2.1, no credit
+        // given): battery, DPI and stages, and polling passed with 0x1f. 0xFF and 0x80 time
+        // out. No lighting: every group returns 0x03. It also answers the polling_rate2 read,
+        // but the classic command works. 30000 is the vendor spec. Its cable (0x00B6 in
+        // OpenRazer) has no row yet. The later generation reports the same name, so each row
+        // names its model to keep one's cable from pairing with the other's dongle.
+        .init(pid: 0x00B7, name: "Razer DeathAdder V3 Pro", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.lighting], model: RazerDevices.deathAdderV3Pro),
+        // DeathAdder V3 Pro over its later dongle (in-app report on firmware v2.0, no credit
+        // given): the same results as the first one. Its cable (0x00C2) has no row yet.
+        .init(pid: 0x00C3, name: "Razer DeathAdder V3 Pro", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.lighting], model: RazerDevices.deathAdderV3ProLater),
+        // Viper V3 Pro SE over the dongle (in-app report on firmware v1.0, no credit given):
+        // battery, DPI and stages, and polling passed with 0x1f. 0xFF and 0x80 time out. No
+        // lighting: every group answers 0x05. 35000 is the vendor spec. Its cable has no row.
+        .init(pid: 0x00DF, name: "Razer Viper V3 Pro SE", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 35000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.lighting]),
+        // Viper 8KHz (in-app report on firmware v1.0, no credit given): a wired-only mouse.
+        // DPI and stages, static color and brightness passed with 0x1f, and every id answers.
+        // Only LOGO answers brightness. The battery read answers 0x05. The classic polling
+        // command answers 0x05 too, while the polling_rate2 read answers, so like the Basilisk
+        // V4 models it needs that pair and polling stays unverified. 20000 is the vendor spec.
+        .init(pid: 0x0091, name: "Razer Viper 8KHz", unverified: [.polling], hasBattery: false, hasLighting: true, maxDPI: 20000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, acceptsClassicPolling: false, notOnMouse: [.battery]),
         // Naga V2 HyperSpeed over the dongle (two in-app reports on firmware v1.1, no credit
         // given): battery, DPI and stages, and polling passed with 0x1f. 0xFF and 0x80 time out.
         // No lighting: every group answers 0x05. The charging read answers 0x05 too: it runs on
@@ -372,8 +392,23 @@ enum RazerDevices {
     }
     /// Each row's `modelName`, worked out once: the popover asks on every redraw.
     private static let modelNames: [Int: String] = Dictionary(
-        known.map { ($0.pid, modelName($0.name)) }, uniquingKeysWith: { first, _ in first })
-    private static func modelName(of row: RazerDeviceInfo) -> String { modelNames[row.pid] ?? modelName(row.name) }
+        known.map { ($0.pid, $0.model ?? modelName($0.name)) }, uniquingKeysWith: { first, _ in first })
+    private static func modelName(of row: RazerDeviceInfo) -> String {
+        modelNames[row.pid] ?? row.model ?? modelName(row.name)
+    }
+    /// The model of a product id with no row yet whose name another generation shares, from
+    /// OpenRazer's ids: the DeathAdder V3 Pro's first cable and its later one.
+    private static let unlistedModels: [Int: String] = [
+        0x00B6: deathAdderV3Pro, 0x00C2: deathAdderV3ProLater,
+    ]
+    static let deathAdderV3Pro = "Razer DeathAdder V3 Pro"
+    static let deathAdderV3ProLater = "Razer DeathAdder V3 Pro (later)"
+    /// An unlisted mouse's model from its name, or nil when generations share the name, so it
+    /// can't say which one the mouse is.
+    private static func unlistedModel(named name: String) -> String? {
+        let model = modelName(name)
+        return known.contains { $0.model != nil && modelName($0.name) == model } ? nil : model
+    }
     /// Whether the registry fully supports the model `pid` is on another link, `connection`:
     /// a row with the same model name on that link. False when `pid` isn't known.
     static func fullySupported(modelOf pid: Int, on connection: RazerConnection) -> Bool {
@@ -452,7 +487,8 @@ enum RazerDevices {
     /// themselves, with `connection` among their links to test. A report from that link
     /// answers them. `name` is the tested mouse's own name, for a product id not on record.
     static func rowsAnswered(byReportFrom pid: Int, name: String, on connection: RazerConnection) -> [Int] {
-        let model = info(pid: pid).map(modelName(of:)) ?? modelName(name)
+        guard let model = info(pid: pid).map(modelName(of:)) ?? unlistedModels[pid] ?? unlistedModel(named: name)
+        else { return [] }
         return known.filter {
             $0.pid != pid && modelName(of: $0) == model && fullySupported($0)
                 && linksToTest(besides: $0.pid).contains { $0.connection == connection }
@@ -492,6 +528,8 @@ enum RazerDevices {
     /// Defaults assume a full-featured mouse for unknown models (so we still attempt controls).
     static func hasBattery(pid: Int) -> Bool { info(pid: pid)?.hasBattery ?? true }
     static func hasLighting(pid: Int) -> Bool { info(pid: pid)?.hasLighting ?? true }
+    /// False for an AA-cell mouse (no cable mode), which has nothing to charge.
+    static func canCharge(pid: Int) -> Bool { info(pid: pid)?.hasCableLink ?? true }
     static func maxDPI(pid: Int) -> Int { info(pid: pid)?.maxDPI ?? 26000 }
     static func supportsDpiButtonBinding(pid: Int) -> Bool { info(pid: pid)?.supportsDpiButtonBinding ?? false }
     static func supportsSleepTimeout(pid: Int) -> Bool { info(pid: pid)?.supportsSleepTimeout ?? false }

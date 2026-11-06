@@ -231,10 +231,41 @@ final class RazerDevicesTests: XCTestCase {
     /// A cable report answers a verified dongle row's ask for a cable test, even when the
     /// cable's product id isn't on record. A report from the dongle answers nothing.
     func testReportAnswersTheRowThatAskedForIt() {
-        XCTAssertEqual(RazerDevices.rowsAnswered(byReportFrom: 0xFFF0, name: "Razer DeathAdder V3 Pro", on: .wired), [0x00C3])
+        XCTAssertEqual(RazerDevices.rowsAnswered(byReportFrom: 0xFFF0, name: "Razer Pro Click V2", on: .wired), [0x00D1])
         XCTAssertEqual(RazerDevices.rowsAnswered(byReportFrom: 0x00C3, name: "Razer DeathAdder V3 Pro", on: .wirelessDongle), [])
         XCTAssertEqual(RazerDevices.rowsAnswered(byReportFrom: 0x008F, name: "Razer Naga Pro", on: .wired), [], "nothing left to ask")
         XCTAssertEqual(RazerDevices.rowsAnswered(byReportFrom: 0xFFF0, name: "Razer Something Else", on: .wired), [])
+    }
+
+    /// Two DeathAdder V3 Pro generations report one name. Each cable answers only its own
+    /// dongle, and a cable of neither can't say which one it belongs with.
+    func testDeathAdderV3ProGenerationsStayApart() {
+        let name = "Razer DeathAdder V3 Pro"
+        XCTAssertEqual(RazerDevices.rowsAnswered(byReportFrom: 0x00B6, name: name, on: .wired), [0x00B7])
+        XCTAssertEqual(RazerDevices.rowsAnswered(byReportFrom: 0x00C2, name: name, on: .wired), [0x00C3])
+        XCTAssertEqual(RazerDevices.rowsAnswered(byReportFrom: 0xFFF0, name: name, on: .wired), [])
+        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00B7), [.init(connection: .wired, missing: nil)])
+        XCTAssertEqual(RazerDevices.rowsAnswered(byReportFrom: 0x00B7, name: name, on: .wirelessDongle), [],
+                       "the other generation's dongle isn't its cable")
+    }
+
+    /// The other two all-passed mice from the 2026-11-04 reports.
+    func testViperV3ProSEAndViper8KHz() {
+        XCTAssertEqual(RazerDevices.support(pid: 0x00DF), .full)
+        XCTAssertEqual(RazerDevices.maxDPI(pid: 0x00DF), 35000)
+        XCTAssertEqual(RazerDevices.notOnMouse(pid: 0x00DF), [.lighting])
+        XCTAssertEqual(RazerDevices.unverified(pid: 0x0091), [.polling])
+        XCTAssertFalse(RazerDevices.acceptsClassicPolling(pid: 0x0091))
+        XCTAssertFalse(RazerDevices.hasBattery(pid: 0x0091))
+        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x0091), [], "wired only")
+    }
+
+    /// An AA-cell mouse has nothing to charge, so the poll skips that read.
+    func testOnlyMiceWithACableCanCharge() {
+        XCTAssertFalse(RazerDevices.canCharge(pid: 0x00B4), "Naga V2 HyperSpeed")
+        XCTAssertFalse(RazerDevices.canCharge(pid: 0x00B8), "Viper V3 HyperSpeed")
+        XCTAssertTrue(RazerDevices.canCharge(pid: 0x00DB))
+        XCTAssertTrue(RazerDevices.canCharge(pid: 0x9999), "unknown models still ask")
     }
 
     /// The Viper V3 HyperSpeed has no lighting and a 26K sensor. Its firmware echoes DPI writes
@@ -300,7 +331,7 @@ final class RazerDevicesTests: XCTestCase {
 
     /// The models that answer the classic polling command with "not supported".
     func testClassicPollingRefusals() {
-        for pid in [0x00A4, 0x00EA, 0x00EB, 0x00E3, 0x00E5, 0x00E6] {
+        for pid in [0x00A4, 0x00EA, 0x00EB, 0x00E3, 0x00E2, 0x00E5, 0x00E6, 0x0091] {
             XCTAssertFalse(RazerDevices.acceptsClassicPolling(pid: pid), String(pid, radix: 16))
         }
         XCTAssertTrue(RazerDevices.acceptsClassicPolling(pid: 0x00DB))

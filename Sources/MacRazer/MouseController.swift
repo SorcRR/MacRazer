@@ -152,6 +152,8 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     }
     var supportsProfiles: Bool { !deviceIsBluetooth }
     private var ioHasBattery = true // io-queue mirror of deviceHasBattery
+    /// False on an AA-cell mouse: it can't charge, so the poll skips the charging read.
+    private var ioCanCharge = true
 
     /// Saved DPI/poll/lighting/button-remap presets for the connected mouse, and which one (if
     /// any) currently matches the live config. Loaded/swapped alongside `deviceKey` in
@@ -677,8 +679,14 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 // state machine's decision here.)
                 // raw == 0 is the grace tick (device refused the level read): no charging
                 // query is issued, so the state is genuinely unknown rather than false.
-                let chargeReply = raw == 0 ? nil : try? dev.sendWithRetry(RazerCommands.getChargingStatus())
-                observedCharging = raw == 0 ? nil : chargeReply.map { $0.arguments[1] != 0 }
+                // An AA-cell mouse refuses the charging read every time (0x05), so it isn't
+                // sent: one command per tick, and the mouse is known not to be charging.
+                if raw != 0 && !ioCanCharge {
+                    observedCharging = false
+                } else {
+                    let chargeReply = raw == 0 ? nil : try? dev.sendWithRetry(RazerCommands.getChargingStatus())
+                    observedCharging = raw == 0 ? nil : chargeReply.map { $0.arguments[1] != 0 }
+                }
                 let charging = observedCharging ?? false
                 outcome = .battery(raw: raw, charging: charging)
             }
@@ -1857,6 +1865,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         let battery = RazerDevices.hasBattery(pid: pid)
         let bluetooth = d.isBluetooth
         ioHasBattery = battery
+        ioCanCharge = RazerDevices.canCharge(pid: pid)
         publish {
             self.update(\.deviceIsBluetooth, bluetooth)
             self.update(\.deviceID, pid)

@@ -91,7 +91,8 @@ says so.
 | Razer Pro Click V2 | Battery, DPI, DPI stages, polling | anonymous report |
 | Razer Pro Click (wired + wireless) | Battery, DPI, DPI stages, polling (it has no lighting) | anonymous reports |
 | Razer Viper | DPI, DPI stages, polling, lighting, brightness (wired only) | anonymous report |
-| Razer DeathAdder V3 Pro (Wireless) | Battery, DPI, DPI stages, polling (it has no lighting) | anonymous report |
+| Razer DeathAdder V3 Pro (Wireless, both dongles) | Battery, DPI, DPI stages, polling (it has no lighting) | anonymous reports |
+| Razer Viper V3 Pro SE (Wireless) | Battery, DPI, DPI stages, polling (it has no lighting) | anonymous report |
 | Razer Naga V2 HyperSpeed | Battery, DPI, DPI stages, polling (it has no lighting) | anonymous reports |
 | Razer Basilisk X HyperSpeed | Battery, DPI, DPI stages, polling (it has no lighting) | MagnetTileMan |
 | Razer DeathAdder V3 HyperSpeed (wired + wireless) | Battery, DPI, DPI stages, polling (it has no lighting) | fxaxg and anonymous reports |
@@ -100,6 +101,7 @@ says so.
 | Razer Taipan | DPI, polling; lighting not working yet | anonymous report |
 | Razer Basilisk V4 HyperSpeed (wired + wireless) | Battery, DPI, DPI stages; polling not working yet | anonymous reports |
 | Razer Viper V4 Pro (wired + wireless) | Battery, DPI, DPI stages; polling not working yet | Robotxm and an anonymous report |
+| Razer Viper 8KHz | DPI, DPI stages, lighting, brightness (wired only); polling not working yet | anonymous report |
 | Razer Basilisk V4 Pro (wired + wireless) | Battery, DPI, DPI stages, lighting, brightness; polling not working yet | by_hlz and an anonymous report |
 | Razer Mouse Dock Pro (with a Naga V3 Pro) | Battery, DPI, lighting, brightness; polling not working yet | anonymous report |
 | Razer HyperFlux V2 (with the mouse on it) | Battery, DPI, DPI stages, polling; lighting not confirmed yet | anonymous report |
