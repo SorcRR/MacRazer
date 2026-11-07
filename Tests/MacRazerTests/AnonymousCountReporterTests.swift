@@ -47,13 +47,33 @@ final class AnonymousCountReporterTests: XCTestCase {
         XCTAssertEqual(asked.count, 1, "refused: nothing more until the next tick, however often it's asked")
         clock = clock.addingTimeInterval(AnonymousCountReporter.retryAfter)
         await sut.reportIfNeeded()
-        XCTAssertEqual(asked.count, 2, "a 200 without x-counted (a burst, the cap, a database error) is sent again")
+        XCTAssertEqual(asked.count, 2, "x-counted: 0 (a burst, the cap, a database error): sent again on the next tick")
         answer = 502
         recorded = true
-        clock = clock.addingTimeInterval(AnonymousCountReporter.retryAfter)
+        clock = clock.addingTimeInterval(2 * AnonymousCountReporter.retryAfter)
         await sut.reportIfNeeded()
         await sut.reportIfNeeded()
         XCTAssertEqual(asked.count, 3, "a 502 with x-counted: the list failed, the count is in")
+    }
+
+    func testRefusalsInARowWaitLongerButAnAnswerDoesntWait() async {
+        var asked: [URL] = []
+        var clock = lateEvening.addingTimeInterval(-20 * 3600)
+        var answer: UsageStatsConsent = .undecided
+        let sut = reporter(at: { clock }, status: { 200 }, counted: { _ in false }, requests: { asked.append($0) })
+        sut.connectedMice = { [cobra] }
+        sut.answer = { answer }
+        await sut.reportIfNeeded()
+        clock = clock.addingTimeInterval(AnonymousCountReporter.retryAfter)
+        await sut.reportIfNeeded()
+        XCTAssertEqual(asked.count, 2)
+        clock = clock.addingTimeInterval(AnonymousCountReporter.retryAfter)
+        await sut.reportIfNeeded()
+        XCTAssertEqual(asked.count, 2, "the second refusal in a row waits twice as long")
+        answer = .granted
+        await sut.reportIfNeeded()
+        await sut.reportIfNeeded()
+        XCTAssertEqual(asked.count, 3, "a new answer goes at once, then waits like the rest")
     }
 
     func testAWorkerFromBeforeTheHeaderIsTakenAtItsStatus() {

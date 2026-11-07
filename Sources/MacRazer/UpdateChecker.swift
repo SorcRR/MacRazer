@@ -343,7 +343,8 @@ final class UpdateChecker: ObservableObject {
             // nothing before it had been read. That includes an upgrade from a build too old to
             // have recorded `lastRun` at all (0.3.0 and earlier): the span has no start then,
             // and the notes fall back to the release running rather than to nothing.
-            if let lastRun, lastRun != current, defaults.string(forKey: Self.updatedFromKey) == nil {
+            if let lastRun, AppInfo.releaseVersion(lastRun) != AppInfo.releaseVersion(current),
+               defaults.string(forKey: Self.updatedFromKey) == nil {
                 defaults.set(lastRun, forKey: Self.updatedFromKey)
             }
         } else {

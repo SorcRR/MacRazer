@@ -187,7 +187,7 @@ extension URLComponents {
     /// reads specially.
     static let queryValueAllowed: CharacterSet = {
         var allowed = CharacterSet.urlQueryAllowed
-        allowed.remove(charactersIn: "+&=;#")
+        allowed.remove(charactersIn: "+&=;")
         return allowed
     }()
 }

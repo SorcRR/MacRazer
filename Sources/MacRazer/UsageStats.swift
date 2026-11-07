@@ -103,7 +103,7 @@ enum UsageStatsPolicy {
             mouse(pid: $0.pid, productName: $0.name, isBluetooth: false, supported: RazerDevices.fullySupported(pid: $0.pid))
         }
         for m in candidates {
-            let id = RazerDevices.info(pid: m.pid).map { "model:" + RazerDevices.modelName($0.name) } ?? "key:" + m.key
+            let id = RazerDevices.model(pid: m.pid).map { "model:" + $0 } ?? "key:" + m.key
             if seen.insert(id).inserted { mice.append(m) }
         }
         return Array(mice.prefix(WorkerEndpoint.maxMice))

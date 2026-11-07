@@ -105,6 +105,12 @@ final class UpdateCheckSourceTests: XCTestCase {
         // A Cobra HyperSpeed on its cable (0xDA) with its dongle (0xDB) in is one mouse.
         let charging = UsageStatsPolicy.mouse(pid: 0xDA, productName: nil, isBluetooth: false, supported: true)
         XCTAssertEqual(UsageStatsPolicy.connectedMice(opened: charging, plugged: [plugged[0]]).map(\.pid), [0xDA])
+        // The DeathAdder V3 Pro's cable has no row of its own, but is that model's; its two
+        // generations share a name and are two mice.
+        let deathAdder = [HIDDevice.USBMouse(pid: 0xB6, name: "Razer DeathAdder V3 Pro"),
+                          HIDDevice.USBMouse(pid: 0xB7, name: "Razer DeathAdder V3 Pro"),
+                          HIDDevice.USBMouse(pid: 0xC3, name: "Razer DeathAdder V3 Pro")]
+        XCTAssertEqual(UsageStatsPolicy.connectedMice(opened: nil, plugged: deathAdder).map(\.pid), [0xB6, 0xC3])
         let many = (0..<6).map { HIDDevice.USBMouse(pid: 0x100 + $0, name: "Razer Mouse \($0)") }
         XCTAssertEqual(UsageStatsPolicy.connectedMice(opened: opened, plugged: many).count, WorkerEndpoint.maxMice)
     }

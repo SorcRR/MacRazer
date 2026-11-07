@@ -36,13 +36,21 @@ final class AnonymousCountReporter {
     /// mouse found or an answer changed meanwhile isn't left for the next tick.
     private var sending = false
     private var again = false
-    /// After a count the Worker didn't record, nothing more until the next tick: a refused
-    /// count (a burst, the day's cap) asked again on every plug would only be refused again,
-    /// and would use up the rate limit update checks share.
+    /// After a count the Worker didn't record, mice wait: a refused count (a burst, the day's
+    /// cap) asked again on every plug would only be refused again, and would use up the rate
+    /// limit update checks share. Each refusal in a row doubles the wait, so a Worker at its
+    /// day's cap isn't asked by every Mac every tick for the rest of the day. An answer or a
+    /// change of answer doesn't wait: it's what the count is most for.
     private var quietUntil: Date?
-    /// Well under the app's 15-minute tick (which has a minute's slack) and counted from when
-    /// the refused request went out, so the tick after a refusal always tries again.
+    private var refusals = 0
+    /// The answer and changes the refused count carried: only a different one goes before the
+    /// wait is up.
+    private var refusedAnswer: String?
+    /// The first wait: well under the app's 15-minute tick (which has a minute's slack) and
+    /// counted from when the refused request went out, so the next tick tries again.
     static let retryAfter: TimeInterval = 10 * 60
+    /// The longest wait between tries.
+    static let longestWait: TimeInterval = 4 * 3600
 
     init(defaults: UserDefaults = .standard, base: URL? = WorkerEndpoint.base,
          appVersion: String? = AppInfo.version, now: @escaping () -> Date = Date.init,
@@ -73,7 +81,6 @@ final class AnonymousCountReporter {
     }
 
     private func sendOnce() async {
-        if let quietUntil, now() < quietUntil { return }
         let mice = connectedMice()
         let answer = answer()
         let changes = pendingChanges()
@@ -84,6 +91,9 @@ final class AnonymousCountReporter {
         // A Mac with no Worker, or nothing to send at all, has nothing to count.
         let newMouse = mice.contains { !sent.contains(Self.key($0)) }
         let newAnswer = answer.map { $0.countValue != sentAnswer } ?? false
+        let answerNow = (answer?.countValue ?? "") + "|" + changes.map(\.rawValue).joined(separator: ",")
+        let answerChanged = (newAnswer || !changes.isEmpty) && answerNow != refusedAnswer
+        if let quietUntil, now() < quietUntil, !answerChanged { return }
         guard newMouse || newAnswer || !changes.isEmpty,
               let url = WorkerEndpoint.releases(appVersion: appVersion, mice: mice, stats: answer,
                                                 changes: changes, count: true, base: base) else { return }
@@ -91,10 +101,15 @@ final class AnonymousCountReporter {
         do {
             let (_, response) = try await fetch(url)
             guard Self.counted(response) else {
-                quietUntil = started.addingTimeInterval(Self.retryAfter)
+                let wait = min(Self.retryAfter * pow(2, Double(refusals)), Self.longestWait)
+                refusals += 1
+                quietUntil = started.addingTimeInterval(wait)
+                refusedAnswer = answerNow
                 return
             }
             quietUntil = nil
+            refusals = 0
+            refusedAnswer = nil
             defaults.set(day, forKey: Self.dayKey)
             defaults.set(Array(sent.union(mice.map(Self.key))).sorted(), forKey: Self.sentKey)
             if let answer { defaults.set(answer.countValue, forKey: Self.answerKey) }

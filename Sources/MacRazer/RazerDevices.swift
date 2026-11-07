@@ -428,6 +428,13 @@ enum RazerDevices {
         let model = modelName(name)
         return known.contains { $0.model != nil && modelName($0.name) == model } ? nil : model
     }
+    /// The model `pid` belongs to, whatever its link: the registry's row, or a known product id
+    /// with no row yet (the DeathAdder V3 Pro's cables). Nil for one the registry can't place,
+    /// so two generations that share a name never pass for one mouse.
+    static func model(pid: Int) -> String? {
+        info(pid: pid).map(modelName(of:)) ?? unlistedModels[pid]
+    }
+
     /// Whether the registry fully supports the model `pid` is on another link, `connection`:
     /// a row with the same model name on that link. False when `pid` isn't known.
     static func fullySupported(modelOf pid: Int, on connection: RazerConnection) -> Bool {
