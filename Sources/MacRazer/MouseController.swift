@@ -138,7 +138,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     var supportsPollRate: Bool {
         !deviceIsBluetooth && deviceID.map { RazerDevices.acceptsClassicPolling(pid: $0) } != false
     }
-    var supportsLightingEffects: Bool { !deviceIsBluetooth && !lightHasFixedColor }
+    var supportsLightingEffects: Bool { !deviceIsBluetooth && !lightHasFixedColor && !lightIsStaticOnly }
+    /// The firmware has a static colour and off only (`RazerDeviceInfo.staticLightingOnly`).
+    var lightIsStaticOnly: Bool { deviceID.map(RazerDevices.staticLightingOnly(pid:)) ?? false }
     /// The light has one colour of its own (`RazerDeviceInfo.fixedColor`): brightness only.
     var lightHasFixedColor: Bool { deviceID.map(RazerDevices.fixedColor(pid:)) ?? false }
     var supportsFreeDPI: Bool { !deviceIsBluetooth }
@@ -1427,7 +1429,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         let dpi = UInt16(max(100, min(profile.dpi, 45000)))
         let hz = profile.pollRate == 0 ? 1000 : profile.pollRate
         let brightnessPct = max(0, min(profile.brightness, 100))
-        let effect = profile.lightingEffect
+        // On a mouse with only a static colour, a profile's other effect lands as that colour.
+        let effect = lightIsStaticOnly && ![.staticColor, .off].contains(profile.lightingEffect)
+            ? .staticColor : profile.lightingEffect
         // A profile saved before the speed existed keeps whatever speed the slider has.
         let speed = profile.waveSpeed ?? waveSpeed
         let lighting = report(for: effect, color: profile.color, waveSpeed: speed)

@@ -8,8 +8,9 @@ expect rough edges until 1.0.
 
 ### Added
 - **Razer Basilisk Mobile, over its 2.4 GHz dongle.** Battery, DPI and its stages, polling rate
-  and lighting all passed the device test. The cable isn't known yet, so the app asks for a
-  test on it. Thanks to @oss3 (#83).
+  and a static colour all passed the device test. Its lighting has a colour but no effects, so
+  the popover doesn't offer them. The cable is recognised too, but nothing has been tested on
+  it yet, so the app asks for a device test there. Thanks to @oss3 (#83).
 - **Razer Pro Click V2 Vertical Edition, on its cable.** Battery and a static color work; DPI,
   polling, brightness and the other effects come from OpenRazer and haven't been confirmed on
   this mouse yet, so the app asks for a device test. Its HyperSpeed dongle isn't supported yet.

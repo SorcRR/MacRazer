@@ -130,6 +130,10 @@ struct RazerDeviceInfo {
     /// True for a mouse whose light has one colour of its own (the DeathAdder Essential's is
     /// green): only brightness changes it, so the popover hides colours and effects.
     var fixedColor = false
+    /// True for a mouse whose firmware has only a static colour and off (OpenRazer lists no
+    /// other effect for it): the popover offers colours but no effects, and a profile's
+    /// breathing, spectrum or wave lands as the static colour.
+    var staticLightingOnly = false
     /// What the mouse itself doesn't have: no battery on a wired-only mouse, no lights on an
     /// unlit one. The device test still shows that step, says so, and moves on without
     /// touching the mouse. Only from a report or the vendor spec, never from `hasBattery` or
@@ -185,12 +189,16 @@ enum RazerDevices {
         // one field here not demonstrated on a device.
         .init(pid: 0x00B9, name: "Razer Basilisk V3 X HyperSpeed", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 18000, transactionId: 0x1f, matrixTransactionId: 0x1f, brightnessLed: Razer.scrollLed, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, hasCableLink: false, canCharge: false),
         // Basilisk Mobile over the dongle (#83, from oss3, firmware v1.0): battery, DPI and its
-        // five stages (counted from 1), polling, and lighting on LOGO_LED with brightness all
-        // passed with 0x1f (0x3f and 0x08 answer too; 0xFF and 0x80 time out). It answers the
-        // charging read, so it charges, by its USB-C cable: that link's product id isn't known
-        // yet, so the test asks for a cable report. The firmware echoed a 45000 DPI write, so
-        // the echo can't bound it: 26000 is the ceiling of its Focus X 26K sensor.
-        .init(pid: 0x00D4, name: "Razer Basilisk Mobile", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
+        // five stages (counted from 1), polling, and a static colour on LOGO_LED with brightness
+        // all passed with 0x1f (0x3f and 0x08 answer too; 0xFF and 0x80 time out). It answers
+        // the charging read, so it charges, by its USB-C cable (0x00D3, below). The firmware
+        // echoed a 45000 DPI write, so the echo can't bound it: 18000 is its Focus X 18K
+        // sensor's ceiling, as OpenRazer has it. OpenRazer gives it static and off only, no
+        // other effects. It also connects over Bluetooth, which has no row yet.
+        .init(pid: 0x00D4, name: "Razer Basilisk Mobile (Wireless)", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 18000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, staticLightingOnly: true),
+        // Its cable, from OpenRazer's ids alone (0x00D3): nothing tried on it yet, so the device
+        // test asks for every step.
+        .init(pid: 0x00D3, name: "Razer Basilisk Mobile (Wired)", unverified: [.battery, .dpi, .polling, .lighting], hasBattery: true, hasLighting: true, maxDPI: 18000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, staticLightingOnly: true),
         // Basilisk X HyperSpeed: the older AA-cell sibling — no lighting at all, and
         // razermouse_driver.c gives it 0xFF for every command it supports. An in-app report
         // (credit MagnetTileMan) passed battery, DPI, stages and polling with 0xFF; every
@@ -653,6 +661,7 @@ enum RazerDevices {
     static func verifiesBrightnessWrite(pid: Int) -> Bool { info(pid: pid)?.verifiesBrightnessWrite ?? false }
     static func acceptsClassicPolling(pid: Int) -> Bool { info(pid: pid)?.acceptsClassicPolling ?? true }
     static func fixedColor(pid: Int) -> Bool { info(pid: pid)?.fixedColor ?? false }
+    static func staticLightingOnly(pid: Int) -> Bool { info(pid: pid)?.staticLightingOnly ?? false }
     /// Empty for a model not on record: the test is how anyone finds out.
     static func notOnMouse(pid: Int) -> Set<RazerFeature> { info(pid: pid)?.notOnMouse ?? [] }
     /// Per-command transaction id: explicit per-command override, else the class split

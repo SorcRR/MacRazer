@@ -281,12 +281,16 @@ final class RazerDevicesTests: XCTestCase {
 
     /// The Basilisk Mobile from #83: all passed over the dongle, charges by cable.
     func testBasiliskMobile() {
+        XCTAssertNotNil(RazerDevices.info(pid: 0x00D4))
         XCTAssertEqual(RazerDevices.support(pid: 0x00D4), .full)
-        XCTAssertEqual(RazerDevices.maxDPI(pid: 0x00D4), 26000)
+        XCTAssertEqual(RazerDevices.maxDPI(pid: 0x00D4), 18000, "Focus X 18K; the firmware echoes anything")
         XCTAssertEqual(RazerDevices.connection(pid: 0x00D4), .wirelessDongle)
-        XCTAssertTrue(RazerDevices.canCharge(pid: 0x00D4), "it answers the charging read")
-        XCTAssertTrue(RazerDevices.linksToTest(besides: 0x00D4).contains { $0.connection == .wired },
-                      "its cable isn't known yet, so the test asks for it")
+        XCTAssertTrue(RazerDevices.staticLightingOnly(pid: 0x00D4))
+        // Its cable (OpenRazer's 0x00D3) is the same model, untested on every step.
+        XCTAssertEqual(RazerDevices.connection(pid: 0x00D3), .wired)
+        XCTAssertEqual(RazerDevices.unverified(pid: 0x00D3), [.battery, .dpi, .polling, .lighting])
+        XCTAssertEqual(RazerDevices.model(pid: 0x00D3), RazerDevices.model(pid: 0x00D4))
+        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00D4).map(\.connection), [.wired])
     }
 
     /// An AA-cell mouse has nothing to charge, so the poll skips that read.
