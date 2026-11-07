@@ -229,14 +229,10 @@ enum RazerDevices {
         // and brightness weren't tried here. OpenRazer drives its brightness, static, spectrum
         // and wave on ZERO_LED, but breathing on BACKLIGHT_LED, which this app doesn't do per
         // effect yet: lighting stays unverified until a device test shows what answers. 30000
-        // DPI is the vendor spec (Focus Pro 30K sensor).
+        // DPI is the vendor spec (Focus Pro 30K sensor). Its HyperSpeed dongle (0x00C8) has
+        // no row: every read over it timed out, and a known row would rank it with working
+        // mice when choosing which device to open.
         .init(pid: 0x00C7, name: "Razer Pro Click V2 Vertical Edition (Wired)", unverified: [.dpi, .polling, .lighting], hasBattery: true, hasLighting: true, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, brightnessLed: Razer.zeroLed, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
-        // The same mouse over its HyperSpeed dongle (#35): the interface opens, but battery
-        // reads timed out in testing, so nothing is confirmed on this link yet. The row names it
-        // instead of leaving an unknown device, and the device test asks for a report. As a
-        // known row it ranks with the other known mice when choosing which to open.
-        // OpenRazer uses the same ids as on the cable.
-        .init(pid: 0x00C8, name: "Razer Pro Click V2 Vertical Edition", unverified: [.battery, .dpi, .polling, .lighting], hasBattery: true, hasLighting: true, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, brightnessLed: Razer.zeroLed, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
         // Naga Pro over the dongle (#69): battery, DPI and stages, polling, static color and
         // brightness all passed the in-app test with 0x1f. 0xFF and 0x80 time out. It has
         // three lit zones and LOGO, SCROLL and BACKLIGHT all answer brightness (ZERO refuses),

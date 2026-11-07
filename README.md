@@ -109,7 +109,7 @@ says so.
 | Razer Naga Chroma | DPI, polling; lighting not working yet | anonymous report |
 | Razer Basilisk V3 Pro 35K (Wired) | Battery, DPI, DPI stages, polling; lighting not working yet | anonymous report |
 | Razer Basilisk V3 Pro 35K (Bluetooth) | Battery; DPI and lighting not tried yet | anonymous reports |
-| Razer Pro Click V2 Vertical Edition (Wired) | Battery, a static color; DPI, polling, brightness and the other effects not tried yet. Over the dongle, nothing confirmed yet | [@k6n7frbrtc-hub](https://github.com/k6n7frbrtc-hub) |
+| Razer Pro Click V2 Vertical Edition (Wired) | Battery, a static color; DPI, polling, brightness and the other effects not tried yet. Its dongle isn't supported yet | [@k6n7frbrtc-hub](https://github.com/k6n7frbrtc-hub) |
 | Razer Orochi 2013 | DPI only | [@raphaelchenouard](https://github.com/raphaelchenouard) |
 | Razer DeathAdder Essential (2018, White Edition) | Nothing; values from OpenRazer | — |
 | Razer Cobra, Cobra Pro (wired + wireless) | Nothing; same protocol family, values from OpenRazer | — |
