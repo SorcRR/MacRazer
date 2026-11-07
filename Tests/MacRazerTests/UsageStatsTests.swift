@@ -262,6 +262,32 @@ final class UsageStatsTests: XCTestCase {
         XCTAssertEqual(s.pendingConsentChanges, [.dismissed, .saidYes, .turnedOff, .turnedOn])
     }
 
+    func testAWindowThatAskedAndClosedCountsAsAClose() {
+        let s = stats(FakeServer())
+        let opened = Date(timeIntervalSince1970: 1_800_000_000)
+        XCTAssertTrue(s.beginAsking(now: opened))
+        XCTAssertTrue(s.isAsking)
+        XCTAssertEqual(s.askingSince, opened)
+        XCTAssertTrue(s.endAsking(now: opened.addingTimeInterval(60)))
+        XCTAssertFalse(s.isAsking)
+        XCTAssertEqual(s.pendingConsentChanges, [.dismissed])
+        // Within the week the Updated window opens without the card, and closing it is nothing.
+        XCTAssertFalse(s.beginAsking(now: opened.addingTimeInterval(86_400)))
+        XCTAssertFalse(s.endAsking(now: opened.addingTimeInterval(86_500)))
+        XCTAssertEqual(s.consent, .undecided)
+        XCTAssertEqual(s.pendingConsentChanges, [.dismissed])
+    }
+
+    func testDeleteMyDataAfterClosingTwiceKeepsTheNextYesAFirstYes() async {
+        let s = stats(FakeServer())
+        let closed = Date(timeIntervalSince1970: 1_800_000_000)
+        s.dismissUnanswered(now: closed)
+        s.dismissUnanswered(now: closed.addingTimeInterval(8 * 86_400))
+        await s.deleteMyData()
+        s.setConsent(true)
+        XCTAssertEqual(s.pendingConsentChanges, [.dismissed, .saidYes])
+    }
+
     func testClosingAfterAnAnswerChangesNothing() {
         let s = stats(FakeServer())
         s.setConsent(true)

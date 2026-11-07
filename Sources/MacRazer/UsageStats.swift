@@ -187,6 +187,12 @@ final class UsageStats: ObservableObject {
     typealias Transport = @Sendable (URLRequest) async throws -> (Data, URLResponse)
 
     @Published private(set) var consent: UsageStatsConsent
+    /// The question is on screen: in its own window or as the Updated window's card. Set by
+    /// whichever opened (`beginAsking`), so the card, the close and the daily count agree on
+    /// whether it was asked.
+    @Published private(set) var isAsking = false
+    /// When it last appeared, for how long the daily count holds the answer back.
+    private(set) var askingSince: Date?
     @Published private(set) var lastSentAt: Date?
     @Published private(set) var lastSentVersion: String?
     @Published private(set) var deletion: DeletionState = .idle
@@ -273,11 +279,17 @@ final class UsageStats: ObservableObject {
     }
 
     private func noteChange(to new: UsageStatsConsent) {
+        guard new != consent else { return }
         let byClosing = defaults.bool(forKey: Self.declinedByClosingKey)
         defaults.removeObject(forKey: Self.declinedByClosingKey)
         if byClosing, consent == .declined, new == .granted { return note(.saidYes) }
         guard let change = UsageStatsConsent.Change.from(consent, to: new) else { return }
         note(change)
+    }
+
+    private func store(_ new: UsageStatsConsent) {
+        consent = new
+        defaults.set(new.rawValue, forKey: Self.consentKey)
     }
 
     private func note(_ change: UsageStatsConsent.Change) {
@@ -291,8 +303,7 @@ final class UsageStats: ObservableObject {
     func setConsent(_ granted: Bool) {
         let new: UsageStatsConsent = granted ? .granted : .declined
         noteChange(to: new)
-        consent = new
-        defaults.set(consent.rawValue, forKey: Self.consentKey)
+        store(new)
         if granted {
             if deletion == .deleted { deletion = .idle }
             if sendsOnChange { Task { await sendIfDue() } }
@@ -306,17 +317,35 @@ final class UsageStats: ObservableObject {
     /// `said_no`: nobody said it. Call it only when the question was on screen (`shouldAsk`).
     func dismissUnanswered(now: Date = Date()) {
         guard isAvailable, consent == .undecided else { return }
-        if let after = defaults.object(forKey: Self.askAgainAfterKey) as? Date {
-            // Closed again before its week was up: it wasn't asked again, so nothing changes.
-            guard now >= after else { return }
-            note(.dismissed)
-            consent = .declined
-            defaults.set(consent.rawValue, forKey: Self.consentKey)
+        let after = defaults.object(forKey: Self.askAgainAfterKey) as? Date
+        // Closed again before its week was up: it wasn't asked again, so nothing changes.
+        if let after, now < after { return }
+        note(.dismissed)
+        if after != nil {
+            store(.declined)
             defaults.set(true, forKey: Self.declinedByClosingKey)
         } else {
-            note(.dismissed)
             defaults.set(now.addingTimeInterval(Self.askAgainDelay), forKey: Self.askAgainAfterKey)
         }
+    }
+
+    /// A window that can ask is opening: it asks if the question is due. True when it does.
+    @discardableResult
+    func beginAsking(now: Date = Date()) -> Bool {
+        isAsking = shouldAsk(now: now)
+        askingSince = isAsking ? now : nil
+        return isAsking
+    }
+
+    /// That window is closing. Asked and not answered, it's a close (`dismissUnanswered`).
+    /// True when the question was on screen.
+    @discardableResult
+    func endAsking(now: Date = Date()) -> Bool {
+        let was = isAsking
+        isAsking = false
+        askingSince = nil
+        if was { dismissUnanswered(now: now) }
+        return was
     }
 
     /// Whether the question is shown: nobody has answered, this build can send, and a question
@@ -393,8 +422,7 @@ final class UsageStats: ObservableObject {
         // Shown straight away, even when a ping in flight makes the delete wait for it.
         deletion = .deleting
         noteChange(to: .declined)
-        consent = .declined
-        defaults.set(consent.rawValue, forKey: Self.consentKey)
+        store(.declined)
         // Forget what was reported, so opting in again starts over as a new Mac, the way the
         // server will see it.
         for key in [Self.lastReportedVersionKey, Self.reportedMiceKey, Self.lastSentAtKey] {
@@ -438,6 +466,8 @@ final class UsageStats: ObservableObject {
                                hardwareUUID: { "5C0FFEE0-0000-4000-8000-000000000000" },
                                sendsOnChange: false, transport: { _ in throw URLError(.notConnectedToInternet) })
         stats.consent = consent
+        // As the Updated window opens it: the card asks while nobody has answered.
+        stats.isAsking = consent == .undecided
         stats.connectedMice = [UsageStatsPolicy.mouse(pid: 0x00B0, productName: nil, isBluetooth: false, supported: true)]
         if consent == .granted {
             stats.lastSentAt = Date()

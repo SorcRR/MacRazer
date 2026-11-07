@@ -54,8 +54,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     /// When this launch began, for how long the count holds back "unasked"; see
     /// `isAboutToAskOrAsking`.
     private let launchedAt = Date()
-    /// When the question last appeared, in its window or the Updated window's card.
-    private var usageStatsQuestionShownAt: Date?
+    /// How long the daily count holds "unasked" back: while the question waits for a clear
+    /// moment, and once it's on screen.
+    private static let holdWhileWaiting: TimeInterval = 3600
+    private static let holdWhileShowing: TimeInterval = 600
     private let supportPrompt = SupportPrompt.shared
     private var supportPromptTimer: Timer?
     /// What the last support tick saw; see `askForDeviceTestIfClear`.
@@ -336,7 +338,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         // they are doing something else.
         if updateChecker.justUpdatedTo != nil {
             updatedWindow.show(activating: !updateChecker.autoInstallEnabled)
-            if updatedWindow.askedAboutUsageStats { usageStatsQuestionShownAt = Date() }
         }
         startUsageStats()
         startSupportPrompt()
@@ -671,14 +672,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     /// in the Updated window. A window left open behind others for days mustn't keep the
     /// answer out of every day's count.
     private func isAboutToAskOrAsking(now: Date) -> Bool {
-        if usageStatsAskTimer != nil { return now.timeIntervalSince(launchedAt) < 3600 }
-        guard let shown = usageStatsQuestionShownAt, now.timeIntervalSince(shown) < 600 else { return false }
-        return usageStatsWindow.isVisible || (updatedWindow.isVisible && updatedWindow.askedAboutUsageStats)
+        if usageStatsAskTimer != nil, usageStats.shouldAsk(now: now) {
+            return now.timeIntervalSince(launchedAt) < Self.holdWhileWaiting
+        }
+        guard usageStats.isAsking, let since = usageStats.askingSince else { return false }
+        return now.timeIntervalSince(since) < Self.holdWhileShowing
     }
 
     /// A window that asked was closed. Answered, the answer has gone out already; closed
     /// without one, the day's count still says where this app stands ("unasked").
     private func questionClosed() {
+        guard usageStats.consent != .granted, usageStats.isAvailable else { return }
         Task { await countReporter.reportIfNeeded() }
     }
 
@@ -701,7 +705,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         guard usageStats.shouldAsk() else { return stopAskingAboutUsageStats() }
         guard !isShowingAWindow, !popover.isShown, !appMenuOpen else { return }
         stopAskingAboutUsageStats()
-        usageStatsQuestionShownAt = Date()
         usageStatsWindow.show(activating: false)
     }
 

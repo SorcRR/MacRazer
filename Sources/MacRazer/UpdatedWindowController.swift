@@ -16,8 +16,6 @@ final class UpdatedWindowController: NSObject, AppWindowPresenter, NSWindowDeleg
     private let usageStats: UsageStats
     /// Called a turn after the window closes, once it no longer counts as open.
     private let onClosed: () -> Void
-    /// Whether the usage stats card asked, this time the window opened.
-    private(set) var askedAboutUsageStats = false
     private var window: NSWindow?
 
     init(updateChecker: UpdateChecker, usageStats: UsageStats, onClosed: @escaping () -> Void) {
@@ -34,7 +32,8 @@ final class UpdatedWindowController: NSObject, AppWindowPresenter, NSWindowDeleg
     ///   happened while the user was busy elsewhere and should not grab their keyboard when
     ///   it lands. The window still comes to the front, where it will be seen.
     func show(activating: Bool) {
-        askedAboutUsageStats = usageStats.shouldAsk()
+        // The usage stats card asks if the question is due; it shows by `isAsking`.
+        usageStats.beginAsking()
         if window == nil {
             let controller = NSHostingController(rootView: UpdatedView(
                 updateChecker: updateChecker,
@@ -63,7 +62,7 @@ final class UpdatedWindowController: NSObject, AppWindowPresenter, NSWindowDeleg
         updateChecker.dismissAnnouncement()
         // The usage stats card was in it, if the question was due when it opened. Closing
         // without answering asks again later.
-        if askedAboutUsageStats { usageStats.dismissUnanswered() }
+        usageStats.endAsking()
         // Deferred: the window is still visible during `windowWillClose`, and anything that
         // asks "is a window open?" from here would get the wrong answer.
         DispatchQueue.main.async { [weak self] in self?.onClosed() }

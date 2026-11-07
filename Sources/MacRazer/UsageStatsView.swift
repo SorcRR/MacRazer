@@ -106,7 +106,7 @@ struct UsageStatsCard: View {
     @State private var showDetails = false
 
     var body: some View {
-        if stats.shouldAsk() || answered {
+        if stats.isAsking || answered {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 8) {
                     Image(systemName: "chart.bar.fill")
@@ -173,6 +173,7 @@ final class UsageStatsWindowController: NSObject, AppWindowPresenter, NSWindowDe
     ///   someone typing elsewhere could otherwise press Esc into it and decline unread. It
     ///   still comes to the front, where it will be seen.
     func show(activating: Bool) {
+        stats.beginAsking()
         if window == nil {
             let controller = NSHostingController(rootView: UsageStatsConsentView(
                 stats: stats, onDone: { [weak self] in self?.window?.close() }))
@@ -195,7 +196,7 @@ final class UsageStatsWindowController: NSObject, AppWindowPresenter, NSWindowDe
     }
 
     func windowWillClose(_ notification: Notification) {
-        stats.dismissUnanswered()
+        stats.endAsking()
         // Deferred like the Updated window's: it still counts as visible during this call.
         DispatchQueue.main.async { [weak self] in self?.onClosed() }
     }
