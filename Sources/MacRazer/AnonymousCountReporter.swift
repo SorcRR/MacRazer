@@ -150,7 +150,7 @@ final class AnonymousCountReporter {
     /// moves from its dongle to its cable during the day isn't counted again; its product ID
     /// and link otherwise.
     static func sentKey(_ mouse: UsagePing.Mouse) -> String {
-        RazerDevices.model(pid: mouse.pid).map { "model:" + $0 } ?? key(mouse)
+        RazerDevices.model(pid: mouse.pid) != nil ? UsageStatsPolicy.countIdentity(mouse) : key(mouse)
     }
 
     /// The UTC calendar day, as the Worker writes it.

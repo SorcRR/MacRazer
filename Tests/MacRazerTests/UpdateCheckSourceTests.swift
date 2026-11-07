@@ -112,6 +112,12 @@ final class UpdateCheckSourceTests: XCTestCase {
                           HIDDevice.USBMouse(pid: 0xB7, name: "Razer DeathAdder V3 Pro"),
                           HIDDevice.USBMouse(pid: 0xC3, name: "Razer DeathAdder V3 Pro")]
         XCTAssertEqual(UsageStatsPolicy.connectedMice(opened: nil, plugged: deathAdder).map(\.pid), [0xB6, 0xC3])
+        // A Mouse Dock Pro plugged in beside the mouse is how it connects, not a second mouse;
+        // opened by the controller, it's the mouse on it.
+        let dock = HIDDevice.USBMouse(pid: 0xA4, name: "Razer Mouse Dock Pro")
+        XCTAssertEqual(UsageStatsPolicy.connectedMice(opened: opened, plugged: [dock]).map(\.pid), [0xDB])
+        let onDock = UsageStatsPolicy.mouse(pid: 0xA4, productName: nil, isBluetooth: false, supported: false)
+        XCTAssertEqual(UsageStatsPolicy.connectedMice(opened: onDock, plugged: [dock]).map(\.pid), [0xA4])
         let many = (0..<6).map { HIDDevice.USBMouse(pid: 0x100 + $0, name: "Razer Mouse \($0)") }
         XCTAssertEqual(UsageStatsPolicy.connectedMice(opened: opened, plugged: many).count, WorkerEndpoint.maxMice)
     }

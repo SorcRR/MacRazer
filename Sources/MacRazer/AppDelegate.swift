@@ -782,10 +782,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
 
     /// The Razer mice plugged in, listed once for both who need them: the counts (in a build
     /// with the Worker) and the support prompt (while it can use them).
+    /// Off the main thread: an IOKit listing on every plug and dongle wake mustn't hold up the
+    /// menu bar. The results land back on the main thread.
     private func listRazerMice() {
-        let all = usageStats.isAvailable || needsRazerMiceList ? HIDDevice.razerMice() : []
-        razerMiceOnUSB = needsRazerMiceList ? all : []
-        pluggedRazerMice.send(usageStats.isAvailable ? all : [])
+        let counts = usageStats.isAvailable, prompt = needsRazerMiceList
+        guard counts || prompt else {
+            razerMiceOnUSB = []
+            return
+        }
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let all = HIDDevice.razerMice()
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.razerMiceOnUSB = prompt ? all : []
+                self.pluggedRazerMice.send(counts ? all : [])
+            }
+        }
     }
 
     /// Whether the support prompt can use the list of Razer mice: only while it's on and Input

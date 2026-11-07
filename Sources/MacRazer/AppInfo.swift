@@ -179,7 +179,12 @@ extension URLComponents {
     /// arrived changed.
     mutating func setEncodedQuery(_ items: [URLQueryItem]) {
         percentEncodedQueryItems = items.map {
-            URLQueryItem(name: $0.name, value: $0.value?.addingPercentEncoding(withAllowedCharacters: Self.queryValueAllowed))
+            // Nil only for text that can't be encoded at all (a lone surrogate); left to
+            // URLComponents then, rather than dropping the value.
+            URLQueryItem(name: $0.name, value: $0.value.map {
+                $0.addingPercentEncoding(withAllowedCharacters: Self.queryValueAllowed)
+                    ?? $0.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+            })
         }
     }
 
