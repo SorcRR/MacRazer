@@ -661,10 +661,10 @@ enum DeviceTestSteps {
     /// it ran. Identify passes when Razer's service answered a read; with no such service it's
     /// not on this mouse (#35's Pro Click V2 Vertical Edition has none). With no services seen
     /// at all the probe never got that far (Bluetooth off or not allowed, a slow setup), which
-    /// says nothing about the mouse, so it fails rather than counting as not there. Battery comes from
-    /// Razer's battery read, on the USB scale, else the standard service. The other steps need the USB
-    /// protocol and stay skipped. The ids are IOHID's, else the PnP ID's: the Worker takes
-    /// only Razer's vendor ids, so a report must not go out with none.
+    /// says nothing about the mouse, so it fails rather than counting as not there. Battery
+    /// comes from Razer's battery read, on the USB scale, else the standard service. The other
+    /// steps need the USB protocol and stay skipped. The ids are IOHID's, else the PnP ID's:
+    /// the Worker takes only Razer's vendor ids, so a report must not go out with none.
     static func bluetoothReport(name: String, hid: HIDDevice.BluetoothHID, probe: DeviceReport.BluetoothData,
                                 capabilities: DeviceReport.CapabilitiesData?) -> DeviceReport {
         var identify = DeviceReport.StepRecord<DeviceReport.IdentifyData>()

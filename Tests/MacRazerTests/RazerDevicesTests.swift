@@ -66,7 +66,9 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(wired?.maxDPI, 30000)
         XCTAssertEqual(wired?.brightnessLed, Razer.zeroLed)
         XCTAssertEqual(wired?.unverified, [.dpi, .polling, .lighting])
+        XCTAssertEqual(wired?.verifiesBrightnessWrite, true, "ZERO_LED is OpenRazer's word only")
         XCTAssertNil(RazerDevices.info(pid: 0x00C8))
+        XCTAssertEqual(RazerDevices.model(pid: 0x00C8), RazerDevices.model(pid: 0x00C7), "cable and dongle are one mouse")
         XCTAssertNotEqual(RazerDevices.model(pid: 0x00C7), RazerDevices.model(pid: 0x00D1), "not the plain Pro Click V2")
     }
 
