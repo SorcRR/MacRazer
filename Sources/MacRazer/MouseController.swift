@@ -1320,9 +1320,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// Like the other setters: the device write happens on `io`, and `effect` is published
     /// only on success — the picker never claims lighting the mouse didn't take.
     func setEffect(_ newEffect: LightingEffect) {
-        // NSSegmentedControl can fire its action on a click of the already-selected
-        // segment; a no-change "set" must not resend the command or un-mark the active
-        // profile (the config didn't change).
+        // A click on the chosen effect (the picker passes every click on), or any caller
+        // re-sending the current one: a no-change "set" must not resend the command or
+        // un-mark the active profile (the config didn't change).
         // What's published must be what's sent: an effect this mouse lacks is the static colour.
         let newEffect = supported(newEffect)
         guard newEffect != intendedEffect else { return }

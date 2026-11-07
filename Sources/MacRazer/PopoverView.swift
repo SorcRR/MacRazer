@@ -1373,24 +1373,12 @@ struct PopoverView: View {
                 .scrollAdjusts($sleepTimeoutValue, in: 60...900, snap: 15) { controller.setSleepTimeout(Int($0)) }
             }
             .disabled(controller.sleepTimeout == nil)
-            HStack(spacing: 5) {
-                ForEach([60, 120, 300, 600, 900], id: \.self) { value in
-                    Button {
-                        sleepTimeoutValue = Double(value)
-                        controller.setSleepTimeout(value)
-                    } label: {
-                        Text(formatSleepTimeout(value, compact: true))
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 9.5, weight: Int(sleepTimeoutValue) == value ? .semibold : .regular).monospacedDigit())
-                    .foregroundStyle(Int(sleepTimeoutValue) == value ? Color.onRazerGreen : Color.secondary)
-                    .frame(maxWidth: .infinity).frame(height: 23)
-                    .background(Int(sleepTimeoutValue) == value ? Color.razerGreen : Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
-                    .hoverHighlight(RoundedRectangle(cornerRadius: 6))
-                    .accessibilityLabel("Sleep after \(formatSleepTimeout(value))")
-                }
+            ChipPicker(label: "Sleep after", values: [60, 120, 300, 600, 900],
+                       selection: Int(sleepTimeoutValue),
+                       title: { formatSleepTimeout($0, compact: true) },
+                       spokenTitle: { "Sleep after \(formatSleepTimeout($0))" }) { value in
+                sleepTimeoutValue = Double(value)
+                controller.setSleepTimeout(value)
             }
             .disabled(controller.sleepTimeout == nil)
             if let error = controller.sleepTimeoutError {
@@ -1447,8 +1435,12 @@ struct PopoverView: View {
     /// The Polling rate row's expanded content; the row itself shows the current rate.
     private var pollContent: some View {
         VStack(alignment: .leading, spacing: 8) {
-            ChipPicker(values: pollRates, selection: displayedPollRate,
-                       title: { "\($0)" }) { controller.setPollRate($0) }
+            // The raw rate, not the displayed one: before the first read the 1000 chip shows
+            // as chosen but the mouse may be on another rate, so a click on it still sends.
+            ChipPicker(label: "Polling rate", values: pollRates, selection: displayedPollRate,
+                       title: { "\($0)" }, spokenTitle: { "\($0) Hz" }) { hz in
+                if hz != controller.pollRate { controller.setPollRate(hz) }
+            }
 
             if let tip = pollRateTip(displayedPollRate) {
                 Text(tip)
@@ -1502,8 +1494,8 @@ struct PopoverView: View {
             // device write, so a failed change snaps the picker back by itself — no local
             // state, no suppression flags.
             if controller.supportsLightingEffects {
-                ChipPicker(values: controller.availableEffects, selection: controller.effect,
-                           title: { $0.rawValue }) { controller.setEffect($0) }
+                ChipPicker(label: "Lighting effect", values: controller.availableEffects,
+                           selection: controller.effect, title: { $0.rawValue }) { controller.setEffect($0) }
                 if controller.effect == .wave {
                     WaveSpeedSlider(value: $waveSpeedValue) { controller.setWaveSpeed(WaveSpeed.byte(fromFraction: $0)) }
                         .transition(.opacity)

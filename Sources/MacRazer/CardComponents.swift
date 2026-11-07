@@ -217,27 +217,33 @@ struct FlowLayout: Layout {
     }
 }
 
-/// The height the popover's picker rows share: the polling rate and effect chips and the DPI
-/// stage chips.
+/// The height the popover's chip rows share: polling rate, effect, DPI stages and sleep timer.
 enum ChipMetrics {
     static let height: CGFloat = 26
 }
 
-/// A row of chips picking one value, in the sleep timer chips' style: the chosen one filled
-/// deep green. For pickers that want a bigger target than a small segmented control (18 pt).
+/// A row of chips picking one value, the chosen one filled deep green. Bigger targets than a
+/// small segmented control (18 pt). Every click reaches `onSelect`, the chosen chip's too:
+/// the shown value can be a placeholder (a polling rate not read yet), so the caller decides
+/// what a no-change click means.
 struct ChipPicker<Value: Hashable>: View {
+    /// What the row sets, for VoiceOver ("Polling rate").
+    let label: String
     let values: [Value]
-    let selection: Value
+    /// Nil when no chip matches (a sleep timer set between presets).
+    let selection: Value?
     let title: (Value) -> String
+    /// What VoiceOver says for a chip; the title by default.
+    var spokenTitle: ((Value) -> String)? = nil
     let onSelect: (Value) -> Void
-    var height: CGFloat = ChipMetrics.height
+    @Environment(\.isEnabled) private var isEnabled
 
     var body: some View {
         HStack(spacing: 5) {
             ForEach(values, id: \.self) { value in
                 let chosen = value == selection
-                // Like a segmented control: clicking the chosen one does nothing.
-                Button { if !chosen { onSelect(value) } } label: {
+                let shape = RoundedRectangle(cornerRadius: 7)
+                Button { onSelect(value) } label: {
                     Text(verbatim: title(value))
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
@@ -247,11 +253,16 @@ struct ChipPicker<Value: Hashable>: View {
                 .buttonStyle(.plain)
                 .font(.system(size: 11, weight: chosen ? .semibold : .regular).monospacedDigit())
                 .foregroundStyle(chosen ? Color.white : Color.primary)
-                .frame(maxWidth: .infinity).frame(height: height)
-                .background(chosen ? Color.razerGreenDeep : Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 7))
-                .hoverHighlight(RoundedRectangle(cornerRadius: 7))
+                .frame(maxWidth: .infinity).frame(height: ChipMetrics.height)
+                .background(chosen ? Color.razerGreenDeep : Color.primary.opacity(0.08), in: shape)
+                .hoverHighlight(shape)
+                .accessibilityLabel(spokenTitle?(value) ?? title(value))
                 .accessibilityAddTraits(chosen ? .isSelected : [])
             }
         }
+        // Dimmed like a disabled system control (a disconnected mouse).
+        .opacity(isEnabled ? 1 : 0.45)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(label)
     }
 }
