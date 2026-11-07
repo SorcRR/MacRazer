@@ -184,6 +184,13 @@ enum RazerDevices {
         // vendor spec — the reporter exercised DPI at 6400, so the top of the range is the
         // one field here not demonstrated on a device.
         .init(pid: 0x00B9, name: "Razer Basilisk V3 X HyperSpeed", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 18000, transactionId: 0x1f, matrixTransactionId: 0x1f, brightnessLed: Razer.scrollLed, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, hasCableLink: false, canCharge: false),
+        // Basilisk Mobile over the dongle (#83, from oss3, firmware v1.0): battery, DPI and its
+        // five stages (counted from 1), polling, and lighting on LOGO_LED with brightness all
+        // passed with 0x1f (0x3f and 0x08 answer too; 0xFF and 0x80 time out). It answers the
+        // charging read, so it charges, by its USB-C cable: that link's product id isn't known
+        // yet, so the test asks for a cable report. The firmware echoed a 45000 DPI write, so
+        // the echo can't bound it: 26000 is the ceiling of its Focus X 26K sensor.
+        .init(pid: 0x00D4, name: "Razer Basilisk Mobile", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
         // Basilisk X HyperSpeed: the older AA-cell sibling — no lighting at all, and
         // razermouse_driver.c gives it 0xFF for every command it supports. An in-app report
         // (credit MagnetTileMan) passed battery, DPI, stages and polling with 0xFF; every

@@ -279,6 +279,16 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(RazerDevices.linksToTest(besides: 0x0091), [], "wired only")
     }
 
+    /// The Basilisk Mobile from #83: all passed over the dongle, charges by cable.
+    func testBasiliskMobile() {
+        XCTAssertEqual(RazerDevices.support(pid: 0x00D4), .full)
+        XCTAssertEqual(RazerDevices.maxDPI(pid: 0x00D4), 26000)
+        XCTAssertEqual(RazerDevices.connection(pid: 0x00D4), .wirelessDongle)
+        XCTAssertTrue(RazerDevices.canCharge(pid: 0x00D4), "it answers the charging read")
+        XCTAssertTrue(RazerDevices.linksToTest(besides: 0x00D4).contains { $0.connection == .wired },
+                      "its cable isn't known yet, so the test asks for it")
+    }
+
     /// An AA-cell mouse has nothing to charge, so the poll skips that read.
     func testAACellMiceCannotCharge() {
         XCTAssertFalse(RazerDevices.canCharge(pid: 0x00B4), "Naga V2 HyperSpeed")
