@@ -12,10 +12,12 @@ import Foundation
 enum CrashReporting {
     typealias Deliver = @Sendable (CrashReport) async -> DeviceReportSender.Outcome
 
-    static let deliver: Deliver? = {
-        guard let endpoint = WorkerEndpoint.crashReports else { return nil }
+    static let deliver = deliver(to: WorkerEndpoint.crashReports)
+
+    static func deliver(to endpoint: URL?) -> Deliver? {
+        guard let endpoint else { return nil }
         return { report in await CrashReportSender.send(report, to: endpoint) }
-    }()
+    }
 
     static var isAvailable: Bool { deliver != nil }
 }
