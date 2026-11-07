@@ -535,13 +535,17 @@ struct DeviceTestView: View {
 
     /// What the report windows say when Send fails, ending with how to reach us by email
     /// instead. `emailHint` is that ending, as each window puts it.
+    /// `offersGitHub` is whether the window has an Open GitHub issue button to point to.
     static func sendFailure(_ outcome: DeviceReportSender.Outcome,
-                            emailHint: String = "press Copy and email the report to \(ProjectLinks.contactEmail)") -> String {
+                            emailHint: String = "press Copy and email the report to \(ProjectLinks.contactEmail)",
+                            offersGitHub: Bool = true) -> String {
         switch outcome {
         case .tooMany:
             return "Your report wasn't sent: there have been too many from here today. Try again tomorrow, or \(emailHint)."
-        case .refused:
+        case .refused where offersGitHub:
             return "Your report wasn't sent: the report server didn't accept it. Open a GitHub issue, or \(emailHint)."
+        case .refused:
+            return "Your report wasn't sent: the report server didn't accept it. You can still \(emailHint)."
         case .unavailable, .sent:
             return "Your report wasn't sent: the report server couldn't be reached. Check your internet connection and try again, or \(emailHint)."
         }

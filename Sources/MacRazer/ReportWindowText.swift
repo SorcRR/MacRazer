@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Part of MacRazer, a control app for Razer mice on macOS. See LICENSE and NOTICE.md.
 
+import AppKit
 import SwiftUI
 
 // The text styles of the report windows (Test This Mouse, Report an Issue), shared so the two
@@ -26,13 +27,38 @@ func reportRunning(_ text: String) -> some View {
 }
 
 /// A failed send's message, with the contact address in it as a link that starts `mail`.
+/// The text is selectable, and Copy email address is there too: on a Mac with no mail app set
+/// up, the link opens nothing.
 func reportSendFailure(_ text: String, mail: URL) -> some View {
-    var attributed = AttributedString(text)
-    if let range = attributed.range(of: ProjectLinks.contactEmail) {
-        attributed[range].link = mail
-        attributed[range].underlineStyle = .single
+    ReportSendFailure(text: text, mail: mail)
+}
+
+private struct ReportSendFailure: View {
+    let text: String
+    let mail: URL
+    @State private var copied = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(attributed).font(.system(size: 12)).foregroundStyle(Color.batteryMid)
+                .tint(Color.batteryMid)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+            Button(copied ? "Copied" : "Copy email address") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(ProjectLinks.contactEmail, forType: .string)
+                copied = true
+            }
+            .buttonStyle(.link).font(.system(size: 11))
+        }
     }
-    return Text(attributed).font(.system(size: 12)).foregroundStyle(Color.batteryMid)
-        .tint(Color.batteryMid)
-        .fixedSize(horizontal: false, vertical: true)
+
+    private var attributed: AttributedString {
+        var attributed = AttributedString(text)
+        if let range = attributed.range(of: ProjectLinks.contactEmail) {
+            attributed[range].link = mail
+            attributed[range].underlineStyle = .single
+        }
+        return attributed
+    }
 }

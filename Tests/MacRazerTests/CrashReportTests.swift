@@ -314,6 +314,13 @@ final class CrashReportModelTests: XCTestCase {
         XCTAssertTrue(message.hasSuffix("email it to us at contact@macrazer.com."))
     }
 
+    func testRefusedDoesNotPointToAGitHubButtonThisWindowLacks() {
+        let message = CrashReportModel.sendFailure(.refused)
+        XCTAssertFalse(message.contains("GitHub"))
+        XCTAssertTrue(message.hasSuffix("You can still email it to us at contact@macrazer.com."))
+        XCTAssertTrue(DeviceTestView.sendFailure(.refused).contains("Open a GitHub issue"))
+    }
+
     func testTheDailyCapSaysSo() async {
         let m = model()
         m.deliver = { _ in .tooMany }
@@ -331,7 +338,7 @@ final class CrashReportModelTests: XCTestCase {
         XCTAssertEqual(components.path, "contact@macrazer.com")
         let body = try XCTUnwrap(components.queryItems?.first { $0.name == "body" }?.value)
         XCTAssertTrue(body.hasPrefix("Opened the popover\n\n{"))
-        XCTAssertLessThanOrEqual(body.count, CrashReportModel.maxMailBody + 40)
+        XCTAssertLessThanOrEqual(m.mailInstead.absoluteString.count, ProjectLinks.maxMailLink)
     }
 
     func testWhereItCrashedIsTheFirstFrameInOurOwnCode() {

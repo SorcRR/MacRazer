@@ -59,14 +59,33 @@ enum ProjectLinks {
     static let issues = repo.appendingPathComponent("issues")
     /// Where a report goes when Send can't: offline, over the daily cap, or refused.
     static let contactEmail = "contact@macrazer.com"
-    /// A new email to `contactEmail`, started with `subject` and `body`.
-    static func mail(subject: String, body: String = "") -> URL {
-        var components = URLComponents()
-        components.scheme = "mailto"
-        components.path = contactEmail
-        components.queryItems = [URLQueryItem(name: "subject", value: subject)]
-            + (body.isEmpty ? [] : [URLQueryItem(name: "body", value: body)])
-        return components.url!
+    /// The longest email link offered. Mail apps differ in how much of a link they take, and
+    /// some open nothing past a few thousand characters. Measured on the link itself, after
+    /// percent-encoding, which can triple a report full of quotes, braces and line breaks.
+    static let maxMailLink = 6000
+
+    /// A new email to `contactEmail`, started with `subject` and `body`. A body too long for
+    /// `maxLength` is cut, whole characters at a time, and says so.
+    static func mail(subject: String, body: String = "", maxLength: Int = maxMailLink) -> URL {
+        func link(_ body: String) -> URL {
+            var components = URLComponents()
+            components.scheme = "mailto"
+            components.path = contactEmail
+            components.queryItems = [URLQueryItem(name: "subject", value: subject)]
+                + (body.isEmpty ? [] : [URLQueryItem(name: "body", value: body)])
+            return components.url!
+        }
+        let whole = link(body)
+        guard whole.absoluteString.count > maxLength else { return whole }
+        // The longest start of the body whose link fits, found by halving.
+        let characters = Array(body)
+        let marker = "\n\n(cut short)"
+        var low = 0, high = characters.count
+        while low < high {
+            let mid = (low + high + 1) / 2
+            if link(String(characters[..<mid]) + marker).absoluteString.count <= maxLength { low = mid } else { high = mid - 1 }
+        }
+        return link(String(characters[..<low]) + marker)
     }
     /// Where "Full release notes" goes: the popover shows a parsed summary, this is the
     /// unabridged original.

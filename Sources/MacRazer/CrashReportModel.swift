@@ -54,20 +54,17 @@ final class CrashReportModel: ObservableObject {
         state = outcome == .sent ? .sent : .failed(Self.sendFailure(outcome))
     }
 
-    /// What the window says when Send fails, as the other report windows say it.
+    /// What the window says when Send fails, as the other report windows say it. This one
+    /// has no GitHub button, so it doesn't point to one.
     static func sendFailure(_ outcome: DeviceReportSender.Outcome) -> String {
-        DeviceTestView.sendFailure(outcome, emailHint: "email it to us at \(ProjectLinks.contactEmail)")
+        DeviceTestView.sendFailure(outcome, emailHint: "email it to us at \(ProjectLinks.contactEmail)",
+                                   offersGitHub: false)
     }
-    /// How much of the report an email link carries. Some mail apps drop a link much longer.
-    static let maxMailBody = 6000
-
     /// An email with the report in it, for when Send fails: what they wrote, then the report
-    /// shown in the window, cut short if it's too long for a link.
+    /// shown in the window. `ProjectLinks.mail` cuts it short if the link would be too long.
     var mailInstead: URL {
         let report = finalReport()
-        var json = CrashReportOutput.json(report)
-        if json.count > Self.maxMailBody { json = String(json.prefix(Self.maxMailBody)) + "\n(cut short)" }
-        let body = (report.comment.map { $0 + "\n\n" } ?? "") + json
+        let body = (report.comment.map { $0 + "\n\n" } ?? "") + CrashReportOutput.json(report)
         return ProjectLinks.mail(subject: "MacRazer crash report: \(report.appVersion)", body: body)
     }
 
