@@ -86,7 +86,7 @@ enum UsageStatsPolicy {
         // A `swift run` build has no version, and its pings would only be noise.
         guard consent == .granted, let version else { return nil }
         guard let lastReportedVersion else { return .first }
-        if lastReportedVersion != version { return .update }
+        if AppInfo.releaseVersion(lastReportedVersion) != AppInfo.releaseVersion(version) { return .update }
         if connected.contains(where: { !reportedMice.contains($0.key) }) { return .mouse }
         return nil
     }

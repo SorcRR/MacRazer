@@ -25,6 +25,11 @@ enum AppInfo {
     /// real release, so a dev build always sees an update as available, whereas "dev" parses
     /// to 0 by accident rather than by intent and reads as a bug when you meet it.
     static var comparableVersion: String { version ?? unversioned }
+    /// A version without the "-dev" a build between releases carries (Scripts/build-app.sh):
+    /// "0.8.0-dev" is the 0.8.0 it's built from, so switching between the two isn't an update.
+    static func releaseVersion(_ version: String) -> String {
+        version.hasSuffix("-dev") ? String(version.dropLast(4)) : version
+    }
     /// `comparableVersion` for a build with no version: `swift run`.
     static let unversioned = "0"
 }
@@ -120,7 +125,7 @@ enum WorkerEndpoint {
     static func download(tag: String, base: URL? = base) -> URL? {
         guard let base else { return nil }
         var components = URLComponents(url: base.appendingPathComponent("v1/download"), resolvingAgainstBaseURL: false)
-        components?.queryItems = [URLQueryItem(name: "via", value: "update"), URLQueryItem(name: "tag", value: tag)]
+        components?.setEncodedQuery([URLQueryItem(name: "via", value: "update"), URLQueryItem(name: "tag", value: tag)])
         return components?.url
     }
     /// The Worker's limit on mice per request (`MAX_MICE` in its releases.ts).
@@ -142,21 +147,9 @@ enum WorkerEndpoint {
             + (stats.map { [URLQueryItem(name: "stats", value: $0.countValue)] } ?? [])
             + changes.map { URLQueryItem(name: "change", value: $0.rawValue) }
             + (count ? [URLQueryItem(name: "count", value: "1")] : [])
-        // Encoded here rather than by URLComponents, which leaves "+" alone: the Worker reads a
-        // "+" as a space, so "Pro+" and a version like "0.9.0+abc" arrived changed.
-        components?.percentEncodedQueryItems = items.map {
-            URLQueryItem(name: $0.name, value: $0.value?.addingPercentEncoding(withAllowedCharacters: queryValueAllowed))
-        }
+        components?.setEncodedQuery(items)
         return components?.url
     }
-
-    /// What a query value may hold unencoded: the usual, less the characters a form decoder
-    /// reads specially.
-    static let queryValueAllowed: CharacterSet = {
-        var allowed = CharacterSet.urlQueryAllowed
-        allowed.remove(charactersIn: "+&=;#")
-        return allowed
-    }()
 
     /// `<pid>.<link>.<0|1>.<name>`: four hex digits, the link, whether it's supported, and the
     /// name last, since only the name can hold a dot.
@@ -178,4 +171,23 @@ enum WorkerEndpoint {
         origin.path = ""
         return origin.url
     }
+}
+
+extension URLComponents {
+    /// Sets the query with every value fully encoded. `queryItems` leaves "+" alone, and the
+    /// Worker and GitHub both read a "+" as a space, so "Pro+" and a version like "0.9.0+abc"
+    /// arrived changed.
+    mutating func setEncodedQuery(_ items: [URLQueryItem]) {
+        percentEncodedQueryItems = items.map {
+            URLQueryItem(name: $0.name, value: $0.value?.addingPercentEncoding(withAllowedCharacters: Self.queryValueAllowed))
+        }
+    }
+
+    /// What a query value may hold unencoded: the usual, less the characters a form decoder
+    /// reads specially.
+    static let queryValueAllowed: CharacterSet = {
+        var allowed = CharacterSet.urlQueryAllowed
+        allowed.remove(charactersIn: "+&=;#")
+        return allowed
+    }()
 }

@@ -120,7 +120,7 @@ enum DeviceReportOutput {
 
     private static func issueURL(title: String, body: String) -> URL? {
         var components = URLComponents(url: ProjectLinks.issues.appendingPathComponent("new"), resolvingAgainstBaseURL: false)
-        components?.queryItems = [URLQueryItem(name: "title", value: title), URLQueryItem(name: "body", value: body)]
+        components?.setEncodedQuery([URLQueryItem(name: "title", value: title), URLQueryItem(name: "body", value: body)])
         return components?.url
     }
 

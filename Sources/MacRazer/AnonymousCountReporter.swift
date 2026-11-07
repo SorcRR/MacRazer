@@ -40,8 +40,9 @@ final class AnonymousCountReporter {
     /// count (a burst, the day's cap) asked again on every plug would only be refused again,
     /// and would use up the rate limit update checks share.
     private var quietUntil: Date?
-    /// Just under the app's 15-minute tick, so the tick after a refusal tries again.
-    static let retryAfter: TimeInterval = 14 * 60
+    /// Well under the app's 15-minute tick (which has a minute's slack) and counted from when
+    /// the refused request went out, so the tick after a refusal always tries again.
+    static let retryAfter: TimeInterval = 10 * 60
 
     init(defaults: UserDefaults = .standard, base: URL? = WorkerEndpoint.base,
          appVersion: String? = AppInfo.version, now: @escaping () -> Date = Date.init,
@@ -73,7 +74,7 @@ final class AnonymousCountReporter {
 
     private func sendOnce() async {
         if let quietUntil, now() < quietUntil { return }
-        let mice = Array(connectedMice().prefix(WorkerEndpoint.maxMice))
+        let mice = connectedMice()
         let answer = answer()
         let changes = pendingChanges()
         let day = Self.day(of: now())
@@ -86,10 +87,11 @@ final class AnonymousCountReporter {
         guard newMouse || newAnswer || !changes.isEmpty,
               let url = WorkerEndpoint.releases(appVersion: appVersion, mice: mice, stats: answer,
                                                 changes: changes, count: true, base: base) else { return }
+        let started = now()
         do {
             let (_, response) = try await fetch(url)
             guard Self.counted(response) else {
-                quietUntil = now().addingTimeInterval(Self.retryAfter)
+                quietUntil = started.addingTimeInterval(Self.retryAfter)
                 return
             }
             quietUntil = nil
@@ -102,13 +104,18 @@ final class AnonymousCountReporter {
         }
     }
 
-    /// Whether the Worker recorded the count: it says so with `x-counted: 1`, even when the
-    /// update list itself failed (a 502 while GitHub is down). Any answer without it, a 200
-    /// included, was a burst, the day's cap or a database error there, so it's sent again on
-    /// the next tick. A Worker from before the header never sends it; the reports page only
-    /// counts each thing once a day, so sending again is harmless.
+    /// Whether the Worker recorded the count. It says `x-counted: 1` when it did, even when the
+    /// update list itself failed (a 502 while GitHub is down), and `x-counted: 0` when it
+    /// didn't (a burst, the day's cap, a database error), so that's sent again on the next
+    /// tick. A Worker from before the header says neither: then a 2xx is taken as counted, as
+    /// it always was, rather than sending the whole count every tick.
     static func counted(_ response: URLResponse) -> Bool {
-        (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "x-counted") == "1"
+        guard let http = response as? HTTPURLResponse else { return false }
+        switch http.value(forHTTPHeaderField: "x-counted") {
+        case "1": return true
+        case "0": return false
+        default: return (200..<300).contains(http.statusCode)
+        }
     }
 
     /// What the Worker counts a mouse by: its product ID and link.

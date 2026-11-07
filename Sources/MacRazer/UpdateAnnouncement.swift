@@ -23,18 +23,14 @@ enum UpdateAnnouncement {
     ///     situations: a genuinely new install, and an upgrade *from* a version that predates
     ///     this bookkeeping. Without it the release that introduces the feature is the one
     ///     release it stays silent for.
-    /// A version without the "-dev" a build between releases carries.
-    static func release(_ version: String) -> String {
-        version.hasSuffix("-dev") ? String(version.dropLast(4)) : version
-    }
-
     static func shouldAnnounce(lastRun: String?,
                                current: String,
                                dismissed: String?,
                                hasRunBefore: Bool) -> Bool {
         // A build between releases ("0.8.0-dev", Scripts/build-app.sh) is the release it's
         // built from: switching between the two isn't an update.
-        let current = release(current), lastRun = lastRun.map(release), dismissed = dismissed.map(release)
+        let current = AppInfo.releaseVersion(current), lastRun = lastRun.map(AppInfo.releaseVersion),
+            dismissed = dismissed.map(AppInfo.releaseVersion)
         // Dismissing is per-version, so the next release announces itself again.
         guard dismissed != current else { return false }
         if let lastRun, !lastRun.isEmpty { return lastRun != current }
@@ -66,6 +62,6 @@ enum UpdateAnnouncement {
         // Still owed, and still about what is running. A pending announcement for some other
         // version is stale — you rolled back, or updated again before reading it — and the
         // version you are on now is the only one worth talking about.
-        return storedPending == current ? current : nil
+        return storedPending.map(AppInfo.releaseVersion) == AppInfo.releaseVersion(current) ? current : nil
     }
 }

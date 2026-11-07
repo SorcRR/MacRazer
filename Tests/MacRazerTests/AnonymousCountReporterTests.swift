@@ -30,7 +30,7 @@ final class AnonymousCountReporterTests: XCTestCase {
         AnonymousCountReporter(defaults: freshDefaults(), base: base, appVersion: "0.7.1", now: date) { url in
             requests(url)
             guard let code = status() else { throw URLError(.notConnectedToInternet) }
-            let headers = counted(code) ? ["x-counted": "1"] : nil
+            let headers = ["x-counted": counted(code) ? "1" : "0"]
             return (Data("[]".utf8), HTTPURLResponse(url: url, statusCode: code, httpVersion: nil, headerFields: headers)!)
         }
     }
@@ -54,6 +54,17 @@ final class AnonymousCountReporterTests: XCTestCase {
         await sut.reportIfNeeded()
         await sut.reportIfNeeded()
         XCTAssertEqual(asked.count, 3, "a 502 with x-counted: the list failed, the count is in")
+    }
+
+    func testAWorkerFromBeforeTheHeaderIsTakenAtItsStatus() {
+        let url = URL(string: "https://reports.example.org/v1/releases")!
+        let answer = { (code: Int, headers: [String: String]?) in
+            AnonymousCountReporter.counted(HTTPURLResponse(url: url, statusCode: code, httpVersion: nil, headerFields: headers)!)
+        }
+        XCTAssertTrue(answer(200, nil), "no header: an older Worker, which counted it as before")
+        XCTAssertFalse(answer(503, nil))
+        XCTAssertFalse(answer(200, ["x-counted": "0"]), "said it didn't")
+        XCTAssertTrue(answer(502, ["x-counted": "1"]), "the list failed, the count is in")
     }
 
     func testNoMouseSendsNothing() async {

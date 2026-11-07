@@ -89,6 +89,8 @@ final class UpdateCheckSourceTests: XCTestCase {
                        "https://reports.example.org/v1/releases?app=0.9.0%2Babc&mouse=0099.wired.0.Pro%2B%20Edition&count=1")
         let items = URLComponents(url: url, resolvingAgainstBaseURL: false)!.queryItems!
         XCTAssertEqual(items.map(\.value), ["0.9.0+abc", "0099.wired.0.Pro+ Edition", "1"])
+        XCTAssertEqual(WorkerEndpoint.download(tag: "v1.0+x", base: base)?.absoluteString,
+                       "https://reports.example.org/v1/download?via=update&tag=v1.0%2Bx")
     }
 
     func testTheCountsCountEveryRazerMousePluggedInOnce() {

@@ -22,6 +22,9 @@ final class UpdateAnnouncementTests: XCTestCase {
             lastRun: "0.8.0-dev", current: "0.8.0", dismissed: nil, hasRunBefore: true))
         XCTAssertTrue(UpdateAnnouncement.shouldAnnounce(
             lastRun: "0.8.0-dev", current: "0.8.1", dismissed: nil, hasRunBefore: true), "a real update still is")
+        XCTAssertEqual(UpdateAnnouncement.pending(lastRun: "0.8.0", current: "0.8.0-dev", dismissed: nil,
+                                                  storedPending: "0.8.0", hasRunBefore: true),
+                       "0.8.0-dev", "an announcement still owed survives a switch to the dev build")
     }
 
     func testAFirstInstallIsNotAnUpdate() {

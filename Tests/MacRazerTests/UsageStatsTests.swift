@@ -296,6 +296,13 @@ final class UsageStatsTests: XCTestCase {
         XCTAssertEqual(s.pendingConsentChanges, [.dismissed, .saidYes])
     }
 
+    func testSwitchingToADevBuildIsNotAnUpdatePing() {
+        XCTAssertNil(UsageStatsPolicy.event(consent: .granted, version: "0.8.0-dev", lastReportedVersion: "0.8.0",
+                                            reportedMice: [], connected: []))
+        XCTAssertEqual(UsageStatsPolicy.event(consent: .granted, version: "0.8.1", lastReportedVersion: "0.8.0-dev",
+                                              reportedMice: [], connected: []), .update)
+    }
+
     func testClosingAfterAnAnswerChangesNothing() {
         let s = stats(FakeServer())
         s.setConsent(true)
