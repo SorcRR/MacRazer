@@ -78,7 +78,7 @@ says so.
 | Razer Cobra HyperSpeed (wired + wireless) | Everything, continuously — the development mouse | maintainer |
 | Razer Atheris | Battery, DPI, polling | maintainer |
 | Razer Basilisk V3 X HyperSpeed | Battery, DPI, DPI stages, polling, lighting, brightness | [@joelday](https://github.com/joelday) |
-| Razer Basilisk Mobile (Wireless) | Battery, DPI, DPI stages, polling, static colour, brightness | [@oss3](https://github.com/oss3) |
+| Razer Basilisk Mobile (Wireless) | Battery, DPI, DPI stages, polling, static color, brightness | [@oss3](https://github.com/oss3) |
 | Razer Viper Ultimate (Wireless) | Battery, DPI, polling, brightness | [@raphaelchenouard](https://github.com/raphaelchenouard) |
 | Razer Naga Pro (Wireless) | Battery, DPI, DPI stages, polling, lighting, brightness | [@sidneylopes](https://github.com/sidneylopes) |
 | Razer Naga Pro (Wired) | Battery, DPI, DPI stages, polling, lighting, brightness | anonymous report |

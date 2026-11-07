@@ -131,8 +131,8 @@ struct RazerDeviceInfo {
     /// green): only brightness changes it, so the popover hides colours and effects.
     var fixedColor = false
     /// True for a mouse whose firmware has only a static colour and off (OpenRazer lists no
-    /// other effect for it): the popover offers colours but no effects, and a profile's
-    /// breathing, spectrum or wave lands as the static colour.
+    /// other effect for it): the popover's picker offers Static and Off, and any other effect
+    /// (from a profile) lands as the static colour.
     var staticLightingOnly = false
     /// What the mouse itself doesn't have: no battery on a wired-only mouse, no lights on an
     /// unlit one. The device test still shows that step, says so, and moves on without
@@ -189,8 +189,8 @@ enum RazerDevices {
         // one field here not demonstrated on a device.
         .init(pid: 0x00B9, name: "Razer Basilisk V3 X HyperSpeed", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 18000, transactionId: 0x1f, matrixTransactionId: 0x1f, brightnessLed: Razer.scrollLed, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, hasCableLink: false, canCharge: false),
         // Basilisk Mobile over the dongle (#83, from oss3, firmware v1.0): battery, DPI and its
-        // five stages (counted from 1), polling, and a static colour on LOGO_LED with brightness
-        // all passed with 0x1f (0x3f and 0x08 answer too; 0xFF and 0x80 time out). It answers
+        // five stages (counted from 1), polling, a static colour (on ZERO_LED, as every effect
+        // is sent) and brightness on LOGO_LED all passed with 0x1f (0x3f and 0x08 answer too; 0xFF and 0x80 time out). It answers
         // the charging read, so it charges, by its USB-C cable (0x00D3, below). The firmware
         // echoed a 45000 DPI write, so the echo can't bound it: 18000 is its Focus X 18K
         // sensor's ceiling, as OpenRazer has it. OpenRazer gives it static and off only, no
