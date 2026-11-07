@@ -118,7 +118,7 @@ enum DeviceReportOutput {
         "<details><summary>Full report</summary>\n\n```json\n" + json(report, forPublic: true) + "\n```\n</details>"
     }
 
-    private static func issueURL(title: String, body: String) -> URL? {
+    static func issueURL(title: String, body: String) -> URL? {
         var components = URLComponents(url: ProjectLinks.issues.appendingPathComponent("new"), resolvingAgainstBaseURL: false)
         components?.setEncodedQuery([URLQueryItem(name: "title", value: title), URLQueryItem(name: "body", value: body)])
         return components?.url

@@ -370,6 +370,18 @@ case "render-crash-report":
     if args.contains("sent") { crashModel.loadPreviewSent() }
     writeHostedPNG(CrashReportView(model: crashModel, onDone: {}, onDontAskAgain: {}), to: crashPath)
 
+case "render-issue-report":
+    // "Report an Issue…". `sent` shows the thank-you, `failed` a send that didn't go.
+    _ = NSApplication.shared
+    let issuePath = outputPath(args.dropFirst(), default: "issue-report-preview.png")
+    let issueModel = IssueReportModel.preview()
+    if args.contains("sent") { issueModel.loadPreviewSent(replyEmail: "sam@example.com") }
+    if args.contains("failed") {
+        issueModel.description = "The battery reads 0% after waking from sleep, until I unplug the dongle."
+        issueModel.loadPreviewFailed()
+    }
+    writeHostedPNG(IssueReportView(model: issueModel, onClose: {}), to: issuePath)
+
 case "render-remap":
     _ = NSApplication.shared
     let path = outputPath(args.dropFirst(), default: "remap-preview.png")
