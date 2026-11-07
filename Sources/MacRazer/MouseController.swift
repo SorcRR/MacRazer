@@ -1283,7 +1283,8 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             let ok = (try? self.ensureDevice().sendWithRetry(RazerCommands.setPollingRate(hz))) != nil
             self.publish {
                 guard ok else { self.lastWriteFailure = Date(); return }
-                let changed = self.pollRate != hz
+                // 0 is a rate not read yet, which the popover shows as the default 1000.
+                let changed = (self.pollRate == 0 ? 1000 : self.pollRate) != hz
                 self.pollRate = hz
                 if changed { self.clearActiveProfileIfNeeded() }
             }
