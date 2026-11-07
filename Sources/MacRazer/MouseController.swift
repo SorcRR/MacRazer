@@ -60,9 +60,6 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     @Published private(set) var effect: LightingEffect = .staticColor
     /// An effect sent that the mouse hasn't answered yet. Main thread.
     @Published private var pendingEffect = PendingRequest<LightingEffect>()
-    /// A polling rate queued but not answered yet, so a click back to the current rate while
-    /// another is on its way isn't taken for no change.
-    private var pendingPollRate = PendingRequest<Int>()
     /// The effect the mouse will run once its queued writes land: what the next lighting
     /// change builds on.
     var intendedEffect: LightingEffect { supported(pendingEffect.value ?? effect) }
@@ -1277,18 +1274,18 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         }
     }
 
-    /// Does nothing for the rate the mouse is already on (or will be, once a queued change
-    /// lands). A rate not read yet (0) is never that, so a click on the shown 1000 still sends.
+    /// Always sent, the current rate too: the app's idea of it can be stale (not read yet, or
+    /// another change still queued), and dropping a click on it would lose the user's last
+    /// choice. Only an actual change un-marks the active profile.
     func setPollRate(_ hz: Int) {
-        guard hz != (pendingPollRate.value ?? pollRate) else { return }
-        let token = pendingPollRate.begin(hz)
         userCommand { [weak self] in
             guard let self else { return }
             let ok = (try? self.ensureDevice().sendWithRetry(RazerCommands.setPollingRate(hz))) != nil
             self.publish {
-                self.pendingPollRate.finish(token)
                 guard ok else { self.lastWriteFailure = Date(); return }
-                self.pollRate = hz; self.clearActiveProfileIfNeeded()
+                let changed = self.pollRate != hz
+                self.pollRate = hz
+                if changed { self.clearActiveProfileIfNeeded() }
             }
         }
     }

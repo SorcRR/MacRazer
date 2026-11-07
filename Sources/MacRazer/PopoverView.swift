@@ -1374,12 +1374,11 @@ struct PopoverView: View {
             }
             .disabled(controller.sleepTimeout == nil)
             ChipPicker(label: "Sleep after", values: [60, 120, 300, 600, 900],
-                       // What the mouse confirmed: nothing before it's read, and a refused
-                       // write doesn't show as chosen.
-                       selection: controller.sleepTimeout,
+                       // The slider's value, so the row agrees with itself; nothing before the
+                       // mouse has reported one.
+                       selection: controller.sleepTimeout == nil ? nil : Int(sleepTimeoutValue),
                        title: { formatSleepTimeout($0, compact: true) },
                        spokenTitle: { "Sleep after \(formatSleepTimeout($0))" }) { value in
-                guard value != controller.sleepTimeout else { return }
                 sleepTimeoutValue = Double(value)
                 controller.setSleepTimeout(value)
             }
