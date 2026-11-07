@@ -202,7 +202,7 @@ struct PopoverView: View {
         if let accessory = colorTargetAccessory {
             return (accessory.latestLighting.effect ?? .staticColor).afterColorPick()
         }
-        return controller.intendedEffect.afterColorPick(effectsSupported: controller.supportsLightingEffects)
+        return controller.colorPickEffect
     }
 
     /// Which device the page sets, named once there's more than the mouse to choose from.

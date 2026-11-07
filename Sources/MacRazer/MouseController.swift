@@ -139,10 +139,14 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         !deviceIsBluetooth && deviceID.map { RazerDevices.acceptsClassicPolling(pid: $0) } != false
     }
     var supportsLightingEffects: Bool { !deviceIsBluetooth && !lightHasFixedColor }
-    /// The firmware has a static colour and off only (`RazerDeviceInfo.staticLightingOnly`).
-    var lightIsStaticOnly: Bool { deviceID.map(RazerDevices.staticLightingOnly(pid:)) ?? false }
-    /// The effects the picker offers: Static and Off on a static-only mouse, every one otherwise.
-    var availableEffects: [LightingEffect] { lightIsStaticOnly ? [.staticColor, .off] : LightingEffect.allCases }
+    /// The effects this mouse's firmware has (`RazerDeviceInfo.effects`): what the picker offers.
+    var availableEffects: [LightingEffect] { deviceID.map(RazerDevices.effects(pid:)) ?? LightingEffect.allCases }
+    /// The effect a colour pick sets: breathing stays breathing where the mouse has it, anything
+    /// else becomes the static colour. The colour page goes by this too, so it agrees with the
+    /// write.
+    var colorPickEffect: LightingEffect {
+        supported(intendedEffect.afterColorPick(effectsSupported: supportsLightingEffects))
+    }
     /// The light has one colour of its own (`RazerDeviceInfo.fixedColor`): brightness only.
     var lightHasFixedColor: Bool { deviceID.map(RazerDevices.fixedColor(pid:)) ?? false }
     var supportsFreeDPI: Bool { !deviceIsBluetooth }
@@ -1328,7 +1332,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// switches to static. Bluetooth always gets static, the only effect it has a command for,
     /// whatever effect is left over from USB.
     func setColor(_ rgb: RGB) {
-        let target = supported(intendedEffect.afterColorPick(effectsSupported: supportsLightingEffects))
+        let target = colorPickEffect
         // No-change re-click. Not while a write is queued: what it lands on isn't known yet.
         guard !(pendingEffect.value == nil && effect == target && lightingColor == rgb) else { return }
         sendLighting(report(for: target, color: rgb), effect: target) {
@@ -1345,7 +1349,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// profile, or any caller) lands as the static colour, never as a command it lacks. The
     /// one rule: report(for:) applies it to every lighting command, and the state that's
     /// published or saved goes through it too.
-    private func supported(_ effect: LightingEffect) -> LightingEffect {
+    func supported(_ effect: LightingEffect) -> LightingEffect {
         availableEffects.contains(effect) ? effect : .staticColor
     }
 

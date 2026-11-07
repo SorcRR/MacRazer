@@ -130,10 +130,11 @@ struct RazerDeviceInfo {
     /// True for a mouse whose light has one colour of its own (the DeathAdder Essential's is
     /// green): only brightness changes it, so the popover hides colours and effects.
     var fixedColor = false
-    /// True for a mouse whose firmware has only a static colour and off (OpenRazer lists no
-    /// other effect for it): the popover's picker offers Static and Off, and any other effect
-    /// (from a profile) lands as the static colour.
-    var staticLightingOnly = false
+    /// The lighting effects the firmware has, like an accessory's (`RazerAccessoryInfo.effects`).
+    /// Every one by default; fewer only from OpenRazer or a report (the Basilisk Mobile has a
+    /// static colour and off). The picker offers these, and any other effect (from a profile,
+    /// or a mouse before) lands as the static colour.
+    var effects: [LightingEffect] = LightingEffect.allCases
     /// What the mouse itself doesn't have: no battery on a wired-only mouse, no lights on an
     /// unlit one. The device test still shows that step, says so, and moves on without
     /// touching the mouse. Only from a report or the vendor spec, never from `hasBattery` or
@@ -195,10 +196,10 @@ enum RazerDevices {
         // echoed a 45000 DPI write, so the echo can't bound it: 18000 is its Focus X 18K
         // sensor's ceiling, as OpenRazer has it. OpenRazer gives it static and off only, no
         // other effects. It also connects over Bluetooth, which has no row yet.
-        .init(pid: 0x00D4, name: "Razer Basilisk Mobile (Wireless)", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 18000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, staticLightingOnly: true),
+        .init(pid: 0x00D4, name: "Razer Basilisk Mobile (Wireless)", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 18000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, effects: [.staticColor, .off]),
         // Its cable, from OpenRazer's ids alone (0x00D3): nothing tried on it yet, so the device
         // test asks for every step.
-        .init(pid: 0x00D3, name: "Razer Basilisk Mobile (Wired)", unverified: [.battery, .dpi, .polling, .lighting], hasBattery: true, hasLighting: true, maxDPI: 18000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, staticLightingOnly: true),
+        .init(pid: 0x00D3, name: "Razer Basilisk Mobile (Wired)", unverified: [.battery, .dpi, .polling, .lighting], hasBattery: true, hasLighting: true, maxDPI: 18000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, effects: [.staticColor, .off]),
         // Basilisk X HyperSpeed: the older AA-cell sibling — no lighting at all, and
         // razermouse_driver.c gives it 0xFF for every command it supports. An in-app report
         // (credit MagnetTileMan) passed battery, DPI, stages and polling with 0xFF; every
@@ -661,7 +662,7 @@ enum RazerDevices {
     static func verifiesBrightnessWrite(pid: Int) -> Bool { info(pid: pid)?.verifiesBrightnessWrite ?? false }
     static func acceptsClassicPolling(pid: Int) -> Bool { info(pid: pid)?.acceptsClassicPolling ?? true }
     static func fixedColor(pid: Int) -> Bool { info(pid: pid)?.fixedColor ?? false }
-    static func staticLightingOnly(pid: Int) -> Bool { info(pid: pid)?.staticLightingOnly ?? false }
+    static func effects(pid: Int) -> [LightingEffect] { info(pid: pid)?.effects ?? LightingEffect.allCases }
     /// Empty for a model not on record: the test is how anyone finds out.
     static func notOnMouse(pid: Int) -> Set<RazerFeature> { info(pid: pid)?.notOnMouse ?? [] }
     /// Per-command transaction id: explicit per-command override, else the class split

@@ -285,7 +285,8 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(RazerDevices.support(pid: 0x00D4), .full)
         XCTAssertEqual(RazerDevices.maxDPI(pid: 0x00D4), 18000, "Focus X 18K; the firmware echoes anything")
         XCTAssertEqual(RazerDevices.connection(pid: 0x00D4), .wirelessDongle)
-        XCTAssertTrue(RazerDevices.staticLightingOnly(pid: 0x00D4))
+        XCTAssertEqual(RazerDevices.effects(pid: 0x00D4), [.staticColor, .off], "OpenRazer: static and none only")
+        XCTAssertEqual(RazerDevices.effects(pid: 0x00A3), LightingEffect.allCases, "every effect by default")
         // Its cable (OpenRazer's 0x00D3) is the same model, untested on every step.
         XCTAssertEqual(RazerDevices.connection(pid: 0x00D3), .wired)
         XCTAssertEqual(RazerDevices.unverified(pid: 0x00D3), [.battery, .dpi, .polling, .lighting])
