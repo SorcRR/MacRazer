@@ -150,8 +150,12 @@ final class UsageStatsTests: XCTestCase {
         s.setConnectedMice([cobra])
         await s.sendIfDue()
         XCTAssertTrue(server.requests.isEmpty)
-        s.dismissUnanswered()
-        XCTAssertEqual(s.consent, .declined, "closing the question is a no")
+        s.closeQuestion()
+        XCTAssertEqual(s.consent, .undecided, "closing the question isn't an answer")
+        await s.sendIfDue()
+        XCTAssertTrue(server.requests.isEmpty)
+        s.closeQuestion(now: Date().addingTimeInterval(UsageStats.askAgainDelay))
+        XCTAssertEqual(s.consent, .declined, "closing it again a week later is a no")
         await s.sendIfDue()
         XCTAssertTrue(server.requests.isEmpty)
     }
@@ -220,11 +224,95 @@ final class UsageStatsTests: XCTestCase {
         XCTAssertEqual(s.pendingConsentChanges, [.saidYes, .turnedOff])
     }
 
-    func testClosingTheQuestionIsASaidNo() {
+    func testClosingTheQuestionAsksAgainAWeekLaterThenIsASaidNo() {
         let s = stats(FakeServer())
-        s.dismissUnanswered()
-        XCTAssertEqual(s.pendingConsentChanges, [.saidNo])
+        let closed = Date(timeIntervalSince1970: 1_800_000_000)
+        XCTAssertTrue(s.shouldAsk(now: closed), "nobody asked yet")
+        s.closeQuestion(now: closed)
+        XCTAssertEqual(s.consent, .undecided)
+        XCTAssertEqual(s.pendingConsentChanges, [.dismissed])
+        XCTAssertFalse(s.shouldAsk(now: closed.addingTimeInterval(6 * 86_400)), "not within the week")
+        XCTAssertTrue(s.shouldAsk(now: closed.addingTimeInterval(7 * 86_400)))
+        s.closeQuestion(now: closed.addingTimeInterval(7 * 86_400))
+        XCTAssertEqual(s.consent, .declined)
+        XCTAssertEqual(s.pendingConsentChanges, [.dismissed], "a close is never counted as said_no: nobody said it")
+        XCTAssertFalse(s.shouldAsk(now: closed.addingTimeInterval(30 * 86_400)), "never again after a no")
         XCTAssertEqual(UsageStatsConsent.undecided.countValue, "unasked")
+    }
+
+    func testABuildWithoutTheWorkerNeverAsksOrCountsACloseAsAnAnswer() {
+        let s = UsageStats(defaults: defaults(), endpoint: nil, version: "0.6.0", hardwareUUID: { nil }, sendsOnChange: false,
+                           transport: { _ in throw URLError(.notConnectedToInternet) })
+        XCTAssertFalse(s.shouldAsk())
+        s.closeQuestion()
+        s.closeQuestion()
+        XCTAssertEqual(s.consent, .undecided)
+        XCTAssertTrue(s.pendingConsentChanges.isEmpty)
+    }
+
+    func testTurningSharingOnAfterClosingTwiceIsAFirstYes() {
+        let s = stats(FakeServer())
+        let closed = Date(timeIntervalSince1970: 1_800_000_000)
+        s.closeQuestion(now: closed)
+        s.closeQuestion(now: closed.addingTimeInterval(8 * 86_400))
+        s.setConsent(true)
+        XCTAssertEqual(s.pendingConsentChanges, [.dismissed, .saidYes], "never said no, so not turned back on")
+        s.setConsent(false)
+        s.setConsent(true)
+        XCTAssertEqual(s.pendingConsentChanges, [.dismissed, .saidYes, .turnedOff, .turnedOn])
+    }
+
+    func testAWindowThatAskedAndClosedCountsAsAClose() {
+        let s = stats(FakeServer())
+        let opened = Date(timeIntervalSince1970: 1_800_000_000)
+        XCTAssertTrue(s.beginAsking(now: opened))
+        XCTAssertTrue(s.isAsking)
+        XCTAssertEqual(s.askingSince, opened)
+        XCTAssertTrue(s.endAsking(now: opened.addingTimeInterval(60)))
+        XCTAssertFalse(s.isAsking)
+        XCTAssertEqual(s.pendingConsentChanges, [.dismissed])
+        // Within the week the Updated window opens without the card, and closing it is nothing.
+        XCTAssertFalse(s.beginAsking(now: opened.addingTimeInterval(86_400)))
+        XCTAssertFalse(s.endAsking(now: opened.addingTimeInterval(86_500)))
+        XCTAssertEqual(s.consent, .undecided)
+        XCTAssertEqual(s.pendingConsentChanges, [.dismissed])
+    }
+
+    func testShowingTheQuestionAgainKeepsWhenItFirstShowed() {
+        let s = stats(FakeServer())
+        let opened = Date(timeIntervalSince1970: 1_800_000_000)
+        s.beginAsking(now: opened)
+        s.beginAsking(now: opened.addingTimeInterval(300))
+        XCTAssertEqual(s.askingSince, opened)
+    }
+
+    func testDeleteMyDataAfterClosingTwiceKeepsTheNextYesAFirstYes() async {
+        let s = stats(FakeServer())
+        let closed = Date(timeIntervalSince1970: 1_800_000_000)
+        s.closeQuestion(now: closed)
+        s.closeQuestion(now: closed.addingTimeInterval(8 * 86_400))
+        await s.deleteMyData()
+        s.setConsent(true)
+        XCTAssertEqual(s.pendingConsentChanges, [.dismissed, .saidYes])
+    }
+
+    func testClosingAfterAnAnswerChangesNothing() {
+        let s = stats(FakeServer())
+        s.setConsent(true)
+        s.closeQuestion()
+        XCTAssertEqual(s.consent, .granted)
+        XCTAssertEqual(s.pendingConsentChanges, [.saidYes])
+    }
+
+    func testTheCountersPersistAcrossLaunches() {
+        let d = defaults()
+        stats(FakeServer(), defaults: d).closeQuestion(now: Date(timeIntervalSince1970: 1_800_000_000))
+        let later = stats(FakeServer(), defaults: d)
+        XCTAssertFalse(later.shouldAsk(now: Date(timeIntervalSince1970: 1_800_000_000 + 86_400)))
+        later.closeQuestion(now: Date(timeIntervalSince1970: 1_800_000_000 + 86_400))
+        XCTAssertEqual(later.consent, .undecided, "closed again within the week: it wasn't asked, so no change")
+        later.closeQuestion(now: Date(timeIntervalSince1970: 1_800_000_000 + 8 * 86_400))
+        XCTAssertEqual(later.consent, .declined, "the second close after the week, after a relaunch, is the no")
     }
 
     // MARK: Delete My Data
@@ -356,5 +444,13 @@ final class WorkerEndpointTests: XCTestCase {
         XCTAssertFalse(model.canSend)
         XCTAssertTrue(DeviceTestModel(controller: MouseController(), permissions: PermissionsModel(),
                                       reportEndpoint: URL(string: "https://reports.example.org/v1/device-report")).canSend)
+    }
+}
+
+private extension UsageStats {
+    /// The question shown and closed without an answer, as a window does it.
+    func closeQuestion(now: Date = Date()) {
+        beginAsking(now: now)
+        endAsking(now: now)
     }
 }

@@ -19,9 +19,11 @@ enum UsageStatsConsent: String {
     }
 
     /// A change of answer, for the anonymous daily count: the first answer when asked, and
-    /// turning sharing off (Delete My Data included) or back on later.
+    /// turning sharing off (Delete My Data included) or back on later. `dismissed` is closing
+    /// the question without answering: no answer, so it's asked again later.
     enum Change: String, CaseIterable {
         case saidYes = "said_yes", saidNo = "said_no", turnedOff = "turned_off", turnedOn = "turned_on"
+        case dismissed
 
         /// Nil when nothing changed.
         static func from(_ old: UsageStatsConsent, to new: UsageStatsConsent) -> Change? {
@@ -152,11 +154,21 @@ enum UsageMachineID {
     }
 }
 
-/// Opt-in usage stats: asks once, then pings the Worker on install, on update, and when a new
+/// Opt-in usage stats: asks (again a week later if the question was closed unanswered), then pings the Worker on install, on update, and when a new
 /// mouse shows up. Settings › Privacy turns it off, shows exactly what's sent, and deletes it.
 @MainActor
 final class UsageStats: ObservableObject {
     static let consentKey = "usageStats.consent"
+    /// When a question closed without an answer may be asked again. Set the first time it's
+    /// closed; there being one at all means it was closed before.
+    static let askAgainAfterKey = "usageStats.askAgainAfter"
+    /// Declined by closing the question twice, not by anyone saying no: turning sharing on
+    /// later is then their first answer, a said_yes, not a turned_on.
+    static let declinedByClosingKey = "usageStats.declinedByClosing"
+    /// How long a question closed unanswered waits before it's asked again: at the first clear
+    /// moment after it, in a running app (the 15-minute tick), at a launch, or in the Updated
+    /// window, whichever comes first.
+    static let askAgainDelay: TimeInterval = 7 * 86_400
     static let pendingChangesKey = "usageStats.pendingChanges"
     static let idKey = "usageStats.id"
     static let lastReportedVersionKey = "usageStats.lastReportedVersion"
@@ -176,6 +188,13 @@ final class UsageStats: ObservableObject {
     typealias Transport = @Sendable (URLRequest) async throws -> (Data, URLResponse)
 
     @Published private(set) var consent: UsageStatsConsent
+    /// The question is on screen: in its own window or as the Updated window's card. Set by
+    /// whichever opened (`beginAsking`), so the card, the close and the daily count agree on
+    /// whether it was asked.
+    var isAsking: Bool { askingSince != nil }
+    /// When it appeared, for how long the daily count holds the answer back. Nil while it isn't
+    /// on screen.
+    @Published private(set) var askingSince: Date?
     @Published private(set) var lastSentAt: Date?
     @Published private(set) var lastSentVersion: String?
     @Published private(set) var deletion: DeletionState = .idle
@@ -262,7 +281,20 @@ final class UsageStats: ObservableObject {
     }
 
     private func noteChange(to new: UsageStatsConsent) {
+        guard new != consent else { return }
+        let byClosing = defaults.bool(forKey: Self.declinedByClosingKey)
+        defaults.removeObject(forKey: Self.declinedByClosingKey)
+        if byClosing, consent == .declined, new == .granted { return note(.saidYes) }
         guard let change = UsageStatsConsent.Change.from(consent, to: new) else { return }
+        note(change)
+    }
+
+    private func store(_ new: UsageStatsConsent) {
+        consent = new
+        defaults.set(new.rawValue, forKey: Self.consentKey)
+    }
+
+    private func note(_ change: UsageStatsConsent.Change) {
         var pending = pendingConsentChanges
         if !pending.contains(change) { pending.append(change) }
         defaults.set(pending.map(\.rawValue), forKey: Self.pendingChangesKey)
@@ -273,17 +305,57 @@ final class UsageStats: ObservableObject {
     func setConsent(_ granted: Bool) {
         let new: UsageStatsConsent = granted ? .granted : .declined
         noteChange(to: new)
-        consent = new
-        defaults.set(consent.rawValue, forKey: Self.consentKey)
+        store(new)
         if granted {
             if deletion == .deleted { deletion = .idle }
             if sendsOnChange { Task { await sendIfDue() } }
         }
     }
 
-    /// Closing a window that asked, without answering, is a no. It isn't asked again.
-    func dismissUnanswered() {
-        if consent == .undecided { setConsent(false) }
+    /// Closing a window that asked, without answering, isn't an answer: nothing is sent, and
+    /// the question comes back a week on, at a launch or in the Updated window. Closed
+    /// unanswered again after that, it's taken as a no and not asked again; Settings ›
+    /// Privacy can still turn sharing on. Both closes are counted as `dismissed`, never as
+    /// `said_no`: nobody said it. Reached only through `endAsking`, for a question that was on screen.
+    private func dismissUnanswered(now: Date) {
+        // Not due (answered, no Worker, or closed again before its week was up): it wasn't
+        // asked, so nothing changes.
+        guard shouldAsk(now: now) else { return }
+        note(.dismissed)
+        if defaults.object(forKey: Self.askAgainAfterKey) != nil {
+            store(.declined)
+            defaults.set(true, forKey: Self.declinedByClosingKey)
+        } else {
+            defaults.set(now.addingTimeInterval(Self.askAgainDelay), forKey: Self.askAgainAfterKey)
+        }
+    }
+
+    /// A window that can ask is opening: it asks if the question is due. True when it does.
+    @discardableResult
+    func beginAsking(now: Date = Date()) -> Bool {
+        // Shown again while already asking: it's the same question, from when it first showed.
+        if isAsking { return true }
+        askingSince = shouldAsk(now: now) ? now : nil
+        return isAsking
+    }
+
+    /// That window is closing. Asked and not answered, it's a close (`dismissUnanswered`).
+    /// True when the question was on screen.
+    @discardableResult
+    func endAsking(now: Date = Date()) -> Bool {
+        let was = isAsking
+        askingSince = nil
+        if was { dismissUnanswered(now: now) }
+        return was
+    }
+
+    /// Whether the question is shown: nobody has answered, this build can send, and a question
+    /// closed unanswered has waited its week. The launch window and the Updated window's card
+    /// both go by it.
+    func shouldAsk(now: Date = Date()) -> Bool {
+        guard isAvailable, consent == .undecided else { return false }
+        guard let after = defaults.object(forKey: Self.askAgainAfterKey) as? Date else { return true }
+        return now >= after
     }
 
     // MARK: Sending
@@ -351,8 +423,7 @@ final class UsageStats: ObservableObject {
         // Shown straight away, even when a ping in flight makes the delete wait for it.
         deletion = .deleting
         noteChange(to: .declined)
-        consent = .declined
-        defaults.set(consent.rawValue, forKey: Self.consentKey)
+        store(.declined)
         // Forget what was reported, so opting in again starts over as a new Mac, the way the
         // server will see it.
         for key in [Self.lastReportedVersionKey, Self.reportedMiceKey, Self.lastSentAtKey] {
@@ -396,6 +467,8 @@ final class UsageStats: ObservableObject {
                                hardwareUUID: { "5C0FFEE0-0000-4000-8000-000000000000" },
                                sendsOnChange: false, transport: { _ in throw URLError(.notConnectedToInternet) })
         stats.consent = consent
+        // As the Updated window opens it: the card asks while nobody has answered.
+        stats.askingSince = consent == .undecided ? Date() : nil
         stats.connectedMice = [UsageStatsPolicy.mouse(pid: 0x00B0, productName: nil, isBluetooth: false, supported: true)]
         if consent == .granted {
             stats.lastSentAt = Date()
