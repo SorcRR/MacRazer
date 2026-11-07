@@ -103,22 +103,12 @@ enum IssueReportOutput {
 /// Posts an issue report to the Worker. The statuses mean what they do for a device report.
 enum IssueReportSender {
     static func request(_ report: IssueReport, to endpoint: URL) -> URLRequest {
-        var request = URLRequest(url: endpoint, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 10)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("MacRazer/\(AppInfo.displayVersion)", forHTTPHeaderField: "User-Agent")
-        request.httpBody = IssueReportOutput.json(IssueReportOutput.fitted(report))
-        return request
+        DeviceReportSender.request(body: IssueReportOutput.json(IssueReportOutput.fitted(report)), to: endpoint)
     }
 
     static func send(_ report: IssueReport, to endpoint: URL,
-                     transport: DeviceReportSender.Transport = { try await WorkerSession.shared.data(for: $0) })
+                     transport: @escaping DeviceReportSender.Transport = { try await WorkerSession.shared.data(for: $0) })
         async -> DeviceReportSender.Outcome {
-        do {
-            let (_, response) = try await transport(request(report, to: endpoint))
-            return DeviceReportSender.outcome(status: (response as? HTTPURLResponse)?.statusCode ?? 0)
-        } catch {
-            return .unavailable
-        }
+        await DeviceReportSender.post(request(report, to: endpoint), transport: transport)
     }
 }

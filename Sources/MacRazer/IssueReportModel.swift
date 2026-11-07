@@ -14,7 +14,10 @@ final class IssueReportModel: ObservableObject {
         case failed(DeviceReportSender.Outcome)
     }
 
-    @Published var description = ""
+    @Published var description = "" {
+        // The clipboard holds the description as it was; once it changes, the note is wrong.
+        didSet { if description != oldValue { issueNeedsPaste = false } }
+    }
     @Published var name = ""
     @Published var replyEmail = ""
     @Published var includeDetails = true
@@ -25,8 +28,12 @@ final class IssueReportModel: ObservableObject {
 
     /// Nil in a build without the Worker: then Open GitHub issue is the only way out.
     let endpoint: URL?
-    /// The app and mice right now, asked when the window shows them and when Send is pressed.
+    /// The app and mice right now. Read when the window opens, into `details`.
     private let currentDetails: () -> IssueReport.Details
+    /// What the window shows under the checkbox, and so exactly what Send carries: taken
+    /// when the window opens, not again at Send, so a mouse plugged in meanwhile can't
+    /// slip into a report the person didn't see.
+    @Published private(set) var details: IssueReport.Details
     private let transport: DeviceReportSender.Transport
 
     init(endpoint: URL? = WorkerEndpoint.issueReports,
@@ -34,16 +41,19 @@ final class IssueReportModel: ObservableObject {
          transport: @escaping DeviceReportSender.Transport = { try await WorkerSession.shared.data(for: $0) }) {
         self.endpoint = endpoint
         self.currentDetails = details
+        self.details = details()
         self.transport = transport
     }
 
     var canSend: Bool { endpoint != nil }
     var emailProblem: String? { DeviceReportOutput.emailProblem(replyEmail) }
-    var hasDescription: Bool { !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    /// Blank the way the Worker's `trim()` sees it, which also drops U+FEFF.
+    var hasDescription: Bool {
+        !description.trimmingCharacters(in: .whitespacesAndNewlines.union(["\u{FEFF}"])).isEmpty
+    }
     var sendDisabled: Bool {
         !hasDescription || emailProblem != nil || sendState == .sending || sendState == .sent
     }
-    var details: IssueReport.Details { currentDetails() }
 
     /// The report as it would go now: cleaned the way the device test cleans its fields, and
     /// cut to fit.
@@ -56,7 +66,7 @@ final class IssueReportModel: ObservableObject {
             ? DeviceReportOutput.cleaned(replyEmail, max: DeviceReportOutput.maxEmail,
                                          units: DeviceReportOutput.maxEmail, singleLine: true) : nil
         return IssueReportOutput.fitted(IssueReport(description: description, name: name, replyEmail: email,
-                                                    details: includeDetails ? currentDetails() : nil))
+                                                    details: includeDetails ? details : nil))
     }
 
     func send() async {
@@ -70,16 +80,21 @@ final class IssueReportModel: ObservableObject {
         let report = finalReport()
         let (url, needsPaste) = IssueReportOutput.githubIssue(report)
         issueNeedsPaste = needsPaste
-        if needsPaste {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(report.description, forType: .string)
-        }
-        NSWorkspace.shared.open(url)
+        if needsPaste { copyToClipboard(report.description) }
+        openURL(url)
+    }
+    /// Replaced in tests, which mustn't open a browser or touch the clipboard.
+    var openURL: (URL) -> Void = { NSWorkspace.shared.open($0) }
+    var copyToClipboard: (String) -> Void = {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString($0, forType: .string)
     }
 
-    /// Closing after a send starts the next report empty. Closing before keeps the draft,
-    /// so a window shut by mistake loses nothing.
-    func windowClosed() {
+    /// Called as the window opens. A report already sent starts the next one empty; one not
+    /// sent keeps its draft, so a window shut by mistake loses nothing. Here rather than on
+    /// close, because a send still going when the window closes finishes as sent afterwards.
+    func windowWillShow() {
+        details = currentDetails()
         guard sendState == .sent else { return }
         description = ""
         name = ""

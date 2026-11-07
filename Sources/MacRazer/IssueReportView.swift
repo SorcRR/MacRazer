@@ -73,17 +73,9 @@ struct IssueReportView: View {
             }
             switch model.sendState {
             case .sending: running("Sending…")
-            case .failed(let outcome): warning(Self.sendFailure(outcome))
+            case .failed(let outcome): warning(DeviceTestView.sendFailure(outcome))
             case .idle, .sent: EmptyView()
             }
-        }
-    }
-
-    static func sendFailure(_ outcome: DeviceReportSender.Outcome) -> String {
-        switch outcome {
-        case .tooMany: return "Too many reports from here today. Try again tomorrow, or open a GitHub issue instead."
-        case .refused: return "The report server didn't accept this. Open a GitHub issue instead, please, and mention it."
-        case .unavailable, .sent: return "Couldn't reach the report server. Check your connection and try again, or open a GitHub issue."
         }
     }
 
@@ -100,7 +92,7 @@ struct IssueReportView: View {
             }
             // Only once it's sent: the person has just helped, and the ask is the footer's
             // quiet button, not a banner.
-            note("MacRazer is free and built in spare time. If it saves you a trip to Windows, a tip keeps it going.")
+            note(DeviceTestView.tipLine(.full))
         }
     }
 

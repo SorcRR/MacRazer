@@ -103,15 +103,16 @@ final class IssueReportTests: XCTestCase {
         }
     }
 
-    func testClosingAfterSendingStartsFreshButADraftIsKept() async {
+    func testReopeningAfterSendingStartsFreshButADraftIsKept() async {
         let m = model()
         m.description = "Draft"
-        m.windowClosed()
+        m.windowWillShow()
         XCTAssertEqual(m.description, "Draft", "closed by mistake: nothing lost")
         m.name = "Sam"
         m.includeDetails = false
+        // Sent after the window closed: still fresh on the next open.
         await m.send()
-        m.windowClosed()
+        m.windowWillShow()
         XCTAssertEqual(m.description, "")
         XCTAssertEqual(m.name, "")
         XCTAssertTrue(m.includeDetails)
@@ -161,5 +162,42 @@ final class IssueReportTests: XCTestCase {
         let (url, needsPaste) = IssueReportOutput.githubIssue(report)
         XCTAssertTrue(needsPaste)
         XCTAssertLessThanOrEqual(url.absoluteString.count, DeviceReportOutput.maxIssueURLLength)
+    }
+}
+
+@MainActor
+final class IssueReportDetailsTests: XCTestCase {
+    func testSendCarriesTheDetailsShownNotNewerOnes() async throws {
+        var mice: [IssueReport.Mouse] = []
+        let m = IssueReportModel(endpoint: URL(string: "https://example.com/v1/issue-report")!, details: {
+            IssueReport.Details(appVersion: "0.8.0", macOS: "26.1", mice: mice)
+        }, transport: { request in
+            (Data(), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        })
+        m.windowWillShow()
+        mice = [.init(name: "Razer Viper Mini", productID: 0x008A, link: "wired", supported: true)]
+        m.description = "It crashes"
+        XCTAssertEqual(m.finalReport().details?.mice, [], "plugged in after the window opened")
+        m.windowWillShow()
+        XCTAssertEqual(m.finalReport().details?.mice.count, 1, "the next open sees it")
+    }
+
+    func testAByteOrderMarkIsNoDescription() {
+        let m = IssueReportModel(endpoint: nil, details: { .init(appVersion: "", macOS: "", mice: []) })
+        m.description = "\u{FEFF} \n"
+        XCTAssertFalse(m.hasDescription)
+    }
+
+    func testEditingClearsTheClipboardNote() {
+        let m = IssueReportModel(endpoint: nil, details: { .init(appVersion: "", macOS: "", mice: []) })
+        m.description = "Title\n" + String(repeating: "é ", count: 1999)
+        var copied: String?
+        m.openURL = { _ in }
+        m.copyToClipboard = { copied = $0 }
+        m.openGitHubIssue()
+        XCTAssertEqual(copied, m.finalReport().description)
+        XCTAssertTrue(m.issueNeedsPaste)
+        m.description = "Short"
+        XCTAssertFalse(m.issueNeedsPaste)
     }
 }
