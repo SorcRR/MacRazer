@@ -216,3 +216,42 @@ struct FlowLayout: Layout {
         return rows
     }
 }
+
+/// The height the popover's picker rows share: the polling rate and effect chips and the DPI
+/// stage chips.
+enum ChipMetrics {
+    static let height: CGFloat = 26
+}
+
+/// A row of chips picking one value, in the sleep timer chips' style: the chosen one filled
+/// deep green. For pickers that want a bigger target than a small segmented control (18 pt).
+struct ChipPicker<Value: Hashable>: View {
+    let values: [Value]
+    let selection: Value
+    let title: (Value) -> String
+    let onSelect: (Value) -> Void
+    var height: CGFloat = ChipMetrics.height
+
+    var body: some View {
+        HStack(spacing: 5) {
+            ForEach(values, id: \.self) { value in
+                let chosen = value == selection
+                // Like a segmented control: clicking the chosen one does nothing.
+                Button { if !chosen { onSelect(value) } } label: {
+                    Text(verbatim: title(value))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 11, weight: chosen ? .semibold : .regular).monospacedDigit())
+                .foregroundStyle(chosen ? Color.white : Color.primary)
+                .frame(maxWidth: .infinity).frame(height: height)
+                .background(chosen ? Color.razerGreenDeep : Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 7))
+                .hoverHighlight(RoundedRectangle(cornerRadius: 7))
+                .accessibilityAddTraits(chosen ? .isSelected : [])
+            }
+        }
+    }
+}

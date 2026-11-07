@@ -26,6 +26,9 @@ extension Color {
     /// Text and icons drawn on a `razerGreen` fill. Dark in every theme: white on #44D62C is
     /// only about 1.9:1 contrast.
     static let onRazerGreen = Color(nsColor: NSColor(hex: 0x0D2B07))
+    /// A deep green for a chosen chip (`ChipPicker`), with white text on it. The same in light
+    /// and dark.
+    static let razerGreenDeep = Color(nsColor: NSColor(hex: 0x155C10))
     /// The logo's green: brighter than the brand green so it pops on dark, and the darker
     /// text green on light, where a bright green washes out.
     static let razerGreenBright = adaptive(light: NSColor(hex: 0x23891A), dark: NSColor(hex: 0x6BFF40))
@@ -1279,7 +1282,7 @@ struct PopoverView: View {
         // neutral chip and readable secondary text, with the stage hue only as an outline.
         .foregroundStyle(active ? accent.onColor : Color.secondary)
         .frame(maxWidth: .infinity)
-        .frame(height: 24)
+        .frame(height: ChipMetrics.height)
         .background(active ? accent.color : Color.primary.opacity(0.08),
                     in: RoundedRectangle(cornerRadius: 6))
         .overlay {
@@ -1430,7 +1433,7 @@ struct PopoverView: View {
         .font(.system(size: 10.5, weight: active ? .semibold : .regular).monospacedDigit())
         .foregroundStyle(active ? Color.onRazerGreen : Color.razerGreenText)
         .frame(maxWidth: .infinity)
-        .frame(height: 24)
+        .frame(height: ChipMetrics.height)
         .background(active ? Color.razerGreen : Color.razerGreen.opacity(0.12),
                     in: RoundedRectangle(cornerRadius: 6))
         .overlay(RoundedRectangle(cornerRadius: 6)
@@ -1444,16 +1447,8 @@ struct PopoverView: View {
     /// The Polling rate row's expanded content; the row itself shows the current rate.
     private var pollContent: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Picker("", selection: Binding(
-                get: { displayedPollRate },
-                set: { controller.setPollRate($0) }
-            )) {
-                ForEach(pollRates, id: \.self) { Text(verbatim: "\($0)").tag($0) }
-            }
-            .pickerStyle(.segmented)
-            .controlSize(.small)
-            .labelsHidden()
-            .frame(maxWidth: .infinity)
+            ChipPicker(values: pollRates, selection: displayedPollRate,
+                       title: { "\($0)" }) { controller.setPollRate($0) }
 
             if let tip = pollRateTip(displayedPollRate) {
                 Text(tip)
@@ -1507,14 +1502,8 @@ struct PopoverView: View {
             // device write, so a failed change snaps the picker back by itself — no local
             // state, no suppression flags.
             if controller.supportsLightingEffects {
-                Picker("", selection: Binding(get: { controller.effect },
-                                              set: { controller.setEffect($0) })) {
-                    ForEach(controller.availableEffects) { Text($0.rawValue).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .controlSize(.small)
-                .labelsHidden()
-                .frame(maxWidth: .infinity)
+                ChipPicker(values: controller.availableEffects, selection: controller.effect,
+                           title: { $0.rawValue }) { controller.setEffect($0) }
                 if controller.effect == .wave {
                     WaveSpeedSlider(value: $waveSpeedValue) { controller.setWaveSpeed(WaveSpeed.byte(fromFraction: $0)) }
                         .transition(.opacity)
