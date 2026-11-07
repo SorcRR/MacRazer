@@ -180,8 +180,9 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertFalse(RazerDevices.needsReport(pid: 0x00C4))
         XCTAssertEqual(RazerDevices.verified(pid: 0x00C4), [.battery, .dpi, .polling], "no lighting on the mouse at all")
         // The HyperFlux V2 mat: everything but lighting, and no cable link to ask about.
-        XCTAssertEqual(RazerDevices.unverified(pid: 0x00CF), [.lighting])
-        XCTAssertEqual(RazerDevices.verified(pid: 0x00CF), [.battery, .dpi, .polling])
+        XCTAssertEqual(RazerDevices.unverified(pid: 0x00CF), [], "a second report confirmed the lighting")
+        XCTAssertTrue(RazerDevices.fullySupported(pid: 0x00CF))
+        XCTAssertFalse(RazerDevices.needsReport(pid: 0x00CF))
         XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00CF), [])
         XCTAssertTrue(RazerDevices.hasLighting(pid: 0x00CF), "brightness and colour answered, so it's offered")
         XCTAssertEqual(RazerDevices.verified(pid: 0x00C5), [.battery, .dpi, .polling], "no lighting on the mouse at all")
@@ -200,7 +201,8 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertFalse(RazerDevices.needsReport(pid: 0x00DB), "verified on every link")
         XCTAssertFalse(RazerDevices.needsReport(pid: 0x0090), "verified on both links")
         XCTAssertTrue(RazerDevices.needsReport(pid: 0x00C3), "verified, but its cable has no row yet")
-        XCTAssertTrue(RazerDevices.needsReport(pid: 0x00E3), "partly verified")
+        XCTAssertTrue(RazerDevices.needsReport(pid: 0x0039), "partly verified")
+        XCTAssertFalse(RazerDevices.needsReport(pid: 0x00E3), "only polling left, which the test can't confirm")
         XCTAssertTrue(RazerDevices.needsReport(pid: 0x9999), "unknown")
         XCTAssertEqual(RazerDevices.support(pid: 0x0090), .full)
         XCTAssertEqual(RazerDevices.support(pid: 0x006E), .unknown, "on record, nothing shown working")
@@ -210,8 +212,10 @@ final class RazerDevicesTests: XCTestCase {
     func testLinksToTest() {
         typealias Link = RazerDevices.LinkToTest
         // A row for the other link that isn't fully supported: named, with what it needs.
-        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00EA),
-                       [Link(connection: .wired, missing: [.polling])])
+        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00CE),
+                       [Link(connection: .wired, missing: [.lighting])])
+        // Not when all that row lacks is polling its mouse refuses: no report could confirm it.
+        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00EA), [])
         // Fully supported on every link it has a row for.
         XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00E8), [])
         XCTAssertEqual(RazerDevices.linksToTest(besides: 0x0090), [], "Naga Pro, both links verified")
@@ -299,6 +303,22 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00E0), [], "no cable, and no Bluetooth row yet")
     }
 
+    /// A mouse that refuses the classic polling command isn't asked about polling: the test
+    /// only sends that command, so a report would record the same refusal.
+    func testPollingIsNotAskedWhereTheTestCannotConfirmIt() {
+        for pid in [0x00EA, 0x00EB, 0x00E3, 0x00E2, 0x0091] {
+            let ask = RazerDevices.ask(pid: pid)
+            XCTAssertEqual(RazerDevices.unverified(pid: pid), [.polling], String(pid, radix: 16))
+            XCTAssertEqual(ask.here, [], String(pid, radix: 16))
+            XCTAssertEqual(ask.elsewhere, [], "no other link can confirm it either")
+            XCTAssertFalse(ask.needsReport, String(pid, radix: 16))
+            XCTAssertNotEqual(RazerDevices.support(pid: pid), .full, "still not counted as working")
+        }
+        // A mouse that takes the classic command is still asked.
+        XCTAssertEqual(RazerDevices.ask(pid: 0x0039).here, [.polling], "Orochi 2013")
+        XCTAssertTrue(RazerDevices.needsReport(pid: 0x0039))
+    }
+
     /// Over Bluetooth only the battery is confirmed: the Bluetooth test reads, it never writes.
     func testBasiliskV3Pro35KBluetooth() {
         XCTAssertEqual(RazerDevices.connection(pid: 0x00CE), .bluetooth)
@@ -358,9 +378,10 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(RazerDevices.maxDPI(pid: 0x00E6), 45000)
         XCTAssertEqual(RazerDevices.connection(pid: 0x00E6), .wirelessDongle)
         XCTAssertEqual(RazerDevices.connection(pid: 0x00EB), .wired)
-        // Each link of the two names its sibling as still needing polling.
-        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00E6), [.init(connection: .wired, missing: [.polling])])
-        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00EA), [.init(connection: .wired, missing: [.polling])])
+        // Polling is all either link lacks, and both refuse the classic command, so neither
+        // names the other: a report from it would only record the same refusal.
+        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00E6), [])
+        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00EA), [])
 
         XCTAssertTrue(RazerDevices.fullySupported(pid: 0x00D1), "Pro Click V2")
         XCTAssertFalse(RazerDevices.hasLighting(pid: 0x00D1))
