@@ -562,7 +562,7 @@ enum RazerDevices {
     /// themselves, with `connection` among their links to test. A report from that link
     /// answers them. `name` is the tested mouse's own name, for a product id not on record.
     static func rowsAnswered(byReportFrom pid: Int, name: String, on connection: RazerConnection) -> [Int] {
-        guard let model = info(pid: pid).map(modelName(of:)) ?? unlistedModels[pid] ?? unlistedModel(named: name)
+        guard let model = model(pid: pid) ?? unlistedModel(named: name)
         else { return [] }
         return known.filter {
             $0.pid != pid && modelName(of: $0) == model && fullySupported($0)

@@ -642,7 +642,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
             .store(in: &cancellables)
         // Debounced: the controller publishes a new mouse's fields one at a time, and the
         // ping should see them all.
-        if usageStats.isAvailable { pluggedRazerMice.send(HIDDevice.razerMice()) }
+        listRazerMice()
         Publishers.CombineLatest4(controller.$connected, controller.$deviceID,
                                   controller.$deviceName, controller.$deviceIsBluetooth)
             .combineLatest(controller.$deviceSupported, pluggedRazerMice.removeDuplicates())
@@ -736,8 +736,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     /// the test was opened, so nothing asks about that model again.
     private func startSupportPrompt() {
         supportPrompt.trackReports(from: deviceTestWindow.model).store(in: &cancellables)
-        // The counts listed them a moment ago (startUsageStats); one listing serves both.
-        razerMiceOnUSB = needsRazerMiceList ? (usageStats.isAvailable ? pluggedRazerMice.value : HIDDevice.razerMice()) : []
+        // Listed already by startUsageStats, which runs first (listRazerMice).
         // The list is kept empty while the setting is off, so turning it on lists what is
         // already plugged in instead of waiting for the next plug event.
         supportPrompt.$isEnabled.dropFirst().removeDuplicates()
@@ -763,10 +762,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         relistRazerMiceWork?.cancel()
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
-            // One listing for both: the support prompt's (only while it can use it) and the counts'.
-            let all = self.usageStats.isAvailable || self.needsRazerMiceList ? HIDDevice.razerMice() : []
-            self.razerMiceOnUSB = self.needsRazerMiceList ? all : []
-            self.pluggedRazerMice.send(self.usageStats.isAvailable ? all : [])
+            self.listRazerMice()
             // The test's intro names every device that could be the mouse; a plug changes that.
             if self.deviceTestWindow.isVisible { self.deviceTestWindow.model.devicesMayHaveChanged() }
         }
@@ -782,6 +778,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         let work = DispatchWorkItem { [weak self] in self?.accessories.rescan() }
         rescanAccessoriesWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 1, execute: work)
+    }
+
+    /// The Razer mice plugged in, listed once for both who need them: the counts (in a build
+    /// with the Worker) and the support prompt (while it can use them).
+    private func listRazerMice() {
+        let all = usageStats.isAvailable || needsRazerMiceList ? HIDDevice.razerMice() : []
+        razerMiceOnUSB = needsRazerMiceList ? all : []
+        pluggedRazerMice.send(usageStats.isAvailable ? all : [])
     }
 
     /// Whether the support prompt can use the list of Razer mice: only while it's on and Input

@@ -86,7 +86,9 @@ enum UsageStatsPolicy {
         // A `swift run` build has no version, and its pings would only be noise.
         guard consent == .granted, let version else { return nil }
         guard let lastReportedVersion else { return .first }
-        if AppInfo.releaseVersion(lastReportedVersion) != AppInfo.releaseVersion(version) { return .update }
+        // Raw: a switch between a release and its -dev build is reported, so the stats keep the
+        // label of what this Mac runs now (the Updated window ignores that switch instead).
+        if lastReportedVersion != version { return .update }
         if connected.contains(where: { !reportedMice.contains($0.key) }) { return .mouse }
         return nil
     }
@@ -99,7 +101,11 @@ enum UsageStatsPolicy {
     static func connectedMice(opened: UsagePing.Mouse?, plugged: [HIDDevice.USBMouse]) -> [UsagePing.Mouse] {
         var mice: [UsagePing.Mouse] = []
         var seen = Set<String>()
-        let candidates = (opened.map { [$0] } ?? []) + plugged.map {
+        // A plugged device counts only if it's a mouse MacRazer knows, or in the product range
+        // Razer gives mice (below 0x0200): a keyboard with a pointer interface mustn't take a
+        // mouse's place.
+        let mouseLike = plugged.filter { RazerDevices.model(pid: $0.pid) != nil || $0.pid < 0x0200 }
+        let candidates = (opened.map { [$0] } ?? []) + mouseLike.map {
             mouse(pid: $0.pid, productName: $0.name, isBluetooth: false, supported: RazerDevices.fullySupported(pid: $0.pid))
         }
         for m in candidates {

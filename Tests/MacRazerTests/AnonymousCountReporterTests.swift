@@ -76,6 +76,48 @@ final class AnonymousCountReporterTests: XCTestCase {
         XCTAssertEqual(asked.count, 3, "a new answer goes at once, then waits like the rest")
     }
 
+    func testAMouseThatMovesToItsCableIsNotCountedAgainThatDay() async {
+        var asked: [URL] = []
+        var mice = [cobra]
+        let sut = reporter(at: { lateEvening }, status: { 200 }, requests: { asked.append($0) })
+        sut.connectedMice = { mice }
+        await sut.reportIfNeeded()
+        mice = [UsagePing.Mouse(pid: 0xDA, name: "Razer Cobra HyperSpeed (Wired)", link: "wired", supported: true)]
+        await sut.reportIfNeeded()
+        XCTAssertEqual(asked.count, 1)
+    }
+
+    func testAWaitFromYesterdaysRefusalsEndsWithTheDay() async {
+        var asked: [URL] = []
+        var clock = lateEvening
+        var recorded = false
+        let sut = reporter(at: { clock }, status: { 200 }, counted: { _ in recorded }, requests: { asked.append($0) })
+        sut.connectedMice = { [cobra] }
+        await sut.reportIfNeeded()
+        XCTAssertEqual(asked.count, 1)
+        clock = lateEvening.addingTimeInterval(45 * 60)   // past midnight UTC, within the wait
+        recorded = true
+        await sut.reportIfNeeded()
+        XCTAssertEqual(asked.count, 2, "the Worker's caps start over with its day")
+    }
+
+    func testARefusedAnswerDoesntPushTheWaitFurther() async {
+        var asked: [URL] = []
+        var clock = lateEvening.addingTimeInterval(-20 * 3600)
+        var answer: UsageStatsConsent = .undecided
+        let sut = reporter(at: { clock }, status: { 200 }, counted: { _ in false }, requests: { asked.append($0) })
+        sut.connectedMice = { [cobra] }
+        sut.answer = { answer }
+        await sut.reportIfNeeded()
+        clock = clock.addingTimeInterval(5 * 60)
+        answer = .granted
+        await sut.reportIfNeeded()
+        XCTAssertEqual(asked.count, 2)
+        clock = clock.addingTimeInterval(5 * 60)
+        await sut.reportIfNeeded()
+        XCTAssertEqual(asked.count, 3, "still the first ten minutes' wait, from the first refusal")
+    }
+
     func testAWorkerFromBeforeTheHeaderIsTakenAtItsStatus() {
         let url = URL(string: "https://reports.example.org/v1/releases")!
         let answer = { (code: Int, headers: [String: String]?) in

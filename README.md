@@ -248,7 +248,7 @@ swift run MacRazer
 
 # Or build a standalone .app:
 ./Scripts/setup-signing.sh      # one-time: a stable self-signed identity (see Permissions)
-./Scripts/build-app.sh          # produces "MacRazer.app"
+./Scripts/build-app.sh          # produces "MacRazer.app", versioned "<version>-dev"
 open "MacRazer.app"
 ```
 

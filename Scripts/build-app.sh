@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Build a standalone "MacRazer.app" menu bar bundle from the SwiftPM executable.
 #
-#   ./Scripts/build-app.sh           # release build → ./MacRazer.app
+#   ./Scripts/build-app.sh           # optimised build → ./MacRazer.app, versioned <version>-dev
+#   MACRAZER_RELEASE_BUILD=1 ./Scripts/build-app.sh   # the plain version, as release.sh does
 #   open "MacRazer.app"           # launch it
 #
 # Needs Xcode, not just the Command Line Tools: a build for two architectures goes through
