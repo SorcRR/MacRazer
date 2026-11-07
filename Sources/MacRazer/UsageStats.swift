@@ -162,6 +162,9 @@ final class UsageStats: ObservableObject {
     /// When a question closed without an answer may be asked again. Set the first time it's
     /// closed; there being one at all means it was closed before.
     static let askAgainAfterKey = "usageStats.askAgainAfter"
+    /// Declined by closing the question twice, not by anyone saying no: turning sharing on
+    /// later is then their first answer, a said_yes, not a turned_on.
+    static let declinedByClosingKey = "usageStats.declinedByClosing"
     /// How long a question closed unanswered waits before it's asked again, at a launch or in
     /// the Updated window, whichever comes first after it.
     static let askAgainDelay: TimeInterval = 7 * 86_400
@@ -270,6 +273,9 @@ final class UsageStats: ObservableObject {
     }
 
     private func noteChange(to new: UsageStatsConsent) {
+        let byClosing = defaults.bool(forKey: Self.declinedByClosingKey)
+        defaults.removeObject(forKey: Self.declinedByClosingKey)
+        if byClosing, consent == .declined, new == .granted { return note(.saidYes) }
         guard let change = UsageStatsConsent.Change.from(consent, to: new) else { return }
         note(change)
     }
@@ -300,11 +306,15 @@ final class UsageStats: ObservableObject {
     /// `said_no`: nobody said it. Call it only when the question was on screen (`shouldAsk`).
     func dismissUnanswered(now: Date = Date()) {
         guard isAvailable, consent == .undecided else { return }
-        note(.dismissed)
-        if defaults.object(forKey: Self.askAgainAfterKey) != nil {
+        if let after = defaults.object(forKey: Self.askAgainAfterKey) as? Date {
+            // Closed again before its week was up: it wasn't asked again, so nothing changes.
+            guard now >= after else { return }
+            note(.dismissed)
             consent = .declined
             defaults.set(consent.rawValue, forKey: Self.consentKey)
+            defaults.set(true, forKey: Self.declinedByClosingKey)
         } else {
+            note(.dismissed)
             defaults.set(now.addingTimeInterval(Self.askAgainDelay), forKey: Self.askAgainAfterKey)
         }
     }

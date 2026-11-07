@@ -154,8 +154,8 @@ final class UsageStatsTests: XCTestCase {
         XCTAssertEqual(s.consent, .undecided, "closing the question isn't an answer")
         await s.sendIfDue()
         XCTAssertTrue(server.requests.isEmpty)
-        s.dismissUnanswered()
-        XCTAssertEqual(s.consent, .declined, "closing it a second time is a no")
+        s.dismissUnanswered(now: Date().addingTimeInterval(UsageStats.askAgainDelay))
+        XCTAssertEqual(s.consent, .declined, "closing it again a week later is a no")
         await s.sendIfDue()
         XCTAssertTrue(server.requests.isEmpty)
     }
@@ -250,6 +250,18 @@ final class UsageStatsTests: XCTestCase {
         XCTAssertTrue(s.pendingConsentChanges.isEmpty)
     }
 
+    func testTurningSharingOnAfterClosingTwiceIsAFirstYes() {
+        let s = stats(FakeServer())
+        let closed = Date(timeIntervalSince1970: 1_800_000_000)
+        s.dismissUnanswered(now: closed)
+        s.dismissUnanswered(now: closed.addingTimeInterval(8 * 86_400))
+        s.setConsent(true)
+        XCTAssertEqual(s.pendingConsentChanges, [.dismissed, .saidYes], "never said no, so not turned back on")
+        s.setConsent(false)
+        s.setConsent(true)
+        XCTAssertEqual(s.pendingConsentChanges, [.dismissed, .saidYes, .turnedOff, .turnedOn])
+    }
+
     func testClosingAfterAnAnswerChangesNothing() {
         let s = stats(FakeServer())
         s.setConsent(true)
@@ -263,8 +275,10 @@ final class UsageStatsTests: XCTestCase {
         stats(FakeServer(), defaults: d).dismissUnanswered(now: Date(timeIntervalSince1970: 1_800_000_000))
         let later = stats(FakeServer(), defaults: d)
         XCTAssertFalse(later.shouldAsk(now: Date(timeIntervalSince1970: 1_800_000_000 + 86_400)))
-        later.dismissUnanswered()
-        XCTAssertEqual(later.consent, .declined, "the second close, after a relaunch, is the no")
+        later.dismissUnanswered(now: Date(timeIntervalSince1970: 1_800_000_000 + 86_400))
+        XCTAssertEqual(later.consent, .undecided, "closed again within the week: it wasn't asked, so no change")
+        later.dismissUnanswered(now: Date(timeIntervalSince1970: 1_800_000_000 + 8 * 86_400))
+        XCTAssertEqual(later.consent, .declined, "the second close after the week, after a relaunch, is the no")
     }
 
     // MARK: Delete My Data
