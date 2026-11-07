@@ -659,7 +659,7 @@ enum DeviceTestSteps {
 
     /// The report for a mouse on Bluetooth, from what `BluetoothProbe` found and the reads
     /// it ran. Identify passes when Razer's service answered a read; with no such service it's
-    /// not on this mouse (#35's Pro Click V2 has none). With no services seen at all the probe
+    /// not on this mouse (#35's Pro Click V2 Vertical Edition has none). With no services seen at all the probe
     /// never got that far (Bluetooth off or not allowed, a slow setup), which says nothing
     /// about the mouse, so it fails rather than counting as not there. Battery comes from
     /// Razer's battery read, on the USB scale, else the standard service. The other steps need the USB

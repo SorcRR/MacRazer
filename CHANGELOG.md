@@ -7,10 +7,10 @@ expect rough edges until 1.0.
 ## [Unreleased]
 
 ### Added
-- **Razer Pro Click V2 Vertical Edition.** Recognised on its cable and its HyperSpeed dongle.
-  Battery and color work on the cable; DPI, polling and brightness come from OpenRazer and
-  haven't been confirmed on this mouse yet, so the app asks for a device test. Thanks to
-  @k6n7frbrtc-hub (#35).
+- **Razer Pro Click V2 Vertical Edition, on its cable.** Battery and a static color work; DPI,
+  polling, brightness and the other effects come from OpenRazer and haven't been confirmed on
+  this mouse yet, so the app asks for a device test. Over its HyperSpeed dongle it's named, but
+  nothing works there yet. Thanks to @k6n7frbrtc-hub (#35).
 
 ### Fixed
 - **A "+" in a mouse's name or the version reached the server as a space.**

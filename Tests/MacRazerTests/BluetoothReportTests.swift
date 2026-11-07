@@ -69,7 +69,7 @@ final class BluetoothReportTests: XCTestCase {
               maxInputReportSize: 8, transport: "Bluetooth Low Energy"),
     ])
 
-    /// #35's Pro Click V2: no Razer service, so Identify isn't on this mouse, yet the battery
+    /// #35's Pro Click V2 Vertical Edition: no Razer service, so Identify isn't on this mouse, yet the battery
     /// service and the interface sizes still make a useful report.
     func testAMouseWithoutRazersService() {
         let probe = DeviceReport.BluetoothData(services: ["180F", "1812"], batteryLevel: 64)

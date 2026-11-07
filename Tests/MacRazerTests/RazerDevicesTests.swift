@@ -22,6 +22,8 @@ final class RazerDevicesTests: XCTestCase {
             XCTAssertEqual(txn(0x0062, cls), 0x1f) // Atheris (hardware-verified)
             XCTAssertEqual(txn(0x0090, cls), 0x1f) // Naga Pro dongle (hardware-verified, #69)
             XCTAssertEqual(txn(0x008F, cls), 0x1f)
+            XCTAssertEqual(txn(0x00C7, cls), 0x1f) // Pro Click V2 Vertical (static color verified, #35)
+            XCTAssertEqual(txn(0x00C8, cls), 0x1f)
             XCTAssertEqual(txn(0x00E8, cls), 0x1f) // Naga V3 Pro dongle (hardware-verified, #33)
             XCTAssertEqual(txn(0x00EA, cls), 0x1f) // Basilisk V4 HyperSpeed dongle (hardware-verified)
             XCTAssertEqual(txn(0x00E7, cls), 0x1f) // Naga V3 Pro cable (hardware-verified, #33)
@@ -59,17 +61,12 @@ final class RazerDevicesTests: XCTestCase {
     /// The Pro Click V2 Vertical Edition (#35): battery and static color tested on the cable,
     /// nothing yet over the dongle, and its brightness on ZERO_LED as OpenRazer drives it.
     func testProClickV2VerticalEdition() {
-        let wired = RazerDevices.info(pid: 0x00C7), dongle = RazerDevices.info(pid: 0x00C8)
-        XCTAssertEqual(wired?.connection, .wired)
-        XCTAssertEqual(dongle?.connection, .wirelessDongle)
-        for pid in [0x00C7, 0x00C8] {
-            XCTAssertEqual(RazerDevices.info(pid: pid)?.maxDPI, 30000)
-            XCTAssertEqual(RazerDevices.brightnessLed(pid: pid), Razer.zeroLed)
-            XCTAssertEqual(RazerDevices.info(pid: pid)?.transactionId, 0x1f)
-        }
+        let rows = [RazerDevices.info(pid: 0x00C7), RazerDevices.info(pid: 0x00C8)]
+        XCTAssertEqual(rows.map { $0?.connection }, [.wired, .wirelessDongle])
+        XCTAssertEqual(rows.map { $0?.maxDPI }, [30000, 30000])
+        XCTAssertEqual([0x00C7, 0x00C8].map(RazerDevices.brightnessLed(pid:)), [Razer.zeroLed, Razer.zeroLed])
         XCTAssertEqual(RazerDevices.unverified(pid: 0x00C7), [.dpi, .polling, .lighting])
         XCTAssertEqual(RazerDevices.unverified(pid: 0x00C8), [.battery, .dpi, .polling, .lighting])
-        XCTAssertFalse(RazerDevices.fullySupported(pid: 0x00C7))
         XCTAssertEqual(RazerDevices.model(pid: 0x00C7), RazerDevices.model(pid: 0x00C8), "one mouse, two links")
         XCTAssertNotEqual(RazerDevices.model(pid: 0x00C7), RazerDevices.model(pid: 0x00D1), "not the plain Pro Click V2")
     }

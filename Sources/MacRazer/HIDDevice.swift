@@ -164,7 +164,7 @@ final class HIDDevice {
     /// Whether a Bluetooth HID mouse is a Razer one, and one we can control. Control needs
     /// the exact Bluetooth vendor and product id (a name match could be another model on the
     /// same service). Razer's Bluetooth vendor id alone is enough to recognise one, whatever
-    /// its name: the Pro Click V2 calls itself "PCV2 Ver" (#35). Without it, the name.
+    /// its name: the Pro Click V2 Vertical Edition calls itself "PCV2 Ver" (#35). Without it, the name.
     ///
     /// A Razer keyboard on Bluetooth has the same vendor id and may carry a pointer collection,
     /// so a PID the registry doesn't know also needs a name no keyboard line uses
