@@ -285,6 +285,14 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(RazerDevices.support(pid: 0x00D4), .full)
         XCTAssertEqual(RazerDevices.maxDPI(pid: 0x00D4), 18000, "Focus X 18K; the firmware echoes anything")
         XCTAssertEqual(RazerDevices.connection(pid: 0x00D4), .wirelessDongle)
+        XCTAssertFalse(RazerDevices.supports(.wave, pid: 0x00D4))
+        XCTAssertTrue(RazerDevices.supports(.wave, pid: 0x00A3))
+        XCTAssertTrue(RazerDevices.supports(.wave, pid: 0xFFFF), "an unknown mouse isn't held back")
+        let mobile = RazerDevices.effects(pid: 0x00D4)
+        XCTAssertEqual(MouseController.supported(.wave, in: mobile), .staticColor)
+        XCTAssertEqual(MouseController.supported(.off, in: mobile), .off)
+        XCTAssertEqual(MouseController.supported(.breathing, in: [.spectrum, .off]), .spectrum,
+                       "a mouse without a static colour falls back to what it has")
         XCTAssertEqual(RazerDevices.effects(pid: 0x00D4), [.staticColor, .off], "OpenRazer: static and none only")
         XCTAssertEqual(RazerDevices.effects(pid: 0x00A3), LightingEffect.allCases, "every effect by default")
         // Its cable (OpenRazer's 0x00D3) is the same model, untested on every step.

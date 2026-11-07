@@ -135,6 +135,7 @@ struct RazerDeviceInfo {
     /// static colour and off). The picker offers these, and any other effect (from a profile,
     /// or a mouse before) lands as the static colour.
     var effects: [LightingEffect] = LightingEffect.allCases
+    func supports(_ effect: LightingEffect) -> Bool { effects.contains(effect) }
     /// What the mouse itself doesn't have: no battery on a wired-only mouse, no lights on an
     /// unlit one. The device test still shows that step, says so, and moves on without
     /// touching the mouse. Only from a report or the vendor spec, never from `hasBattery` or
@@ -663,6 +664,7 @@ enum RazerDevices {
     static func acceptsClassicPolling(pid: Int) -> Bool { info(pid: pid)?.acceptsClassicPolling ?? true }
     static func fixedColor(pid: Int) -> Bool { info(pid: pid)?.fixedColor ?? false }
     static func effects(pid: Int) -> [LightingEffect] { info(pid: pid)?.effects ?? LightingEffect.allCases }
+    static func supports(_ effect: LightingEffect, pid: Int) -> Bool { info(pid: pid)?.supports(effect) ?? true }
     /// Empty for a model not on record: the test is how anyone finds out.
     static func notOnMouse(pid: Int) -> Set<RazerFeature> { info(pid: pid)?.notOnMouse ?? [] }
     /// Per-command transaction id: explicit per-command override, else the class split
