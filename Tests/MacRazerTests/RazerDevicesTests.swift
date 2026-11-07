@@ -56,6 +56,21 @@ final class RazerDevicesTests: XCTestCase {
         }
     }
 
+    /// The Pro Click V2 Vertical Edition (#35): battery and static color tested on the cable,
+    /// its brightness on ZERO_LED as OpenRazer drives it, and no row for its dongle, whose
+    /// reads all timed out.
+    func testProClickV2VerticalEdition() {
+        let wired = RazerDevices.info(pid: 0x00C7)
+        XCTAssertEqual(wired?.connection, .wired)
+        XCTAssertEqual(wired?.maxDPI, 30000)
+        XCTAssertEqual(wired?.brightnessLed, Razer.zeroLed)
+        XCTAssertEqual(wired?.unverified, [.dpi, .polling, .lighting])
+        XCTAssertEqual(wired?.verifiesBrightnessWrite, true, "ZERO_LED is OpenRazer's word only")
+        XCTAssertNil(RazerDevices.info(pid: 0x00C8))
+        XCTAssertEqual(RazerDevices.model(pid: 0x00C8), RazerDevices.model(pid: 0x00C7), "cable and dongle are one mouse")
+        XCTAssertNotEqual(RazerDevices.model(pid: 0x00C7), RazerDevices.model(pid: 0x00D1), "not the plain Pro Click V2")
+    }
+
     /// The brightness LED id is not the same across models and a wrong one is not a silent
     /// no-op — the device answers FAILURE (0x03) and the brightness slider stops working.
     func testBrightnessLedPerModel() {

@@ -224,6 +224,17 @@ enum RazerDevices {
         // Viper Ultimate (Wired): an in-app report over the cable passed battery, DPI, polling
         // and lighting with the same ids as the wireless side.
         .init(pid: 0x007a, name: "Razer Viper Ultimate (Wired)", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 20000, transactionId: 0xff, matrixTransactionId: 0x3f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
+        // Pro Click V2 Vertical Edition on the cable (#35, from k6n7frbrtc-hub): battery and a
+        // static color (status 0x02, the mouse visibly changed) worked with 0x1f. DPI, polling
+        // and brightness weren't tried here. OpenRazer drives its brightness, static, spectrum
+        // and wave on ZERO_LED, but breathing on BACKLIGHT_LED, which this app doesn't do per
+        // effect yet: lighting stays unverified until a device test shows what answers. 30000
+        // DPI is the vendor spec (Focus Pro 30K sensor). ZERO_LED for brightness is OpenRazer's
+        // word only, so a write is read back and a refusal shows. Its HyperSpeed dongle
+        // (0x00C8) has no row: every read over it timed out, and a known row would rank it with
+        // working mice when choosing which device to open. It's still this model
+        // (`unlistedModels`), so the counts take cable and dongle for one mouse.
+        .init(pid: 0x00C7, name: "Razer Pro Click V2 Vertical Edition (Wired)", unverified: [.dpi, .polling, .lighting], hasBattery: true, hasLighting: true, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, brightnessLed: Razer.zeroLed, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, verifiesBrightnessWrite: true, model: RazerDevices.proClickV2Vertical),
         // Naga Pro over the dongle (#69): battery, DPI and stages, polling, static color and
         // brightness all passed the in-app test with 0x1f. 0xFF and 0x80 time out. It has
         // three lit zones and LOGO, SCROLL and BACKLIGHT all answer brightness (ZERO refuses),
@@ -417,13 +428,17 @@ enum RazerDevices {
     private static func modelName(of row: RazerDeviceInfo) -> String {
         modelNames[row.pid] ?? row.model ?? modelName(row.name)
     }
-    /// The model of a product id with no row yet whose name another generation shares, from
-    /// OpenRazer's ids: the DeathAdder V3 Pro's first cable and its later one.
+    /// The model of a product id with no row yet: whose name another generation shares, from
+    /// OpenRazer's ids (the DeathAdder V3 Pro's first cable and its later one), or whose link
+    /// doesn't answer yet (the Pro Click V2 Vertical Edition's dongle).
     private static let unlistedModels: [Int: String] = [
         0x00B6: deathAdderV3Pro, 0x00C2: deathAdderV3ProLater,
+        // The Pro Click V2 Vertical Edition's dongle (#35), which nothing answers on yet.
+        0x00C8: proClickV2Vertical,
     ]
     static let deathAdderV3Pro = "Razer DeathAdder V3 Pro"
     static let deathAdderV3ProLater = "Razer DeathAdder V3 Pro (later)"
+    static let proClickV2Vertical = "Razer Pro Click V2 Vertical Edition"
     /// An unlisted mouse's model from its name, or nil when generations share the name, so it
     /// can't say which one the mouse is.
     private static func unlistedModel(named name: String) -> String? {
