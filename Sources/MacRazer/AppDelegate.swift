@@ -51,6 +51,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         stats: usageStats, onClosed: { [weak self] in self?.autoInstallIfEnabled(); self?.questionClosed() })
     /// Waits for a clear moment to ask about usage stats; see `askAboutUsageStats`.
     private var usageStatsAskTimer: Timer?
+    /// When this launch began, for how long the count holds back "unasked"; see
+    /// `isAboutToAskOrAsking`.
+    private let launchedAt = Date()
     private let supportPrompt = SupportPrompt.shared
     private var supportPromptTimer: Timer?
     /// What the last support tick saw; see `askForDeviceTestIfClear`.
@@ -608,15 +611,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
 
     // MARK: - Usage stats
 
-    /// Feeds the connected mouse to `UsageStats`, sends whatever is due, and asks once if
-    /// nobody has been asked yet. Nothing goes anywhere without a yes; see `UsageStats`.
+    /// Feeds the connected mouse to `UsageStats`, sends whatever is due, and asks if nobody
+    /// has answered (again a week after the question was closed unanswered). Nothing goes anywhere without a yes; see `UsageStats`.
     private func startUsageStats() {
         countReporter.connectedMice = { [weak self] in self?.usageStats.connectedMice ?? [] }
         countReporter.answer = { [weak self] in
             guard let self, self.usageStats.isAvailable else { return nil }
             // Not "unasked" while the question is about to be asked or on screen: the answer
             // follows in a moment, and the day would count the app under both.
-            if self.usageStats.consent == .undecided, self.isAboutToAskOrAsking { return nil }
+            if self.usageStats.consent == .undecided, self.isAboutToAskOrAsking(now: Date()) { return nil }
             return self.usageStats.consent
         }
         countReporter.pendingChanges = { [weak self] in self?.usageStats.pendingConsentChanges ?? [] }
@@ -654,16 +657,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         // Someone who just updated is asked in the Updated window instead. A `swift run`
         // build has no version and a build without the Worker has nowhere to send, so
         // neither of them asks.
-        if usageStats.isAvailable, usageStats.shouldAskAtLaunch(), updateChecker.justUpdatedTo == nil,
+        if usageStats.shouldAsk(), updateChecker.justUpdatedTo == nil,
            AppInfo.version != nil {
             askAboutUsageStats()
         }
     }
 
     /// The usage stats question is waiting for a clear moment, or is showing: in its own
-    /// window, or as the card in the Updated window, which shows it to anyone undecided.
-    private var isAboutToAskOrAsking: Bool {
-        usageStatsAskTimer != nil || usageStatsWindow.isVisible || (usageStats.isAvailable && updatedWindow.isVisible)
+    /// window, or as the card in the Updated window. Only for the first ten minutes of the
+    /// launch: a window left open behind others for days mustn't keep the answer out of every
+    /// day's count.
+    private func isAboutToAskOrAsking(now: Date) -> Bool {
+        guard now.timeIntervalSince(launchedAt) < 600 else { return false }
+        return usageStatsAskTimer != nil || usageStatsWindow.isVisible
+            || (updatedWindow.isVisible && updatedWindow.askedAboutUsageStats)
     }
 
     /// A window that asked was closed. Answered, the answer has gone out already; closed
@@ -688,7 +695,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     }
 
     private func askAboutUsageStatsIfClear() {
-        guard usageStats.consent == .undecided else { return stopAskingAboutUsageStats() }
+        guard usageStats.shouldAsk() else { return stopAskingAboutUsageStats() }
         guard !isShowingAWindow, !popover.isShown, !appMenuOpen else { return }
         stopAskingAboutUsageStats()
         usageStatsWindow.show(activating: false)

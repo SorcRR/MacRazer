@@ -227,17 +227,27 @@ final class UsageStatsTests: XCTestCase {
     func testClosingTheQuestionAsksAgainAWeekLaterThenIsASaidNo() {
         let s = stats(FakeServer())
         let closed = Date(timeIntervalSince1970: 1_800_000_000)
-        XCTAssertTrue(s.shouldAskAtLaunch(now: closed), "nobody asked yet")
+        XCTAssertTrue(s.shouldAsk(now: closed), "nobody asked yet")
         s.dismissUnanswered(now: closed)
         XCTAssertEqual(s.consent, .undecided)
         XCTAssertEqual(s.pendingConsentChanges, [.dismissed])
-        XCTAssertFalse(s.shouldAskAtLaunch(now: closed.addingTimeInterval(6 * 86_400)), "not within the week")
-        XCTAssertTrue(s.shouldAskAtLaunch(now: closed.addingTimeInterval(7 * 86_400)))
+        XCTAssertFalse(s.shouldAsk(now: closed.addingTimeInterval(6 * 86_400)), "not within the week")
+        XCTAssertTrue(s.shouldAsk(now: closed.addingTimeInterval(7 * 86_400)))
         s.dismissUnanswered(now: closed.addingTimeInterval(7 * 86_400))
         XCTAssertEqual(s.consent, .declined)
-        XCTAssertEqual(s.pendingConsentChanges, [.dismissed, .saidNo])
-        XCTAssertFalse(s.shouldAskAtLaunch(now: closed.addingTimeInterval(30 * 86_400)), "never again after a no")
+        XCTAssertEqual(s.pendingConsentChanges, [.dismissed], "a close is never counted as said_no: nobody said it")
+        XCTAssertFalse(s.shouldAsk(now: closed.addingTimeInterval(30 * 86_400)), "never again after a no")
         XCTAssertEqual(UsageStatsConsent.undecided.countValue, "unasked")
+    }
+
+    func testABuildWithoutTheWorkerNeverAsksOrCountsACloseAsAnAnswer() {
+        let s = UsageStats(defaults: defaults(), endpoint: nil, version: "0.6.0", hardwareUUID: { nil }, sendsOnChange: false,
+                           transport: { _ in throw URLError(.notConnectedToInternet) })
+        XCTAssertFalse(s.shouldAsk())
+        s.dismissUnanswered()
+        s.dismissUnanswered()
+        XCTAssertEqual(s.consent, .undecided)
+        XCTAssertTrue(s.pendingConsentChanges.isEmpty)
     }
 
     func testClosingAfterAnAnswerChangesNothing() {
@@ -252,7 +262,7 @@ final class UsageStatsTests: XCTestCase {
         let d = defaults()
         stats(FakeServer(), defaults: d).dismissUnanswered(now: Date(timeIntervalSince1970: 1_800_000_000))
         let later = stats(FakeServer(), defaults: d)
-        XCTAssertFalse(later.shouldAskAtLaunch(now: Date(timeIntervalSince1970: 1_800_000_000 + 86_400)))
+        XCTAssertFalse(later.shouldAsk(now: Date(timeIntervalSince1970: 1_800_000_000 + 86_400)))
         later.dismissUnanswered()
         XCTAssertEqual(later.consent, .declined, "the second close, after a relaunch, is the no")
     }

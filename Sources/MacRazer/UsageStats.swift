@@ -154,21 +154,17 @@ enum UsageMachineID {
     }
 }
 
-/// Opt-in usage stats: asks once, then pings the Worker on install, on update, and when a new
+/// Opt-in usage stats: asks (again a week later if the question was closed unanswered), then pings the Worker on install, on update, and when a new
 /// mouse shows up. Settings › Privacy turns it off, shows exactly what's sent, and deletes it.
 @MainActor
 final class UsageStats: ObservableObject {
     static let consentKey = "usageStats.consent"
-    /// How many times the question was closed without an answer, and when it may be asked
-    /// again at launch after the first time.
-    static let dismissalsKey = "usageStats.dismissals"
+    /// When a question closed without an answer may be asked again. Set the first time it's
+    /// closed; there being one at all means it was closed before.
     static let askAgainAfterKey = "usageStats.askAgainAfter"
-    /// How long a question closed unanswered waits before it's asked again at launch. An
-    /// update asks sooner, in the Updated window, which shows the question to anyone who
-    /// hasn't answered.
+    /// How long a question closed unanswered waits before it's asked again, at a launch or in
+    /// the Updated window, whichever comes first after it.
     static let askAgainDelay: TimeInterval = 7 * 86_400
-    /// Closing it this many times without answering is taken as a no.
-    static let dismissalsBeforeNo = 2
     static let pendingChangesKey = "usageStats.pendingChanges"
     static let idKey = "usageStats.id"
     static let lastReportedVersionKey = "usageStats.lastReportedVersion"
@@ -298,22 +294,26 @@ final class UsageStats: ObservableObject {
     }
 
     /// Closing a window that asked, without answering, isn't an answer: nothing is sent, and
-    /// the question comes back at the next update, or at a launch a week on. Closed unanswered
-    /// a second time, it's taken as a no and not asked again; Settings › Privacy can still
-    /// turn sharing on.
+    /// the question comes back a week on, at a launch or in the Updated window. Closed
+    /// unanswered again after that, it's taken as a no and not asked again; Settings ›
+    /// Privacy can still turn sharing on. Both closes are counted as `dismissed`, never as
+    /// `said_no`: nobody said it. Call it only when the question was on screen (`shouldAsk`).
     func dismissUnanswered(now: Date = Date()) {
-        guard consent == .undecided else { return }
-        let dismissals = defaults.integer(forKey: Self.dismissalsKey) + 1
-        defaults.set(dismissals, forKey: Self.dismissalsKey)
-        if dismissals >= Self.dismissalsBeforeNo { return setConsent(false) }
-        defaults.set(now.addingTimeInterval(Self.askAgainDelay), forKey: Self.askAgainAfterKey)
+        guard isAvailable, consent == .undecided else { return }
         note(.dismissed)
+        if defaults.object(forKey: Self.askAgainAfterKey) != nil {
+            consent = .declined
+            defaults.set(consent.rawValue, forKey: Self.consentKey)
+        } else {
+            defaults.set(now.addingTimeInterval(Self.askAgainDelay), forKey: Self.askAgainAfterKey)
+        }
     }
 
-    /// Whether to ask at launch: nobody has answered, and a question closed unanswered has
-    /// waited its week.
-    func shouldAskAtLaunch(now: Date = Date()) -> Bool {
-        guard consent == .undecided else { return false }
+    /// Whether the question is shown: nobody has answered, this build can send, and a question
+    /// closed unanswered has waited its week. The launch window and the Updated window's card
+    /// both go by it.
+    func shouldAsk(now: Date = Date()) -> Bool {
+        guard isAvailable, consent == .undecided else { return false }
         guard let after = defaults.object(forKey: Self.askAgainAfterKey) as? Date else { return true }
         return now >= after
     }

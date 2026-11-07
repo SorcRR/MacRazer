@@ -4,7 +4,7 @@
 import AppKit
 import SwiftUI
 
-/// The one-time question for a new install: share usage stats or not. Shows this Mac's real
+/// The question for a new install (and, a week after it was closed unanswered, once more): share usage stats or not. Shows this Mac's real
 /// values, so the answer is about something concrete. Existing users get the same question as
 /// a card in the Updated window instead (`UsageStatsCard`).
 struct UsageStatsConsentView: View {
@@ -106,7 +106,7 @@ struct UsageStatsCard: View {
     @State private var showDetails = false
 
     var body: some View {
-        if stats.isAvailable, stats.consent == .undecided || answered {
+        if stats.shouldAsk() || answered {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 8) {
                     Image(systemName: "chart.bar.fill")
@@ -150,7 +150,7 @@ struct UsageStatsCard: View {
     }
 }
 
-/// Hosts `UsageStatsConsentView` in its own window, opened by the app once, not by a click.
+/// Hosts `UsageStatsConsentView` in its own window, opened by the app, not by a click.
 /// Closing it without answering isn't an answer: it's asked again later, and taken as a no
 /// only the second time (`UsageStats.dismissUnanswered`).
 @MainActor
