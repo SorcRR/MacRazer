@@ -1374,9 +1374,12 @@ struct PopoverView: View {
             }
             .disabled(controller.sleepTimeout == nil)
             ChipPicker(label: "Sleep after", values: [60, 120, 300, 600, 900],
-                       selection: Int(sleepTimeoutValue),
+                       // What the mouse confirmed: nothing before it's read, and a refused
+                       // write doesn't show as chosen.
+                       selection: controller.sleepTimeout,
                        title: { formatSleepTimeout($0, compact: true) },
                        spokenTitle: { "Sleep after \(formatSleepTimeout($0))" }) { value in
+                guard value != controller.sleepTimeout else { return }
                 sleepTimeoutValue = Double(value)
                 controller.setSleepTimeout(value)
             }
@@ -1435,12 +1438,8 @@ struct PopoverView: View {
     /// The Polling rate row's expanded content; the row itself shows the current rate.
     private var pollContent: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // The raw rate, not the displayed one: before the first read the 1000 chip shows
-            // as chosen but the mouse may be on another rate, so a click on it still sends.
             ChipPicker(label: "Polling rate", values: pollRates, selection: displayedPollRate,
-                       title: { "\($0)" }, spokenTitle: { "\($0) Hz" }) { hz in
-                if hz != controller.pollRate { controller.setPollRate(hz) }
-            }
+                       title: { "\($0)" }, spokenTitle: { "\($0) Hz" }) { controller.setPollRate($0) }
 
             if let tip = pollRateTip(displayedPollRate) {
                 Text(tip)
