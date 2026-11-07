@@ -378,7 +378,7 @@ case "render-issue-report":
     if args.contains("sent") { issueModel.loadPreviewSent(replyEmail: "sam@example.com") }
     if args.contains("failed") {
         issueModel.description = "The battery reads 0% after waking from sleep, until I unplug the dongle."
-        issueModel.loadPreviewFailed()
+        issueModel.loadPreviewFailed(args.contains("cap") ? .tooMany : .unavailable)
     }
     writeHostedPNG(IssueReportView(model: issueModel, onClose: {}), to: issuePath)
 

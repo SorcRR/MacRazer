@@ -85,6 +85,15 @@ final class IssueReportModel: ObservableObject {
         sendState = outcome == .sent ? .sent : .failed(outcome)
     }
 
+    /// An email with the report in it, for when Send fails. No name or address: the email
+    /// itself carries both.
+    var mailInstead: URL {
+        let report = finalReport()
+        let details = report.details.map { "\n\n" + IssueReportOutput.detailLines($0).joined(separator: "\n") } ?? ""
+        return ProjectLinks.mail(subject: "MacRazer issue: " + IssueReportOutput.title(report.description),
+                                 body: report.description + details)
+    }
+
     func openGitHubIssue() {
         let report = finalReport()
         let (url, needsPaste) = IssueReportOutput.githubIssue(report)
@@ -131,6 +140,6 @@ final class IssueReportModel: ObservableObject {
         sendState = .sent
     }
 
-    /// For `render-issue-report failed`.
-    func loadPreviewFailed() { sendState = .failed(.unavailable) }
+    /// For `render-issue-report failed [cap]`.
+    func loadPreviewFailed(_ outcome: DeviceReportSender.Outcome = .unavailable) { sendState = .failed(outcome) }
 }

@@ -125,6 +125,32 @@ final class IssueReportTests: XCTestCase {
         XCTAssertFalse(m.canSend)
     }
 
+    func testEveryFailureOffersTheContactAddress() {
+        for outcome in [DeviceReportSender.Outcome.tooMany, .refused, .unavailable] {
+            XCTAssertTrue(DeviceTestView.sendFailure(outcome).contains("Copy and email the report to contact@macrazer.com"))
+            XCTAssertTrue(DeviceTestView.sendFailure(outcome, emailHint: "email us at contact@macrazer.com")
+                .hasSuffix("or email us at contact@macrazer.com."))
+        }
+        XCTAssertTrue(DeviceTestView.sendFailure(.unavailable).contains("internet connection"))
+        XCTAssertTrue(DeviceTestView.sendFailure(.tooMany).contains("too many from here today"))
+    }
+
+    func testTheEmailInsteadCarriesTheReportButNotTheNameOrAddress() throws {
+        let m = model()
+        m.description = "It crashes & burns\nafter sleep"
+        m.name = "Sam"
+        m.replyEmail = "person@example.com"
+        let url = m.mailInstead
+        XCTAssertEqual(url.scheme, "mailto")
+        let components = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false))
+        XCTAssertEqual(components.path, "contact@macrazer.com")
+        let query = Dictionary(uniqueKeysWithValues: (components.queryItems ?? []).map { ($0.name, $0.value ?? "") })
+        XCTAssertEqual(query["subject"], "MacRazer issue: It crashes & burns")
+        XCTAssertTrue(query["body"]?.hasPrefix("It crashes & burns\nafter sleep\n\nMacRazer 0.8.0 on macOS 26.1") == true)
+        XCTAssertFalse(url.absoluteString.contains("person"))
+        XCTAssertFalse(url.absoluteString.contains("Sam"))
+    }
+
     // MARK: Output
 
     func testTitleIsTheFirstLineCutToFit() {

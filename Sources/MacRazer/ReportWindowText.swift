@@ -24,3 +24,15 @@ func reportRunning(_ text: String) -> some View {
         Text(text).font(.system(size: 12)).foregroundStyle(.secondary)
     }
 }
+
+/// A failed send's message, with the contact address in it as a link that starts `mail`.
+func reportSendFailure(_ text: String, mail: URL) -> some View {
+    var attributed = AttributedString(text)
+    if let range = attributed.range(of: ProjectLinks.contactEmail) {
+        attributed[range].link = mail
+        attributed[range].underlineStyle = .single
+    }
+    return Text(attributed).font(.system(size: 12)).foregroundStyle(Color.batteryMid)
+        .tint(Color.batteryMid)
+        .fixedSize(horizontal: false, vertical: true)
+}

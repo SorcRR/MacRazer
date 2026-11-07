@@ -517,7 +517,9 @@ struct DeviceTestView: View {
             if model.issueOpened { reportNote("The full report is on your clipboard. Paste it into the issue before you submit it.") }
             switch model.sendState {
             case .sending: reportRunning("Sending…")
-            case .failed(let outcome): reportWarning(Self.sendFailure(outcome))
+            case .failed(let outcome):
+                reportSendFailure(Self.sendFailure(outcome), mail: ProjectLinks.mail(
+                    subject: "MacRazer device report" + (report.map { ": \($0.device.name)" } ?? "")))
             case .idle, .sent: EmptyView()
             }
         }
@@ -531,11 +533,17 @@ struct DeviceTestView: View {
             : "MacRazer is free. If it saves you a trip to Windows, a tip keeps it going."
     }
 
-    static func sendFailure(_ outcome: DeviceReportSender.Outcome) -> String {
+    /// What the report windows say when Send fails, ending with how to reach us by email
+    /// instead. `emailHint` is that ending, as each window puts it.
+    static func sendFailure(_ outcome: DeviceReportSender.Outcome,
+                            emailHint: String = "press Copy and email the report to \(ProjectLinks.contactEmail)") -> String {
         switch outcome {
-        case .tooMany: return "Too many reports from here today. Try again tomorrow, or open a GitHub issue instead."
-        case .refused: return "The report server didn't accept this report. Open a GitHub issue instead, please, and mention it."
-        case .unavailable, .sent: return "Couldn't reach the report server. Check your connection and try again, or open a GitHub issue."
+        case .tooMany:
+            return "Your report wasn't sent: there have been too many from here today. Try again tomorrow, or \(emailHint)."
+        case .refused:
+            return "Your report wasn't sent: the report server didn't accept it. Open a GitHub issue, or \(emailHint)."
+        case .unavailable, .sent:
+            return "Your report wasn't sent: the report server couldn't be reached. Check your internet connection and try again, or \(emailHint)."
         }
     }
 
