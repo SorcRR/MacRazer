@@ -1274,13 +1274,19 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         }
     }
 
+    /// Always sent, the current rate too: the app's idea of it can be stale (not read yet, or
+    /// another change still queued), and dropping a click on it would lose the user's last
+    /// choice. Only an actual change un-marks the active profile.
     func setPollRate(_ hz: Int) {
         userCommand { [weak self] in
             guard let self else { return }
             let ok = (try? self.ensureDevice().sendWithRetry(RazerCommands.setPollingRate(hz))) != nil
             self.publish {
                 guard ok else { self.lastWriteFailure = Date(); return }
-                self.pollRate = hz; self.clearActiveProfileIfNeeded()
+                // 0 is a rate not read yet, which the popover shows as the default 1000.
+                let changed = (self.pollRate == 0 ? 1000 : self.pollRate) != hz
+                self.pollRate = hz
+                if changed { self.clearActiveProfileIfNeeded() }
             }
         }
     }
@@ -1320,9 +1326,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// Like the other setters: the device write happens on `io`, and `effect` is published
     /// only on success — the picker never claims lighting the mouse didn't take.
     func setEffect(_ newEffect: LightingEffect) {
-        // NSSegmentedControl can fire its action on a click of the already-selected
-        // segment; a no-change "set" must not resend the command or un-mark the active
-        // profile (the config didn't change).
+        // A click on the chosen effect (the picker passes every click on), or any caller
+        // re-sending the current one: a no-change "set" must not resend the command or
+        // un-mark the active profile (the config didn't change).
         // What's published must be what's sent: an effect this mouse lacks is the static colour.
         let newEffect = supported(newEffect)
         guard newEffect != intendedEffect else { return }

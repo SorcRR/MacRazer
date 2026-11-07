@@ -26,6 +26,9 @@ extension Color {
     /// Text and icons drawn on a `razerGreen` fill. Dark in every theme: white on #44D62C is
     /// only about 1.9:1 contrast.
     static let onRazerGreen = Color(nsColor: NSColor(hex: 0x0D2B07))
+    /// A deep green for a chosen chip (`ChipPicker`), with white text on it. The same in light
+    /// and dark.
+    static let razerGreenDeep = Color(nsColor: NSColor(hex: 0x155C10))
     /// The logo's green: brighter than the brand green so it pops on dark, and the darker
     /// text green on light, where a bright green washes out.
     static let razerGreenBright = adaptive(light: NSColor(hex: 0x23891A), dark: NSColor(hex: 0x6BFF40))
@@ -1279,7 +1282,7 @@ struct PopoverView: View {
         // neutral chip and readable secondary text, with the stage hue only as an outline.
         .foregroundStyle(active ? accent.onColor : Color.secondary)
         .frame(maxWidth: .infinity)
-        .frame(height: 24)
+        .frame(height: ChipMetrics.height)
         .background(active ? accent.color : Color.primary.opacity(0.08),
                     in: RoundedRectangle(cornerRadius: 6))
         .overlay {
@@ -1370,24 +1373,14 @@ struct PopoverView: View {
                 .scrollAdjusts($sleepTimeoutValue, in: 60...900, snap: 15) { controller.setSleepTimeout(Int($0)) }
             }
             .disabled(controller.sleepTimeout == nil)
-            HStack(spacing: 5) {
-                ForEach([60, 120, 300, 600, 900], id: \.self) { value in
-                    Button {
-                        sleepTimeoutValue = Double(value)
-                        controller.setSleepTimeout(value)
-                    } label: {
-                        Text(formatSleepTimeout(value, compact: true))
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 9.5, weight: Int(sleepTimeoutValue) == value ? .semibold : .regular).monospacedDigit())
-                    .foregroundStyle(Int(sleepTimeoutValue) == value ? Color.onRazerGreen : Color.secondary)
-                    .frame(maxWidth: .infinity).frame(height: 23)
-                    .background(Int(sleepTimeoutValue) == value ? Color.razerGreen : Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
-                    .hoverHighlight(RoundedRectangle(cornerRadius: 6))
-                    .accessibilityLabel("Sleep after \(formatSleepTimeout(value))")
-                }
+            ChipPicker(label: "Sleep after", values: [60, 120, 300, 600, 900],
+                       // The slider's value, so the row agrees with itself; nothing before the
+                       // mouse has reported one.
+                       selection: controller.sleepTimeout == nil ? nil : Int(sleepTimeoutValue),
+                       title: { formatSleepTimeout($0, compact: true) },
+                       spokenTitle: { "Sleep after \(formatSleepTimeout($0))" }) { value in
+                sleepTimeoutValue = Double(value)
+                controller.setSleepTimeout(value)
             }
             .disabled(controller.sleepTimeout == nil)
             if let error = controller.sleepTimeoutError {
@@ -1430,7 +1423,7 @@ struct PopoverView: View {
         .font(.system(size: 10.5, weight: active ? .semibold : .regular).monospacedDigit())
         .foregroundStyle(active ? Color.onRazerGreen : Color.razerGreenText)
         .frame(maxWidth: .infinity)
-        .frame(height: 24)
+        .frame(height: ChipMetrics.height)
         .background(active ? Color.razerGreen : Color.razerGreen.opacity(0.12),
                     in: RoundedRectangle(cornerRadius: 6))
         .overlay(RoundedRectangle(cornerRadius: 6)
@@ -1444,16 +1437,8 @@ struct PopoverView: View {
     /// The Polling rate row's expanded content; the row itself shows the current rate.
     private var pollContent: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Picker("", selection: Binding(
-                get: { displayedPollRate },
-                set: { controller.setPollRate($0) }
-            )) {
-                ForEach(pollRates, id: \.self) { Text(verbatim: "\($0)").tag($0) }
-            }
-            .pickerStyle(.segmented)
-            .controlSize(.small)
-            .labelsHidden()
-            .frame(maxWidth: .infinity)
+            ChipPicker(label: "Polling rate", values: pollRates, selection: displayedPollRate,
+                       title: { "\($0)" }, spokenTitle: { "\($0) Hz" }) { controller.setPollRate($0) }
 
             if let tip = pollRateTip(displayedPollRate) {
                 Text(tip)
@@ -1507,14 +1492,8 @@ struct PopoverView: View {
             // device write, so a failed change snaps the picker back by itself — no local
             // state, no suppression flags.
             if controller.supportsLightingEffects {
-                Picker("", selection: Binding(get: { controller.effect },
-                                              set: { controller.setEffect($0) })) {
-                    ForEach(controller.availableEffects) { Text($0.rawValue).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                .controlSize(.small)
-                .labelsHidden()
-                .frame(maxWidth: .infinity)
+                ChipPicker(label: "Lighting effect", values: controller.availableEffects,
+                           selection: controller.effect, title: { $0.rawValue }) { controller.setEffect($0) }
                 if controller.effect == .wave {
                     WaveSpeedSlider(value: $waveSpeedValue) { controller.setWaveSpeed(WaveSpeed.byte(fromFraction: $0)) }
                         .transition(.opacity)
