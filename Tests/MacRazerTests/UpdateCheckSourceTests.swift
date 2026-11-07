@@ -79,4 +79,28 @@ final class UpdateCheckSourceTests: XCTestCase {
                        "https://reports.example.org/v1/releases?app=dev")
         XCTAssertNil(WorkerEndpoint.releases(appVersion: "0.6.0", base: nil))
     }
+
+    /// The Worker reads a "+" as a space, as a form decoder does.
+    func testAPlusArrivesAsAPlus() {
+        let base = URL(string: "https://reports.example.org")
+        let mouse = UsagePing.Mouse(pid: 0x99, name: "Pro+ Edition", link: "wired", supported: false)
+        let url = WorkerEndpoint.releases(appVersion: "0.9.0+abc", mice: [mouse], count: true, base: base)!
+        XCTAssertEqual(url.absoluteString,
+                       "https://reports.example.org/v1/releases?app=0.9.0%2Babc&mouse=0099.wired.0.Pro%2B%20Edition&count=1")
+        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)!.queryItems!
+        XCTAssertEqual(items.map(\.value), ["0.9.0+abc", "0099.wired.0.Pro+ Edition", "1"])
+    }
+
+    func testTheCountsCountEveryRazerMousePluggedInOnce() {
+        let opened = UsageStatsPolicy.mouse(pid: 0xDB, productName: nil, isBluetooth: false, supported: true)
+        let plugged = [HIDDevice.USBMouse(pid: 0xDB, name: "Razer Cobra HyperSpeed"),
+                       HIDDevice.USBMouse(pid: 0x98, name: "Razer DeathAdder Essential"),
+                       HIDDevice.USBMouse(pid: 0x7777, name: "Razer Something New")]
+        let mice = UsageStatsPolicy.connectedMice(opened: opened, plugged: plugged)
+        XCTAssertEqual(mice.map(\.pid), [0xDB, 0x98, 0x7777], "the opened one first, each product once")
+        XCTAssertEqual(mice.map(\.link), ["dongle", "wired", "unknown"])
+        XCTAssertEqual(UsageStatsPolicy.connectedMice(opened: nil, plugged: Array(repeating: plugged[1], count: 1)).count, 1)
+        let many = (0..<6).map { HIDDevice.USBMouse(pid: 0x100 + $0, name: "Razer Mouse \($0)") }
+        XCTAssertEqual(UsageStatsPolicy.connectedMice(opened: opened, plugged: many).count, WorkerEndpoint.maxMice)
+    }
 }

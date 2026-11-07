@@ -93,6 +93,18 @@ enum UsageStatsPolicy {
 
     /// The mouse as a ping names it. The registry's name when MacRazer knows the model, so
     /// one model isn't counted under several USB product strings; the mouse's own otherwise.
+    /// The mice to count: the one MacRazer opened first, then every other Razer mouse plugged
+    /// in by cable or dongle (a second mouse, or one whose dongle is in but which is asleep),
+    /// up to the Worker's limit. One product ID once.
+    static func connectedMice(opened: UsagePing.Mouse?, plugged: [HIDDevice.USBMouse]) -> [UsagePing.Mouse] {
+        var mice = opened.map { [$0] } ?? []
+        for usb in plugged where !mice.contains(where: { $0.pid == usb.pid && $0.link != "bluetooth" }) {
+            mice.append(mouse(pid: usb.pid, productName: usb.name, isBluetooth: false,
+                              supported: RazerDevices.fullySupported(pid: usb.pid)))
+        }
+        return Array(mice.prefix(WorkerEndpoint.maxMice))
+    }
+
     static func mouse(pid: Int, productName: String?, isBluetooth: Bool, supported: Bool) -> UsagePing.Mouse {
         let link: String
         if isBluetooth {

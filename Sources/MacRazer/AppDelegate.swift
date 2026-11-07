@@ -65,6 +65,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     /// Razer mice on USB, listed again only when a Razer device comes or goes, so the support
     /// tick never enumerates devices itself.
     private var razerMiceOnUSB: [HIDDevice.USBMouse] = []
+    /// Every Razer mouse plugged in by cable or dongle, for the counts: not only the one the
+    /// controller opened. Listed at launch and again on each plug, like `razerMiceOnUSB`, but
+    /// whatever the support prompt's setting.
+    private let pluggedRazerMice = CurrentValueSubject<[HIDDevice.USBMouse], Never>([])
     private var relistRazerMiceWork: DispatchWorkItem?
     private var rescanAccessoriesWork: DispatchWorkItem?
     /// Closing it re-asks the auto-install gate, for the same reason as `updatedWindow`.
@@ -638,15 +642,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
             .store(in: &cancellables)
         // Debounced: the controller publishes a new mouse's fields one at a time, and the
         // ping should see them all.
+        pluggedRazerMice.send(HIDDevice.razerMice())
         Publishers.CombineLatest4(controller.$connected, controller.$deviceID,
                                   controller.$deviceName, controller.$deviceIsBluetooth)
-            .combineLatest(controller.$deviceSupported)
+            .combineLatest(controller.$deviceSupported, pluggedRazerMice)
             .debounce(for: .seconds(2), scheduler: RunLoop.main)
-            .sink { [weak self] device, supported in
+            .sink { [weak self] device, supported, plugged in
                 let (connected, pid, name, bluetooth) = device
-                let mice = connected ? pid.map {
-                    [UsageStatsPolicy.mouse(pid: $0, productName: name, isBluetooth: bluetooth, supported: supported)]
-                } ?? [] : []
+                let opened = connected ? pid.map {
+                    UsageStatsPolicy.mouse(pid: $0, productName: name, isBluetooth: bluetooth, supported: supported)
+                } : nil
+                let mice = UsageStatsPolicy.connectedMice(opened: opened, plugged: plugged)
                 self?.usageStats.setConnectedMice(mice)
                 // A mouse just found goes out now, not at the next update check. No mouse waits
                 // for the count below, so a launch doesn't send once without the mouse and
@@ -757,6 +763,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
             self.razerMiceOnUSB = self.listRazerMiceIfNeeded()
+            self.pluggedRazerMice.send(HIDDevice.razerMice())
             // The test's intro names every device that could be the mouse; a plug changes that.
             if self.deviceTestWindow.isVisible { self.deviceTestWindow.model.devicesMayHaveChanged() }
         }

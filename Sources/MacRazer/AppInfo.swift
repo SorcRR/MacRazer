@@ -131,16 +131,32 @@ enum WorkerEndpoint {
     /// models and the usage stats answer and its changes. The Worker counts those per day with
     /// no ID for the Mac, so they need no consent the way the usage stats do; the homepage's
     /// privacy section says so.
+    /// `count` asks the Worker to record the count before it answers, and to say so with
+    /// `x-counted: 1` (`AnonymousCountReporter.counted`); a plain update check leaves it out.
     static func releases(appVersion: String?, mice: [UsagePing.Mouse] = [], stats: UsageStatsConsent? = nil,
-                         changes: [UsageStatsConsent.Change] = [], base: URL? = base) -> URL? {
+                         changes: [UsageStatsConsent.Change] = [], count: Bool = false, base: URL? = base) -> URL? {
         guard let base else { return nil }
         var components = URLComponents(url: base.appendingPathComponent("v1/releases"), resolvingAgainstBaseURL: false)
-        components?.queryItems = [URLQueryItem(name: "app", value: appVersion ?? "dev")]
+        let items = [URLQueryItem(name: "app", value: appVersion ?? "dev")]
             + mice.prefix(maxMice).map { URLQueryItem(name: "mouse", value: mouseValue($0)) }
             + (stats.map { [URLQueryItem(name: "stats", value: $0.countValue)] } ?? [])
             + changes.map { URLQueryItem(name: "change", value: $0.rawValue) }
+            + (count ? [URLQueryItem(name: "count", value: "1")] : [])
+        // Encoded here rather than by URLComponents, which leaves "+" alone: the Worker reads a
+        // "+" as a space, so "Pro+" and a version like "0.9.0+abc" arrived changed.
+        components?.percentEncodedQueryItems = items.map {
+            URLQueryItem(name: $0.name, value: $0.value?.addingPercentEncoding(withAllowedCharacters: queryValueAllowed))
+        }
         return components?.url
     }
+
+    /// What a query value may hold unencoded: the usual, less the characters a form decoder
+    /// reads specially.
+    static let queryValueAllowed: CharacterSet = {
+        var allowed = CharacterSet.urlQueryAllowed
+        allowed.remove(charactersIn: "+&=;#")
+        return allowed
+    }()
 
     /// `<pid>.<link>.<0|1>.<name>`: four hex digits, the link, whether it's supported, and the
     /// name last, since only the name can hold a dot.

@@ -21,15 +21,35 @@ final class AnonymousCountReporterTests: XCTestCase {
         return defaults
     }
 
-    /// A reporter whose requests are answered with `status`, or fail when it's nil. `requests`
-    /// collects every URL it asked for.
+    /// A reporter whose requests are answered with `status`, or fail when it's nil. The Worker
+    /// says it recorded the count (`x-counted: 1`) when `counted` says so, by default on a 200.
+    /// `requests` collects every URL it asked for.
     private func reporter(at date: @escaping () -> Date, status: @escaping () -> Int?,
+                          counted: @escaping (Int) -> Bool = { $0 == 200 },
                           requests: @escaping (URL) -> Void) -> AnonymousCountReporter {
         AnonymousCountReporter(defaults: freshDefaults(), base: base, appVersion: "0.7.1", now: date) { url in
             requests(url)
             guard let code = status() else { throw URLError(.notConnectedToInternet) }
-            return (Data("[]".utf8), HTTPURLResponse(url: url, statusCode: code, httpVersion: nil, headerFields: nil)!)
+            let headers = counted(code) ? ["x-counted": "1"] : nil
+            return (Data("[]".utf8), HTTPURLResponse(url: url, statusCode: code, httpVersion: nil, headerFields: headers)!)
         }
+    }
+
+    func testOnlyACountTheWorkerSaysItRecordedIsDone() async {
+        var asked: [URL] = []
+        var answer = 200
+        var recorded = false
+        let sut = reporter(at: { lateEvening }, status: { answer }, counted: { _ in recorded }, requests: { asked.append($0) })
+        sut.connectedMice = { [cobra] }
+        await sut.reportIfNeeded()
+        XCTAssertEqual(asked.count, 1)
+        await sut.reportIfNeeded()
+        XCTAssertEqual(asked.count, 2, "a 200 without x-counted (a burst, the cap, a database error) is sent again")
+        answer = 502
+        recorded = true
+        await sut.reportIfNeeded()
+        await sut.reportIfNeeded()
+        XCTAssertEqual(asked.count, 3, "a 502 with x-counted: the list failed, the count is in")
     }
 
     func testNoMouseSendsNothing() async {
@@ -47,7 +67,7 @@ final class AnonymousCountReporterTests: XCTestCase {
         await sut.reportIfNeeded()
         XCTAssertEqual(asked.count, 1)
         let items = try XCTUnwrap(URLComponents(url: asked[0], resolvingAgainstBaseURL: false)?.queryItems)
-        XCTAssertEqual(items.map(\.name), ["app", "mouse"])
+        XCTAssertEqual(items.map(\.name), ["app", "mouse", "count"])
         XCTAssertEqual(items[1].value, "00db.dongle.1.Razer Cobra HyperSpeed")
     }
 
@@ -115,7 +135,7 @@ final class AnonymousCountReporterTests: XCTestCase {
         await sut.reportIfNeeded()
         XCTAssertEqual(asked.count, 2)
         let items = try XCTUnwrap(URLComponents(url: asked[0], resolvingAgainstBaseURL: false)?.queryItems)
-        XCTAssertEqual(items.map(\.name), ["app", "stats"])
+        XCTAssertEqual(items.map(\.name), ["app", "stats", "count"])
         XCTAssertEqual(items[1].value, "no")
     }
 
@@ -141,8 +161,8 @@ final class AnonymousCountReporterTests: XCTestCase {
         XCTAssertEqual(asked.count, 3)
         XCTAssertTrue(pending.isEmpty)
         let items = try XCTUnwrap(URLComponents(url: asked[2], resolvingAgainstBaseURL: false)?.queryItems)
-        XCTAssertEqual(items.map(\.name), ["app", "stats", "change"])
-        XCTAssertEqual(items.map(\.value), ["0.7.1", "no", "turned_off"])
+        XCTAssertEqual(items.map(\.name), ["app", "stats", "change", "count"])
+        XCTAssertEqual(items.map(\.value), ["0.7.1", "no", "turned_off", "1"])
     }
 
     func testTheDayIsUTC() {

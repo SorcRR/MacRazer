@@ -78,10 +78,10 @@ final class AnonymousCountReporter {
         let newAnswer = answer.map { $0.countValue != sentAnswer } ?? false
         guard newMouse || newAnswer || !changes.isEmpty,
               let url = WorkerEndpoint.releases(appVersion: appVersion, mice: mice, stats: answer,
-                                                changes: changes, base: base) else { return }
+                                                changes: changes, count: true, base: base) else { return }
         do {
             let (_, response) = try await fetch(url)
-            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return }
+            guard Self.counted(response) else { return }
             defaults.set(day, forKey: Self.dayKey)
             defaults.set(Array(sent.union(mice.map(Self.key))).sorted(), forKey: Self.sentKey)
             if let answer { defaults.set(answer.countValue, forKey: Self.answerKey) }
@@ -89,6 +89,15 @@ final class AnonymousCountReporter {
         } catch {
             // Background work: nothing to show anyone. The next tick tries again.
         }
+    }
+
+    /// Whether the Worker recorded the count: it says so with `x-counted: 1`, even when the
+    /// update list itself failed (a 502 while GitHub is down). Any answer without it, a 200
+    /// included, was a burst, the day's cap or a database error there, so it's sent again on
+    /// the next tick. A Worker from before the header never sends it; the reports page only
+    /// counts each thing once a day, so sending again is harmless.
+    static func counted(_ response: URLResponse) -> Bool {
+        (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "x-counted") == "1"
     }
 
     /// What the Worker counts a mouse by: its product ID and link.
