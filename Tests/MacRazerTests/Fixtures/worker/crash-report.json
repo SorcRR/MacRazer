@@ -1,0 +1,26 @@
+{
+  "appVersion" : "0.8.0",
+  "build" : "52",
+  "codes" : "0x0000000000000001, 0x00000001a2b3c4d5",
+  "comment" : "Clicked Refresh Now.\nThe mouse was asleep.",
+  "cpu" : "ARM-64",
+  "exception" : "EXC_BREAKPOINT (SIGTRAP)",
+  "exceptionFrames" : [
+    "CoreFoundation  __exceptionPreprocess + 176"
+  ],
+  "frames" : [
+    "libswiftCore.dylib  _assertionFailure(_:_:file:line:flags:) + 172",
+    "MacRazer  MouseController.refresh() + 412",
+    "AppKit  -[NSApplication run] + 476"
+  ],
+  "framesDropped" : 3,
+  "incident" : "5E0C7B1A-8F43-4C2B-9D7E-1A2B3C4D5E6F",
+  "message" : "Fatal error: Unexpectedly found nil while unwrapping an Optional value",
+  "model" : "Mac14,6",
+  "os" : "macOS 26.1 (25B78)",
+  "queue" : "com.apple.main-thread",
+  "replyEmail" : "person@example.com",
+  "termination" : "SIGNAL: Trace\/BPT trap: 5",
+  "time" : "2026-11-07 18:23:32.0000 +0200",
+  "translated" : false
+}

@@ -5,14 +5,35 @@ import Foundation
 
 /// The one switch for the whole feature.
 ///
-/// `deliver` sends a finished report to the Worker, and is nil until the Worker exists. While
-/// it is nil the app doesn't look for crashes, never shows the window and hides the setting.
-/// Everything else is built and tested, but a window that asks someone to send a report and
-/// then has nowhere to send it is worse than no window.
+/// `deliver` sends a finished report to the Worker's `/v1/crash-report`, and is nil in a build
+/// without the Worker. While it is nil the app doesn't look for crashes, never shows the
+/// window and hides the setting: a window that asks someone to send a report and then has
+/// nowhere to send it is worse than no window.
 enum CrashReporting {
-    static let deliver: (@Sendable (CrashReport) async throws -> Void)? = nil
+    typealias Deliver = @Sendable (CrashReport) async -> DeviceReportSender.Outcome
+
+    static let deliver = deliver(to: WorkerEndpoint.crashReports)
+
+    static func deliver(to endpoint: URL?) -> Deliver? {
+        guard let endpoint else { return nil }
+        return { report in await CrashReportSender.send(report, to: endpoint) }
+    }
 
     static var isAvailable: Bool { deliver != nil }
+}
+
+/// Posts a crash report to the Worker. The statuses mean what they do for a device report.
+enum CrashReportSender {
+    static func request(_ report: CrashReport, to endpoint: URL) -> URLRequest {
+        let body = CrashReportOutput.json(CrashReportOutput.fitted(report), pretty: false)
+        return DeviceReportSender.request(body: Data(body.utf8), to: endpoint)
+    }
+
+    static func send(_ report: CrashReport, to endpoint: URL,
+                     transport: @escaping DeviceReportSender.Transport = { try await WorkerSession.shared.data(for: $0) })
+        async -> DeviceReportSender.Outcome {
+        await DeviceReportSender.post(request(report, to: endpoint), transport: transport)
+    }
 }
 
 /// What MacRazer sends about a crash: a summary of the `.ips` file macOS wrote, never the file.

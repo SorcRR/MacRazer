@@ -273,7 +273,6 @@ final class CrashLogScannerTests: XCTestCase {
 
 @MainActor
 final class CrashReportModelTests: XCTestCase {
-    private struct Offline: Error {}
 
     private func model() -> CrashReportModel {
         CrashReportModel(report: CrashReportParser.parse(CrashFixture.ips())!)
@@ -281,20 +280,21 @@ final class CrashReportModelTests: XCTestCase {
 
     func testSendsWhatThePersonAdded() async {
         let m = model()
-        var sent: CrashReport?
-        m.deliver = { sent = $0 }
+        final class Box: @unchecked Sendable { var report: CrashReport? }
+        let box = Box()
+        m.deliver = { box.report = $0; return .sent }
         m.comment = "  clicked Update  "
         m.replyEmail = "jane@example.com"
         await m.send()
         XCTAssertEqual(m.state, .sent)
-        XCTAssertEqual(sent?.comment, "clicked Update")
-        XCTAssertEqual(sent?.replyEmail, "jane@example.com")
+        XCTAssertEqual(box.report?.comment, "clicked Update")
+        XCTAssertEqual(box.report?.replyEmail, "jane@example.com")
         XCTAssertFalse(m.canSend, "sent once")
     }
 
     func testABadEmailBlocksSend() {
         let m = model()
-        m.deliver = { _ in }
+        m.deliver = { _ in .sent }
         m.replyEmail = "not an email"
         XCTAssertFalse(m.canSend)
         XCTAssertNil(m.finalReport().replyEmail)
@@ -306,11 +306,27 @@ final class CrashReportModelTests: XCTestCase {
 
     func testAFailedSendCanBeTriedAgain() async {
         let m = model()
-        m.deliver = { _ in throw Offline() }
+        m.deliver = { _ in .unavailable }
         await m.send()
         guard case .failed(let message) = m.state else { return XCTFail("\(m.state)") }
         XCTAssertTrue(m.canSend)
+        XCTAssertTrue(message.contains("internet connection"))
         XCTAssertTrue(message.hasSuffix("email it to us at contact@macrazer.com."))
+    }
+
+    func testRefusedDoesNotPointToAGitHubButtonThisWindowLacks() {
+        let message = CrashReportModel.sendFailure(.refused)
+        XCTAssertFalse(message.contains("GitHub"))
+        XCTAssertTrue(message.hasSuffix("You can still email it to us at contact@macrazer.com."))
+        XCTAssertTrue(DeviceTestView.sendFailure(.refused).contains("Open a GitHub issue"))
+    }
+
+    func testTheDailyCapSaysSo() async {
+        let m = model()
+        m.deliver = { _ in .tooMany }
+        await m.send()
+        XCTAssertEqual(m.state, .failed(CrashReportModel.sendFailure(.tooMany)))
+        XCTAssertTrue(CrashReportModel.sendFailure(.tooMany).contains("too many from here today"))
     }
 
     func testTheEmailInsteadCarriesTheReportAndTheComment() throws {
@@ -322,14 +338,69 @@ final class CrashReportModelTests: XCTestCase {
         XCTAssertEqual(components.path, "contact@macrazer.com")
         let body = try XCTUnwrap(components.queryItems?.first { $0.name == "body" }?.value)
         XCTAssertTrue(body.hasPrefix("Opened the popover\n\n{"))
-        XCTAssertLessThanOrEqual(body.count, CrashReportModel.maxMailBody + 40)
+        XCTAssertLessThanOrEqual(m.mailInstead.absoluteString.count, ProjectLinks.maxMailLink)
     }
 
     func testWhereItCrashedIsTheFirstFrameInOurOwnCode() {
         XCTAssertEqual(model().whereItCrashed, "closure #1 in UpdateChecker.relaunch(at:) + 52")
     }
 
-    func testTheFeatureIsOffUntilTheWorkerExists() {
-        XCTAssertFalse(CrashReporting.isAvailable)
+    func testTheFeatureIsOnExactlyWhenTheWorkerIs() {
+        XCTAssertNil(CrashReporting.deliver(to: nil), "no Worker: no window, no scan, no setting")
+        XCTAssertNotNil(CrashReporting.deliver(to: URL(string: "https://example.com/v1/crash-report")!))
+        XCTAssertEqual(CrashReporting.isAvailable, WorkerEndpoint.crashReports != nil)
+        XCTAssertEqual(WorkerEndpoint.resolve(environment: nil, bundled: "https://reports.example.com", isPackaged: true)?
+            .appendingPathComponent("v1/crash-report").absoluteString, "https://reports.example.com/v1/crash-report")
+    }
+}
+
+final class CrashReportWorkerFixtureTests: XCTestCase {
+    /// Every field set, so the Worker's schema sees them all.
+    static func fullReport() -> CrashReport {
+        CrashReport(
+            appVersion: "0.8.0", build: "52", os: "macOS 26.1 (25B78)", model: "Mac14,6",
+            cpu: "ARM-64", translated: false, time: "2026-11-07 18:23:32.0000 +0200",
+            exception: "EXC_BREAKPOINT (SIGTRAP)", codes: "0x0000000000000001, 0x00000001a2b3c4d5",
+            termination: "SIGNAL: Trace/BPT trap: 5",
+            message: "Fatal error: Unexpectedly found nil while unwrapping an Optional value",
+            queue: "com.apple.main-thread",
+            frames: [
+                "libswiftCore.dylib  _assertionFailure(_:_:file:line:flags:) + 172",
+                "MacRazer  MouseController.refresh() + 412",
+                "AppKit  -[NSApplication run] + 476",
+            ],
+            exceptionFrames: ["CoreFoundation  __exceptionPreprocess + 176"],
+            framesDropped: 3,
+            incident: "5E0C7B1A-8F43-4C2B-9D7E-1A2B3C4D5E6F",
+            comment: "Clicked Refresh Now.\nThe mouse was asleep.",
+            replyEmail: "person@example.com")
+    }
+
+    private static var fixture: URL { WorkerFixtures.url("crash-report.json") }
+
+    /// The Worker's tests check it accepts this file. Run with UPDATE_WORKER_FIXTURE=1 to
+    /// rewrite it after changing the report.
+    func testTheWorkerGetsEveryField() throws {
+        let json = CrashReportOutput.json(Self.fullReport()) + "\n"
+        if ProcessInfo.processInfo.environment["UPDATE_WORKER_FIXTURE"] == "1" {
+            try json.write(to: Self.fixture, atomically: true, encoding: .utf8)
+        }
+        func parsed(_ data: Data) throws -> NSDictionary {
+            try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? NSDictionary)
+        }
+        XCTAssertEqual(try parsed(Data(contentsOf: Self.fixture)), try parsed(Data(json.utf8)), """
+            The crash report's format changed. Rewrite the fixture with UPDATE_WORKER_FIXTURE=1 swift test \
+            --filter CrashReportWorkerFixtureTests, update src/crash.ts in SorcRR/macrazer-worker to match, and run its tests.
+            """)
+    }
+
+    func testTheRequestIsCompactJSONToTheEndpoint() throws {
+        let endpoint = URL(string: "https://example.com/v1/crash-report")!
+        let request = CrashReportSender.request(Self.fullReport(), to: endpoint)
+        XCTAssertEqual(request.url, endpoint)
+        XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/json")
+        let decoded = try JSONDecoder().decode(CrashReport.self, from: try XCTUnwrap(request.httpBody))
+        XCTAssertEqual(decoded, Self.fullReport())
     }
 }

@@ -20,8 +20,9 @@ final class CrashReportModel: ObservableObject {
     @Published var replyEmail = ""
     @Published private(set) var state = State.editing
 
-    /// Delivers the finished report. Nil until the Worker exists; see `CrashReporting`.
-    var deliver: ((CrashReport) async throws -> Void)?
+    /// Delivers the finished report and says how it went. Nil in a build without the Worker;
+    /// see `CrashReporting`.
+    var deliver: CrashReporting.Deliver?
 
     init(report: CrashReport, count: Int = 1) {
         self.report = report
@@ -49,26 +50,21 @@ final class CrashReportModel: ObservableObject {
     func send() async {
         guard canSend, let deliver else { return }
         state = .sending
-        do {
-            try await deliver(finalReport())
-            state = .sent
-        } catch {
-            state = .failed(Self.sendFailure)
-        }
+        let outcome = await deliver(finalReport())
+        state = outcome == .sent ? .sent : .failed(Self.sendFailure(outcome))
     }
 
-    static let sendFailure = "Your report wasn't sent: the report server couldn't be reached. "
-        + "Check your internet connection and try again, or email it to us at \(ProjectLinks.contactEmail)."
-    /// How much of the report an email link carries. Some mail apps drop a link much longer.
-    static let maxMailBody = 6000
-
+    /// What the window says when Send fails, as the other report windows say it. This one
+    /// has no GitHub button, so it doesn't point to one.
+    static func sendFailure(_ outcome: DeviceReportSender.Outcome) -> String {
+        DeviceTestView.sendFailure(outcome, emailHint: "email it to us at \(ProjectLinks.contactEmail)",
+                                   offersGitHub: false)
+    }
     /// An email with the report in it, for when Send fails: what they wrote, then the report
-    /// shown in the window, cut short if it's too long for a link.
+    /// shown in the window. `ProjectLinks.mail` cuts it short if the link would be too long.
     var mailInstead: URL {
         let report = finalReport()
-        var json = CrashReportOutput.json(report)
-        if json.count > Self.maxMailBody { json = String(json.prefix(Self.maxMailBody)) + "\n(cut short)" }
-        let body = (report.comment.map { $0 + "\n\n" } ?? "") + json
+        let body = (report.comment.map { $0 + "\n\n" } ?? "") + CrashReportOutput.json(report)
         return ProjectLinks.mail(subject: "MacRazer crash report: \(report.appVersion)", body: body)
     }
 
@@ -103,12 +99,14 @@ final class CrashReportModel: ObservableObject {
             exceptionFrames: nil, framesDropped: nil,
             incident: "5E0C7B1A-8F43-4C2B-9D7E-1A2B3C4D5E6F", comment: nil, replyEmail: nil),
             count: 2)
-        model.deliver = { _ in }
+        model.deliver = { _ in .sent }
         return model
     }
 
     /// The thank-you screen, for `render-crash-report sent`.
     func loadPreviewSent() { state = .sent }
     /// A send that didn't go, for `render-crash-report failed`.
-    func loadPreviewFailed() { state = .failed(Self.sendFailure) }
+    func loadPreviewFailed(_ outcome: DeviceReportSender.Outcome = .unavailable) {
+        state = .failed(Self.sendFailure(outcome))
+    }
 }
