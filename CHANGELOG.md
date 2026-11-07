@@ -10,6 +10,13 @@ expect rough edges until 1.0.
 - **A "+" in a mouse's name or the version reached the server as a space.**
 
 ### Changed
+- **No more test prompts that can't be answered.** The Basilisk V4 HyperSpeed, Basilisk V4 Pro,
+  Viper V4 Pro and Viper 8KHz refuse the polling command the test sends, so a test could only
+  record the same refusal. Owners were still asked to run it, on each link. Now polling doesn't
+  count as something a test could confirm there, so those mice stop asking. Their polling stays
+  unverified until MacRazer learns the newer command.
+- **HyperFlux V2 fully supported.** A second test report confirmed the lighting, the last
+  thing it was missing, and showed charging on the mat working.
 - **Closing the usage stats question isn't a no any more.** Before, closing the window (or the
   Updated window's card) without answering counted as no and it never asked again. Now
   nothing is sent, and it asks once more a week later, at the next quiet moment (or in the

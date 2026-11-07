@@ -51,14 +51,20 @@ final class SupportListDecodeTests: XCTestCase {
 }
 
 final class SupportListOverlayTests: XCTestCase {
-    /// A model whose every row still needs something, so confirming them all ends the ask.
-    /// Found in the table rather than named, so a report verifying it doesn't break the test.
+    /// A model whose two rows each still need something a report could confirm, so confirming
+    /// them all ends the ask. Polling a mouse refuses doesn't count: nothing asks for it. Found
+    /// in the table rather than named, so a report verifying it doesn't break the test. A
+    /// Bluetooth row comes first: from there no unlisted cable or dongle is suggested, so
+    /// confirming both rows leaves it nothing to ask.
     private func modelStillAsking() throws -> [RazerDeviceInfo] {
+        func confirmable(_ row: RazerDeviceInfo) -> Bool {
+            row.unverified.contains { $0 != .polling || row.acceptsClassicPolling }
+        }
         let models = Dictionary(grouping: RazerDevices.known) { RazerDevices.modelName($0.name) }.values
-        return try XCTUnwrap(models.first { rows in
-            rows.allSatisfy { !$0.unverified.isEmpty } && rows.count == 2
-                && Set(rows.map(\.connection)) == [.wired, .wirelessDongle]
-        }, "no wired + dongle model left with something unverified; pick another case")
+        let rows = try XCTUnwrap(models.first { rows in
+            rows.count == 2 && rows.allSatisfy(confirmable) && rows.contains { $0.connection == .wired }
+        }, "no two-link model left with something to confirm on both; pick another case")
+        return rows.sorted { a, _ in a.connection == .bluetooth }
     }
 
     /// A row with at least two features to confirm.

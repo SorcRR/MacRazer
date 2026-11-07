@@ -76,7 +76,7 @@ final class SupportPromptPolicyTests: XCTestCase {
 final class SupportPromptWordingTests: XCTestCase {
     func testCardText() {
         XCTAssertEqual(SupportPromptView.cardText(pid: 0xFFFE).title, "Help us support this mouse")
-        let partly = SupportPromptView.cardText(pid: 0x00E3)
+        let partly = SupportPromptView.cardText(pid: 0x0039)
         XCTAssertEqual(partly.title, "Help finish support for this mouse")
         XCTAssertTrue(partly.detail.hasPrefix("Polling rate still needs testing"), partly.detail)
         let links = SupportPromptView.cardText(pid: 0x00C3)
@@ -92,7 +92,7 @@ final class SupportPromptWordingTests: XCTestCase {
         XCTAssertTrue(card.otherLinksOnly, "no test to run on Bluetooth")
         XCTAssertEqual(card.title, "Test its other connection")
         XCTAssertTrue(card.detail.contains("its cable"), card.detail)
-        XCTAssertFalse(SupportPromptView.card(pid: 0x00E3).otherLinksOnly, "a USB row still runs its own test")
+        XCTAssertFalse(SupportPromptView.card(pid: 0x00CC).otherLinksOnly, "a USB row still runs its own test")
     }
 
     /// Over Bluetooth there's no cable or dongle in to unplug first.

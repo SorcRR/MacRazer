@@ -266,11 +266,13 @@ enum RazerDevices {
         // a different firmware (v1.0.16, likely the mat itself) and times out on every lighting
         // read, so 0xFF reaches another device than 0x1f does. The mouse behind it
         // has a tilt wheel and answers Smart Reel, but the report doesn't name it. LOGO and
-        // SCROLL answer brightness and the static red showed, but the tester skipped the
-        // lighting check, so lighting stays unverified. Brightness stays on LOGO_LED alone, as
-        // on the dock. The firmware echoed a 45000 DPI write; 30000 matches the dock's row.
+        // SCROLL answer brightness and the static red showed. A second report, on 0.8.0 with
+        // mat firmware v2.50, passed everything again and confirmed the lights went dark and
+        // then red, so lighting is verified too. It also read charging as on, which is why
+        // `canCharge` stays true here. Brightness stays on LOGO_LED alone, as on the dock.
+        // The firmware echoed a 45000 DPI write; 30000 matches the dock's row.
         // The mat has no cable mode for the mouse, so no cable link is asked about.
-        .init(pid: 0x00CF, name: "Razer HyperFlux V2", unverified: [.lighting], hasBattery: true, hasLighting: true, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, hasCableLink: false),
+        .init(pid: 0x00CF, name: "Razer HyperFlux V2", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, hasCableLink: false),
         // Basilisk V4 HyperSpeed over the dongle (in-app report, no credit given): battery and
         // DPI answered with 0x1f. 0xFF and 0x80 time out. Every LED group refuses brightness,
         // so no lighting. The classic polling command answers "not supported" (0x05); it likely
@@ -534,15 +536,25 @@ enum RazerDevices {
             return LinkAsk(support: .unknown, here: [], elsewhere: [], links: [], unknownModel: true)
         }
         let missing = unverified(info)
-        let here = askable(missing, on: info.connection)
+        let testable = testable(missing, of: info)
+        let here = askable(testable, on: info.connection)
         return LinkAsk(support: support(info, missing: missing), here: here,
-                       elsewhere: missing.filter { !here.contains($0) },
+                       elsewhere: testable.filter { !here.contains($0) },
                        links: linksToTest(besides: pid), unknownModel: false)
     }
 
     /// Whether a report would still teach us something about this mouse: on this link, or on
     /// another way the same model connects. What the support prompt asks about.
     static func needsReport(pid: Int) -> Bool { ask(pid: pid).needsReport }
+
+    /// What any report could confirm out of `row`'s `missing`. Polling is left out on a row
+    /// whose mouse refuses the classic command: the test only sends that one, so a run would
+    /// record the same refusal again (as the device test's own `missingFeatures` already
+    /// knows). Without this the prompt kept asking Basilisk V4 and Viper 8KHz owners for a
+    /// test that couldn't answer it.
+    private static func testable(_ missing: [RazerFeature], of row: RazerDeviceInfo) -> [RazerFeature] {
+        row.acceptsClassicPolling ? missing : missing.filter { $0 != .polling }
+    }
 
     /// What a report from `link` could confirm out of `missing`. The Bluetooth test only reads,
     /// so there it can confirm the battery and nothing it would have to set.
@@ -590,7 +602,7 @@ enum RazerDevices {
         var links: [LinkToTest] = []
         for link in [RazerConnection.wired, .wirelessDongle, .bluetooth] where link != info.connection {
             if let row = siblings.first(where: { $0.connection == link }) {
-                let missing = askable(unverified(row), on: link)
+                let missing = askable(testable(unverified(row), of: row), on: link)
                 if !missing.isEmpty { links.append(.init(connection: link, missing: missing)) }
             } else if link != .bluetooth, info.connection != .bluetooth, info.hasBattery,
                       link != .wired || info.hasCableLink {
