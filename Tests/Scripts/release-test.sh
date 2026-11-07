@@ -98,6 +98,25 @@ check "0.2 == 0.2.0"       "no"  "$(newer 0.2 0.2.0)"      # trailing zero, same
 check "0.3 > 0.2.9"        "yes" "$(newer 0.3 0.2.9)"
 check "0.2.08 > 0.2.7"     "yes" "$(newer 0.2.08 0.2.7)"   # leading zero isn't octal
 
+echo "Reading the Worker's DOMAIN for the build"
+
+domain() { # <settings file contents> → stdout, then "exit N"
+    printf '%b' "$1" > "${TMP}/settings.env"
+    local out status
+    out="$(MACRAZER_REPORTS_SETTINGS="${TMP}/settings.env" ./Scripts/worker-domain.sh 2>/dev/null)"
+    status=$?
+    echo "${out}|${status}"
+}
+check "a plain line"                 "reports.example.org|0" "$(domain 'DOMAIN=reports.example.org\n')"
+check "spaces, quotes and comments"  "reports.example.org|0" "$(domain '# mine\n\nDOMAIN = "reports.example.org"\r\nSENDER=x@y.org\n')"
+check "the last line wins, like local-config" "b.example.org|0" "$(domain 'DOMAIN=a.example.org\nDOMAIN=b.example.org\n')"
+check "no DOMAIN means no Worker"     "|0" "$(domain 'SENDER=x@y.org\n')"
+check "a URL is refused, not ignored" "|1" "$(domain 'DOMAIN=https://reports.example.org\n')"
+check "a trailing comment is refused" "|1" "$(domain 'DOMAIN=reports.example.org # mine\n')"
+check "a path is refused"             "|1" "$(domain 'DOMAIN=reports.example.org/v1\n')"
+check "no file means no Worker"       "|0" \
+    "$(MACRAZER_REPORTS_SETTINGS="${TMP}/missing.env" ./Scripts/worker-domain.sh; echo "|$?")"
+
 echo
 if [ "${FAIL}" -eq 0 ]; then
     echo "✓ ${PASS} passed"

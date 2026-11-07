@@ -53,14 +53,23 @@ final class HIDDevice {
     let productName: String
     /// Where the device sits on the USB bus. Stable for as long as it stays plugged in.
     let locationID: Int
+    /// This interface's IORegistry entry ID. Each enumeration hands out new `IOHIDDevice`
+    /// objects that never compare equal, so this is how a later listing finds the open one.
+    let registryID: UInt64
 
     private init(device: IOHIDDevice) {
         self.device = device
+        self.registryID = HIDDevice.registryID(of: device)
         self.productID = HIDDevice.intProp(device, kIOHIDProductIDKey) ?? 0
         self.locationID = HIDDevice.intProp(device, kIOHIDLocationIDKey) ?? 0
-        // The device's own USB product string — works for any Razer mouse without a registry.
-        let raw = HIDDevice.strProp(device, kIOHIDProductKey)?.trimmingCharacters(in: .whitespaces)
-        self.productName = (raw?.isEmpty == false ? raw! : RazerDevices.info(pid: HIDDevice.intProp(device, kIOHIDProductIDKey) ?? 0)?.name) ?? "Razer Mouse"
+        self.productName = HIDDevice.productName(of: device)
+    }
+
+    /// The device's own USB product string, which works for any Razer mouse without a
+    /// registry, else the registry's name for its PID.
+    static func productName(of device: IOHIDDevice) -> String {
+        let raw = strProp(device, kIOHIDProductKey)?.trimmingCharacters(in: .whitespaces)
+        return (raw?.isEmpty == false ? raw! : RazerDevices.info(pid: intProp(device, kIOHIDProductIDKey) ?? 0)?.name) ?? "Razer Mouse"
     }
 
     private static func intProp(_ dev: IOHIDDevice, _ key: String) -> Int? {
@@ -86,6 +95,33 @@ final class HIDDevice {
     /// All HID interfaces for the vendor (any product). We pick the right one by control score.
     static func matchingDevices(vendorId: Int) -> [IOHIDDevice] {
         devices(matching: [kIOHIDVendorIDKey as String: vendorId])
+    }
+
+    /// A Razer mouse plugged in by cable or dongle, found without opening anything.
+    struct USBMouse: Equatable {
+        let pid: Int
+        let name: String
+    }
+
+    /// Every Razer mouse plugged in by cable or dongle, one entry per product. Listing devices
+    /// needs no permission, so this works before Input Monitoring.
+    ///
+    /// Matched on an interface whose *primary* usage is Mouse. Matching any Mouse usage would
+    /// also catch a keyboard that carries a pointer collection on one of its interfaces. A
+    /// mouse's own pointer interface has it as the primary usage, as on the Cobra HyperSpeed
+    /// (the capture in `HIDDeviceSelectionTests`) and as `HIDDeviceSelection` already assumes
+    /// when it ranks devices. Product lines that are never mice are dropped by name on top,
+    /// for a keyboard or keypad that still gets through.
+    static func razerMice() -> [USBMouse] {
+        var seen = Set<Int>()
+        return devices(matching: [
+            kIOHIDVendorIDKey as String: Razer.vendorId,
+            kIOHIDPrimaryUsagePageKey as String: kHIDPage_GenericDesktop,
+            kIOHIDPrimaryUsageKey as String: kHIDUsage_GD_Mouse,
+        ])
+        .map { USBMouse(pid: productID(of: $0), name: productName(of: $0)) }
+        .sorted { $0.pid < $1.pid }
+        .filter { HIDDeviceSelection.couldBeMouse(productName: $0.name) && seen.insert($0.pid).inserted }
     }
 
     /// Razer mouse model keywords — used to recognise a Bluetooth-connected Razer mouse, which
@@ -118,40 +154,86 @@ final class HIDDevice {
             guard (strProp(dev, kIOHIDTransportKey) ?? "").localizedCaseInsensitiveContains("Bluetooth"),
                   let name = strProp(dev, kIOHIDProductKey) else { return nil }
             return classifyBluetoothMouse(vendorID: intProp(dev, kIOHIDVendorIDKey),
-                                          productID: intProp(dev, kIOHIDProductIDKey), name: name)
+                                          productID: intProp(dev, kIOHIDProductIDKey), name: name,
+                                          primaryUsageIsMouse: intProp(dev, kIOHIDPrimaryUsagePageKey) == 0x01
+                                              && intProp(dev, kIOHIDPrimaryUsageKey) == 0x02)
         }
         return found.first { $0.controllablePID != nil } ?? found.first
     }
 
     /// Whether a Bluetooth HID mouse is a Razer one, and one we can control. Control needs
     /// the exact Bluetooth vendor and product id (a name match could be another model on the
-    /// same service); recognising it for the hint only needs the name.
-    static func classifyBluetoothMouse(vendorID: Int?, productID: Int?, name: String) -> BluetoothMouse? {
-        if vendorID == BLEProtocol.vendorId, let pid = productID, RazerDevices.bluetoothPIDs.contains(pid) {
-            return BluetoothMouse(name: name, controllablePID: pid)
+    /// same service). Razer's Bluetooth vendor id alone is enough to recognise one, whatever
+    /// its name: the Pro Click V2 calls itself "PCV2 Ver" (#35). Without it, the name.
+    ///
+    /// A Razer keyboard on Bluetooth has the same vendor id and may carry a pointer collection,
+    /// so a PID the registry doesn't know also needs a name no keyboard line uses
+    /// (`HIDDeviceSelection.couldBeMouse`), as on USB, and either Mouse as its primary usage
+    /// or a mouse's name. Not the primary usage alone: a mouse with macro keys may list its
+    /// keyboard collection first.
+    static func classifyBluetoothMouse(vendorID: Int?, productID: Int?, name: String,
+                                       primaryUsageIsMouse: Bool = true) -> BluetoothMouse? {
+        if vendorID == BLEProtocol.vendorId {
+            if let pid = productID, RazerDevices.bluetoothPIDs.contains(pid) {
+                return BluetoothMouse(name: name, controllablePID: pid)
+            }
+            let lower = name.lowercased()
+            guard HIDDeviceSelection.couldBeMouse(productName: name),
+                  primaryUsageIsMouse || razerMouseKeywords.contains(where: { lower.contains($0) }) else { return nil }
+            return BluetoothMouse(name: name, controllablePID: nil)
         }
         let lower = name.lowercased()
         guard razerMouseKeywords.contains(where: { lower.contains($0) }) else { return nil }
         return BluetoothMouse(name: name, controllablePID: nil)
     }
 
-    /// Every HID interface the vendor's devices expose, in a stable order, and which one
-    /// `open(vendorId:)` would pick for control. For the device test's report; the order is
-    /// sorted because macOS returns the set in no particular order.
-    static func interfaceSummaries(vendorId: Int) -> (interfaces: [DeviceProbe.Interface], control: Int?) {
-        let devices = matchingDevices(vendorId: vendorId)
-        let summaries = devices.map { dev in
-            DeviceProbe.Interface(
-                productID: intProp(dev, kIOHIDProductIDKey) ?? 0,
-                product: strProp(dev, kIOHIDProductKey) ?? "",
-                usagePage: intProp(dev, kIOHIDPrimaryUsagePageKey) ?? 0,
-                usage: intProp(dev, kIOHIDPrimaryUsageKey) ?? 0,
-                maxFeatureReportSize: intProp(dev, kIOHIDMaxFeatureReportSizeKey) ?? 0,
-                maxInputReportSize: intProp(dev, kIOHIDMaxInputReportSizeKey) ?? 0,
-                transport: strProp(dev, kIOHIDTransportKey) ?? "")
+    /// What the device test's report says about one interface.
+    private static func interfaceSummary(_ dev: IOHIDDevice) -> DeviceProbe.Interface {
+        DeviceProbe.Interface(
+            productID: intProp(dev, kIOHIDProductIDKey) ?? 0,
+            product: strProp(dev, kIOHIDProductKey) ?? "",
+            usagePage: intProp(dev, kIOHIDPrimaryUsagePageKey) ?? 0,
+            usage: intProp(dev, kIOHIDPrimaryUsageKey) ?? 0,
+            maxFeatureReportSize: intProp(dev, kIOHIDMaxFeatureReportSizeKey) ?? 0,
+            maxInputReportSize: intProp(dev, kIOHIDMaxInputReportSizeKey) ?? 0,
+            transport: strProp(dev, kIOHIDTransportKey) ?? "")
+    }
+
+    /// A Bluetooth HID device's ids and interfaces, for the device test's report.
+    struct BluetoothHID: Equatable {
+        let vendorID: Int?
+        let productID: Int?
+        let interfaces: [DeviceProbe.Interface]
+    }
+
+    /// Every Bluetooth HID interface macOS lists under `name`: report sizes included, as a
+    /// feature report of 1 byte is what says a mouse can't take Razer's control report there.
+    static func bluetoothHID(name: String) -> BluetoothHID {
+        let devices = devices(matching: [kIOHIDProductKey as String: name]).filter {
+            (strProp($0, kIOHIDTransportKey) ?? "").localizedCaseInsensitiveContains("Bluetooth")
         }
-        // The same choice `controlInterface(vendorId:)` makes, so the report names the one opened.
-        let chosen = HIDDeviceSelection.controlInterfaceIndex(interfaces: interfaceInfos(devices)).map { summaries[$0] }
+        let interfaces = devices.map(interfaceSummary).sorted { ($0.usagePage, $0.usage, $0.maxFeatureReportSize) < ($1.usagePage, $1.usage, $1.maxFeatureReportSize) }
+        // The ids from the mouse interface, when there's one.
+        let mouse = devices.first { intProp($0, kIOHIDPrimaryUsagePageKey) == 0x01 && intProp($0, kIOHIDPrimaryUsageKey) == 0x02 }
+            ?? devices.first
+        return BluetoothHID(vendorID: mouse.flatMap { intProp($0, kIOHIDVendorIDKey) },
+                            productID: mouse.flatMap { intProp($0, kIOHIDProductIDKey) },
+                            interfaces: interfaces)
+    }
+
+    /// Every HID interface the vendor's devices expose, in a stable order, and which one is
+    /// used for control: `opened` when given, the interface actually under test, else the one
+    /// `open(vendorId:)` would pick. For the device test's report; the order is sorted because
+    /// macOS returns the set in no particular order.
+    static func interfaceSummaries(vendorId: Int, opened: HIDDevice? = nil) -> (interfaces: [DeviceProbe.Interface], control: Int?) {
+        let devices = matchingDevices(vendorId: vendorId)
+        let summaries = devices.map(interfaceSummary)
+        // Selection's pick can differ from what is open: the app may have opened a device
+        // before a better one was plugged in, and the report must name the one it probed.
+        let chosen = HIDDeviceSelection.reportedControlIndex(
+            registryIDs: devices.map(registryID(of:)), opened: opened?.registryID,
+            selected: { HIDDeviceSelection.controlInterfaceIndex(interfaces: interfaceInfos(devices)) }
+        ).map { summaries[$0] }
         let sorted = summaries.sorted {
             ($0.productID, $0.usagePage, $0.usage, $0.maxFeatureReportSize, $0.maxInputReportSize)
                 < ($1.productID, $1.usagePage, $1.usage, $1.maxFeatureReportSize, $1.maxInputReportSize)
@@ -178,8 +260,53 @@ final class HIDDevice {
     /// interfaces) wins is decided by `HIDDeviceSelection` — matching is vendor-wide, so
     /// with a Razer keyboard or second mouse attached, the mouse must be picked by rank
     /// (registry-known PID → mouse-usage device → score), not by raw interface score.
+    /// A mouse's cable with its dongle also plugged in gets the dongle while the cable
+    /// doesn't answer (`openCableOrItsDongle`).
     static func open(vendorId: Int) throws -> HIDDevice {
-        try open(controlInterface(vendorId: vendorId))
+        let usb = try controlInterfaceAndDongle(vendorId: vendorId)
+        return try openCableOrItsDongle(usb.pick, dongle: usb.dongle).device
+    }
+
+    /// Opens `usb`, selection's pick. When that's a mouse's cable with its `dongle` plugged in
+    /// too, the cable has to answer first: a mouse still switching over gets the dongle
+    /// instead, which still works. `onDongle` says it did, so the app can try the cable again.
+    static func openCableOrItsDongle(_ usb: IOHIDDevice, dongle: IOHIDDevice?) throws
+        -> (device: HIDDevice, onDongle: Bool) {
+        try openPreferringCable(cable: { try open(usb) },
+                                dongle: dongle.map { d in { try open(d) } },
+                                answers: answers, close: { $0.close() })
+    }
+
+    /// The decision `openCableOrItsDongle` makes, apart from IOHID so it can be tested. The
+    /// cable stays open until the dongle has opened: if the dongle won't, the cable is
+    /// still better than nothing. A cable that won't open at all gets the dongle too, since
+    /// selection hides the dongle while its cable is plugged in.
+    static func openPreferringCable<Device>(cable: () throws -> Device, dongle: (() throws -> Device)?,
+                                            answers: (Device) -> Bool,
+                                            close: (Device) -> Void) throws -> (device: Device, onDongle: Bool) {
+        let opened: Device
+        do {
+            opened = try cable()
+        } catch {
+            // The cable's error is the one worth reporting when the dongle fails too.
+            guard let dongle, let fallback = try? dongle() else { throw error }
+            return (fallback, true)
+        }
+        guard let dongle, !answers(opened), let fallback = try? dongle() else { return (opened, false) }
+        close(opened)
+        return (fallback, true)
+    }
+
+    /// One quick read, to tell a link that answers from one that only enumerates.
+    static func answers(_ device: HIDDevice) -> Bool {
+        (try? device.sendWithRetry(RazerCommands.getFirmwareVersion(), attempts: 1)) != nil
+    }
+
+    /// Whether `cable` answers, opened just for the read and closed again.
+    static func cableAnswers(_ cable: IOHIDDevice) -> Bool {
+        guard let opened = try? open(cable, as: "cable check") else { return false }
+        defer { opened.close() }
+        return answers(opened)
     }
 
     /// The control interface `open(vendorId:)` would pick, without opening it — so a caller
@@ -194,6 +321,31 @@ final class HIDDevice {
         return devices[idx]
     }
 
+    /// `controlInterface(vendorId:)`'s pick, plus the dongle of the same mouse when the pick
+    /// is its cable and both are plugged in. One listing for both. Nothing is opened.
+    static func controlInterfaceAndDongle(vendorId: Int) throws -> (pick: IOHIDDevice, dongle: IOHIDDevice?) {
+        let devices = matchingDevices(vendorId: vendorId)
+        let infos = interfaceInfos(devices)
+        guard let idx = HIDDeviceSelection.controlInterfaceIndex(interfaces: infos) else {
+            throw HIDError.notFound
+        }
+        let dongle = HIDDeviceSelection.dongleIndex(ofCable: infos[idx].pid, interfaces: infos).map { devices[$0] }
+        return (devices[idx], dongle)
+    }
+
+    /// Every device plugged in by cable or dongle that could be the mouse, best first. Listing
+    /// opens nothing, so it needs no permission.
+    static func mouseCandidates() -> [HIDDeviceSelection.Candidate] {
+        HIDDeviceSelection.candidates(interfaces: interfaceInfos(matchingDevices(vendorId: Razer.vendorId)))
+    }
+
+    /// The control interface of every accessory `RazerAccessories` knows, without opening
+    /// them, one per unit. Picked by `RazerAccessories.controlInterfaceIndices`.
+    static func accessoryControlInterfaces() -> [IOHIDDevice] {
+        let devices = matchingDevices(vendorId: Razer.vendorId)
+        return RazerAccessories.controlInterfaceIndices(interfaces: interfaceInfos(devices)).map { devices[$0] }
+    }
+
     /// What `HIDDeviceSelection` ranks each interface by.
     private static func interfaceInfos(_ devices: [IOHIDDevice]) -> [HIDInterfaceInfo] {
         devices.map { dev in
@@ -201,16 +353,40 @@ final class HIDDevice {
                              locationID: intProp(dev, kIOHIDLocationIDKey) ?? 0,
                              usagePage: intProp(dev, kIOHIDPrimaryUsagePageKey) ?? 0,
                              usage: intProp(dev, kIOHIDPrimaryUsageKey) ?? 0,
-                             maxFeatureReportSize: intProp(dev, kIOHIDMaxFeatureReportSizeKey) ?? 0)
+                             maxFeatureReportSize: intProp(dev, kIOHIDMaxFeatureReportSizeKey) ?? 0,
+                             productName: productName(of: dev))
         }
     }
 
     static func productID(of dev: IOHIDDevice) -> Int { intProp(dev, kIOHIDProductIDKey) ?? 0 }
+    static func locationID(of dev: IOHIDDevice) -> Int { intProp(dev, kIOHIDLocationIDKey) ?? 0 }
+    static func registryID(of dev: IOHIDDevice) -> UInt64 {
+        var id: UInt64 = 0
+        IORegistryEntryGetRegistryEntryID(IOHIDDeviceGetService(dev), &id)
+        return id
+    }
 
-    static func open(_ chosen: IOHIDDevice) throws -> HIDDevice {
+    /// Runs `body` with this mouse's other interfaces that can carry the control report,
+    /// opened, and closes them after. For the device test, when the interface picked doesn't
+    /// answer: an answer on another one means the selection is wrong for this mouse.
+    func withOtherControlInterfaces<T>(_ body: ([(usagePage: Int, usage: Int, channel: TransactionChannel)]) -> T) -> T {
+        let opened: [(usagePage: Int, usage: Int, device: HIDDevice)] = HIDDevice.matchingDevices(vendorId: Razer.vendorId).compactMap { dev in
+            guard !CFEqual(dev, device),
+                  HIDDevice.productID(of: dev) == productID,
+                  (HIDDevice.intProp(dev, kIOHIDLocationIDKey) ?? 0) == locationID,
+                  (HIDDevice.intProp(dev, kIOHIDMaxFeatureReportSizeKey) ?? 0) >= HIDDeviceSelection.controlReportSize,
+                  let other = try? HIDDevice.open(dev, as: "fallback interface") else { return nil }
+            return (HIDDevice.intProp(dev, kIOHIDPrimaryUsagePageKey) ?? 0, HIDDevice.intProp(dev, kIOHIDPrimaryUsageKey) ?? 0, other)
+        }
+        defer { opened.forEach { $0.device.close() } }
+        return body(opened.map { ($0.usagePage, $0.usage, $0.device) })
+    }
+
+    /// `role` names the interface in the log: the device test also opens others to try.
+    static func open(_ chosen: IOHIDDevice, as role: String = "control interface") throws -> HIDDevice {
         // stderr, not stdout: this fires on every (re)open inside the GUI app too, and the
         // CLI's actual output goes to stdout.
-        FileHandle.standardError.write(Data("[MacRazer] control interface: \(describe(chosen))\n".utf8))
+        FileHandle.standardError.write(Data("[MacRazer] \(role): \(describe(chosen))\n".utf8))
         let openResult = IOHIDDeviceOpen(chosen, IOOptionBits(kIOHIDOptionsTypeNone))
         guard openResult == kIOReturnSuccess else { throw HIDError.openFailed(openResult) }
         return HIDDevice(device: chosen)

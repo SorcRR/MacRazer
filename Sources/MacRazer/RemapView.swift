@@ -18,6 +18,10 @@ struct RemapView: View {
     @ObservedObject var remapper: ButtonRemapper
     var controller: MouseController?
     var onBack: (() -> Void)?
+    /// The popover's sub-page width; the window's is 440.
+    var width: CGFloat = 440
+    /// The two-column popover: the buttons on the left, the DPI button and notes on the right.
+    var twoColumns = false
     @State private var recordingButton: Int?
     @State private var recordingDpiCycleShortcut = false
     @State private var recorderError: String?
@@ -29,29 +33,77 @@ struct RemapView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
-            if !remapper.remappingPermissionsGranted {
-                accessibilityBanner
-                buttonList
-            } else {
-                if remapper.remappingPaused { pausedNote }
-                detectionHint
-                buttonList
-            }
-            if let controller {
-                DpiCycleBindingSection(controller: controller, remapper: remapper) {
-                    recorderError = nil
-                    recordingDpiCycleShortcut = true
+            if twoColumns {
+                // What to do and how remapping works on the left; the mappings on the right.
+                HStack(alignment: .top, spacing: 18) {
+                    VStack(alignment: .leading, spacing: 14) {
+                        notices
+                        footer
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    VStack(alignment: .leading, spacing: 14) {
+                        buttonList
+                        dpiAndModelNotes
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
+            } else {
+                notices
+                buttonList
+                dpiAndModelNotes
+                footer
             }
-            if remapper.isBasiliskV3XHyperSpeed { basiliskButtonLimits }
-            footer
         }
         .padding(18)
-        .frame(width: onBack == nil ? 440 : 320)
+        .frame(width: width)
         .onAppear {
             remapper.refreshAccessibility(prompt: false)
         }
         .overlay { if recordingButton != nil || recordingDpiCycleShortcut { recorderOverlay } }
+    }
+
+    /// The permission banner, or the paused note and the "press a button" hint.
+    @ViewBuilder private var notices: some View {
+        if !remapper.remappingPermissionsGranted {
+            accessibilityBanner
+        } else {
+            if remapper.remappingPaused { pausedNote }
+            if remapper.showsCompetingApps { competingAppsNote }
+            detectionHint
+        }
+    }
+
+    /// Another app can take a button's clicks before MacRazer sees them, and then the button
+    /// never shows up here. Naming the app saves a support email.
+    private var competingAppsNote: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "exclamationmark.triangle").foregroundStyle(Color.batteryMid)
+            Text(Self.competingAppsText(remapper.competingTapApps))
+                .font(.system(size: 11)).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.batteryMid.opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    nonisolated static func competingAppsText(_ apps: [String]) -> String {
+        let list = ListFormatter.localizedString(byJoining: apps)
+        let pronoun = apps.count == 1 ? "it" : "them"
+        return "If a side button doesn't show up here when you press it, \(list) may be taking "
+            + "its clicks. Quit \(pronoun) and try again."
+    }
+
+    /// The DPI button's binding and model notes.
+    @ViewBuilder private var dpiAndModelNotes: some View {
+        if let controller {
+            DpiCycleBindingSection(controller: controller, remapper: remapper) {
+                recorderError = nil
+                recordingDpiCycleShortcut = true
+            }
+        }
+        if remapper.isBasiliskV3XHyperSpeed { basiliskButtonLimits }
     }
 
     private var recorderOverlay: some View {

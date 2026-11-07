@@ -10,6 +10,8 @@ struct ProfilesView: View {
     @ObservedObject var controller: MouseController
     @ObservedObject var remapper: ButtonRemapper
     var onBack: (() -> Void)?
+    /// The popover's sub-page width; the window's is 440.
+    var width: CGFloat = 440
 
     @State private var renamingID: UUID?
     @State private var renameText: String = ""
@@ -36,7 +38,7 @@ struct ProfilesView: View {
             }
         }
         .padding(18)
-        .frame(width: onBack == nil ? 440 : 320)
+        .frame(width: width)
         .confirmationDialog("Delete this profile?", isPresented: Binding(
             get: { pendingDeleteID != nil },
             set: { if !$0 { pendingDeleteID = nil } }

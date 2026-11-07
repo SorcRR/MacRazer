@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Build a standalone "MacRazer.app" menu bar bundle from the SwiftPM executable.
 #
-#   ./Scripts/build-app.sh           # release build → ./MacRazer.app
+#   ./Scripts/build-app.sh           # optimised build → ./MacRazer.app, versioned <version>-dev
+#   MACRAZER_RELEASE_BUILD=1 ./Scripts/build-app.sh   # the plain version, as release.sh does
 #   open "MacRazer.app"           # launch it
 #
 # Needs Xcode, not just the Command Line Tools: a build for two architectures goes through
@@ -36,7 +37,29 @@ rm -rf "${APP}"
 mkdir -p "${APP}/Contents/MacOS" "${APP}/Contents/Resources"
 cp "${BIN}" "${APP}/Contents/MacOS/${EXEC_NAME}"
 cp Packaging/Info.plist "${APP}/Contents/Info.plist"
+# Only release.sh builds the version as it is. Anything else is a build between releases, and
+# says so: "0.8.0-dev", so the counts and usage stats don't take your own builds for people on
+# 0.8.0. It compares equal to 0.8.0 for updates (VersionCompare reads the 0 of "0-dev").
+if [ "${MACRAZER_RELEASE_BUILD:-0}" != "1" ]; then
+    PLAIN_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "${APP}/Contents/Info.plist")"
+    /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${PLAIN_VERSION}-dev" "${APP}/Contents/Info.plist"
+    echo "▸ Version ${PLAIN_VERSION}-dev (a release build comes from Scripts/release.sh)"
+fi
 [ -f Packaging/AppIcon.icns ] && cp Packaging/AppIcon.icns "${APP}/Contents/Resources/AppIcon.icns"
+
+# The Worker behind Send and the usage stats. Its address comes from DOMAIN in the private
+# settings file the Worker's README sets up (SorcRR/macrazer-worker, private), never from the repository, so a build from anyone
+# else's checkout has no Worker: those features are hidden and nothing is sent anywhere.
+# See `WorkerEndpoint` in Sources/MacRazer/AppInfo.swift.
+WORKER_DOMAIN="$(./Scripts/worker-domain.sh)"
+if [ -n "${WORKER_DOMAIN}" ]; then
+    # Delete first: Add refuses a key that's already there.
+    /usr/libexec/PlistBuddy -c "Delete :MacRazerWorkerURL" "${APP}/Contents/Info.plist" 2>/dev/null || true
+    /usr/libexec/PlistBuddy -c "Add :MacRazerWorkerURL string https://${WORKER_DOMAIN}" "${APP}/Contents/Info.plist"
+    echo "▸ Worker: https://${WORKER_DOMAIN} (Send and usage stats on)"
+else
+    echo "▸ No Worker configured, so Send and usage stats are hidden in this build."
+fi
 
 # Prefer a stable self-signed identity (created by Scripts/setup-signing.sh) so the
 # Input Monitoring grant persists across rebuilds. Fall back to ad-hoc otherwise.

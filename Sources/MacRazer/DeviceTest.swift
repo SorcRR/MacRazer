@@ -11,7 +11,7 @@ import Foundation
 /// Never in here: the serial number (the app keys a mouse by it, and it names one physical
 /// unit), USB locations, or anything about the Mac beyond its OS version.
 struct DeviceReport: Codable, Equatable {
-    static let currentSchema = 1
+    static let currentSchema = 4
 
     var schemaVersion = DeviceReport.currentSchema
     var appVersion: String
@@ -25,6 +25,13 @@ struct DeviceReport: Codable, Equatable {
     var polling: StepRecord<PollingData>
     var lighting: StepRecord<LightingData>
     var buttons: StepRecord<ButtonsData>
+    /// What the mouse answers to commands the steps don't use, read once after Identify.
+    /// Schema 2; nil in earlier reports and when Identify found no id to ask with.
+    var capabilities: CapabilitiesData?
+    /// What the mouse showed over Bluetooth, for a report made there
+    /// (`DeviceTestSteps.bluetoothReport`). Schema 4. Its reads are in `capabilities`, with
+    /// the Bluetooth key's class and command in place of the USB ones.
+    var bluetooth: BluetoothData?
     var verdict: DeviceTestVerdict?
     var comment: String?
     /// How the person would like to be credited in the README, if at all.
@@ -46,7 +53,7 @@ struct DeviceReport: Codable, Equatable {
         var controlInterface: Int?
     }
 
-    enum Connection: String, Codable { case cable, dongle }
+    enum Connection: String, Codable { case cable, dongle, bluetooth }
 
     struct Registry: Codable, Equatable {
         var name: String
@@ -60,6 +67,8 @@ struct DeviceReport: Codable, Equatable {
 
         init(_ info: RazerDeviceInfo) {
             name = info.name
+            // As this build shipped, not as the online support list narrowed it: the report
+            // says what the app had, and the maintainer reads it against that version.
             fullySupported = info.fullySupported
             hasBattery = info.hasBattery
             hasLighting = info.hasLighting
@@ -109,6 +118,16 @@ struct DeviceReport: Codable, Equatable {
         var lightingAttempts: [TransactionResult]
         var standardId: UInt8?
         var lightingId: UInt8?
+        /// When no id got an answer on the interface MacRazer picked: the firmware read tried
+        /// on the mouse's other interfaces that can carry the control report. An answer here
+        /// means the app picks the wrong interface for this mouse.
+        var otherInterfaces: [InterfaceAttempt]?
+    }
+
+    struct InterfaceAttempt: Codable, Equatable {
+        var usagePage: Int
+        var usage: Int
+        var attempts: [TransactionResult]
     }
 
     struct BatteryData: Codable, Equatable {
@@ -123,6 +142,11 @@ struct DeviceReport: Codable, Equatable {
         var readBack: Int?
         var restored: Bool = false
         var stages: [Int]?
+        /// The stage table's own numbering, as the mouse answered: the first stage's number
+        /// (0 or 1) and the active-stage byte. Mice differ, and a write numbered the other way
+        /// selects the wrong stage.
+        var firstStageNumber: Int?
+        var activeStageByte: Int?
         /// Optional, run only when asked: what the mouse kept when asked for the protocol's
         /// ceiling. A mouse that clamps reads back its real maximum.
         var maxProbe: Int?
@@ -155,6 +179,63 @@ struct DeviceReport: Codable, Equatable {
         /// Each distinct input seen, as "page:usage" in hex, e.g. "09:04" for button 4 or
         /// "07:1e" for a key that types 1.
         var seen: [String] = []
+    }
+
+    /// One answer per read in `DeviceTestSteps.capabilityReads`, in that order.
+    struct CapabilitiesData: Codable, Equatable {
+        var reads: [CapabilityRead] = []
+        /// Every entry of the mouse's button function table that answered, read when one of
+        /// the `buttonFunction` reads did (`DeviceTestSteps.readButtonTable`). Nil when the
+        /// mouse has no table.
+        var buttonTable: [ButtonEntry]?
+    }
+
+    /// One entry of a button function table: its id and the seven-byte block it holds (a
+    /// function type, the data's length, then the data, e.g. 01 01 04 for mouse button 4).
+    /// Over Bluetooth, whose layout isn't known yet, the reply's first
+    /// `DeviceTestSteps.capabilityResponseBytes` bytes as they came.
+    struct ButtonEntry: Codable, Equatable {
+        var id: UInt8
+        var block: [UInt8]
+    }
+
+    struct BluetoothData: Codable, Equatable {
+        /// Every GATT service the mouse has, as UUID strings.
+        var services: [String] = []
+        /// Whether one of them is Razer's control service (`BLEProtocol.serviceUUID`).
+        var razerService = false
+        /// From the Device Information service's PnP ID.
+        var pnpVendorID: Int?
+        var pnpProductID: Int?
+        var pnpVersion: Int?
+        /// The standard Battery service's level, in percent.
+        var batteryLevel: Int?
+        /// Why part of it couldn't be read: Bluetooth off or not allowed, a slow setup.
+        var error: String?
+    }
+
+    struct CapabilityRead: Codable, Equatable {
+        /// Which read, e.g. "pollingRate2" or "zoneEffect" (with `led`).
+        var name: String
+        var commandClass: UInt8
+        var commandId: UInt8
+        /// The LED id, for the lighting reads that take one.
+        var led: UInt8?
+        var answer: CapabilityAnswer
+        /// The first `DeviceTestSteps.capabilityResponseBytes` argument bytes of an answer.
+        var response: [UInt8]?
+    }
+
+    enum CapabilityAnswer: String, Codable {
+        /// The mouse has it: status 0x02.
+        case answered
+        /// Status 0x03. Often a wrong argument (an LED the mouse doesn't have) rather than
+        /// a missing command.
+        case failed
+        /// Status 0x05: the mouse doesn't have the command.
+        case notSupported
+        /// A timeout or a reply that made no sense.
+        case noAnswer
     }
 }
 
@@ -230,6 +311,21 @@ struct DeviceTestVerdict: Codable, Equatable {
         }
     }
 
+    /// `thankYou` for a run limited to what was still missing. `leftOut` are the steps it
+    /// passed over as already verified, which don't make the report partial.
+    static func focusedThankYou(_ verdict: DeviceTestVerdict, leftOut: [String]) -> String {
+        func names(_ steps: [String]) -> String {
+            steps.count < 2 ? steps.joined() : steps.dropLast().joined(separator: ", ") + " and " + steps.last!
+        }
+        if !verdict.failed.isEmpty {
+            return "\(names(verdict.failed)) still didn't work, so your report shows us exactly what to fix."
+        }
+        if verdict.skipped.contains(where: { !leftOut.contains($0) }) {
+            return "Some steps were skipped, so this is a partial report. It still helps."
+        }
+        return "Everything that was still missing worked. Once we've looked at your report, your mouse moves to the supported list."
+    }
+
     /// The email subject's prefix, so the maintainer's inbox sorts itself.
     var subjectPrefix: String {
         let ran = passed.count + failed.count
@@ -261,8 +357,19 @@ enum DeviceTestSteps {
         return record
     }
 
-    /// Tries every transaction id, then reads the firmware with the one chosen.
-    static func identify(_ device: TransactionChannel, registry: RazerDeviceInfo?)
+    /// `identify` on a real mouse, which can also try its other interfaces
+    /// (`tryInterfaces`) when no id answers on the one MacRazer picked.
+    static func identifyMouse(_ device: HIDDevice, registry: RazerDeviceInfo?)
+        -> (record: DeviceReport.StepRecord<DeviceReport.IdentifyData>, sweep: [DeviceProbe.LEDAnswer]?) {
+        identify(device, registry: registry, others: {
+            device.withOtherControlInterfaces { tryInterfaces($0, preferred: registry?.transactionId) }
+        })
+    }
+
+    /// Tries every transaction id, then reads the firmware with the one chosen. `others` is
+    /// asked only when no id got any reply, answer or refusal.
+    static func identify(_ device: TransactionChannel, registry: RazerDeviceInfo?,
+                         others: () -> [DeviceReport.InterfaceAttempt] = { [] })
         -> (record: DeviceReport.StepRecord<DeviceReport.IdentifyData>, sweep: [DeviceProbe.LEDAnswer]?) {
         let recording = RecordingChannel(base: device)
         let firmware = DeviceProbe.discoverTransactionIds(recording, read: RazerCommands.getFirmwareVersion(),
@@ -276,12 +383,6 @@ enum DeviceTestSteps {
                                                                 preferred: registry?.matrixTransactionId)
         let lightingId = DeviceProbe.chosenId(lighting)
 
-        func results(_ attempts: [DeviceProbe.TransactionAttempt]) -> [DeviceReport.TransactionResult] {
-            attempts.map {
-                .init(id: $0.id, answered: $0.answered, refused: $0.refused, groups: nil,
-                      error: { if case .failure(let e) = $0.result { return String(describing: e) }; return nil }($0))
-            }
-        }
         var data = DeviceReport.IdentifyData(
             standardAttempts: results(firmware), dpiAttempts: dpi.map(results),
             lightingAttempts: lighting.map {
@@ -291,6 +392,10 @@ enum DeviceTestSteps {
         // The chosen id's own firmware answer, so the version costs no extra read.
         if let answer = firmware.first(where: { $0.id == standardId && $0.answered }), case .success(let r) = answer.result {
             data.firmware = RazerCommands.parseFirmwareVersion(r)
+        }
+        if standardId == nil {
+            let tried = others()
+            if !tried.isEmpty { data.otherInterfaces = tried }
         }
 
         // Passed only when some read got a real answer. On a known model, the ids on record
@@ -307,6 +412,292 @@ enum DeviceTestSteps {
         return (.init(outcome: outcome, data: data, exchanges: recording.exchanges), sweep)
     }
 
+    /// The firmware read with every id, on each of `interfaces`: other interfaces of the
+    /// mouse, for when the one MacRazer picked didn't answer. One attempt per id: it only has
+    /// to show whether an interface answers at all, and the mouse already timed out on every
+    /// id once, so retries would add seconds per interface for nothing.
+    static func tryInterfaces(_ interfaces: [(usagePage: Int, usage: Int, channel: TransactionChannel)],
+                              preferred: UInt8?) -> [DeviceReport.InterfaceAttempt] {
+        interfaces.map { usagePage, usage, channel in
+            .init(usagePage: usagePage, usage: usage,
+                  attempts: results(DeviceProbe.discoverTransactionIds(channel, read: RazerCommands.getFirmwareVersion(),
+                                                                       preferred: preferred, attempts: 1)))
+        }
+    }
+
+    private static func results(_ attempts: [DeviceProbe.TransactionAttempt]) -> [DeviceReport.TransactionResult] {
+        attempts.map {
+            .init(id: $0.id, answered: $0.answered, refused: $0.refused, groups: nil,
+                  error: { if case .failure(let e) = $0.result { return String(describing: e) }; return nil }($0))
+        }
+    }
+
+    /// The ids the other steps use: what Identify found, else the registry's, else 0x1F.
+    static func chosenIds(_ identify: DeviceReport.StepRecord<DeviceReport.IdentifyData>, registry: RazerDeviceInfo?)
+        -> (standard: UInt8, matrix: UInt8) {
+        let standard = identify.data?.standardId ?? registry?.transactionId ?? 0x1F
+        return (standard, identify.data?.lightingId ?? standard)
+    }
+
+    /// Read-only commands asked once, to see what else the mouse can do. Each is a get (id
+    /// 0x80 or above): nothing here changes a setting. Sources: OpenRazer for polling_rate2,
+    /// idle time, the low-battery threshold, Smart-Reel and scroll acceleration; the
+    /// Basilisk V4 Pro's own replies (#55) for the wheel mode and levels, the onboard profile
+    /// slots, the button function table and the per-zone effect read, which finds lighting
+    /// zones the brightness sweep doesn't try (the V4 Pro's underglow is 0x0A).
+    static let capabilityReads: [(name: String, report: RazerReport)] = {
+        func read(_ commandClass: UInt8, _ id: UInt8, _ size: UInt8, _ args: [UInt8] = []) -> RazerReport {
+            var r = RazerReport(commandClass: commandClass, commandId: id, dataSize: size)
+            for (i, byte) in args.enumerated() { r.arguments[i] = byte }
+            return r
+        }
+        var reads: [(String, RazerReport)] = [
+            ("pollingRate2", read(0x00, 0xC0, 0x01)),
+            ("idleTime", read(0x07, 0x83, 0x02)),
+            ("lowBatteryThreshold", read(0x07, 0x82, 0x01)),
+            ("smartReel", read(0x02, 0x97, 0x02, [Razer.varstore])),
+            ("scrollAcceleration", read(0x02, 0x96, 0x02, [Razer.varstore])),
+            ("scrollAccelerationLevel", read(0x02, 0xA2, 0x02, [Razer.varstore])),
+            ("smartReelSensitivity", read(0x02, 0xA3, 0x02, [Razer.varstore])),
+            ("wheelMode", read(0x02, 0xB0, 0x02, [Razer.varstore])),
+            ("profileSlots", read(0x05, 0x81, 0x0A)),
+            ("activeProfileSlot", read(0x05, 0x84, 0x0A)),
+            ("buttonFunction", buttonFunctionRead(0x04)),
+            ("buttonFunction", buttonFunctionRead(0x05)),
+        ]
+        // Every LED id OpenRazer names, and a few past them.
+        for led in UInt8(0x00)...0x11 {
+            reads.append(("zoneEffect", read(0x0F, 0x82, 0x0C, [Razer.varstore, led])))
+        }
+        return reads
+    }()
+
+    /// How many argument bytes each answer keeps: enough for a zone's whole effect body
+    /// (args 2-11, its colours included), more than the steps' 8.
+    static let capabilityResponseBytes = 12
+
+    /// `readCapabilities` with the ids Identify chose, or nil when no id answered: every read
+    /// would only time out. Shared by the app and the CLI so their reports can't differ.
+    static func capabilities(_ device: TransactionChannel,
+                             identify: DeviceReport.StepRecord<DeviceReport.IdentifyData>,
+                             registry: RazerDeviceInfo?) -> DeviceReport.CapabilitiesData? {
+        guard identify.data?.standardId != nil else { return nil }
+        let ids = chosenIds(identify, registry: registry)
+        let channel = FixedTransactionChannel(base: device, standard: ids.standard, matrix: ids.matrix,
+                                              overrides: registry?.transactionOverrides ?? [:])
+        var data = readCapabilities(channel)
+        let probes = data.reads.filter { $0.name == "buttonFunction" && $0.answer == .answered }
+        if !probes.isEmpty {
+            data.buttonTable = readButtonTable(channel, answered: probes.compactMap(\.response))
+        }
+        return data
+    }
+
+    /// A button function table entry on the base layer: args [VARSTORE, id, layer 0], and
+    /// the answer's args 3-9 hold the entry's block. Read from the Basilisk V4 Pro (#55).
+    static func buttonFunctionRead(_ id: UInt8) -> RazerReport {
+        var r = RazerReport(commandClass: 0x02, commandId: 0x8C, dataSize: 0x0A)
+        r.arguments[0] = Razer.varstore
+        r.arguments[1] = id
+        return r
+    }
+
+    /// The entry ids `readButtonTable` asks for. The Basilisk V4 Pro's table (#55) runs from
+    /// 0x02 to 0x80 with gaps, so this goes some way past it for mice with more buttons.
+    static let buttonTableIds = UInt8(0x01)...0x9F
+
+    /// Reads each of `buttonTableIds` on the base layer and keeps the entries that answer:
+    /// with the buttons the person pressed, enough to work out a new mouse's table. A read
+    /// only, like the rest. `answered` holds replies already read (the `buttonFunction`
+    /// probes), whose ids aren't asked again. Stops after a few timeouts in a row, as a mouse
+    /// that stopped answering would otherwise cost a third of a second per id.
+    static func readButtonTable(_ channel: DeviceProbeChannel, answered: [[UInt8]] = []) -> [DeviceReport.ButtonEntry] {
+        // Every read here is the same command, so a reply left over from the last id would
+        // pass `send`'s check. The id it echoes is what tells them apart. An all-zero block
+        // isn't a function (even Disabled is 00 01 00): no entry.
+        func entry(_ id: UInt8, _ arguments: [UInt8]) -> DeviceReport.ButtonEntry? {
+            guard arguments.count >= 10, arguments[1] == id else { return nil }
+            let block = Array(arguments[3..<10])
+            return block.contains(where: { $0 != 0 }) ? .init(id: id, block: block) : nil
+        }
+        let known = Dictionary(answered.filter { $0.count >= 2 }.map { ($0[1], $0) }, uniquingKeysWith: { a, _ in a })
+        var entries: [DeviceReport.ButtonEntry] = []
+        var timeouts = 0
+        for id in buttonTableIds {
+            if let arguments = known[id] {
+                if let found = entry(id, arguments) { entries.append(found) }
+                continue
+            }
+            do {
+                let answer = try channel.sendWithRetry(buttonFunctionRead(id), attempts: 1)
+                timeouts = 0
+                if let found = entry(id, Array(answer.arguments)) { entries.append(found) }
+            } catch HIDDevice.HIDError.commandFailed, HIDDevice.HIDError.notSupported {
+                timeouts = 0
+            } catch {
+                timeouts += 1
+                if timeouts == 4 { break }
+            }
+        }
+        return entries
+    }
+
+    /// Asks each of `capabilityReads` once and keeps the answer. No retry: a refusal or a
+    /// timeout says the same the second time, and `noAnswer` already marks a read that
+    /// didn't come back. The answers are the evidence, so no exchanges are kept: they would
+    /// only repeat them.
+    static func readCapabilities(_ channel: DeviceProbeChannel) -> DeviceReport.CapabilitiesData {
+        DeviceReport.CapabilitiesData(reads: capabilityReads.map { name, report in
+            var read = DeviceReport.CapabilityRead(
+                name: name, commandClass: report.commandClass, commandId: report.commandId,
+                led: report.commandClass == 0x0F ? report.arguments[1] : nil, answer: .noAnswer)
+            do {
+                let answer = try channel.sendWithRetry(report, attempts: 1)
+                read.answer = .answered
+                read.response = Array(answer.arguments.prefix(capabilityResponseBytes))
+            } catch HIDDevice.HIDError.commandFailed {
+                read.answer = .failed
+            } catch HIDDevice.HIDError.notSupported {
+                read.answer = .notSupported
+            } catch {
+                read.answer = .noAnswer
+            }
+            return read
+        })
+    }
+
+    // MARK: Bluetooth
+
+    /// Read-only keys over Razer's Bluetooth service, from the Basilisk V3 X HyperSpeed (#32)
+    /// and the Basilisk V4 Pro (#55). The third key byte of a settings read is the profile
+    /// slot, 0x01 here. Built here rather than in `BLEProtocol.Key`, where #55 adds its own.
+    static let bluetoothReads: [(name: String, key: BLEProtocol.Key)] = {
+        typealias Key = BLEProtocol.Key
+        var reads: [(String, Key)] = [
+            ("battery", .battery),
+            ("sleepTimeout", .powerTimeoutGet),
+            ("lowBatteryThreshold", Key(0x05, 0x82, 0x00, 0x00)),
+            ("profileSlots", Key(0x03, 0x80, 0x00, 0x00)),
+            ("activeProfileSlot", Key(0x03, 0x82, 0x00, 0x00)),
+            ("dpiStages", .dpiStagesGet),
+            ("buttonFunction", bluetoothButtonRead(0x04)),
+            ("buttonFunction", bluetoothButtonRead(0x60)),
+        ]
+        // The LED ids the USB side knows of: ZERO, SCROLL, LOGO, BACKLIGHT and underglow.
+        for led: UInt8 in [0x00, 0x01, 0x04, 0x05, 0x0A] {
+            reads.append(("brightness", Key(0x10, 0x85, 0x01, led)))
+            reads.append(("zoneEffect", Key(0x10, 0x83, 0x01, led)))
+        }
+        return reads
+    }()
+
+    /// An entry of the function table over Bluetooth (the DPI Cycle entry is 0x60).
+    static func bluetoothButtonRead(_ id: UInt8) -> BLEProtocol.Key { BLEProtocol.Key(0x08, 0x84, 0x00, id) }
+
+    /// `bluetoothReads`, each asked once, and the button table when one of its probes answered.
+    /// Stops asking after a few timeouts in a row: each costs a second and a half over
+    /// Bluetooth, and a mouse that stopped answering won't start again.
+    static func bluetoothCapabilities(_ channel: BluetoothReadChannel) -> DeviceReport.CapabilitiesData {
+        var timeouts = 0
+        let reads = bluetoothReads.map { name, key -> DeviceReport.CapabilityRead in
+            let b = key.bytes
+            var read = DeviceReport.CapabilityRead(name: name, commandClass: b[0], commandId: b[1],
+                                                   led: b[0] == 0x10 ? b[3] : nil, answer: .noAnswer)
+            guard timeouts < 3 else { return read }
+            (read.answer, read.response) = bluetoothAnswer(channel, key, timeouts: &timeouts)
+            return read
+        }
+        var data = DeviceReport.CapabilitiesData(reads: reads)
+        // The probes' own answers, by entry id, so the sweep doesn't ask for them again. Not a
+        // timeout: that one gets its second try in the sweep.
+        var probed: [UInt8: (DeviceReport.CapabilityAnswer, [UInt8]?)] = [:]
+        for (read, request) in zip(reads, bluetoothReads) where read.name == "buttonFunction" && read.answer != .noAnswer {
+            probed[request.key.bytes[3]] = (read.answer, read.response)
+        }
+        if timeouts < 3, reads.contains(where: { $0.name == "buttonFunction" && $0.answer == .answered }) {
+            data.buttonTable = buttonTableIds.compactMap { id in
+                let (answer, response): (DeviceReport.CapabilityAnswer, [UInt8]?)
+                if let known = probed[id] {
+                    (answer, response) = known
+                } else {
+                    guard timeouts < 3 else { return nil }
+                    (answer, response) = bluetoothAnswer(channel, bluetoothButtonRead(id), timeouts: &timeouts)
+                }
+                // Replies are matched to their request by frame id, so no stale one gets here.
+                guard answer == .answered, let response, response.contains(where: { $0 != 0 }) else { return nil }
+                return .init(id: id, block: response)
+            }
+        }
+        return data
+    }
+
+    private static func bluetoothAnswer(_ channel: BluetoothReadChannel, _ key: BLEProtocol.Key, timeouts: inout Int)
+        -> (DeviceReport.CapabilityAnswer, [UInt8]?) {
+        do {
+            let payload = try channel.read(key)
+            timeouts = 0
+            return (.answered, Array(payload.prefix(capabilityResponseBytes)))
+        } catch HIDDevice.HIDError.commandFailed {
+            timeouts = 0
+            return (.failed, nil)
+        } catch HIDDevice.HIDError.notSupported {
+            timeouts = 0
+            return (.notSupported, nil)
+        } catch {
+            timeouts += 1
+            return (.noAnswer, nil)
+        }
+    }
+
+    /// The whole Bluetooth test for the mouse macOS lists as `name`. Blocks for as long as the
+    /// reads take: call it off the main thread. Shared by the app and the CLI.
+    static func bluetoothTest(name: String) -> DeviceReport {
+        let hid = HIDDevice.bluetoothHID(name: name)
+        let (probe, capabilities) = BluetoothProbe.describe(hidName: name, bluetoothCapabilities)
+        return bluetoothReport(name: name, hid: hid, probe: probe, capabilities: capabilities)
+    }
+
+    /// The report for a mouse on Bluetooth, from what `BluetoothProbe` found and the reads
+    /// it ran. Identify passes when Razer's service answered a read; with no such service it's
+    /// not on this mouse (#35's Pro Click V2 has none). With no services seen at all the probe
+    /// never got that far (Bluetooth off or not allowed, a slow setup), which says nothing
+    /// about the mouse, so it fails rather than counting as not there. Battery comes from
+    /// Razer's battery read, on the USB scale, else the standard service. The other steps need the USB
+    /// protocol and stay skipped. The ids are IOHID's, else the PnP ID's: the Worker takes
+    /// only Razer's vendor ids, so a report must not go out with none.
+    static func bluetoothReport(name: String, hid: HIDDevice.BluetoothHID, probe: DeviceReport.BluetoothData,
+                                capabilities: DeviceReport.CapabilitiesData?) -> DeviceReport {
+        var identify = DeviceReport.StepRecord<DeviceReport.IdentifyData>()
+        if probe.services.isEmpty && !probe.razerService {
+            identify.outcome = .failed
+            identify.error = probe.error ?? "MacRazer couldn't read the mouse's Bluetooth services."
+        } else if !probe.razerService {
+            identify.outcome = .notSupported
+            identify.error = probe.error ?? "No Razer control service over Bluetooth."
+        } else {
+            identify.outcome = capabilities?.reads.contains { $0.answer == .answered } == true ? .passed : .failed
+            identify.error = probe.error
+        }
+        var battery = DeviceReport.StepRecord<DeviceReport.BatteryData>()
+        let raw = capabilities?.reads.first { $0.name == "battery" && $0.answer == .answered }?.response?.first
+        if let raw, raw != 0 {
+            battery = .init(outcome: .passed, data: .init(raw: raw, percent: RazerCommands.batteryPercent(fromRaw: raw)))
+        } else if let level = probe.batteryLevel {
+            battery = .init(outcome: .passed, data: .init(percent: level))
+        }
+        let vendorID = hid.vendorID ?? probe.pnpVendorID ?? BLEProtocol.vendorId
+        let productID = hid.productID ?? probe.pnpProductID ?? 0
+        var report = DeviceReport(
+            appVersion: AppInfo.displayVersion, macOSVersion: DeviceReport.currentMacOSVersion,
+            device: .init(vendorID: vendorID, productID: productID, name: name,
+                          connection: .bluetooth, interfaces: hid.interfaces, controlInterface: nil),
+            registry: RazerDevices.info(pid: productID).map(DeviceReport.Registry.init),
+            identify: identify, battery: battery, dpi: .init(), polling: .init(), lighting: .init(), buttons: .init(),
+            capabilities: capabilities, bluetooth: probe)
+        report.verdict = report.currentVerdict()
+        return report
+    }
+
     static func battery(_ channel: DeviceProbeChannel, expectsBattery: Bool?)
         -> DeviceReport.StepRecord<DeviceReport.BatteryData> {
         var record = DeviceReport.StepRecord<DeviceReport.BatteryData>()
@@ -317,8 +708,13 @@ enum DeviceTestSteps {
             data.percent = RazerCommands.batteryPercent(fromRaw: level.value)
             data.charging = try? DeviceProbe.charging(channel).value
             // Raw 0 is the protocol's "not ready" (just woken, or refusing around sleep), not
-            // an empty battery, so it doesn't pass.
-            record.outcome = level.value == 0 ? .failed : .passed
+            // an empty battery, so it doesn't pass. A wired-only mouse the registry knows
+            // answers zeros too (the Naga Chroma does), and that is no battery, not a fault.
+            if level.value != 0 {
+                record.outcome = .passed
+            } else {
+                record.outcome = expectsBattery == false && data.charging != true ? .notSupported : .failed
+            }
         } catch {
             record.error = String(describing: error)
             record.outcome = DeviceProbe.isRefusal(error) && expectsBattery != true ? .notSupported : .failed
@@ -350,7 +746,11 @@ enum DeviceTestSteps {
                 // nil, not 0, when the probe got no answer: 0 would read as a real ceiling.
                 data.maxProbe = (try? DeviceProbe.writeDPI(channel, .init(x: 45000, y: 45000))).map { Int($0.readBack.value.x) }
             }
-            data.stages = try? DeviceProbe.readStages(channel).value.stages
+            if let table = try? DeviceProbe.readStages(channel) {
+                data.stages = table.value.stages
+                data.activeStageByte = table.value.activeByte
+                if !table.value.stages.isEmpty { data.firstStageNumber = Int(table.response.arguments[3]) }
+            }
             record.outcome = check.confirmed ? .passed : .failed
         } catch {
             record.error = String(describing: error)

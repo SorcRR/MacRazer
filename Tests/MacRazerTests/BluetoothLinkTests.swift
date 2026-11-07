@@ -84,6 +84,27 @@ final class BluetoothLinkTests: XCTestCase {
                        HIDDevice.BluetoothMouse(name: "Cobra HS", controllablePID: nil))
     }
 
+    /// Razer's Bluetooth vendor id is enough, whatever the name: #35's Pro Click V2 is "PCV2 Ver".
+    func testRazersVendorIdIsRecognisedWithoutAName() {
+        XCTAssertEqual(HIDDevice.classifyBluetoothMouse(vendorID: 0x068E, productID: 0x00C9, name: "PCV2 Ver"),
+                       HIDDevice.BluetoothMouse(name: "PCV2 Ver", controllablePID: nil))
+    }
+
+    /// A Razer keyboard on Bluetooth shares the vendor id: an unknown PID needs a mouse's
+    /// primary usage and a name no keyboard line uses.
+    func testARazerKeyboardOnBluetoothIsNotTheMouse() {
+        XCTAssertNil(HIDDevice.classifyBluetoothMouse(vendorID: 0x068E, productID: 0x0255, name: "BlackWidow V3 Mini"))
+        XCTAssertNil(HIDDevice.classifyBluetoothMouse(vendorID: 0x068E, productID: 0x00C9, name: "PCV2 Ver",
+                                                      primaryUsageIsMouse: false))
+        // A mouse with macro keys may list its keyboard first: its name still says mouse.
+        XCTAssertEqual(HIDDevice.classifyBluetoothMouse(vendorID: 0x068E, productID: 0x0001, name: "Naga V3 Pro",
+                                                        primaryUsageIsMouse: false),
+                       HIDDevice.BluetoothMouse(name: "Naga V3 Pro", controllablePID: nil))
+        XCTAssertEqual(HIDDevice.classifyBluetoothMouse(vendorID: 0x068E, productID: 0x00DC, name: "Cobra HS",
+                                                        primaryUsageIsMouse: false),
+                       HIDDevice.BluetoothMouse(name: "Cobra HS", controllablePID: 0x00DC), "a known PID is enough")
+    }
+
     func testOtherMiceAreIgnored() {
         XCTAssertNil(HIDDevice.classifyBluetoothMouse(vendorID: 0x004C, productID: 0x0269, name: "Magic Mouse"))
         XCTAssertNil(HIDDevice.classifyBluetoothMouse(vendorID: nil, productID: nil, name: "MX Master 3"))

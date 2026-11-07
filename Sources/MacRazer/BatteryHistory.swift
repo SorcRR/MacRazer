@@ -205,14 +205,14 @@ final class BatteryHistory {
     /// Estimate with provenance for presentation and persistence. Basilisk callers opt into
     /// provisional curve means and a clearly labeled scalar fallback; other devices retain the
     /// generic rate and curve behavior.
+    ///
+    /// The learned rate is kept up to date for every mouse, the Basilisk included: it's what a
+    /// fresh battery cycle falls back on before its own samples show a trend, and on AA cells
+    /// that can take days. The Basilisk's estimate says "rough" whenever it leans on it.
     func estimate(currentPercent: Int, curveModel: DischargeCurveModel? = nil,
                   useProvisionalCurve: Bool = false) -> Estimate? {
         var rate: Double?
-        if useProvisionalCurve {
-            // Keep the historical Basilisk rate intact and available as a rough fallback, but
-            // do not blend potentially noisy Basilisk sessions into it as if it were trusted.
-            rate = sessionRatePerHour() ?? learnedRatePerHour
-        } else if let session = sessionRatePerHour() {
+        if let session = sessionRatePerHour() {
             // Blend the observed rate into the long-term learned rate (EMA), then use it.
             let blended = learnedRatePerHour.map { 0.8 * $0 + 0.2 * session } ?? session
             learnedRatePerHour = min(max(blended, 0.05), 60)

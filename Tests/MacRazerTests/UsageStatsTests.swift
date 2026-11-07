@@ -52,11 +52,7 @@ final class UsageStatsTests: XCTestCase {
 
     // MARK: The contract with the Worker
 
-    private static var fixture: URL {
-        URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("worker/test/fixtures/usage-ping.json")
-    }
+    private static var fixture: URL { WorkerFixtures.url("usage-ping.json") }
 
     /// The Worker's tests check it accepts this file as it is. Run with
     /// UPDATE_WORKER_FIXTURE=1 to rewrite it after changing the ping.
@@ -72,7 +68,7 @@ final class UsageStatsTests: XCTestCase {
         }
         XCTAssertEqual(try parsed(Data(contentsOf: Self.fixture)), try parsed(Data(json.utf8)), """
             The ping's format changed. Rewrite the fixture with UPDATE_WORKER_FIXTURE=1 swift test \
-            --filter UsageStatsTests, update worker/src/stats.ts to match, and run the Worker's tests.
+            --filter UsageStatsTests, update src/stats.ts in SorcRR/macrazer-worker to match, and run its tests.
             """)
     }
 
@@ -154,8 +150,12 @@ final class UsageStatsTests: XCTestCase {
         s.setConnectedMice([cobra])
         await s.sendIfDue()
         XCTAssertTrue(server.requests.isEmpty)
-        s.dismissUnanswered()
-        XCTAssertEqual(s.consent, .declined, "closing the question is a no")
+        s.closeQuestion()
+        XCTAssertEqual(s.consent, .undecided, "closing the question isn't an answer")
+        await s.sendIfDue()
+        XCTAssertTrue(server.requests.isEmpty)
+        s.closeQuestion(now: Date().addingTimeInterval(UsageStats.askAgainDelay))
+        XCTAssertEqual(s.consent, .declined, "closing it again a week later is a no")
         await s.sendIfDue()
         XCTAssertTrue(server.requests.isEmpty)
     }
@@ -200,6 +200,126 @@ final class UsageStatsTests: XCTestCase {
         await s.sendIfDue()
         XCTAssertEqual(server.pings.map(\.event), [.first, .first, .first])
         XCTAssertNotNil(s.lastSentAt)
+    }
+
+    // MARK: Counting answers
+
+    func testEachChangeOfAnswerIsNotedOnceUntilSent() {
+        let s = stats(FakeServer())
+        XCTAssertEqual(s.pendingConsentChanges, [])
+        s.setConsent(false)
+        s.setConsent(false)
+        s.setConsent(true)
+        s.setConsent(false)
+        s.setConsent(true)
+        XCTAssertEqual(s.pendingConsentChanges, [.saidNo, .turnedOn, .turnedOff])
+        s.consentChangesSent([.saidNo, .turnedOn])
+        XCTAssertEqual(s.pendingConsentChanges, [.turnedOff])
+    }
+
+    func testAFirstYesAndDeleteMyDataAreChangesToo() async {
+        let s = stats(FakeServer())
+        s.setConsent(true)
+        await s.deleteMyData()
+        XCTAssertEqual(s.pendingConsentChanges, [.saidYes, .turnedOff])
+    }
+
+    func testClosingTheQuestionAsksAgainAWeekLaterThenIsASaidNo() {
+        let s = stats(FakeServer())
+        let closed = Date(timeIntervalSince1970: 1_800_000_000)
+        XCTAssertTrue(s.shouldAsk(now: closed), "nobody asked yet")
+        s.closeQuestion(now: closed)
+        XCTAssertEqual(s.consent, .undecided)
+        XCTAssertEqual(s.pendingConsentChanges, [.dismissed])
+        XCTAssertFalse(s.shouldAsk(now: closed.addingTimeInterval(6 * 86_400)), "not within the week")
+        XCTAssertTrue(s.shouldAsk(now: closed.addingTimeInterval(7 * 86_400)))
+        s.closeQuestion(now: closed.addingTimeInterval(7 * 86_400))
+        XCTAssertEqual(s.consent, .declined)
+        XCTAssertEqual(s.pendingConsentChanges, [.dismissed], "a close is never counted as said_no: nobody said it")
+        XCTAssertFalse(s.shouldAsk(now: closed.addingTimeInterval(30 * 86_400)), "never again after a no")
+        XCTAssertEqual(UsageStatsConsent.undecided.countValue, "unasked")
+    }
+
+    func testABuildWithoutTheWorkerNeverAsksOrCountsACloseAsAnAnswer() {
+        let s = UsageStats(defaults: defaults(), endpoint: nil, version: "0.6.0", hardwareUUID: { nil }, sendsOnChange: false,
+                           transport: { _ in throw URLError(.notConnectedToInternet) })
+        XCTAssertFalse(s.shouldAsk())
+        s.closeQuestion()
+        s.closeQuestion()
+        XCTAssertEqual(s.consent, .undecided)
+        XCTAssertTrue(s.pendingConsentChanges.isEmpty)
+    }
+
+    func testTurningSharingOnAfterClosingTwiceIsAFirstYes() {
+        let s = stats(FakeServer())
+        let closed = Date(timeIntervalSince1970: 1_800_000_000)
+        s.closeQuestion(now: closed)
+        s.closeQuestion(now: closed.addingTimeInterval(8 * 86_400))
+        s.setConsent(true)
+        XCTAssertEqual(s.pendingConsentChanges, [.dismissed, .saidYes], "never said no, so not turned back on")
+        s.setConsent(false)
+        s.setConsent(true)
+        XCTAssertEqual(s.pendingConsentChanges, [.dismissed, .saidYes, .turnedOff, .turnedOn])
+    }
+
+    func testAWindowThatAskedAndClosedCountsAsAClose() {
+        let s = stats(FakeServer())
+        let opened = Date(timeIntervalSince1970: 1_800_000_000)
+        XCTAssertTrue(s.beginAsking(now: opened))
+        XCTAssertTrue(s.isAsking)
+        XCTAssertEqual(s.askingSince, opened)
+        XCTAssertTrue(s.endAsking(now: opened.addingTimeInterval(60)))
+        XCTAssertFalse(s.isAsking)
+        XCTAssertEqual(s.pendingConsentChanges, [.dismissed])
+        // Within the week the Updated window opens without the card, and closing it is nothing.
+        XCTAssertFalse(s.beginAsking(now: opened.addingTimeInterval(86_400)))
+        XCTAssertFalse(s.endAsking(now: opened.addingTimeInterval(86_500)))
+        XCTAssertEqual(s.consent, .undecided)
+        XCTAssertEqual(s.pendingConsentChanges, [.dismissed])
+    }
+
+    func testShowingTheQuestionAgainKeepsWhenItFirstShowed() {
+        let s = stats(FakeServer())
+        let opened = Date(timeIntervalSince1970: 1_800_000_000)
+        s.beginAsking(now: opened)
+        s.beginAsking(now: opened.addingTimeInterval(300))
+        XCTAssertEqual(s.askingSince, opened)
+    }
+
+    func testDeleteMyDataAfterClosingTwiceKeepsTheNextYesAFirstYes() async {
+        let s = stats(FakeServer())
+        let closed = Date(timeIntervalSince1970: 1_800_000_000)
+        s.closeQuestion(now: closed)
+        s.closeQuestion(now: closed.addingTimeInterval(8 * 86_400))
+        await s.deleteMyData()
+        s.setConsent(true)
+        XCTAssertEqual(s.pendingConsentChanges, [.dismissed, .saidYes])
+    }
+
+    func testSwitchingToADevBuildIsReportedSoTheLabelIsRight() {
+        XCTAssertEqual(UsageStatsPolicy.event(consent: .granted, version: "0.8.0-dev", lastReportedVersion: "0.8.0",
+                                              reportedMice: [], connected: []), .update)
+        XCTAssertEqual(UsageStatsPolicy.event(consent: .granted, version: "0.8.1", lastReportedVersion: "0.8.0-dev",
+                                              reportedMice: [], connected: []), .update)
+    }
+
+    func testClosingAfterAnAnswerChangesNothing() {
+        let s = stats(FakeServer())
+        s.setConsent(true)
+        s.closeQuestion()
+        XCTAssertEqual(s.consent, .granted)
+        XCTAssertEqual(s.pendingConsentChanges, [.saidYes])
+    }
+
+    func testTheCountersPersistAcrossLaunches() {
+        let d = defaults()
+        stats(FakeServer(), defaults: d).closeQuestion(now: Date(timeIntervalSince1970: 1_800_000_000))
+        let later = stats(FakeServer(), defaults: d)
+        XCTAssertFalse(later.shouldAsk(now: Date(timeIntervalSince1970: 1_800_000_000 + 86_400)))
+        later.closeQuestion(now: Date(timeIntervalSince1970: 1_800_000_000 + 86_400))
+        XCTAssertEqual(later.consent, .undecided, "closed again within the week: it wasn't asked, so no change")
+        later.closeQuestion(now: Date(timeIntervalSince1970: 1_800_000_000 + 8 * 86_400))
+        XCTAssertEqual(later.consent, .declined, "the second close after the week, after a relaunch, is the no")
     }
 
     // MARK: Delete My Data
@@ -283,5 +403,61 @@ final class UsageStatsTests: XCTestCase {
         XCTAssertEqual(preview.mice, [cobra])
         XCTAssertEqual(preview.event, .first)
         XCTAssertTrue(preview.json(pretty: true).contains("\"Razer Cobra Pro (Wireless)\""))
+    }
+}
+
+/// A build without the Worker: what someone else's clone or fork gets.
+@MainActor
+final class WorkerEndpointTests: XCTestCase {
+    func testOnlyAnHTTPSOriginCounts() {
+        XCTAssertEqual(WorkerEndpoint.parse("https://reports.example.org")?.absoluteString, "https://reports.example.org")
+        XCTAssertEqual(WorkerEndpoint.parse("https://reports.example.org/")?.absoluteString, "https://reports.example.org")
+        XCTAssertEqual(WorkerEndpoint.parse("http://127.0.0.1:8787")?.absoluteString, "http://127.0.0.1:8787",
+                       "plain http only for wrangler dev on this Mac")
+        for bad in [nil, "", "reports.example.org", "http://reports.example.org", "https://", "ftp://x.org",
+                    "https://x.org/v1", "https://x.org?a=1", "https://u:p@x.org", "https://x.org#f"] {
+            XCTAssertNil(WorkerEndpoint.parse(bad), bad ?? "nil")
+        }
+    }
+
+    func testOnlyADevelopmentBuildTakesTheEnvironmentOverride() {
+        let local = "http://127.0.0.1:8787", bundled = "https://reports.example.org"
+        XCTAssertEqual(WorkerEndpoint.resolve(environment: local, bundled: bundled, isPackaged: true)?.absoluteString, bundled)
+        XCTAssertNil(WorkerEndpoint.resolve(environment: local, bundled: nil, isPackaged: true))
+        XCTAssertEqual(WorkerEndpoint.resolve(environment: local, bundled: nil, isPackaged: false)?.absoluteString, local)
+        XCTAssertNil(WorkerEndpoint.resolve(environment: nil, bundled: nil, isPackaged: false))
+    }
+
+    func testTheRoutesHangOffTheOrigin() throws {
+        let base = try XCTUnwrap(WorkerEndpoint.parse("https://reports.example.org"))
+        XCTAssertEqual(base.appendingPathComponent("v1/stats").absoluteString, "https://reports.example.org/v1/stats")
+    }
+
+    func testStatsWithoutAWorkerNeverAskOrSend() async {
+        let server = UsageStatsTests.FakeServer()
+        let name = "MacRazerTests.NoWorker.\(UUID().uuidString)"
+        addTeardownBlock { UserDefaults(suiteName: name)?.removePersistentDomain(forName: name) }
+        let s = UsageStats(defaults: UserDefaults(suiteName: name)!, endpoint: nil, version: "0.6.0",
+                           hardwareUUID: { "X" }, sendsOnChange: false, transport: { try server.handle($0) })
+        XCTAssertFalse(s.isAvailable)
+        s.setConsent(true)
+        await s.sendIfDue()
+        await s.deleteMyData()
+        XCTAssertTrue(server.requests.isEmpty)
+    }
+
+    func testTheDeviceTestHasNoSendWithoutAWorker() {
+        let model = DeviceTestModel(controller: MouseController(), permissions: PermissionsModel(), reportEndpoint: nil)
+        XCTAssertFalse(model.canSend)
+        XCTAssertTrue(DeviceTestModel(controller: MouseController(), permissions: PermissionsModel(),
+                                      reportEndpoint: URL(string: "https://reports.example.org/v1/device-report")).canSend)
+    }
+}
+
+private extension UsageStats {
+    /// The question shown and closed without an answer, as a window does it.
+    func closeQuestion(now: Date = Date()) {
+        beginAsking(now: now)
+        endAsking(now: now)
     }
 }

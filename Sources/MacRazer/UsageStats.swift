@@ -8,9 +8,37 @@ import IOKit
 /// What the person said when asked about usage stats. Nothing is sent unless it's `granted`.
 enum UsageStatsConsent: String {
     case undecided, granted, declined
+
+    /// How the anonymous daily count names it (`AnonymousCountReporter`).
+    var countValue: String {
+        switch self {
+        case .granted: "yes"
+        case .declined: "no"
+        case .undecided: "unasked"
+        }
+    }
+
+    /// A change of answer, for the anonymous daily count: the first answer when asked, and
+    /// turning sharing off (Delete My Data included) or back on later. `dismissed` is closing
+    /// the question without answering: no answer, so it's asked again later.
+    enum Change: String, CaseIterable {
+        case saidYes = "said_yes", saidNo = "said_no", turnedOff = "turned_off", turnedOn = "turned_on"
+        case dismissed
+
+        /// Nil when nothing changed.
+        static func from(_ old: UsageStatsConsent, to new: UsageStatsConsent) -> Change? {
+            switch (old, new) {
+            case (.undecided, .granted): .saidYes
+            case (.undecided, .declined): .saidNo
+            case (.granted, .declined): .turnedOff
+            case (.declined, .granted): .turnedOn
+            default: nil
+            }
+        }
+    }
 }
 
-/// One ping, exactly as the Worker takes it (`worker/src/stats.ts`). Settings shows this same
+/// One ping, exactly as the Worker takes it (`src/stats.ts` in SorcRR/macrazer-worker). Settings shows this same
 /// value as JSON, so what the person reads is what goes.
 struct UsagePing: Codable, Equatable {
     enum Event: String, Codable {
@@ -58,9 +86,44 @@ enum UsageStatsPolicy {
         // A `swift run` build has no version, and its pings would only be noise.
         guard consent == .granted, let version else { return nil }
         guard let lastReportedVersion else { return .first }
+        // Raw: a switch between a release and its -dev build is reported, so the stats keep the
+        // label of what this Mac runs now (the Updated window ignores that switch instead).
         if lastReportedVersion != version { return .update }
         if connected.contains(where: { !reportedMice.contains($0.key) }) { return .mouse }
         return nil
+    }
+
+    /// Razer gives mice product IDs below this; keyboards and the rest start here.
+    static let firstNonMousePID = 0x0200
+    /// Receivers a mouse is used through: the Mouse Dock Pro and the HyperFlux V2 pad.
+    static let receiverPIDs: Set<Int> = [0x00A4, 0x00CF]
+
+    /// What makes two mice one for the counts: the model when MacRazer knows it (a mouse's
+    /// cable and dongle are one), the product ID and link otherwise. The daily count's "sent
+    /// today" goes by the same (`AnonymousCountReporter.sentKey`).
+    static func countIdentity(_ mouse: UsagePing.Mouse) -> String {
+        RazerDevices.model(pid: mouse.pid).map { "model:" + $0 } ?? mouse.key
+    }
+
+    /// The mice to count: the one MacRazer opened first, then every other Razer mouse plugged
+    /// in by cable or dongle (a second mouse, or one whose dongle is in but which is asleep),
+    /// up to the Worker's limit. One mouse once (`countIdentity`): a Cobra HyperSpeed charging
+    /// on its cable with its dongle in is one mouse.
+    static func connectedMice(opened: UsagePing.Mouse?, plugged: [HIDDevice.USBMouse]) -> [UsagePing.Mouse] {
+        var mice: [UsagePing.Mouse] = []
+        var seen = Set<String>()
+        // A plugged device counts only if it's a mouse MacRazer knows, or in the product range
+        // Razer gives mice: a keyboard with a pointer interface mustn't take a mouse's place.
+        // A dock or charging pad's receiver (Mouse Dock Pro, HyperFlux V2) is how a mouse
+        // connects, not another mouse: counted only when the controller opened it.
+        let mouseLike = plugged.filter {
+            !receiverPIDs.contains($0.pid) && (RazerDevices.model(pid: $0.pid) != nil || $0.pid < Self.firstNonMousePID)
+        }
+        let candidates = (opened.map { [$0] } ?? []) + mouseLike.map {
+            mouse(pid: $0.pid, productName: $0.name, isBluetooth: false, supported: RazerDevices.fullySupported(pid: $0.pid))
+        }
+        for m in candidates where seen.insert(countIdentity(m)).inserted { mice.append(m) }
+        return Array(mice.prefix(WorkerEndpoint.maxMice))
     }
 
     /// The mouse as a ping names it. The registry's name when MacRazer knows the model, so
@@ -126,11 +189,22 @@ enum UsageMachineID {
     }
 }
 
-/// Opt-in usage stats: asks once, then pings the Worker on install, on update, and when a new
+/// Opt-in usage stats: asks (again a week later if the question was closed unanswered), then pings the Worker on install, on update, and when a new
 /// mouse shows up. Settings › Privacy turns it off, shows exactly what's sent, and deletes it.
 @MainActor
 final class UsageStats: ObservableObject {
     static let consentKey = "usageStats.consent"
+    /// When a question closed without an answer may be asked again. Set the first time it's
+    /// closed; there being one at all means it was closed before.
+    static let askAgainAfterKey = "usageStats.askAgainAfter"
+    /// Declined by closing the question twice, not by anyone saying no: turning sharing on
+    /// later is then their first answer, a said_yes, not a turned_on.
+    static let declinedByClosingKey = "usageStats.declinedByClosing"
+    /// How long a question closed unanswered waits before it's asked again: at the first clear
+    /// moment after it, in a running app (the 15-minute tick), at a launch, or in the Updated
+    /// window, whichever comes first.
+    static let askAgainDelay: TimeInterval = 7 * 86_400
+    static let pendingChangesKey = "usageStats.pendingChanges"
     static let idKey = "usageStats.id"
     static let lastReportedVersionKey = "usageStats.lastReportedVersion"
     static let reportedMiceKey = "usageStats.reportedMice"
@@ -149,6 +223,13 @@ final class UsageStats: ObservableObject {
     typealias Transport = @Sendable (URLRequest) async throws -> (Data, URLResponse)
 
     @Published private(set) var consent: UsageStatsConsent
+    /// The question is on screen: in its own window or as the Updated window's card. Set by
+    /// whichever opened (`beginAsking`), so the card, the close and the daily count agree on
+    /// whether it was asked.
+    var isAsking: Bool { askingSince != nil }
+    /// When it appeared, for how long the daily count holds the answer back. Nil while it isn't
+    /// on screen.
+    @Published private(set) var askingSince: Date?
     @Published private(set) var lastSentAt: Date?
     @Published private(set) var lastSentVersion: String?
     @Published private(set) var deletion: DeletionState = .idle
@@ -157,7 +238,8 @@ final class UsageStats: ObservableObject {
 
     private let defaults: UserDefaults
     private let transport: Transport
-    private let endpoint: URL
+    /// Nil in a build without the Worker: then nothing is asked, shown or sent.
+    private let endpoint: URL?
     private let version: String?
     private let hardwareUUID: () -> String?
     /// Whether a yes or a new mouse sends straight away. Off in tests, which call
@@ -167,7 +249,7 @@ final class UsageStats: ObservableObject {
     private var again = false
 
     init(defaults: UserDefaults = .standard,
-         endpoint: URL = ProjectLinks.usageStats,
+         endpoint: URL? = WorkerEndpoint.usageStats,
          version: String? = AppInfo.version,
          hardwareUUID: @escaping () -> String? = UsageMachineID.hardwareUUID,
          sendsOnChange: Bool = true,
@@ -183,6 +265,10 @@ final class UsageStats: ObservableObject {
         lastSentVersion = defaults.string(forKey: Self.lastReportedVersionKey)
         if defaults.string(forKey: Self.pendingDeletionKey) != nil { deletion = .willRetry }
     }
+
+    /// Whether this build has somewhere to send stats. When it doesn't, the app never asks,
+    /// Settings has no Privacy section, and the Updated window has no card.
+    var isAvailable: Bool { endpoint != nil }
 
     /// Worked out once and kept: if macOS ever reported a different UUID (some have seen it
     /// change across a major upgrade) the Mac would otherwise turn into a new one. Recomputed
@@ -215,20 +301,96 @@ final class UsageStats: ObservableObject {
                   os: DeviceReport.currentMacOSVersion, arch: UsageMachineID.arch, mice: connectedMice)
     }
 
+    // MARK: Counting answers
+
+    /// Changes of answer the anonymous daily count hasn't carried yet, oldest first, each once.
+    var pendingConsentChanges: [UsageStatsConsent.Change] {
+        (defaults.stringArray(forKey: Self.pendingChangesKey) ?? []).compactMap(UsageStatsConsent.Change.init)
+    }
+
+    /// Drops the changes a count carried, with any made again while it was on its way: the
+    /// Worker counts each once a day anyway.
+    func consentChangesSent(_ sent: [UsageStatsConsent.Change]) {
+        let left = pendingConsentChanges.filter { !sent.contains($0) }
+        defaults.set(left.map(\.rawValue), forKey: Self.pendingChangesKey)
+    }
+
+    private func noteChange(to new: UsageStatsConsent) {
+        guard new != consent else { return }
+        let byClosing = defaults.bool(forKey: Self.declinedByClosingKey)
+        defaults.removeObject(forKey: Self.declinedByClosingKey)
+        if byClosing, consent == .declined, new == .granted { return note(.saidYes) }
+        guard let change = UsageStatsConsent.Change.from(consent, to: new) else { return }
+        note(change)
+    }
+
+    private func store(_ new: UsageStatsConsent) {
+        consent = new
+        defaults.set(new.rawValue, forKey: Self.consentKey)
+    }
+
+    private func note(_ change: UsageStatsConsent.Change) {
+        var pending = pendingConsentChanges
+        if !pending.contains(change) { pending.append(change) }
+        defaults.set(pending.map(\.rawValue), forKey: Self.pendingChangesKey)
+    }
+
     // MARK: Asking
 
     func setConsent(_ granted: Bool) {
-        consent = granted ? .granted : .declined
-        defaults.set(consent.rawValue, forKey: Self.consentKey)
+        let new: UsageStatsConsent = granted ? .granted : .declined
+        noteChange(to: new)
+        store(new)
         if granted {
             if deletion == .deleted { deletion = .idle }
             if sendsOnChange { Task { await sendIfDue() } }
         }
     }
 
-    /// Closing a window that asked, without answering, is a no. It isn't asked again.
-    func dismissUnanswered() {
-        if consent == .undecided { setConsent(false) }
+    /// Closing a window that asked, without answering, isn't an answer: nothing is sent, and
+    /// the question comes back a week on, at a launch or in the Updated window. Closed
+    /// unanswered again after that, it's taken as a no and not asked again; Settings ›
+    /// Privacy can still turn sharing on. Both closes are counted as `dismissed`, never as
+    /// `said_no`: nobody said it. Reached only through `endAsking`, for a question that was on screen.
+    private func dismissUnanswered(now: Date) {
+        // Not due (answered, no Worker, or closed again before its week was up): it wasn't
+        // asked, so nothing changes.
+        guard shouldAsk(now: now) else { return }
+        note(.dismissed)
+        if defaults.object(forKey: Self.askAgainAfterKey) != nil {
+            store(.declined)
+            defaults.set(true, forKey: Self.declinedByClosingKey)
+        } else {
+            defaults.set(now.addingTimeInterval(Self.askAgainDelay), forKey: Self.askAgainAfterKey)
+        }
+    }
+
+    /// A window that can ask is opening: it asks if the question is due. True when it does.
+    @discardableResult
+    func beginAsking(now: Date = Date()) -> Bool {
+        // Shown again while already asking: it's the same question, from when it first showed.
+        if isAsking { return true }
+        askingSince = shouldAsk(now: now) ? now : nil
+        return isAsking
+    }
+
+    /// That window is closing. Asked and not answered, it's a close (`dismissUnanswered`).
+    /// True when the question was on screen.
+    @discardableResult
+    func endAsking(now: Date = Date()) -> Bool {
+        let was = isAsking
+        askingSince = nil
+        if was { dismissUnanswered(now: now) }
+        return was
+    }
+
+    /// Whether the question is shown: nobody has answered, this build can send, and a question
+    /// closed unanswered has waited its week. The launch window and the Updated window's card
+    /// both go by it.
+    func shouldAsk(now: Date = Date()) -> Bool {
+        guard isAvailable, consent == .undecided else { return false }
+        guard let after = defaults.object(forKey: Self.askAgainAfterKey) as? Date else { return true }
+        return now >= after
     }
 
     // MARK: Sending
@@ -244,6 +406,7 @@ final class UsageStats: ObservableObject {
     /// a new mouse, and on saying yes. A call while one is running makes it go round once more,
     /// so nothing that changed meanwhile is missed.
     func sendIfDue() async {
+        guard endpoint != nil else { return }
         if busy { again = true; return }
         busy = true
         defer { busy = false }
@@ -275,6 +438,7 @@ final class UsageStats: ObservableObject {
     }
 
     private func post(_ ping: UsagePing) async -> Bool {
+        guard let endpoint else { return false }
         var request = URLRequest(url: endpoint, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 10)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -288,11 +452,13 @@ final class UsageStats: ObservableObject {
     /// Delete My Data: sharing goes off at once, and the server is asked to drop this Mac's ID.
     /// If it can't be reached, the request is kept and tried again until it is.
     func deleteMyData() async {
+        // A build without the Worker never sent anything, and has nowhere to ask.
+        guard endpoint != nil else { return }
         defaults.set(machineID, forKey: Self.pendingDeletionKey)
         // Shown straight away, even when a ping in flight makes the delete wait for it.
         deletion = .deleting
-        consent = .declined
-        defaults.set(consent.rawValue, forKey: Self.consentKey)
+        noteChange(to: .declined)
+        store(.declined)
         // Forget what was reported, so opting in again starts over as a new Mac, the way the
         // server will see it.
         for key in [Self.lastReportedVersionKey, Self.reportedMiceKey, Self.lastSentAtKey] {
@@ -306,6 +472,7 @@ final class UsageStats: ObservableObject {
     /// True once the server has it, or there was nothing to delete.
     private func finishDeletion() async -> Bool {
         guard let id = defaults.string(forKey: Self.pendingDeletionKey) else { return true }
+        guard let endpoint else { return false }
         deletion = .deleting
         var request = URLRequest(url: endpoint.appendingPathComponent(id),
                                  cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 10)
@@ -331,10 +498,12 @@ final class UsageStats: ObservableObject {
         let name = "MacRazer.preview.usageStats"
         let defaults = UserDefaults(suiteName: name)!
         defaults.removePersistentDomain(forName: name)
-        let stats = UsageStats(defaults: defaults, version: "0.6.0",
+        let stats = UsageStats(defaults: defaults, endpoint: URL(string: "https://reports.example/v1/stats"), version: "0.6.0",
                                hardwareUUID: { "5C0FFEE0-0000-4000-8000-000000000000" },
                                sendsOnChange: false, transport: { _ in throw URLError(.notConnectedToInternet) })
         stats.consent = consent
+        // As the Updated window opens it: the card asks while nobody has answered.
+        stats.askingSince = consent == .undecided ? Date() : nil
         stats.connectedMice = [UsageStatsPolicy.mouse(pid: 0x00B0, productName: nil, isBluetooth: false, supported: true)]
         if consent == .granted {
             stats.lastSentAt = Date()

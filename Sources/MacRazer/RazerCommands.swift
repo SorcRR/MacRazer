@@ -39,6 +39,42 @@ struct RGB: Codable, Equatable, Sendable {
     var r: UInt8, g: UInt8, b: UInt8
 }
 
+/// The wave effect's speed byte, `args[4]` of the wave command. Lower is faster
+/// (`razerchromacommon.c`): OpenRazer always sends 0x28, and Razer's own "Fast Wave" uses 0x10.
+/// The slider spans 0xC8 to 0x08. A wave's speed goes with 1 / byte, so the slider is
+/// geometric: each step multiplies the byte by the same factor, and the standard 0x28
+/// (200 / 40 = 40 / 8) sits exactly in the middle. Verified on the Cynosa Chroma (the
+/// slider's range) and the Cobra HyperSpeed (0xC8 answered and ran slower).
+enum WaveSpeed {
+    static let standard: UInt8 = 0x28
+    static let slowest: UInt8 = 0xC8
+    static let fastest: UInt8 = 0x08
+
+    /// The speed byte for a slider position, 0 (slowest) to 1 (fastest).
+    static func byte(fromFraction fraction: Double) -> UInt8 {
+        let f = max(0, min(fraction, 1))
+        return UInt8((Double(slowest) * pow(Double(fastest) / Double(slowest), f)).rounded())
+    }
+
+    /// What VoiceOver says for a slider position: the slider runs 0 to 1, and a bare
+    /// percentage there reads like a brightness ("0%" sounds like off).
+    static func spokenValue(fromFraction fraction: Double) -> String {
+        switch fraction {
+        case ..<0.15: return "Slowest"
+        case ..<0.4: return "Slow"
+        case ..<0.6: return "Standard"
+        case ..<0.85: return "Fast"
+        default: return "Fastest"
+        }
+    }
+
+    /// The slider position for a speed byte; bytes outside the range pin to its ends.
+    static func fraction(fromByte byte: UInt8) -> Double {
+        let b = Double(max(fastest, min(byte, slowest)))
+        return log(Double(slowest) / b) / log(Double(slowest) / Double(fastest))
+    }
+}
+
 /// Command builders — direct ports of razerchromacommon.c. The per-model transaction id is
 /// stamped later by `HIDDevice.send` (see `RazerDevices.transactionId`).
 enum RazerCommands {
@@ -145,6 +181,54 @@ enum RazerCommands {
     /// The active stage byte from a get-DPI-stages response (args[1]).
     static func parseActiveDPIStage(_ resp: RazerReport) -> Int { Int(resp.arguments[1]) }
 
+    /// A stage table as the mouse reports it, with its own stage numbers. Mice number their
+    /// stages from 1 in the reply, and the active byte names one of those numbers, so an edit
+    /// writes the numbers back as read instead of assuming a base.
+    struct DPIStageTable: Equatable {
+        var activeID: UInt8
+        var ids: [UInt8]
+        var values: [Int]
+
+        /// Index into `values` of the active stage, or nil when the byte names none of them.
+        var activeIndex: Int? { ids.firstIndex(of: activeID) }
+    }
+
+    /// The whole table from a get-DPI-stages response, or nil when it's empty, too long, or
+    /// has a zero entry (`parseDPIStages` would drop it and the indices would no longer line up).
+    static func parseDPIStageTable(_ resp: RazerReport) -> DPIStageTable? {
+        let count = Int(resp.arguments[2])
+        guard (1...maxDPIStages).contains(count) else { return nil }
+        var ids: [UInt8] = []
+        var values: [Int] = []
+        for i in 0..<count {
+            let base = 3 + i * 7
+            let x = (Int(resp.arguments[base + 1]) << 8) | Int(resp.arguments[base + 2])
+            guard x > 0 else { return nil }
+            ids.append(resp.arguments[base])
+            values.append(x)
+        }
+        return DPIStageTable(activeID: resp.arguments[1], ids: ids, values: values)
+    }
+
+    /// Writes `table` back with the mouse's own stage numbers and active byte.
+    static func setDPIStages(_ table: DPIStageTable) -> RazerReport {
+        var r = RazerReport(commandClass: 0x04, commandId: 0x06, dataSize: 0x26)
+        let count = min(table.values.count, table.ids.count, maxDPIStages)
+        r.arguments[0] = Razer.varstore
+        r.arguments[1] = table.activeID
+        r.arguments[2] = UInt8(count)
+        for i in 0..<count {
+            let dpi = UInt16(max(100, min(table.values[i], 45000)))
+            let base = 3 + i * 7
+            r.arguments[base] = table.ids[i]
+            r.arguments[base + 1] = UInt8((dpi >> 8) & 0xFF)
+            r.arguments[base + 2] = UInt8(dpi & 0xFF)
+            r.arguments[base + 3] = UInt8((dpi >> 8) & 0xFF)
+            r.arguments[base + 4] = UInt8(dpi & 0xFF)
+        }
+        return r
+    }
+
     /// Devices store at most 5 stages (dataSize 0x26 = 3 header bytes + 5 × 7-byte records).
     static let maxDPIStages = 5
 
@@ -207,7 +291,7 @@ enum RazerCommands {
     // Cobra Pro / HyperSpeed drive ALL lighting as one group via led_id ZERO_LED (0x00).
     // The "4 zones" in Razer's marketing are NOT independently addressable in this protocol;
     // the daemon only exposes "all LEDs" + a separate "logo" (LOGO_LED 0x04) group.
-    // Extended-matrix effect ids: none=0x00, static=0x01, spectrum=0x03, wave=0x04.
+    // Extended-matrix effect ids: none=0x00, static=0x01, breathing=0x02, spectrum=0x03, wave=0x04.
     static let zeroLed: UInt8 = 0x00
 
     /// razer_chroma_extended_matrix_effect_base(arg_size, VARSTORE, led, effect_id)
@@ -230,13 +314,47 @@ enum RazerCommands {
         return r
     }
 
+    /// Breathing in one colour. razer_chroma_extended_matrix_effect_breathing_single:
+    /// base(0x09, …, 0x02); args[3]=0x01, args[5]=0x01 (colour count), args[6..8]=r,g,b.
+    /// No speed: in a hardware test, wave's speed byte in args[4] changed nothing here.
+    static func setBreathingSingle(led: UInt8 = zeroLed, rgb: RGB) -> RazerReport {
+        var r = effectBase(argSize: 0x09, led: led, effect: 0x02)
+        r.arguments[3] = 0x01
+        r.arguments[5] = 0x01
+        r.arguments[6] = rgb.r
+        r.arguments[7] = rgb.g
+        r.arguments[8] = rgb.b
+        return r
+    }
+
+    /// Breathing that alternates two colours. razer_chroma_extended_matrix_effect_breathing_dual:
+    /// base(0x0C, …, 0x02); args[3]=0x02, args[5]=0x02, args[6..8]=first, args[9..11]=second.
+    static func setBreathingDual(led: UInt8 = zeroLed, rgb1: RGB, rgb2: RGB) -> RazerReport {
+        var r = effectBase(argSize: 0x0C, led: led, effect: 0x02)
+        r.arguments[3] = 0x02
+        r.arguments[5] = 0x02
+        r.arguments[6] = rgb1.r
+        r.arguments[7] = rgb1.g
+        r.arguments[8] = rgb1.b
+        r.arguments[9] = rgb2.r
+        r.arguments[10] = rgb2.g
+        r.arguments[11] = rgb2.b
+        return r
+    }
+
+    /// Breathing in colours the mouse picks. razer_chroma_extended_matrix_effect_breathing_random:
+    /// base(0x06, …, 0x02), no further arguments.
+    static func setBreathingRandom(led: UInt8 = zeroLed) -> RazerReport {
+        effectBase(argSize: 0x06, led: led, effect: 0x02)
+    }
+
     /// Spectrum cycle. base(0x06, …, 0x03).
     static func setSpectrum(led: UInt8 = zeroLed) -> RazerReport {
         effectBase(argSize: 0x06, led: led, effect: 0x03)
     }
 
     /// Wave. base(0x06, …, 0x04); args[3]=direction (0..2), args[4]=speed (0x28 default).
-    static func setWave(led: UInt8 = zeroLed, direction: UInt8 = 0x01, speed: UInt8 = 0x28) -> RazerReport {
+    static func setWave(led: UInt8 = zeroLed, direction: UInt8 = 0x01, speed: UInt8 = WaveSpeed.standard) -> RazerReport {
         var r = effectBase(argSize: 0x06, led: led, effect: 0x04)
         r.arguments[3] = min(direction, 0x02)
         r.arguments[4] = speed
@@ -246,6 +364,19 @@ enum RazerCommands {
     /// Off. base(0x06, …, 0x00).
     static func setNone(led: UInt8 = zeroLed) -> RazerReport {
         effectBase(argSize: 0x06, led: led, effect: 0x00)
+    }
+
+    /// The command for a `LightingEffect` on one LED group, mouse or keyboard alike.
+    /// `waveSpeed` is the wave's speed byte (see `WaveSpeed`); the other effects have none.
+    static func effect(_ effect: LightingEffect, color: RGB, led: UInt8 = zeroLed,
+                       waveSpeed: UInt8 = WaveSpeed.standard) -> RazerReport {
+        switch effect {
+        case .staticColor: return setStatic(led: led, rgb: color)
+        case .breathing: return setBreathingSingle(led: led, rgb: color)
+        case .spectrum: return setSpectrum(led: led)
+        case .wave: return setWave(led: led, speed: waveSpeed)
+        case .off: return setNone(led: led)
+        }
     }
 
     // --- LED brightness (extended matrix, class 0x0F) ---
