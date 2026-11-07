@@ -339,7 +339,11 @@ final class CrashReportModelTests: XCTestCase {
     }
 
     func testTheFeatureIsOnExactlyWhenTheWorkerIs() {
+        XCTAssertNil(CrashReporting.deliver(to: nil), "no Worker: no window, no scan, no setting")
+        XCTAssertNotNil(CrashReporting.deliver(to: URL(string: "https://example.com/v1/crash-report")!))
         XCTAssertEqual(CrashReporting.isAvailable, WorkerEndpoint.crashReports != nil)
+        XCTAssertEqual(WorkerEndpoint.resolve(environment: nil, bundled: "https://reports.example.com", isPackaged: true)?
+            .appendingPathComponent("v1/crash-report").absoluteString, "https://reports.example.com/v1/crash-report")
     }
 }
 
