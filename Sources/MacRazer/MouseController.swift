@@ -1031,7 +1031,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// The command for the lighting the app last set, for the test to return to after showing
     /// red. Main thread. The protocol has no lighting read-back, so this is the app's own idea
     /// of what the mouse shows, the same one its controls work from.
-    func lightingRestoreReport() -> RazerReport { report(for: effect, color: lightingColor) }
+    func lightingRestoreReport() -> RazerReport {
+        Self.lightingCommand(effect, color: lightingColor, waveSpeed: waveSpeed, effects: availableEffects).report
+    }
 
     // MARK: - Writes
 
@@ -1337,8 +1339,12 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         sendLighting(target, color: rgb) { _ in self.lightingColor = rgb }
     }
 
-    private func report(for effect: LightingEffect, color: RGB, waveSpeed: UInt8? = nil) -> RazerReport {
-        RazerCommands.effect(supported(effect), color: color, waveSpeed: waveSpeed ?? self.waveSpeed)
+    /// The one place a lighting command is built: the effect the mouse with these effects
+    /// runs for the one asked for, and the command for it.
+    nonisolated static func lightingCommand(_ effect: LightingEffect, color: RGB, waveSpeed: UInt8,
+                                            effects: [LightingEffect]) -> (effect: LightingEffect, report: RazerReport) {
+        let landed = supported(effect, in: effects)
+        return (landed, RazerCommands.effect(landed, color: color, waveSpeed: waveSpeed))
     }
 
     /// An effect this mouse has: on a static-only one, breathing, spectrum or wave (from a
@@ -1358,10 +1364,13 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// kept for the next time Wave is picked.
     func setWaveSpeed(_ speed: UInt8) {
         guard speed != waveSpeed else { return }
-        guard intendedEffect == .wave, availableEffects.contains(.wave) else {
+        // intendedEffect is always one this mouse has, so Wave here means the mouse has it.
+        guard intendedEffect == .wave else {
             waveSpeed = speed
             return
         }
+        // Kept even if the mouse changed under the write and got its static colour instead,
+        // as the speed is kept whenever Wave isn't running.
         sendLighting(.wave, color: lightingColor, waveSpeed: speed) { _ in self.waveSpeed = speed }
     }
 
@@ -1378,8 +1387,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             guard let self else { return }
             let landed = try? { () throws -> LightingEffect in
                 let device = try self.ensureDevice()
-                let landed = Self.supported(effect, in: RazerDevices.effects(pid: device.productID))
-                _ = try device.sendWithRetry(RazerCommands.effect(landed, color: color, waveSpeed: speed))
+                let (landed, report) = Self.lightingCommand(effect, color: color, waveSpeed: speed,
+                                                            effects: RazerDevices.effects(pid: device.productID))
+                _ = try device.sendWithRetry(report)
                 return landed
             }()
             self.publish {
@@ -1488,8 +1498,8 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 || (try? Self.writeBrightness(RazerCommands.brightnessRaw(fromPercent: brightnessPct), to: dev)) != nil
             // Built for the mouse it reaches: if that changed since the profile was read, an
             // effect it lacks lands as one it has.
-            let landed = Self.supported(effect, in: RazerDevices.effects(pid: dev.productID))
-            let lighting = RazerCommands.effect(landed, color: color, waveSpeed: speed)
+            let (landed, lighting) = Self.lightingCommand(effect, color: color, waveSpeed: speed,
+                                                          effects: RazerDevices.effects(pid: dev.productID))
             let lightOK = !hasLighting || (try? dev.sendWithRetry(lighting)) != nil
             let allOK = stagesOK && dpiOK && pollOK && brightOK && lightOK
             let anyOK = dpiOK || (polls && pollOK) || (hasLighting && (brightOK || lightOK))
