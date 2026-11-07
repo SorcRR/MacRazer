@@ -129,6 +129,8 @@ enum WorkerEndpoint {
     static var deviceReports: URL? { base?.appendingPathComponent("v1/device-report") }
     /// "Report an Issue…"; see `IssueReport`.
     static var issueReports: URL? { base?.appendingPathComponent("v1/issue-report") }
+    /// The crash report window; see `CrashReporting`.
+    static var crashReports: URL? { base?.appendingPathComponent("v1/crash-report") }
     static var usageStats: URL? { base?.appendingPathComponent("v1/stats") }
     /// What's been confirmed on each mouse since this build; see `SupportList`.
     static var supportList: URL? { base?.appendingPathComponent("v1/support-list") }

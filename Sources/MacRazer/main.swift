@@ -369,7 +369,7 @@ case "render-crash-report":
     let crashPath = outputPath(args.dropFirst(), default: "crash-report-preview.png")
     let crashModel = CrashReportModel.preview()
     if args.contains("sent") { crashModel.loadPreviewSent() }
-    if args.contains("failed") { crashModel.loadPreviewFailed() }
+    if args.contains("failed") { crashModel.loadPreviewFailed(args.contains("cap") ? .tooMany : .unavailable) }
     writeHostedPNG(CrashReportView(model: crashModel, onDone: {}, onDontAskAgain: {}), to: crashPath)
 
 case "render-issue-report":
