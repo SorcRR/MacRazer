@@ -150,11 +150,11 @@ final class UsageStatsTests: XCTestCase {
         s.setConnectedMice([cobra])
         await s.sendIfDue()
         XCTAssertTrue(server.requests.isEmpty)
-        s.dismissUnanswered()
+        s.closeQuestion()
         XCTAssertEqual(s.consent, .undecided, "closing the question isn't an answer")
         await s.sendIfDue()
         XCTAssertTrue(server.requests.isEmpty)
-        s.dismissUnanswered(now: Date().addingTimeInterval(UsageStats.askAgainDelay))
+        s.closeQuestion(now: Date().addingTimeInterval(UsageStats.askAgainDelay))
         XCTAssertEqual(s.consent, .declined, "closing it again a week later is a no")
         await s.sendIfDue()
         XCTAssertTrue(server.requests.isEmpty)
@@ -228,12 +228,12 @@ final class UsageStatsTests: XCTestCase {
         let s = stats(FakeServer())
         let closed = Date(timeIntervalSince1970: 1_800_000_000)
         XCTAssertTrue(s.shouldAsk(now: closed), "nobody asked yet")
-        s.dismissUnanswered(now: closed)
+        s.closeQuestion(now: closed)
         XCTAssertEqual(s.consent, .undecided)
         XCTAssertEqual(s.pendingConsentChanges, [.dismissed])
         XCTAssertFalse(s.shouldAsk(now: closed.addingTimeInterval(6 * 86_400)), "not within the week")
         XCTAssertTrue(s.shouldAsk(now: closed.addingTimeInterval(7 * 86_400)))
-        s.dismissUnanswered(now: closed.addingTimeInterval(7 * 86_400))
+        s.closeQuestion(now: closed.addingTimeInterval(7 * 86_400))
         XCTAssertEqual(s.consent, .declined)
         XCTAssertEqual(s.pendingConsentChanges, [.dismissed], "a close is never counted as said_no: nobody said it")
         XCTAssertFalse(s.shouldAsk(now: closed.addingTimeInterval(30 * 86_400)), "never again after a no")
@@ -244,8 +244,8 @@ final class UsageStatsTests: XCTestCase {
         let s = UsageStats(defaults: defaults(), endpoint: nil, version: "0.6.0", hardwareUUID: { nil }, sendsOnChange: false,
                            transport: { _ in throw URLError(.notConnectedToInternet) })
         XCTAssertFalse(s.shouldAsk())
-        s.dismissUnanswered()
-        s.dismissUnanswered()
+        s.closeQuestion()
+        s.closeQuestion()
         XCTAssertEqual(s.consent, .undecided)
         XCTAssertTrue(s.pendingConsentChanges.isEmpty)
     }
@@ -253,8 +253,8 @@ final class UsageStatsTests: XCTestCase {
     func testTurningSharingOnAfterClosingTwiceIsAFirstYes() {
         let s = stats(FakeServer())
         let closed = Date(timeIntervalSince1970: 1_800_000_000)
-        s.dismissUnanswered(now: closed)
-        s.dismissUnanswered(now: closed.addingTimeInterval(8 * 86_400))
+        s.closeQuestion(now: closed)
+        s.closeQuestion(now: closed.addingTimeInterval(8 * 86_400))
         s.setConsent(true)
         XCTAssertEqual(s.pendingConsentChanges, [.dismissed, .saidYes], "never said no, so not turned back on")
         s.setConsent(false)
@@ -289,8 +289,8 @@ final class UsageStatsTests: XCTestCase {
     func testDeleteMyDataAfterClosingTwiceKeepsTheNextYesAFirstYes() async {
         let s = stats(FakeServer())
         let closed = Date(timeIntervalSince1970: 1_800_000_000)
-        s.dismissUnanswered(now: closed)
-        s.dismissUnanswered(now: closed.addingTimeInterval(8 * 86_400))
+        s.closeQuestion(now: closed)
+        s.closeQuestion(now: closed.addingTimeInterval(8 * 86_400))
         await s.deleteMyData()
         s.setConsent(true)
         XCTAssertEqual(s.pendingConsentChanges, [.dismissed, .saidYes])
@@ -299,19 +299,19 @@ final class UsageStatsTests: XCTestCase {
     func testClosingAfterAnAnswerChangesNothing() {
         let s = stats(FakeServer())
         s.setConsent(true)
-        s.dismissUnanswered()
+        s.closeQuestion()
         XCTAssertEqual(s.consent, .granted)
         XCTAssertEqual(s.pendingConsentChanges, [.saidYes])
     }
 
     func testTheCountersPersistAcrossLaunches() {
         let d = defaults()
-        stats(FakeServer(), defaults: d).dismissUnanswered(now: Date(timeIntervalSince1970: 1_800_000_000))
+        stats(FakeServer(), defaults: d).closeQuestion(now: Date(timeIntervalSince1970: 1_800_000_000))
         let later = stats(FakeServer(), defaults: d)
         XCTAssertFalse(later.shouldAsk(now: Date(timeIntervalSince1970: 1_800_000_000 + 86_400)))
-        later.dismissUnanswered(now: Date(timeIntervalSince1970: 1_800_000_000 + 86_400))
+        later.closeQuestion(now: Date(timeIntervalSince1970: 1_800_000_000 + 86_400))
         XCTAssertEqual(later.consent, .undecided, "closed again within the week: it wasn't asked, so no change")
-        later.dismissUnanswered(now: Date(timeIntervalSince1970: 1_800_000_000 + 8 * 86_400))
+        later.closeQuestion(now: Date(timeIntervalSince1970: 1_800_000_000 + 8 * 86_400))
         XCTAssertEqual(later.consent, .declined, "the second close after the week, after a relaunch, is the no")
     }
 
@@ -444,5 +444,13 @@ final class WorkerEndpointTests: XCTestCase {
         XCTAssertFalse(model.canSend)
         XCTAssertTrue(DeviceTestModel(controller: MouseController(), permissions: PermissionsModel(),
                                       reportEndpoint: URL(string: "https://reports.example.org/v1/device-report")).canSend)
+    }
+}
+
+private extension UsageStats {
+    /// The question shown and closed without an answer, as a window does it.
+    func closeQuestion(now: Date = Date()) {
+        beginAsking(now: now)
+        endAsking(now: now)
     }
 }

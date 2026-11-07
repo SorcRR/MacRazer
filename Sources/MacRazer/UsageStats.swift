@@ -165,8 +165,9 @@ final class UsageStats: ObservableObject {
     /// Declined by closing the question twice, not by anyone saying no: turning sharing on
     /// later is then their first answer, a said_yes, not a turned_on.
     static let declinedByClosingKey = "usageStats.declinedByClosing"
-    /// How long a question closed unanswered waits before it's asked again, at a launch or in
-    /// the Updated window, whichever comes first after it.
+    /// How long a question closed unanswered waits before it's asked again: at the first clear
+    /// moment after it, in a running app (the 15-minute tick), at a launch, or in the Updated
+    /// window, whichever comes first.
     static let askAgainDelay: TimeInterval = 7 * 86_400
     static let pendingChangesKey = "usageStats.pendingChanges"
     static let idKey = "usageStats.id"
@@ -315,8 +316,8 @@ final class UsageStats: ObservableObject {
     /// the question comes back a week on, at a launch or in the Updated window. Closed
     /// unanswered again after that, it's taken as a no and not asked again; Settings ›
     /// Privacy can still turn sharing on. Both closes are counted as `dismissed`, never as
-    /// `said_no`: nobody said it. Call it only when the question was on screen (`shouldAsk`).
-    func dismissUnanswered(now: Date = Date()) {
+    /// `said_no`: nobody said it. Reached only through `endAsking`, for a question that was on screen.
+    private func dismissUnanswered(now: Date) {
         // Not due (answered, no Worker, or closed again before its week was up): it wasn't
         // asked, so nothing changes.
         guard shouldAsk(now: now) else { return }

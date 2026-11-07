@@ -9,12 +9,13 @@ expect rough edges until 1.0.
 ### Changed
 - **Closing the usage stats question isn't a no any more.** Before, closing the window (or the
   Updated window's card) without answering counted as no and it never asked again. Now
-  nothing is sent, and it asks once more a week later: when MacRazer starts, or in the Updated
-  window if an update comes first. Close it a second time and that's taken as no for good.
+  nothing is sent, and it asks once more a week later, at the next quiet moment (or in the
+  Updated window if an update comes first). Close it a second time and that's taken as no for
+  good.
   Settings › Privacy can still turn sharing on whenever you like.
-- **The anonymous count waits for your answer.** While the question is about to show, or on
-  screen, the day's count leaves out "not asked yet", so an app that answers a moment later
-  isn't counted both ways.
+- **The anonymous count waits for your answer.** While the question is about to show (up to an
+  hour) or has just appeared (up to ten minutes), the day's count leaves out "not asked yet", so
+  an app that answers a moment later isn't counted both ways.
 
 ## [0.8.0] — 2026-11-07
 
