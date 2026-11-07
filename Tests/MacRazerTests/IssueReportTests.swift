@@ -151,6 +151,20 @@ final class IssueReportTests: XCTestCase {
         XCTAssertFalse(url.absoluteString.contains("Sam"))
     }
 
+    func testALongMailLinkIsCutToFitAfterEncoding() throws {
+        // Quotes, braces and line breaks each take three characters once encoded.
+        let body = String(repeating: "{\"a\": [1, 2]}\n", count: 2000)
+        let url = ProjectLinks.mail(subject: "Test", body: body)
+        XCTAssertLessThanOrEqual(url.absoluteString.count, ProjectLinks.maxMailLink)
+        let sent = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false)?
+            .queryItems?.first { $0.name == "body" }?.value)
+        XCTAssertTrue(sent.hasSuffix("\n\n(cut short)"))
+        XCTAssertTrue(body.hasPrefix(String(sent.dropLast("\n\n(cut short)".count))))
+        XCTAssertGreaterThan(sent.count, 1000, "cut to fit, not to nothing")
+        let short = ProjectLinks.mail(subject: "Test", body: "Hello")
+        XCTAssertFalse(short.absoluteString.contains("cut"))
+    }
+
     // MARK: Output
 
     func testTitleIsTheFirstLineCutToFit() {
