@@ -278,6 +278,14 @@ final class UsageStatsTests: XCTestCase {
         XCTAssertEqual(s.pendingConsentChanges, [.dismissed])
     }
 
+    func testShowingTheQuestionAgainKeepsWhenItFirstShowed() {
+        let s = stats(FakeServer())
+        let opened = Date(timeIntervalSince1970: 1_800_000_000)
+        s.beginAsking(now: opened)
+        s.beginAsking(now: opened.addingTimeInterval(300))
+        XCTAssertEqual(s.askingSince, opened)
+    }
+
     func testDeleteMyDataAfterClosingTwiceKeepsTheNextYesAFirstYes() async {
         let s = stats(FakeServer())
         let closed = Date(timeIntervalSince1970: 1_800_000_000)

@@ -51,9 +51,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         stats: usageStats, onClosed: { [weak self] in self?.autoInstallIfEnabled(); self?.questionClosed() })
     /// Waits for a clear moment to ask about usage stats; see `askAboutUsageStats`.
     private var usageStatsAskTimer: Timer?
-    /// When this launch began, for how long the count holds back "unasked"; see
-    /// `isAboutToAskOrAsking`.
-    private let launchedAt = Date()
+    /// When the wait for a clear moment to ask began, for how long the count holds back
+    /// "unasked"; see `isAboutToAskOrAsking`.
+    private var usageStatsAskArmedAt: Date?
     /// How long the daily count holds "unasked" back: while the question waits for a clear
     /// moment, and once it's on screen.
     private static let holdWhileWaiting: TimeInterval = 3600
@@ -383,7 +383,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         // finished a little after it started, and so waited a whole extra period each time.
         // A timer also stops counting while the Mac sleeps.
         let timer = Timer(timeInterval: 15 * 60, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.checkOnlineIfDue() }
+            MainActor.assumeIsolated {
+                self?.checkOnlineIfDue()
+                // MacRazer runs for weeks: a question closed a week ago comes back without a relaunch.
+                self?.askAboutUsageStatsIfDue()
+            }
         }
         timer.tolerance = 60
         RunLoop.main.add(timer, forMode: .common)
@@ -661,10 +665,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         // Someone who just updated is asked in the Updated window instead. A `swift run`
         // build has no version and a build without the Worker has nowhere to send, so
         // neither of them asks.
-        if usageStats.shouldAsk(), updateChecker.justUpdatedTo == nil,
-           AppInfo.version != nil {
-            askAboutUsageStats()
-        }
+        if updateChecker.justUpdatedTo == nil { askAboutUsageStatsIfDue() }
+    }
+
+    /// Starts waiting for a clear moment to ask, if the question is due and nothing is already
+    /// waiting or asking. A `swift run` build has no version, so it never asks.
+    private func askAboutUsageStatsIfDue() {
+        guard usageStats.shouldAsk(), usageStatsAskTimer == nil, !usageStats.isAsking, AppInfo.version != nil else { return }
+        askAboutUsageStats()
     }
 
     /// The usage stats question is waiting for a clear moment (for up to an hour after
@@ -672,8 +680,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     /// in the Updated window. A window left open behind others for days mustn't keep the
     /// answer out of every day's count.
     private func isAboutToAskOrAsking(now: Date) -> Bool {
-        if usageStatsAskTimer != nil, usageStats.shouldAsk(now: now) {
-            return now.timeIntervalSince(launchedAt) < Self.holdWhileWaiting
+        if usageStatsAskTimer != nil, let armed = usageStatsAskArmedAt, usageStats.shouldAsk(now: now) {
+            return now.timeIntervalSince(armed) < Self.holdWhileWaiting
         }
         guard usageStats.isAsking, let since = usageStats.askingSince else { return false }
         return now.timeIntervalSince(since) < Self.holdWhileShowing
@@ -682,7 +690,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     /// A window that asked was closed. Answered, the answer has gone out already; closed
     /// without one, the day's count still says where this app stands ("unasked").
     private func questionClosed() {
-        guard usageStats.consent != .granted, usageStats.isAvailable else { return }
+        // Only for a close without an answer: an answer went out with the change already.
+        guard usageStats.consent == .undecided, usageStats.isAvailable else { return }
         Task { await countReporter.reportIfNeeded() }
     }
 
@@ -699,6 +708,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         timer.tolerance = 0.3
         RunLoop.main.add(timer, forMode: .common)
         usageStatsAskTimer = timer
+        usageStatsAskArmedAt = Date()
     }
 
     private func askAboutUsageStatsIfClear() {

@@ -190,9 +190,10 @@ final class UsageStats: ObservableObject {
     /// The question is on screen: in its own window or as the Updated window's card. Set by
     /// whichever opened (`beginAsking`), so the card, the close and the daily count agree on
     /// whether it was asked.
-    @Published private(set) var isAsking = false
-    /// When it last appeared, for how long the daily count holds the answer back.
-    private(set) var askingSince: Date?
+    var isAsking: Bool { askingSince != nil }
+    /// When it appeared, for how long the daily count holds the answer back. Nil while it isn't
+    /// on screen.
+    @Published private(set) var askingSince: Date?
     @Published private(set) var lastSentAt: Date?
     @Published private(set) var lastSentVersion: String?
     @Published private(set) var deletion: DeletionState = .idle
@@ -316,12 +317,11 @@ final class UsageStats: ObservableObject {
     /// Privacy can still turn sharing on. Both closes are counted as `dismissed`, never as
     /// `said_no`: nobody said it. Call it only when the question was on screen (`shouldAsk`).
     func dismissUnanswered(now: Date = Date()) {
-        guard isAvailable, consent == .undecided else { return }
-        let after = defaults.object(forKey: Self.askAgainAfterKey) as? Date
-        // Closed again before its week was up: it wasn't asked again, so nothing changes.
-        if let after, now < after { return }
+        // Not due (answered, no Worker, or closed again before its week was up): it wasn't
+        // asked, so nothing changes.
+        guard shouldAsk(now: now) else { return }
         note(.dismissed)
-        if after != nil {
+        if defaults.object(forKey: Self.askAgainAfterKey) != nil {
             store(.declined)
             defaults.set(true, forKey: Self.declinedByClosingKey)
         } else {
@@ -332,8 +332,9 @@ final class UsageStats: ObservableObject {
     /// A window that can ask is opening: it asks if the question is due. True when it does.
     @discardableResult
     func beginAsking(now: Date = Date()) -> Bool {
-        isAsking = shouldAsk(now: now)
-        askingSince = isAsking ? now : nil
+        // Shown again while already asking: it's the same question, from when it first showed.
+        if isAsking { return true }
+        askingSince = shouldAsk(now: now) ? now : nil
         return isAsking
     }
 
@@ -342,7 +343,6 @@ final class UsageStats: ObservableObject {
     @discardableResult
     func endAsking(now: Date = Date()) -> Bool {
         let was = isAsking
-        isAsking = false
         askingSince = nil
         if was { dismissUnanswered(now: now) }
         return was
@@ -467,7 +467,7 @@ final class UsageStats: ObservableObject {
                                sendsOnChange: false, transport: { _ in throw URLError(.notConnectedToInternet) })
         stats.consent = consent
         // As the Updated window opens it: the card asks while nobody has answered.
-        stats.isAsking = consent == .undecided
+        stats.askingSince = consent == .undecided ? Date() : nil
         stats.connectedMice = [UsageStatsPolicy.mouse(pid: 0x00B0, productName: nil, isBluetooth: false, supported: true)]
         if consent == .granted {
             stats.lastSentAt = Date()
