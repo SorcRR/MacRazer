@@ -72,8 +72,9 @@ real hardware so far; README's table says which, and what was run on each.
 
 ### 1. Run the probes and paste the output
 
-The easiest way is the app's own test. Right-click the menu bar icon, choose **Help Support
-This Mouse…**, and press **Send** or open a GitHub issue on its last screen. (Send is only in
+The easiest way is the app's own test. MacRazer offers it on its own when an unverified mouse
+connects. Otherwise right-click the menu bar icon, choose **Help Support This Mouse…**, and
+press **Send** or open a GitHub issue on its last screen. (Send is only in
 the released app: a build from source has no report server, so it offers Copy and the issue.) It runs
 everything below, plus transaction id discovery, and puts every setting back. From source,
 `swift run MacRazer devicetest` prints the same report as JSON.

@@ -3,7 +3,7 @@
 
 import Foundation
 
-/// Turns a GitHub release body into something the popover can show in 320 points.
+/// Turns a GitHub release body into something the popover can show in one popover column.
 ///
 /// Pure — no network, no UI — so every shape the notes come in can be replayed in a test,
 /// which matters because the input is prose written by hand months apart. The parser is

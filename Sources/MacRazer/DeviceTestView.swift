@@ -7,10 +7,12 @@ import SwiftUI
 struct DeviceTestView: View {
     @ObservedObject var model: DeviceTestModel
     var onClose: () -> Void
+    /// Skip was pressed on a step the registry still needs; the dialog asks to run it instead.
+    @State private var confirmingSkip = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if DeviceTestModel.steps.contains(model.stage) { progress.padding(.bottom, 14) }
+            if model.visibleSteps.contains(model.stage) { progress.padding(.bottom, 14) }
             content
                 .frame(maxWidth: .infinity, alignment: .topLeading)
                 .frame(minHeight: 330, alignment: .topLeading)
@@ -19,6 +21,40 @@ struct DeviceTestView: View {
         }
         .padding(20)
         .frame(width: 440)
+        .alert("Could you run this test?", isPresented: $confirmingSkip) {
+            // First, so macOS makes it the alert's default button.
+            Button("Run Test") { runCurrentStep() }
+            Button("Skip Anyway") { model.next() }
+            // Esc backs out of the question and leaves the step as it was.
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            if let feature = DeviceTestFlow.feature(for: model.stage) { Text(Self.skipMessage(for: feature)) }
+        }
+    }
+
+    nonisolated static func skipMessage(for feature: RazerFeature) -> String {
+        // "DPI" stays in capitals; "Polling rate" and "Lighting" read mid-sentence.
+        let name = feature == .dpi ? feature.label : feature.label.lowercased()
+        return "We don't have \(name) data for this mouse yet, so this result would really help. "
+            + "If your mouse doesn't have this feature, run it anyway: the test records that too, "
+            + "and it tries to put your settings back afterwards."
+    }
+
+    /// Skip, or the question first on a step the registry still needs.
+    private func skip() {
+        if model.skipNeedsConfirming { confirmingSkip = true } else { model.next() }
+    }
+
+    /// The Run button's work, and the dialog's Run Test.
+    private func runCurrentStep() {
+        Task {
+            switch model.stage {
+            case .dpi: await model.runDPI()
+            case .polling: await model.runPolling()
+            case .lighting: await model.runLighting()
+            default: break
+            }
+        }
     }
 
     // MARK: Progress
@@ -26,7 +62,7 @@ struct DeviceTestView: View {
     /// One segment per test step, matching the "Step 2 of 6" count; Review fills them all.
     private var progress: some View {
         HStack(spacing: 4) {
-            ForEach(Array(DeviceTestModel.steps.dropLast().enumerated()), id: \.offset) { _, step in
+            ForEach(Array(model.visibleSteps.dropLast().enumerated()), id: \.offset) { _, step in
                 Capsule()
                     .fill(step <= model.stage ? Color.razerGreen : Color.primary.opacity(0.15))
                     .frame(height: 4)
@@ -40,6 +76,7 @@ struct DeviceTestView: View {
         switch model.stage {
         case .intro: intro
         case .permission: permission
+        case .bluetooth: bluetooth
         case .identify: identify
         case .battery: battery
         case .dpi: dpi
@@ -52,26 +89,131 @@ struct DeviceTestView: View {
 
     private var intro: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if model.isKnownSupported {
+            // First: the rest of the intro describes the device the test will run on.
+            if !model.devices.isEmpty {
+                // On Bluetooth the test can't use the open mouse, so it names none.
+                warning(DeviceTestModel.unplugHint(model.devices, testing: model.controller.deviceIsBluetooth
+                                                   ? nil : model.controller.deviceName))
+            }
+            switch model.support {
+            case .full:
                 tag("Fully supported", color: .razerGreenText)
-                title("Your \(model.deviceName) is already supported")
-                note("The test checks it really works on your mouse and firmware. Reports like this keep the supported list honest, and catch it early if a firmware update breaks something.")
-            } else {
+                title("Your \(model.deviceName) doesn't need a test")
+                note("Everything MacRazer controls has already been tested on this mouse over this connection. There's nothing left to check.")
+                linkCards
+                note("You can still run the test. After a firmware update, a report shows whether anything stopped working.")
+            case .partly(let works, let missing):
+                tag("Partly supported", color: .batteryMid)
+                title("Help finish support for your \(model.deviceName)")
+                card {
+                    VStack(spacing: 4) {
+                        row("Already works", Self.list(works), color: .razerGreenText)
+                        row("Still needs testing", Self.list(missing), color: .batteryMid)
+                    }
+                }
+                if model.onlyOtherLinksConfirm.isEmpty {
+                    note("The test can check just what's missing. Keep the mouse on and nearby.")
+                } else {
+                    note("Over Bluetooth the test only reads, so it can't check these. Connect the cable or the dongle to test them.")
+                }
+                linkCards
+                privacyNotes
+            case .unknown:
                 title("Help support your \(model.deviceName)")
                 note("About two minutes. Keep the mouse on, nearby, and connected by cable or dongle.")
+                privacyNotes
             }
+            switch model.blocker {
+            case .noMouse?:
+                warning("No Razer mouse is connected by cable or dongle right now. Connect it and press Start again.")
+            case .bluetoothOnly(let name)?:
+                warning("\(name) is connected over Bluetooth. The full test needs the dongle or the cable: switch it over and press Start again. Or run the shorter Bluetooth test, which only reads.")
+            case nil:
+                EmptyView()
+            }
+            if model.finishingEarlierTest {
+                note("The test you started earlier is still finishing with your mouse. Start works again in a moment.")
+            }
+        }
+    }
+
+    private var privacyNotes: some View {
+        VStack(alignment: .leading, spacing: 12) {
             card {
                 Text("MacRazer talks to your mouse the way it does every day and records how it answers. It also asks, read-only, which other features the mouse has. Anything it changes is put back when each step ends, even if you stop half way.")
                     .font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
             }
             note("Nothing is sent anywhere unless you choose to at the end, and you'll see all of it first. Your mouse's serial number is never included.")
-            switch model.blocker {
-            case .noMouse?:
-                warning("No Razer mouse is connected by cable or dongle right now. Connect it and press Start again.")
-            case .bluetoothOnly(let name)?:
-                warning("\(name) is connected over Bluetooth. The test needs the dongle or the cable, so switch it over and press Start again.")
-            case nil:
-                EmptyView()
+        }
+    }
+
+    /// One card per other link of this mouse that still needs a report.
+    @ViewBuilder private var linkCards: some View {
+        ForEach(model.linksToTest, id: \.connection) { link in
+            card {
+                Text(Self.linkText(link))
+                    .font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    static func list(_ features: [RazerFeature]) -> String {
+        features.map(\.label).joined(separator: ", ")
+    }
+
+    /// What to tell the person about another link. Without a row for it, the mouse may not
+    /// have that link at all, so the wording starts with "if". From Bluetooth there's no cable
+    /// or dongle to unplug first.
+    static func linkText(_ link: RazerDevices.LinkToTest, from current: RazerConnection? = nil) -> String {
+        if current == .bluetooth, link.connection != .bluetooth {
+            let switchStep = link.connection == .wired ? "plug the cable in" : "switch the mouse to its dongle"
+            let opening = link.missing.map {
+                "On its \(link.connection == .wired ? "cable" : "dongle"), this mouse still needs testing: \(list($0))."
+            } ?? (link.connection == .wired
+                ? "If your mouse also works on its cable, that hasn't been tested yet."
+                : "If your mouse also has a dongle, that hasn't been tested yet.")
+            return "\(opening) To help, \(switchStep) and run the test."
+        }
+        switch (link.connection, link.missing) {
+        case (.wired, nil):
+            return "If your mouse also works on its cable, that hasn't been tested yet. To help, plug the cable in, unplug the dongle, and run the test."
+        case (.wirelessDongle, nil):
+            return "If your mouse also has a dongle, that hasn't been tested yet. To help, unplug the cable, switch the mouse to its dongle, and run the test."
+        case (.bluetooth, nil):
+            return "If your mouse also works over Bluetooth, that hasn't been tested yet. To help, switch it to Bluetooth and run the Bluetooth test."
+        case (.wired, let missing?):
+            return "On its cable, this mouse still needs testing: \(list(missing)). To help, plug the cable in, unplug the dongle, and run the test."
+        case (.wirelessDongle, let missing?):
+            return "On its dongle, this mouse still needs testing: \(list(missing)). To help, unplug the cable, switch the mouse to its dongle, and run the test."
+        case (.bluetooth, let missing?):
+            return "Over Bluetooth, this mouse still needs testing: \(list(missing)). To help, switch it to Bluetooth and run the Bluetooth test."
+        }
+    }
+
+    private var bluetooth: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            stepTitle("Bluetooth", changes: false)
+            note("Read-only. What your mouse shares over Bluetooth, and which of Razer's commands it answers there. macOS may ask you to allow Bluetooth first.")
+            if model.running {
+                running("Reading your mouse over Bluetooth. This can take up to half a minute.")
+            } else if let report = model.report, let bt = report.bluetooth {
+                card {
+                    VStack(spacing: 4) {
+                        row("Name", report.device.name)
+                        row("Product ID", String(format: "0x%04X", report.device.productID))
+                        row("Razer's service", bt.razerService ? "Yes" : "No")
+                        // The report's own reading: Razer's battery read when it answered, else
+                        // the standard service, so this shows what will be sent.
+                        row("Battery", report.battery.data?.percent.map { "\($0)%" } ?? "Unknown")
+                        if let reads = report.capabilities?.reads {
+                            row("Answered", "\(reads.filter { $0.answer == .answered }.count) of \(reads.count) reads")
+                        }
+                        if let table = report.capabilities?.buttonTable, !table.isEmpty {
+                            row("Button table", "\(table.count) \(table.count == 1 ? "entry" : "entries")")
+                        }
+                    }
+                }
+                if let error = bt.error { warning(error) }
             }
         }
     }
@@ -103,7 +245,7 @@ struct DeviceTestView: View {
             stepTitle("Identify", changes: false)
             note("What macOS reports, and which settings your mouse understands.")
             if model.running {
-                running("Asking your mouse which settings it understands…")
+                running("Asking your mouse which settings it understands. This can take up to half a minute.")
             } else if let report = model.report {
                 card {
                     VStack(spacing: 4) {
@@ -117,12 +259,11 @@ struct DeviceTestView: View {
                 outcomeRow("Identify", report.identify.outcome)
                 VStack(alignment: .leading, spacing: 4) {
                     Text("How is it connected right now?").font(.system(size: 12))
-                    Picker("", selection: $model.connection) {
-                        Text("Not sure").tag(DeviceReport.Connection?.none)
-                        Text("Cable").tag(DeviceReport.Connection?.some(.cable))
-                        Text("Dongle").tag(DeviceReport.Connection?.some(.dongle))
-                    }
-                    .pickerStyle(.segmented).labelsHidden().controlSize(.small)
+                    ChoiceButtons(selection: $model.connection, options: [
+                        .init(value: .some(.cable), title: "Cable", icon: "cable.connector"),
+                        .init(value: .some(.dongle), title: "Dongle", icon: "antenna.radiowaves.left.and.right"),
+                        .init(value: nil, title: "Not sure", icon: "questionmark.circle"),
+                    ])
                 }
             }
         }
@@ -136,21 +277,30 @@ struct DeviceTestView: View {
 
     private var battery: some View {
         VStack(alignment: .leading, spacing: 10) {
-            stepTitle("Battery", changes: false)
-            note("Reads the level and whether it's charging.")
-            if model.running {
-                running("Reading the battery…")
-            } else if let record = model.report?.battery {
-                card {
-                    VStack(spacing: 4) {
-                        row("Battery", record.data?.percent.map { "\($0)%" } ?? "No answer")
-                        row("Charging", record.data?.charging.map { $0 ? "Yes" : "No" } ?? "No answer")
-                    }
-                }
-                outcomeRow("Battery", record.outcome)
-                note("Plug in the cable now and check again to see charging detected.")
-                Button("Check again") { Task { await model.runBattery() } }.controlSize(.small)
+            if model.notOnMouse(.battery) != nil {
+                title("Battery")
+                notOnMouse("battery")
+            } else {
+                stepTitle("Battery", changes: false)
+                note("Reads the level and whether it's charging.")
+                batteryBody
             }
+        }
+    }
+
+    @ViewBuilder private var batteryBody: some View {
+        if model.running {
+            running("Reading the battery…")
+        } else if let record = model.report?.battery {
+            card {
+                VStack(spacing: 4) {
+                    row("Battery", record.data?.percent.map { "\($0)%" } ?? "No answer")
+                    row("Charging", record.data?.charging.map { $0 ? "Yes" : "No" } ?? "No answer")
+                }
+            }
+            outcomeRow("Battery", record.outcome)
+            note("Plug in the cable now and check again to see charging detected.")
+            Button("Check again") { Task { await model.runBattery() } }
         }
     }
 
@@ -205,20 +355,29 @@ struct DeviceTestView: View {
 
     private var lighting: some View {
         VStack(alignment: .leading, spacing: 10) {
-            stepTitle("Lighting", changes: true)
-            if model.running {
-                running("Watch your mouse: dark, then red…")
-            } else if let record = model.report?.lighting, record.data != nil {
-                if let data = record.data, data.dimShown {
-                    question("Did the lights go dark for a moment?", $model.dimmed)
-                    if data.redShown { question("Then did they turn red?", $model.turnedRed) }
-                    note(data.restored ? "Everything has been put back." : "Something couldn't be put back. Check the lighting in the popover.")
-                } else {
-                    outcomeRow("Lighting", record.outcome)
-                }
+            if model.notOnMouse(.lighting) != nil {
+                title("Lighting")
+                notOnMouse("lights")
             } else {
-                note("Watch your mouse while this runs. Its lights go dark for three seconds, then turn red for three seconds. Afterwards they go back to your brightness and to MacRazer's current lighting setting.")
+                stepTitle("Lighting", changes: true)
+                lightingBody
             }
+        }
+    }
+
+    @ViewBuilder private var lightingBody: some View {
+        if model.running {
+            running("Watch your mouse: dark, then red…")
+        } else if let record = model.report?.lighting, record.data != nil {
+            if let data = record.data, data.dimShown {
+                question("Did the lights go dark for a moment?", $model.dimmed)
+                if data.redShown { question("Then did they turn red?", $model.turnedRed) }
+                note(data.restored ? "Everything has been put back." : "Something couldn't be put back. Check the lighting in the popover.")
+            } else {
+                outcomeRow("Lighting", record.outcome)
+            }
+        } else {
+            note("Watch your mouse while this runs. Its lights go dark for three seconds, then turn red for three seconds. Afterwards they go back to your brightness and to MacRazer's current lighting setting.")
         }
     }
 
@@ -260,11 +419,29 @@ struct DeviceTestView: View {
         VStack(alignment: .leading, spacing: 10) {
             title("Thank you")
             card {
-                Text(verdict.thankYou(firmware: report.identify.data?.firmware))
+                Text(model.focus == nil ? verdict.thankYou(firmware: report.identify.data?.firmware)
+                     : DeviceTestVerdict.focusedThankYou(verdict, leftOut: model.leftOut(verdict)))
                     .font(.system(size: 13)).fixedSize(horizontal: false, vertical: true)
             }
             note(report.replyEmail.map { "Your report is on its way to the maintainer, who can reply to \($0)." }
                  ?? "Your report is on its way to the maintainer.")
+            // Only once the report is sent: the person has just helped, and the ask is the
+            // footer's quiet button, not a banner. Before the test-again cards' next steps.
+            note(Self.tipLine(model.support))
+            if report.device.connection == .bluetooth {
+                card {
+                    Text("Over its dongle or cable, MacRazer can run the full test. If your mouse has either, switch to it and run the test again from the menu.")
+                        .font(.system(size: 13)).fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            if let other = model.otherLink {
+                card {
+                    Text(other == .cable
+                         ? "On its cable, this mouse is a different product to MacRazer, so it needs its own test. If you can, plug the cable in, unplug the dongle, and press Test again."
+                         : "On its dongle, this mouse is a different product to MacRazer, so it needs its own test. If you can, unplug the cable, switch the mouse to its dongle, and press Test again.")
+                        .font(.system(size: 13)).fixedSize(horizontal: false, vertical: true)
+                }
+            }
         }
     }
 
@@ -282,7 +459,10 @@ struct DeviceTestView: View {
                         if !verdict.passed.isEmpty { row("Worked", verdict.passed.joined(separator: ", "), color: .razerGreenText) }
                         if !verdict.failed.isEmpty { row("Didn't work", verdict.failed.joined(separator: ", "), color: .batteryMid) }
                         if !verdict.notSupported.isEmpty { row("Not on this mouse", verdict.notSupported.joined(separator: ", ")) }
-                        if !verdict.skipped.isEmpty { row("Skipped", verdict.skipped.joined(separator: ", ")) }
+                        let leftOut = model.leftOut(verdict)
+                        if !leftOut.isEmpty { row("Already verified", leftOut.joined(separator: ", ")) }
+                        let skipped = verdict.skipped.filter { !leftOut.contains($0) }
+                        if !skipped.isEmpty { row("Skipped", skipped.joined(separator: ", ")) }
                     }
                 }
                 DisclosureGroup("Show full report") {
@@ -296,13 +476,20 @@ struct DeviceTestView: View {
                 }
                 .font(.system(size: 11))
             }
+            if model.testsDock {
+                // The report names only the dock: the mouse on it answers under the dock's ID.
+                TextField("Which mouse is on the dock? (optional)", text: Binding(
+                    get: { model.dockMouse },
+                    set: { model.dockMouse = String($0.prefix(DeviceTestModel.maxDockMouse)) }))
+                    .inputBox()
+            }
             TextField("Name or GitHub handle to credit (optional)", text: $model.credit)
-                .textFieldStyle(.roundedBorder).controlSize(.small)
+                .inputBox()
             // Only Send carries it, so without the Worker there's nowhere for it to go.
             if model.canSend {
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 6) {
                 TextField("Your email, if you'd like a reply (optional)", text: $model.replyEmail)
-                    .textFieldStyle(.roundedBorder).controlSize(.small)
+                    .inputBox()
                 if let problem = model.emailProblem {
                     warning(problem)
                 } else {
@@ -314,23 +501,17 @@ struct DeviceTestView: View {
             }
             VStack(alignment: .trailing, spacing: 2) {
                 TextEditor(text: Binding(get: { model.comment },
-                                         set: { model.comment = String($0.prefix(DeviceReportOutput.maxComment)) }))
-                    .font(.system(size: 12))
-                    .frame(height: 54)
-                    // The editor's own opaque background would sit as a flat box on a glass or tinted
-                    // window; a faint fill like the cards keeps it readable on all of them.
-                    .scrollContentBackground(.hidden)
-                    .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 6))
-                    .overlay(alignment: .topLeading) {
-                        if model.comment.isEmpty {
-                            Text("Comments or feedback (optional)").font(.system(size: 12)).foregroundStyle(.tertiary)
-                                .padding(.leading, 5).padding(.top, 1).allowsHitTesting(false)
-                        }
-                    }
-                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.primary.opacity(0.15)))
+                                         set: { model.comment = String($0.prefix(model.commentLimit)) }))
+                    .editorBox(placeholder: "Comments or feedback (optional)", isEmpty: model.comment.isEmpty)
                 // Verbatim: a localized number would print 2000 as "2.000" in some regions.
-                Text(verbatim: "\(model.comment.count) / \(DeviceReportOutput.maxComment)")
-                    .font(.system(size: 10)).foregroundStyle(.secondary)
+                Text(verbatim: "\(model.comment.count) / \(model.commentLimit)")
+                    .font(.system(size: 10))
+                    .foregroundStyle(model.comment.count > model.commentLimit ? Color.batteryMid : .secondary)
+                // The dock field grew after the comment was written: say what gets cut.
+                if model.comment.count > model.commentLimit {
+                    Text("The end of your comment won't fit with the dock's mouse and will be cut.")
+                        .font(.system(size: 10)).foregroundStyle(Color.batteryMid)
+                }
             }
             if model.copied { note("Copied.") }
             if model.issueOpened { note("The full report is on your clipboard. Paste it into the issue before you submit it.") }
@@ -340,6 +521,14 @@ struct DeviceTestView: View {
             case .idle, .sent: EmptyView()
             }
         }
+    }
+
+    /// The thank-you screen's line for the tip button. A mouse MacRazer can't control yet
+    /// isn't saving anyone a trip to Windows, so its line says what a tip does instead.
+    static func tipLine(_ support: RazerDevices.LinkSupport) -> String {
+        support == .unknown
+            ? "MacRazer is free and built in spare time. Tips help it learn more mice like yours."
+            : "MacRazer is free. If it saves you a trip to Windows, a tip keeps it going."
     }
 
     static func sendFailure(_ outcome: DeviceReportSender.Outcome) -> String {
@@ -352,13 +541,42 @@ struct DeviceTestView: View {
 
     // MARK: Footer
 
-    @ViewBuilder private var footer: some View {
+    /// Large buttons, unless a screen's row doesn't fit at that size: the start screen of a
+    /// partly supported mouse that also offers the Bluetooth test has 12 pt to spare.
+    private var footer: some View {
+        ViewThatFits(in: .horizontal) {
+            footerRow.controlSize(.large)
+            footerRow.controlSize(.regular)
+        }
+    }
+
+    @ViewBuilder private var footerRow: some View {
         HStack {
             switch model.stage {
+            case .intro where model.support == .full:
+                Button("Test anyway") { model.start() }.disabled(model.running)
+                Spacer()
+                // A verified mouse on Bluetooth: "Test anyway" can only say to switch links, so
+                // the read-only test is offered here too.
+                if model.offersBluetoothTest {
+                    Button("Bluetooth test") { model.startBluetooth() }.disabled(model.running)
+                }
+                Button("Close", action: onClose).keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
             case .intro:
                 Button("Cancel", action: onClose)
                 Spacer()
-                Button("Start") { model.start() }.keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
+                if model.offersBluetoothTest {
+                    Button("Bluetooth test") { model.startBluetooth() }.disabled(model.running)
+                }
+                if case .partly = model.support {
+                    Button("Full test") { model.start() }.disabled(model.running)
+                    Button("Test what's missing") { model.start(missingOnly: true) }
+                        .keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
+                        .disabled(model.running)
+                } else {
+                    Button("Start") { model.start() }.keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
+                        .disabled(model.running)
+                }
             case .permission:
                 Button("Continue without it") { model.continueWithoutAccess() }
                 Spacer()
@@ -367,7 +585,24 @@ struct DeviceTestView: View {
                 } else {
                     Button("Grant access") { model.grantAccess() }.keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
                 }
+            case .bluetooth:
+                Spacer()
+                Button("Next") { model.next() }.disabled(model.running)
+                    .keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
             case .review where model.sendState == .sent:
+                // The next step the screen asks for comes first.
+                if model.otherLink != nil { Button("Test again") { model.testAgain() } }
+                Link(destination: ProjectLinks.tip) {
+                    Label {
+                        Text("Leave a tip")
+                    } icon: {
+                        // Multicolor: a bordered button tints a plain symbol with its label color.
+                        Image(systemName: "heart.fill").symbolRenderingMode(.multicolor)
+                            .foregroundStyle(Color(nsColor: .systemRed))
+                    }
+                }
+                .buttonStyle(.bordered)
+                .help("Opens MacRazer's Ko-fi page in your browser")
                 Spacer()
                 Button("Done", action: onClose).keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
             case .review:
@@ -386,29 +621,28 @@ struct DeviceTestView: View {
             default:
                 Button("Back") { model.back() }.disabled(model.running || model.stage == .identify)
                 Spacer()
-                if let index = DeviceTestModel.steps.firstIndex(of: model.stage) {
-                    Text("Step \(index + 1) of \(DeviceTestModel.steps.count - 1)")
+                if let index = model.visibleSteps.firstIndex(of: model.stage) {
+                    Text("Step \(index + 1) of \(model.visibleSteps.count - 1)")
                         .font(.system(size: 11)).foregroundStyle(.secondary)
                 }
                 Spacer()
                 stepButtons
             }
         }
-        .controlSize(.regular)
     }
 
     /// Run and Skip for steps that change something and haven't run yet; Next otherwise.
     @ViewBuilder private var stepButtons: some View {
         switch model.stage {
         case .dpi where model.report?.dpi.data == nil && model.report?.dpi.error == nil:
-            Button("Skip") { model.next() }.disabled(model.running)
-            Button("Run") { Task { await model.runDPI() } }.disabled(model.running).keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
+            Button("Skip") { skip() }.disabled(model.running)
+            Button("Run") { runCurrentStep() }.disabled(model.running).keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
         case .polling where model.report?.polling.data == nil && model.report?.polling.error == nil:
-            Button("Skip") { model.next() }.disabled(model.running)
-            Button("Run") { Task { await model.runPolling() } }.disabled(model.running).keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
-        case .lighting where model.report?.lighting.data == nil:
-            Button("Skip") { model.next() }.disabled(model.running)
-            Button("Run") { Task { await model.runLighting() } }.disabled(model.running).keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
+            Button("Skip") { skip() }.disabled(model.running)
+            Button("Run") { runCurrentStep() }.disabled(model.running).keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
+        case .lighting where model.report?.lighting.data == nil && model.notOnMouse(.lighting) == nil:
+            Button("Skip") { skip() }.disabled(model.running)
+            Button("Run") { runCurrentStep() }.disabled(model.running).keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
         case .buttons:
             Button(model.buttonsSeen.isEmpty ? "Skip" : "Next") { model.next() }.keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
         default:
@@ -422,6 +656,11 @@ struct DeviceTestView: View {
 
     private func title(_ text: String) -> some View {
         Text(text).font(.system(size: 16, weight: .semibold)).fixedSize(horizontal: false, vertical: true)
+    }
+
+    /// A step for something the mouse doesn't have: it says so, and Next moves on.
+    private func notOnMouse(_ what: String) -> some View {
+        note("Your \(model.deviceName) has no \(what), so there's nothing to test here. Click Next to go on.")
     }
 
     private func stepTitle(_ text: String, changes: Bool) -> some View {
@@ -477,12 +716,11 @@ struct DeviceTestView: View {
         card {
             VStack(alignment: .leading, spacing: 6) {
                 Text(text).font(.system(size: 12, weight: .medium))
-                Picker("", selection: answer) {
-                    Text("Yes").tag(DeviceTestModel.Answer?.some(.yes))
-                    Text("No").tag(DeviceTestModel.Answer?.some(.no))
-                    Text("Not sure").tag(DeviceTestModel.Answer?.some(.unsure))
-                }
-                .pickerStyle(.segmented).labelsHidden().controlSize(.small)
+                ChoiceButtons(selection: answer, options: [
+                    .init(value: .some(.yes), title: "Yes", icon: "checkmark.circle"),
+                    .init(value: .some(.no), title: "No", icon: "xmark.circle"),
+                    .init(value: .some(.unsure), title: "Not sure", icon: "questionmark.circle"),
+                ])
             }
         }
     }

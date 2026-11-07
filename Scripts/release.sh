@@ -192,7 +192,8 @@ NOTES="dist/RELEASE_NOTES-${VERSION}.md"
 NOTES_CREATED=1
 
 step "Building the DMGs…"
-./Scripts/make-dmg.sh
+# A release build carries the plain version; any other build is marked -dev (build-app.sh).
+MACRAZER_RELEASE_BUILD=1 ./Scripts/make-dmg.sh
 
 # --- Verify -------------------------------------------------------------------------------
 # The point of the whole script: prove the artifact actually carries the version being tagged.

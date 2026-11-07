@@ -57,7 +57,7 @@ final class PopoverThemeTests: XCTestCase {
 
         let settings = AppearanceSettings(defaults: defaults)
         XCTAssertEqual(settings.theme, .system)
-        XCTAssertTrue(settings.glass)
+        XCTAssertFalse(settings.glass)
 
         settings.theme = .razerGreen
         settings.glass = false
@@ -65,6 +65,29 @@ final class PopoverThemeTests: XCTestCase {
         XCTAssertEqual(reloaded.theme, .razerGreen)
         XCTAssertFalse(reloaded.glass)
         XCTAssertEqual(reloaded.look(systemIsDark: false), .solidGreen)
+    }
+
+    @MainActor
+    func testTwoColumnsIsOffUntilPicked() throws {
+        let suite = "PopoverThemeTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let settings = AppearanceSettings(defaults: defaults)
+        XCTAssertFalse(settings.twoColumns)
+        settings.twoColumns = true
+        XCTAssertTrue(AppearanceSettings(defaults: defaults).twoColumns)
+    }
+
+    /// One column by default; two when picked, and always with more than one device.
+    func testTwoColumnsWithMoreThanOneDevice() {
+        XCTAssertFalse(PopoverLayout.usesTwoColumns(preferred: false, hasMouse: true, accessories: 0))
+        XCTAssertFalse(PopoverLayout.usesTwoColumns(preferred: false, hasMouse: false, accessories: 0))
+        XCTAssertFalse(PopoverLayout.usesTwoColumns(preferred: false, hasMouse: false, accessories: 1),
+                       "a keyboard alone is one device")
+        XCTAssertTrue(PopoverLayout.usesTwoColumns(preferred: false, hasMouse: true, accessories: 1))
+        XCTAssertTrue(PopoverLayout.usesTwoColumns(preferred: false, hasMouse: false, accessories: 2))
+        XCTAssertTrue(PopoverLayout.usesTwoColumns(preferred: true, hasMouse: true, accessories: 0))
     }
 
     @MainActor
