@@ -59,6 +59,34 @@ final class BatteryHistoryTests: XCTestCase {
         XCTAssertNil(h.estimateHoursRemaining(currentPercent: 100), "two flat samples are not a trend")
     }
 
+    func testProvisionalBasiliskEstimateUsesSavedRateAndMarksItRough() {
+        defaults.set(9.1455, forKey: "learnedDischargeRate-test")
+        let h = makeHistory()
+        let model = DischargeCurveModel(modelKey: "basilisk", directory: dir)
+        let estimate = h.estimate(currentPercent: 80, curveModel: model,
+                                  useProvisionalCurve: true)
+        XCTAssertEqual(estimate?.hoursRemaining ?? 0, 80 / 9.1455, accuracy: 0.01)
+        XCTAssertEqual(estimate?.basis, .provisional)
+
+        let emptyHistory = makeHistory(key: "fresh")
+        XCTAssertNil(emptyHistory.estimate(currentPercent: 80, curveModel: model,
+                                           useProvisionalCurve: true),
+                     "without curve data or a learned rate, the UI remains in learning state")
+    }
+
+    /// A Basilisk's session still teaches the learned rate, so the next battery cycle has a
+    /// (rough) estimate before its own samples show a trend.
+    func testABasiliskSessionStillTeachesTheLearnedRate() {
+        let h = makeHistory(key: "basilisk-session")
+        let model = DischargeCurveModel(modelKey: "basilisk-session", directory: dir)
+        _ = feedSteadyDischarge(h, from: 80, hours: 4)
+        XCTAssertEqual(h.estimate(currentPercent: 76, curveModel: model, useProvisionalCurve: true)?.basis, .provisional)
+        // New AA cells: a fresh cycle with no trend of its own yet.
+        h.record(percent: 100, charging: true, at: t0.addingTimeInterval(5 * 3600))
+        XCTAssertEqual(h.estimate(currentPercent: 100, curveModel: model, useProvisionalCurve: true)?.basis, .provisional,
+                       "the session's rate is kept for the next cycle")
+    }
+
     /// The "~19d left after a weekend away" bug: an idle gap's wall-clock time must not
     /// flatten the fitted slope...
     func testIdleGapTimeIsSplicedOutOfFit() {

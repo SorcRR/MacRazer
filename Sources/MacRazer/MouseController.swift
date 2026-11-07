@@ -716,15 +716,19 @@ final class MouseController: ObservableObject, @unchecked Sendable {
 
         case .reading(let pct, let isCharging, let recordSample):
             if recordSample { history.record(percent: pct, charging: isCharging) }
-            let estimateHours = isCharging ? nil : history.estimateHoursRemaining(currentPercent: pct, curveModel: curveModel)
+            let productID = device?.productID ?? 0
+            let usesModelCurve = RazerDevices.usesModelSpecificDischargeCurve(pid: productID)
+            let batteryEstimate = isCharging ? nil : history.estimate(
+                currentPercent: pct, curveModel: curveModel, useProvisionalCurve: usesModelCurve)
             let snapshot = LastBatterySnapshot(
                 deviceKey: historyKey ?? String(format: "%04x", device?.productID ?? 0),
-                productID: device?.productID ?? 0,
+                productID: productID,
                 deviceName: device?.productName ?? "Razer Mouse",
                 percent: pct,
                 observedAt: Date(),
-                estimatedHoursRemaining: estimateHours,
-                wasCharging: isCharging
+                estimatedHoursRemaining: batteryEstimate?.hoursRemaining,
+                wasCharging: isCharging,
+                estimateBasis: batteryEstimate?.basis
             )
             let previousSnapshot = latestBatterySnapshotForIO?.deviceKey == snapshot.deviceKey
                 ? latestBatterySnapshotForIO : lastBatterySnapshotStore.load(snapshot.deviceKey)
@@ -1617,7 +1621,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// display. Shared by the poll path and the device-swap republish so the two can't
     /// drift (e.g. one of them forgetting the decimation).
     private func historySnapshot() -> (samples: [BatterySample], previous: [BatterySample], rate: Double?, cycleStart: Date?, cycleStartPct: Int?) {
-        (BatteryHistory.decimatedForDisplay(history.samples),
+        return (BatteryHistory.decimatedForDisplay(history.samples),
          BatteryHistory.decimatedForDisplay(history.previousCycleSamples),
          history.currentRatePerHour,
          history.cycleStartedAt,
@@ -1801,7 +1805,8 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                         deviceKey: key, productID: saved.productID, deviceName: saved.deviceName,
                         percent: saved.percent, observedAt: saved.observedAt,
                         estimatedHoursRemaining: saved.estimatedHoursRemaining,
-                        wasCharging: saved.wasCharging
+                        wasCharging: saved.wasCharging,
+                        estimateBasis: saved.estimateBasis
                     )
                     lastBatterySnapshotStore.save(rekeyed, force: true)
                     lastBatterySnapshotStore.remove(saved.deviceKey)

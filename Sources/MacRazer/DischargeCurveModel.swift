@@ -4,10 +4,9 @@
 import Foundation
 
 /// Running mean of how long the battery actually dwells at each percent (0-100), learned from
-/// real discharge history. A Li-ion cell's voltage — and so a firmware fuel gauge's reported
-/// percent — isn't linear with time: there's a long flat plateau through most of the
-/// discharge, then steep drops near full and near empty. A single %/hour rate (the generic
-/// model `BatteryHistory` uses for every other mouse) can't represent that shape; this can,
+/// real discharge history. A firmware fuel gauge's reported percent does not necessarily
+/// map linearly to time for every battery chemistry and device. A single %/hour rate (the
+/// generic model `BatteryHistory` uses for most mice) can't represent that shape; this can,
 /// because each percent gets its own learned dwell time instead of one shared rate.
 struct DischargeBucket: Codable {
     var totalSeconds: Double = 0
@@ -17,6 +16,11 @@ struct DischargeBucket: Codable {
     /// plateau), collapsing the whole-curve estimate to `percent × poll interval`.
     var count: Int = 0
     var mean: Double? { count > 0 ? totalSeconds / Double(count) : nil }
+}
+
+struct DischargeCurveEstimate {
+    let hoursRemaining: Double
+    let isFullyTrusted: Bool
 }
 
 final class DischargeCurveModel {
@@ -99,30 +103,39 @@ final class DischargeCurveModel {
     }
 
     /// Sum of learned (or rate-derived fallback) dwell time for every bucket from
-    /// `currentPercent` down to 1, in hours. nil only if there's no curve data for any bucket
-    /// in range AND no fallback rate — mirrors `BatteryHistory.estimateHoursRemaining`'s
-    /// "no data yet" case.
-    func estimateHoursRemaining(currentPercent: Int, fallbackRatePerHour: Double?) -> Double? {
-        guard currentPercent > 0 else { return 0 }
+    /// `currentPercent` down to 1. A provisional caller may use one observed traversal for a
+    /// bucket; otherwise under-sampled means retain the legacy fallback behavior used by Cobra.
+    func estimate(currentPercent: Int, fallbackRatePerHour: Double?,
+                  allowProvisionalMeans: Bool = false) -> DischargeCurveEstimate? {
+        guard currentPercent > 0 else {
+            return DischargeCurveEstimate(hoursRemaining: 0, isFullyTrusted: true)
+        }
         let fallbackSecondsPerPercent = fallbackRatePerHour.map { 3600 / $0 }
         var totalSeconds = 0.0
-        var hasAnyData = false
+        var isFullyTrusted = true
         for pct in 1...min(currentPercent, 100) {
             let bucket = buckets[pct]
             if let mean = bucket.mean, bucket.count >= minSamplesToTrust {
                 totalSeconds += mean
-                hasAnyData = true
+            } else if allowProvisionalMeans, let mean = bucket.mean {
+                totalSeconds += mean
+                isFullyTrusted = false
             } else if let fallback = fallbackSecondsPerPercent {
                 totalSeconds += fallback
+                isFullyTrusted = false
             } else if let mean = bucket.mean {
-                // No fallback rate available at all — better than nothing even under-sampled.
+                // Preserve the original under-sampled fallback when no scalar rate exists.
                 totalSeconds += mean
-                hasAnyData = true
+                isFullyTrusted = false
             } else {
-                return nil // this bucket has neither learned data nor a fallback rate
+                return nil // this bucket has neither learned dwell data nor a fallback
             }
         }
-        guard hasAnyData || fallbackSecondsPerPercent != nil else { return nil }
-        return totalSeconds / 3600
+        return DischargeCurveEstimate(hoursRemaining: totalSeconds / 3600,
+                                      isFullyTrusted: isFullyTrusted)
+    }
+
+    func estimateHoursRemaining(currentPercent: Int, fallbackRatePerHour: Double?) -> Double? {
+        estimate(currentPercent: currentPercent, fallbackRatePerHour: fallbackRatePerHour)?.hoursRemaining
     }
 }

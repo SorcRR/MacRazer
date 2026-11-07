@@ -51,6 +51,11 @@ final class BatteryHistory {
     /// it sees next as a continuation of the dwell it was accumulating.
     var onObservationGap: (() -> Void)?
 
+    struct Estimate {
+        let hoursRemaining: Double
+        let basis: BatteryEstimateBasis
+    }
+
     /// Above this, a gap between two samples isn't real usage time — the mouse went to sleep,
     /// got disconnected, or the app was closed, none of which the device "remembers" as
     /// discharging once reconnected. Generous margin above both poll cadences (4-15s) so it
@@ -197,14 +202,15 @@ final class BatteryHistory {
         defaults.set(learnedRate, forKey: learnedRateKey)
     }
 
-    /// Hours remaining. Prefers a fresh per-session slope (and folds it into the learned rate);
-    /// otherwise falls back to the persisted learned rate. If `curveModel` is given (only for
-    /// models with a learned per-percent discharge curve — see `DischargeCurveModel`) and it
-    /// can produce an estimate, that wins over the plain `currentPercent / rate` projection,
-    /// since a single rate can't represent a non-linear discharge curve. The rate is still
-    /// computed/persisted exactly as before either way — it's also the curve model's own
-    /// per-bucket fallback for percents it doesn't have data for yet.
-    func estimateHoursRemaining(currentPercent: Int, curveModel: DischargeCurveModel? = nil) -> Double? {
+    /// Estimate with provenance for presentation and persistence. Basilisk callers opt into
+    /// provisional curve means and a clearly labeled scalar fallback; other devices retain the
+    /// generic rate and curve behavior.
+    ///
+    /// The learned rate is kept up to date for every mouse, the Basilisk included: it's what a
+    /// fresh battery cycle falls back on before its own samples show a trend, and on AA cells
+    /// that can take days. The Basilisk's estimate says "rough" whenever it leans on it.
+    func estimate(currentPercent: Int, curveModel: DischargeCurveModel? = nil,
+                  useProvisionalCurve: Bool = false) -> Estimate? {
         var rate: Double?
         if let session = sessionRatePerHour() {
             // Blend the observed rate into the long-term learned rate (EMA), then use it.
@@ -214,11 +220,28 @@ final class BatteryHistory {
         } else if let learned = learnedRatePerHour, learned > 0 {
             rate = learned
         }
-        if let curveModel, let estimate = curveModel.estimateHoursRemaining(currentPercent: currentPercent, fallbackRatePerHour: rate) {
-            return estimate
+        if let curveModel {
+            let curveEstimate = curveModel.estimate(
+                currentPercent: currentPercent,
+                fallbackRatePerHour: rate,
+                allowProvisionalMeans: useProvisionalCurve
+            )
+            if let curveEstimate {
+                let basis: BatteryEstimateBasis = useProvisionalCurve
+                    ? (curveEstimate.isFullyTrusted ? .learnedCurve : .provisional)
+                    : .genericRate
+                return Estimate(hoursRemaining: curveEstimate.hoursRemaining, basis: basis)
+            }
         }
         guard let rate else { return nil }
-        return Double(currentPercent) / rate
+        return Estimate(hoursRemaining: Double(currentPercent) / rate,
+                        basis: useProvisionalCurve ? .provisional : .genericRate)
+    }
+
+    func estimateHoursRemaining(currentPercent: Int, curveModel: DischargeCurveModel? = nil,
+                                useProvisionalCurve: Bool = false) -> Double? {
+        estimate(currentPercent: currentPercent, curveModel: curveModel,
+                 useProvisionalCurve: useProvisionalCurve)?.hoursRemaining
     }
 
     /// Linear least-squares fit of the current samples → discharge rate in %/hour (positive),

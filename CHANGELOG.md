@@ -8,6 +8,11 @@ expect rough edges until 1.0.
 
 ### Fixed
 - **A "+" in a mouse's name or the version reached the server as a space.**
+- **A steadier battery estimate for the Basilisk V3 X HyperSpeed.** Its AA cell doesn't drain
+  at an even pace, so one average rate gave misleading estimates. MacRazer now learns how long
+  the cell sits at each percent, on the dongle and over Bluetooth together, and estimates from
+  that. Until it has seen each percent twice, the estimate says "rough". Other mice are
+  unchanged. Thanks @ungrav.
 
 ### Changed
 - **Closing the usage stats question isn't a no any more.** Before, closing the window (or the

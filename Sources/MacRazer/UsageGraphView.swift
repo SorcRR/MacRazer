@@ -164,6 +164,23 @@ struct UsageGraphView: View {
     }
 
     private var dischargeRateText: String {
+        let productID = controller.deviceID ?? controller.lastBatterySnapshot?.productID
+        if productID.map(RazerDevices.usesModelSpecificDischargeCurve(pid:)) == true {
+            switch controller.lastBatterySnapshot?.estimateBasis {
+            case .learnedCurve:
+                return "Model curve"
+            case .provisional:
+                if let rate = controller.dischargeRatePerHour {
+                    return String(format: "~%.1f%%/hr (rough)", rate)
+                }
+                return "Provisional curve"
+            default:
+                if let rate = controller.dischargeRatePerHour {
+                    return String(format: "~%.1f%%/hr (rough)", rate)
+                }
+                return "Learning"
+            }
+        }
         guard let rate = controller.dischargeRatePerHour else { return "—" }
         return String(format: "%.1f%%/hr", rate)
     }
