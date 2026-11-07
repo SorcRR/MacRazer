@@ -62,7 +62,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     @Published private var pendingEffect = PendingRequest<LightingEffect>()
     /// The effect the mouse will run once its queued writes land: what the next lighting
     /// change builds on.
-    var intendedEffect: LightingEffect { pendingEffect.value ?? effect }
+    var intendedEffect: LightingEffect { supported(pendingEffect.value ?? effect) }
     @Published private(set) var lightingColor = RGB(r: 0x44, g: 0xD6, b: 0x2C) // razer green
     /// The wave's speed byte (`WaveSpeed`). Like the effect it can't be read back, so the last
     /// one set is kept across launches.
@@ -139,6 +139,15 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         !deviceIsBluetooth && deviceID.map { RazerDevices.acceptsClassicPolling(pid: $0) } != false
     }
     var supportsLightingEffects: Bool { !deviceIsBluetooth && !lightHasFixedColor }
+    /// The effects this mouse's firmware has (`RazerDeviceInfo.effects`): what the picker
+    /// offers. Every effect while no mouse is known.
+    var availableEffects: [LightingEffect] { deviceID.map(RazerDevices.effects(pid:)) ?? LightingEffect.allCases }
+    /// The effect a colour pick sets: breathing stays breathing where the mouse has it, anything
+    /// else becomes the static colour. The colour page goes by this too, so it agrees with the
+    /// write.
+    var colorPickEffect: LightingEffect {
+        supported(intendedEffect.afterColorPick(effectsSupported: supportsLightingEffects))
+    }
     /// The light has one colour of its own (`RazerDeviceInfo.fixedColor`): brightness only.
     var lightHasFixedColor: Bool { deviceID.map(RazerDevices.fixedColor(pid:)) ?? false }
     var supportsFreeDPI: Bool { !deviceIsBluetooth }
@@ -1022,7 +1031,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// The command for the lighting the app last set, for the test to return to after showing
     /// red. Main thread. The protocol has no lighting read-back, so this is the app's own idea
     /// of what the mouse shows, the same one its controls work from.
-    func lightingRestoreReport() -> RazerReport { report(for: effect, color: lightingColor) }
+    func lightingRestoreReport() -> RazerReport {
+        Self.lightingCommand(effect, color: lightingColor, waveSpeed: waveSpeed, effects: availableEffects).report
+    }
 
     // MARK: - Writes
 
@@ -1312,58 +1323,80 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         // NSSegmentedControl can fire its action on a click of the already-selected
         // segment; a no-change "set" must not resend the command or un-mark the active
         // profile (the config didn't change).
+        // What's published must be what's sent: an effect this mouse lacks is the static colour.
+        let newEffect = supported(newEffect)
         guard newEffect != intendedEffect else { return }
-        sendLighting(report(for: newEffect, color: lightingColor), effect: newEffect) {
-            self.effect = newEffect
-        }
+        sendLighting(newEffect, color: lightingColor) { _ in }
     }
 
     /// Sets the lighting colour. Breathing keeps breathing in the new colour; any other effect
     /// switches to static. Bluetooth always gets static, the only effect it has a command for,
     /// whatever effect is left over from USB.
     func setColor(_ rgb: RGB) {
-        let target = intendedEffect.afterColorPick(effectsSupported: supportsLightingEffects)
+        let target = colorPickEffect
         // No-change re-click. Not while a write is queued: what it lands on isn't known yet.
         guard !(pendingEffect.value == nil && effect == target && lightingColor == rgb) else { return }
-        sendLighting(report(for: target, color: rgb), effect: target) {
-            self.effect = target
-            self.lightingColor = rgb
-        }
+        sendLighting(target, color: rgb) { _ in self.lightingColor = rgb }
     }
 
-    private func report(for effect: LightingEffect, color: RGB, waveSpeed: UInt8? = nil) -> RazerReport {
-        RazerCommands.effect(effect, color: color, waveSpeed: waveSpeed ?? self.waveSpeed)
+    /// The one place a lighting command is built: the effect the mouse with these effects
+    /// runs for the one asked for, and the command for it.
+    nonisolated static func lightingCommand(_ effect: LightingEffect, color: RGB, waveSpeed: UInt8,
+                                            effects: [LightingEffect]) -> (effect: LightingEffect, report: RazerReport) {
+        let landed = supported(effect, in: effects)
+        return (landed, RazerCommands.effect(landed, color: color, waveSpeed: waveSpeed))
+    }
+
+    /// An effect this mouse has: on a static-only one, breathing, spectrum or wave (from a
+    /// profile, or any caller) lands as the static colour (or the first effect it has, for a
+    /// mouse without one). Writes apply it again on `io`, for the mouse they actually reach
+    /// (`sendLighting`, `applyProfile`), so a switch of mouse mid-write can't slip one through.
+    func supported(_ effect: LightingEffect) -> LightingEffect {
+        Self.supported(effect, in: availableEffects)
+    }
+
+    nonisolated static func supported(_ effect: LightingEffect, in effects: [LightingEffect]) -> LightingEffect {
+        if effects.contains(effect) { return effect }
+        return effects.contains(.staticColor) ? .staticColor : effects.first ?? .staticColor
     }
 
     /// Sets the wave's speed. Sent to the mouse straight away while it runs Wave; otherwise
     /// kept for the next time Wave is picked.
     func setWaveSpeed(_ speed: UInt8) {
         guard speed != waveSpeed else { return }
+        // intendedEffect is always one this mouse has, so Wave here means the mouse has it.
         guard intendedEffect == .wave else {
             waveSpeed = speed
             return
         }
-        sendLighting(report(for: .wave, color: lightingColor, waveSpeed: speed), effect: .wave) {
-            self.waveSpeed = speed
-        }
+        // Kept even if the mouse changed under the write and got its static colour instead,
+        // as the speed is kept whenever Wave isn't running.
+        sendLighting(.wave, color: lightingColor, waveSpeed: speed) { _ in self.waveSpeed = speed }
     }
 
     /// Every lighting change the user makes goes through here, so it is the one place the
     /// effect and colour controls need to preempt a background read.
-    private func sendLighting(_ report: RazerReport, effect: LightingEffect,
-                              onSuccess: @escaping @Sendable () -> Void) {
+    /// The command is built on `io` for the mouse the write reaches, which may not be the one
+    /// it was asked for: an effect that mouse lacks lands as one it has, and that's what's
+    /// published (and handed to `onSuccess`).
+    private func sendLighting(_ effect: LightingEffect, color: RGB, waveSpeed: UInt8? = nil,
+                              onSuccess: @escaping @Sendable (LightingEffect) -> Void) {
         let token = pendingEffect.begin(effect)
+        let speed = waveSpeed ?? self.waveSpeed
         userCommand { [weak self] in
             guard let self else { return }
-            let ok = (try? {
+            let landed = try? { () throws -> LightingEffect in
                 let device = try self.ensureDevice()
+                let (landed, report) = Self.lightingCommand(effect, color: color, waveSpeed: speed,
+                                                            effects: RazerDevices.effects(pid: device.productID))
                 _ = try device.sendWithRetry(report)
-                return true
-            }()) != nil
+                return landed
+            }()
             self.publish {
                 self.pendingEffect.finish(token)
-                guard ok else { self.lastWriteFailure = Date(); return }
-                onSuccess()
+                guard let landed else { self.lastWriteFailure = Date(); return }
+                self.effect = landed
+                onSuccess(landed)
                 self.clearActiveProfileIfNeeded()
                 self.lightingChanges &+= 1
             }
@@ -1400,12 +1433,12 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                                     brightness: brightness,
                                     // No LEDs → no effect captured (the picker isn't even
                                     // shown); an empty string keeps the summary honest.
-                                    effect: deviceHasLighting ? effect.rawValue : "",
+                                    effect: deviceHasLighting ? supported(effect).rawValue : "",
                                     color: lightingColor,
                                     buttonMappings: remapper.mappings,
                                     // The stage table the DPI button cycles is config too.
                                     dpiStages: dpiStages.isEmpty ? nil : dpiStages,
-                                    waveSpeed: deviceHasLighting && effect == .wave ? waveSpeed : nil)
+                                    waveSpeed: deviceHasLighting && supported(effect) == .wave ? waveSpeed : nil)
         profiles.append(profile)
         ProfileStore.save(profiles, forDevice: key)
         activeProfileID = profile.id
@@ -1427,10 +1460,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         let dpi = UInt16(max(100, min(profile.dpi, 45000)))
         let hz = profile.pollRate == 0 ? 1000 : profile.pollRate
         let brightnessPct = max(0, min(profile.brightness, 100))
-        let effect = profile.lightingEffect
+        let effect = supported(profile.lightingEffect)
         // A profile saved before the speed existed keeps whatever speed the slider has.
         let speed = profile.waveSpeed ?? waveSpeed
-        let lighting = report(for: effect, color: profile.color, waveSpeed: speed)
         let color = profile.color
         let mappings = profile.buttonMappings
         // Restore the onboard stage table (what the DPI button cycles) when the profile
@@ -1464,6 +1496,10 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             let hasLighting = RazerDevices.hasLighting(pid: dev.productID)
             let brightOK = !hasLighting
                 || (try? Self.writeBrightness(RazerCommands.brightnessRaw(fromPercent: brightnessPct), to: dev)) != nil
+            // Built for the mouse it reaches: if that changed since the profile was read, an
+            // effect it lacks lands as one it has.
+            let (landed, lighting) = Self.lightingCommand(effect, color: color, waveSpeed: speed,
+                                                          effects: RazerDevices.effects(pid: dev.productID))
             let lightOK = !hasLighting || (try? dev.sendWithRetry(lighting)) != nil
             let allOK = stagesOK && dpiOK && pollOK && brightOK && lightOK
             let anyOK = dpiOK || (polls && pollOK) || (hasLighting && (brightOK || lightOK))
@@ -1482,9 +1518,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 if allOK, self.profiles.contains(where: { $0.id == profile.id }) {
                     remapper.setMappings(mappings)
                     if hasLighting {
-                        self.effect = effect
+                        self.effect = landed
                         self.lightingColor = color
-                        if effect == .wave { self.waveSpeed = speed }
+                        if landed == .wave { self.waveSpeed = speed }
                         self.lightingChanges &+= 1
                     }
                     self.activeProfileID = profile.id
@@ -1879,6 +1915,10 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             self.update(\.deviceHasBattery, battery)
             self.update(\.deviceHasLighting, RazerDevices.hasLighting(pid: pid))
             self.update(\.deviceMaxDPI, RazerDevices.maxDPI(pid: pid))
+            // An effect left from another mouse that this one doesn't have (a static-only
+            // mouse after one on Wave) starts as the static colour, so the picker, the wave
+            // slider, a saved profile and the next colour pick all agree with what it shows.
+            self.update(\.effect, self.supported(self.effect))
         }
         return d
     }

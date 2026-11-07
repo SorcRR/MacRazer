@@ -202,7 +202,7 @@ struct PopoverView: View {
         if let accessory = colorTargetAccessory {
             return (accessory.latestLighting.effect ?? .staticColor).afterColorPick()
         }
-        return controller.intendedEffect.afterColorPick(effectsSupported: controller.supportsLightingEffects)
+        return controller.colorPickEffect
     }
 
     /// Which device the page sets, named once there's more than the mouse to choose from.
@@ -1509,7 +1509,7 @@ struct PopoverView: View {
             if controller.supportsLightingEffects {
                 Picker("", selection: Binding(get: { controller.effect },
                                               set: { controller.setEffect($0) })) {
-                    ForEach(LightingEffect.allCases) { Text($0.rawValue).tag($0) }
+                    ForEach(controller.availableEffects) { Text($0.rawValue).tag($0) }
                 }
                 .pickerStyle(.segmented)
                 .controlSize(.small)
