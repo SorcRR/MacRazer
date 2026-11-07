@@ -1316,6 +1316,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         // NSSegmentedControl can fire its action on a click of the already-selected
         // segment; a no-change "set" must not resend the command or un-mark the active
         // profile (the config didn't change).
+        // What's published must be what's sent: an effect this mouse lacks is the static colour.
         let newEffect = supported(newEffect)
         guard newEffect != intendedEffect else { return }
         sendLighting(report(for: newEffect, color: lightingColor), effect: newEffect) {
@@ -1327,7 +1328,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// switches to static. Bluetooth always gets static, the only effect it has a command for,
     /// whatever effect is left over from USB.
     func setColor(_ rgb: RGB) {
-        let target = intendedEffect.afterColorPick(effectsSupported: supportsLightingEffects)
+        let target = supported(intendedEffect.afterColorPick(effectsSupported: supportsLightingEffects))
         // No-change re-click. Not while a write is queued: what it lands on isn't known yet.
         guard !(pendingEffect.value == nil && effect == target && lightingColor == rgb) else { return }
         sendLighting(report(for: target, color: rgb), effect: target) {
@@ -1341,7 +1342,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     }
 
     /// An effect this mouse has: on a static-only one, breathing, spectrum or wave (from a
-    /// profile, or any caller) lands as the static colour, never as a command it lacks.
+    /// profile, or any caller) lands as the static colour, never as a command it lacks. The
+    /// one rule: report(for:) applies it to every lighting command, and the state that's
+    /// published or saved goes through it too.
     private func supported(_ effect: LightingEffect) -> LightingEffect {
         availableEffects.contains(effect) ? effect : .staticColor
     }
@@ -1350,7 +1353,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// kept for the next time Wave is picked.
     func setWaveSpeed(_ speed: UInt8) {
         guard speed != waveSpeed else { return }
-        guard intendedEffect == .wave else {
+        guard intendedEffect == .wave, availableEffects.contains(.wave) else {
             waveSpeed = speed
             return
         }
@@ -1411,12 +1414,12 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                                     brightness: brightness,
                                     // No LEDs → no effect captured (the picker isn't even
                                     // shown); an empty string keeps the summary honest.
-                                    effect: deviceHasLighting ? effect.rawValue : "",
+                                    effect: deviceHasLighting ? supported(effect).rawValue : "",
                                     color: lightingColor,
                                     buttonMappings: remapper.mappings,
                                     // The stage table the DPI button cycles is config too.
                                     dpiStages: dpiStages.isEmpty ? nil : dpiStages,
-                                    waveSpeed: deviceHasLighting && effect == .wave ? waveSpeed : nil)
+                                    waveSpeed: deviceHasLighting && supported(effect) == .wave ? waveSpeed : nil)
         profiles.append(profile)
         ProfileStore.save(profiles, forDevice: key)
         activeProfileID = profile.id
@@ -1890,6 +1893,10 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             self.update(\.deviceHasBattery, battery)
             self.update(\.deviceHasLighting, RazerDevices.hasLighting(pid: pid))
             self.update(\.deviceMaxDPI, RazerDevices.maxDPI(pid: pid))
+            // An effect left from another mouse that this one doesn't have (a static-only
+            // mouse after one on Wave) starts as the static colour, so the picker, the wave
+            // slider, a saved profile and the next colour pick all agree with what it shows.
+            if !self.availableEffects.contains(self.effect) { self.update(\.effect, .staticColor) }
         }
         return d
     }
