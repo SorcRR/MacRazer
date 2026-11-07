@@ -25,6 +25,8 @@ final class IssueReportModel: ObservableObject {
     /// Open GitHub issue put the description on the clipboard, because it was too long for
     /// the link.
     @Published private(set) var issueNeedsPaste = false
+    /// The reply address the sent report carried, for the thank-you screen.
+    @Published private(set) var sentReplyEmail: String?
 
     /// Nil in a build without the Worker: then Open GitHub issue is the only way out.
     let endpoint: URL?
@@ -47,9 +49,15 @@ final class IssueReportModel: ObservableObject {
 
     var canSend: Bool { endpoint != nil }
     var emailProblem: String? { DeviceReportOutput.emailProblem(replyEmail) }
-    /// Blank the way the Worker's `trim()` sees it, which also drops U+FEFF.
+    /// Whether there's a description once it's cleaned the way Send cleans it, and blank the
+    /// way the Worker's `trim()` sees it, which also drops U+FEFF. Text that's all control
+    /// characters is no description: cleaning leaves nothing of it.
     var hasDescription: Bool {
-        !description.trimmingCharacters(in: .whitespacesAndNewlines.union(["\u{FEFF}"])).isEmpty
+        !cleanedDescription.trimmingCharacters(in: .whitespacesAndNewlines.union(["\u{FEFF}"])).isEmpty
+    }
+    private var cleanedDescription: String {
+        DeviceReportOutput.cleaned(description, max: DeviceReportOutput.maxComment,
+                                   units: DeviceReportOutput.maxCommentUnits, singleLine: false) ?? ""
     }
     var sendDisabled: Bool {
         !hasDescription || emailProblem != nil || sendState == .sending || sendState == .sent
@@ -58,8 +66,7 @@ final class IssueReportModel: ObservableObject {
     /// The report as it would go now: cleaned the way the device test cleans its fields, and
     /// cut to fit.
     func finalReport() -> IssueReport {
-        let description = DeviceReportOutput.cleaned(self.description, max: DeviceReportOutput.maxComment,
-                                                     units: DeviceReportOutput.maxCommentUnits, singleLine: false) ?? ""
+        let description = cleanedDescription
         let name = DeviceReportOutput.cleaned(self.name, max: IssueReportOutput.maxName,
                                               units: IssueReportOutput.maxName, singleLine: true)
         let email = emailProblem == nil
@@ -72,7 +79,9 @@ final class IssueReportModel: ObservableObject {
     func send() async {
         guard let endpoint, !sendDisabled else { return }
         sendState = .sending
-        let outcome = await IssueReportSender.send(finalReport(), to: endpoint, transport: transport)
+        let report = finalReport()
+        let outcome = await IssueReportSender.send(report, to: endpoint, transport: transport)
+        if outcome == .sent { sentReplyEmail = report.replyEmail }
         sendState = outcome == .sent ? .sent : .failed(outcome)
     }
 
@@ -101,6 +110,7 @@ final class IssueReportModel: ObservableObject {
         replyEmail = ""
         includeDetails = true
         sendState = .idle
+        sentReplyEmail = nil
         issueNeedsPaste = false
     }
 
@@ -117,6 +127,7 @@ final class IssueReportModel: ObservableObject {
     /// For `render-issue-report sent`.
     func loadPreviewSent(replyEmail: String) {
         self.replyEmail = replyEmail
+        sentReplyEmail = replyEmail
         sendState = .sent
     }
 

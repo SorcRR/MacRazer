@@ -182,6 +182,26 @@ final class IssueReportDetailsTests: XCTestCase {
         XCTAssertEqual(m.finalReport().details?.mice.count, 1, "the next open sees it")
     }
 
+    func testControlCharactersAloneAreNoDescription() {
+        let m = IssueReportModel(endpoint: nil, details: { .init(appVersion: "", macOS: "", mice: []) })
+        m.description = "\u{07}\u{1B}"
+        XCTAssertFalse(m.hasDescription, "cleaning leaves nothing to send")
+    }
+
+    func testTheThankYouNamesTheAddressThatWent() async {
+        let m = IssueReportModel(endpoint: URL(string: "https://example.com/v1/issue-report")!,
+                                 details: { .init(appVersion: "", macOS: "", mice: []) },
+                                 transport: { request in
+            (Data(), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        })
+        m.description = "It crashes"
+        m.replyEmail = " person@example.com "
+        await m.send()
+        XCTAssertEqual(m.sentReplyEmail, "person@example.com")
+        m.windowWillShow()
+        XCTAssertNil(m.sentReplyEmail)
+    }
+
     func testAByteOrderMarkIsNoDescription() {
         let m = IssueReportModel(endpoint: nil, details: { .init(appVersion: "", macOS: "", mice: []) })
         m.description = "\u{FEFF} \n"

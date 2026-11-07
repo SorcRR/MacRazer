@@ -56,8 +56,9 @@ enum IssueReportOutput {
         return r
     }
 
-    /// The description's first non-blank line, cut to `titleCharacters`. The Worker builds
-    /// its subject the same way; here it titles a GitHub issue.
+    /// The description's first non-blank line, cut to `titleCharacters`, for a GitHub issue's
+    /// title. The Worker's email subject starts from the same line but counts code points, not
+    /// characters, so for emoji or combined accents the two can cut at different places.
     static func title(_ description: String) -> String {
         let first = description.split(separator: "\n", omittingEmptySubsequences: true)
             .map { $0.replacingOccurrences(of: "\t", with: " ").trimmingCharacters(in: .whitespaces) }

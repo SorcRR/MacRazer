@@ -26,10 +26,26 @@ struct IssueReportView: View {
 
     private var form: some View {
         VStack(alignment: .leading, spacing: 10) {
-            title("What's going wrong?")
-            note(model.canSend
+            reportTitle("What's going wrong?")
+            reportNote(model.canSend
                  ? "Send emails this to the maintainer. Nothing leaves your Mac until you press it."
                  : "Open a GitHub issue to tell the maintainer. Nothing leaves your Mac until you do.")
+            inputs
+                // The report was built when Send was pressed; an edit now wouldn't go with it.
+                .disabled(model.sendState == .sending)
+            if model.issueNeedsPaste {
+                reportNote("Your description is on your clipboard. Paste it into the issue before you submit it.")
+            }
+            switch model.sendState {
+            case .sending: reportRunning("Sending…")
+            case .failed(let outcome): reportWarning(DeviceTestView.sendFailure(outcome))
+            case .idle, .sent: EmptyView()
+            }
+        }
+    }
+
+    private var inputs: some View {
+        VStack(alignment: .leading, spacing: 10) {
             VStack(alignment: .trailing, spacing: 2) {
                 TextEditor(text: Binding(get: { model.description },
                                          set: { model.description = String($0.prefix(DeviceReportOutput.maxComment)) }))
@@ -49,7 +65,7 @@ struct IssueReportView: View {
                     TextField("Your email, if you'd like a reply (optional)", text: $model.replyEmail)
                         .inputBox()
                     if let problem = model.emailProblem {
-                        warning(problem)
+                        reportWarning(problem)
                     } else {
                         // The GitHub issue is public, so it leaves both out.
                         Text("Only Send includes your name and email, and only the maintainer sees them.")
@@ -68,14 +84,6 @@ struct IssueReportView: View {
                         .padding(.leading, 20)
                 }
             }
-            if model.issueNeedsPaste {
-                note("Your description is on your clipboard. Paste it into the issue before you submit it.")
-            }
-            switch model.sendState {
-            case .sending: running("Sending…")
-            case .failed(let outcome): warning(DeviceTestView.sendFailure(outcome))
-            case .idle, .sent: EmptyView()
-            }
         }
     }
 
@@ -83,16 +91,16 @@ struct IssueReportView: View {
 
     private var sent: some View {
         VStack(alignment: .leading, spacing: 10) {
-            title("Thank you")
+            reportTitle("Thank you")
             card {
-                Text(model.emailProblem == nil && !model.replyEmail.trimmingCharacters(in: .whitespaces).isEmpty
-                     ? "Your report is on its way to the maintainer, who can reply to \(model.replyEmail.trimmingCharacters(in: .whitespaces))."
-                     : "Your report is on its way to the maintainer.")
+                // The address that went, not whatever the field holds now.
+                Text(model.sentReplyEmail.map { "Your report is on its way to the maintainer, who can reply to \($0)." }
+                     ?? "Your report is on its way to the maintainer.")
                     .font(.system(size: 13)).fixedSize(horizontal: false, vertical: true)
             }
             // Only once it's sent: the person has just helped, and the ask is the footer's
             // quiet button, not a banner.
-            note(DeviceTestView.tipLine(.full))
+            reportNote(DeviceTestView.tipLine(.full))
         }
     }
 
@@ -129,26 +137,5 @@ struct IssueReportView: View {
             }
         }
         .controlSize(.large)
-    }
-
-    // MARK: Pieces
-
-    private func title(_ text: String) -> some View {
-        Text(text).font(.system(size: 16, weight: .semibold)).fixedSize(horizontal: false, vertical: true)
-    }
-
-    private func note(_ text: String) -> some View {
-        Text(text).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-    }
-
-    private func warning(_ text: String) -> some View {
-        Text(text).font(.system(size: 12)).foregroundStyle(Color.batteryMid).fixedSize(horizontal: false, vertical: true)
-    }
-
-    private func running(_ text: String) -> some View {
-        HStack(spacing: 8) {
-            ProgressView().controlSize(.small)
-            Text(text).font(.system(size: 12)).foregroundStyle(.secondary)
-        }
     }
 }
