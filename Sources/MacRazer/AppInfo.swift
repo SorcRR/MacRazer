@@ -57,6 +57,17 @@ enum ProjectLinks {
     static let privacy = URL(string: "https://macrazer.com/#privacy")!
 
     static let issues = repo.appendingPathComponent("issues")
+    /// Where a report goes when Send can't: offline, over the daily cap, or refused.
+    static let contactEmail = "contact@macrazer.com"
+    /// A new email to `contactEmail`, started with `subject` and `body`.
+    static func mail(subject: String, body: String = "") -> URL {
+        var components = URLComponents()
+        components.scheme = "mailto"
+        components.path = contactEmail
+        components.queryItems = [URLQueryItem(name: "subject", value: subject)]
+            + (body.isEmpty ? [] : [URLQueryItem(name: "body", value: body)])
+        return components.url!
+    }
     /// Where "Full release notes" goes: the popover shows a parsed summary, this is the
     /// unabridged original.
     static let latestRelease = repo.appendingPathComponent("releases/latest")
@@ -116,6 +127,8 @@ enum WorkerEndpoint {
     }
 
     static var deviceReports: URL? { base?.appendingPathComponent("v1/device-report") }
+    /// "Report an Issue…"; see `IssueReport`.
+    static var issueReports: URL? { base?.appendingPathComponent("v1/issue-report") }
     static var usageStats: URL? { base?.appendingPathComponent("v1/stats") }
     /// What's been confirmed on each mouse since this build; see `SupportList`.
     static var supportList: URL? { base?.appendingPathComponent("v1/support-list") }

@@ -80,7 +80,7 @@ struct CrashReportView: View {
             TextField("Email, if you'd like a reply (optional)", text: $model.replyEmail)
                 .inputBox()
             if let problem = model.emailProblem { warning(problem) }
-            if case .failed(let message) = model.state { warning(message) }
+            if case .failed(let message) = model.state { reportSendFailure(message, mail: model.mailInstead) }
         }
     }
 

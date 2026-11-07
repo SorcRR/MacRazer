@@ -41,6 +41,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     private lazy var crashReportWindow = CrashReportWindowController(
         onClosed: { [weak self] in self?.autoInstallIfEnabled() })
     private let usageStats = UsageStats.shared
+    /// The details it offers are the mice the usage stats see, which they know whether or
+    /// not stats are on.
+    private lazy var issueReportWindow = IssueReportWindowController(model: IssueReportModel(details: {
+        IssueReport.Details(appVersion: AppInfo.displayVersion, macOS: DeviceReport.currentMacOSVersion,
+                            mice: UsageStats.shared.connectedMice.map {
+                                .init(name: $0.name, productID: $0.pid, link: $0.link, supported: $0.supported)
+                            })
+    }))
     /// The connected mouse models and the usage stats answer for the reports page, anonymous
     /// and in the background.
     private let countReporter = AnonymousCountReporter()
@@ -556,6 +564,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         update.target = self
         menu.addItem(update)
 
+        // Always there: a problem worth reporting is often that no mouse shows up.
+        let report = NSMenuItem(title: "Report an Issue…", action: #selector(openIssueReport), keyEquivalent: "")
+        report.target = self
+        menu.addItem(report)
+
         menu.addItem(.separator())
 
         let tip = NSMenuItem(title: "Leave a Tip…", action: #selector(openTip), keyEquivalent: "")
@@ -617,7 +630,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         // happen while a step has a test value on someone's mouse.
         let windows: [AppWindowPresenter] = [remapWindow, permissionsWindow, aboutWindow, settingsWindow,
                                              updatedWindow, deviceTestWindow, crashReportWindow,
-                                             usageStatsWindow, supportPromptWindow]
+                                             usageStatsWindow, supportPromptWindow, issueReportWindow]
         return windows.contains { $0.isVisible }
     }
 
@@ -837,6 +850,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     private func autoInstallSettingChanged() { autoInstallIfEnabled() }
     @objc private func openPermissions() { present(permissionsWindow) }
     @objc private func openDeviceTest() { present(deviceTestWindow) }
+    @objc private func openIssueReport() { present(issueReportWindow) }
     @objc private func openTip() { NSWorkspace.shared.open(ProjectLinks.tip) }
     @objc private func quit() { NSApplication.shared.terminate(nil) }
 

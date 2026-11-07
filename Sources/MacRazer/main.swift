@@ -363,12 +363,26 @@ case "render-device-test":
     writeViewPNG(DeviceTestView(model: model, onClose: {}), to: path)
 
 case "render-crash-report":
-    // The window shown on the launch after a crash. `sent` shows the thank-you.
+    // The window shown on the launch after a crash. `sent` shows the thank-you, `failed` a
+    // send that didn't go.
     _ = NSApplication.shared
     let crashPath = outputPath(args.dropFirst(), default: "crash-report-preview.png")
     let crashModel = CrashReportModel.preview()
     if args.contains("sent") { crashModel.loadPreviewSent() }
+    if args.contains("failed") { crashModel.loadPreviewFailed() }
     writeHostedPNG(CrashReportView(model: crashModel, onDone: {}, onDontAskAgain: {}), to: crashPath)
+
+case "render-issue-report":
+    // "Report an Issue…". `sent` shows the thank-you, `failed` a send that didn't go.
+    _ = NSApplication.shared
+    let issuePath = outputPath(args.dropFirst(), default: "issue-report-preview.png")
+    let issueModel = IssueReportModel.preview()
+    if args.contains("sent") { issueModel.loadPreviewSent(replyEmail: "sam@example.com") }
+    if args.contains("failed") {
+        issueModel.description = "The battery reads 0% after waking from sleep, until I unplug the dongle."
+        issueModel.loadPreviewFailed(args.contains("cap") ? .tooMany : .unavailable)
+    }
+    writeHostedPNG(IssueReportView(model: issueModel, onClose: {}), to: issuePath)
 
 case "render-remap":
     _ = NSApplication.shared

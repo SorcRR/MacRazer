@@ -92,19 +92,19 @@ struct DeviceTestView: View {
             // First: the rest of the intro describes the device the test will run on.
             if !model.devices.isEmpty {
                 // On Bluetooth the test can't use the open mouse, so it names none.
-                warning(DeviceTestModel.unplugHint(model.devices, testing: model.controller.deviceIsBluetooth
+                reportWarning(DeviceTestModel.unplugHint(model.devices, testing: model.controller.deviceIsBluetooth
                                                    ? nil : model.controller.deviceName))
             }
             switch model.support {
             case .full:
                 tag("Fully supported", color: .razerGreenText)
-                title("Your \(model.deviceName) doesn't need a test")
-                note("Everything MacRazer controls has already been tested on this mouse over this connection. There's nothing left to check.")
+                reportTitle("Your \(model.deviceName) doesn't need a test")
+                reportNote("Everything MacRazer controls has already been tested on this mouse over this connection. There's nothing left to check.")
                 linkCards
-                note("You can still run the test. After a firmware update, a report shows whether anything stopped working.")
+                reportNote("You can still run the test. After a firmware update, a report shows whether anything stopped working.")
             case .partly(let works, let missing):
                 tag("Partly supported", color: .batteryMid)
-                title("Help finish support for your \(model.deviceName)")
+                reportTitle("Help finish support for your \(model.deviceName)")
                 card {
                     VStack(spacing: 4) {
                         row("Already works", Self.list(works), color: .razerGreenText)
@@ -112,27 +112,27 @@ struct DeviceTestView: View {
                     }
                 }
                 if model.onlyOtherLinksConfirm.isEmpty {
-                    note("The test can check just what's missing. Keep the mouse on and nearby.")
+                    reportNote("The test can check just what's missing. Keep the mouse on and nearby.")
                 } else {
-                    note("Over Bluetooth the test only reads, so it can't check these. Connect the cable or the dongle to test them.")
+                    reportNote("Over Bluetooth the test only reads, so it can't check these. Connect the cable or the dongle to test them.")
                 }
                 linkCards
                 privacyNotes
             case .unknown:
-                title("Help support your \(model.deviceName)")
-                note("About two minutes. Keep the mouse on, nearby, and connected by cable or dongle.")
+                reportTitle("Help support your \(model.deviceName)")
+                reportNote("About two minutes. Keep the mouse on, nearby, and connected by cable or dongle.")
                 privacyNotes
             }
             switch model.blocker {
             case .noMouse?:
-                warning("No Razer mouse is connected by cable or dongle right now. Connect it and press Start again.")
+                reportWarning("No Razer mouse is connected by cable or dongle right now. Connect it and press Start again.")
             case .bluetoothOnly(let name)?:
-                warning("\(name) is connected over Bluetooth. The full test needs the dongle or the cable: switch it over and press Start again. Or run the shorter Bluetooth test, which only reads.")
+                reportWarning("\(name) is connected over Bluetooth. The full test needs the dongle or the cable: switch it over and press Start again. Or run the shorter Bluetooth test, which only reads.")
             case nil:
                 EmptyView()
             }
             if model.finishingEarlierTest {
-                note("The test you started earlier is still finishing with your mouse. Start works again in a moment.")
+                reportNote("The test you started earlier is still finishing with your mouse. Start works again in a moment.")
             }
         }
     }
@@ -143,7 +143,7 @@ struct DeviceTestView: View {
                 Text("MacRazer talks to your mouse the way it does every day and records how it answers. It also asks, read-only, which other features the mouse has. Anything it changes is put back when each step ends, even if you stop half way.")
                     .font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
             }
-            note("Nothing is sent anywhere unless you choose to at the end, and you'll see all of it first. Your mouse's serial number is never included.")
+            reportNote("Nothing is sent anywhere unless you choose to at the end, and you'll see all of it first. Your mouse's serial number is never included.")
         }
     }
 
@@ -193,9 +193,9 @@ struct DeviceTestView: View {
     private var bluetooth: some View {
         VStack(alignment: .leading, spacing: 10) {
             stepTitle("Bluetooth", changes: false)
-            note("Read-only. What your mouse shares over Bluetooth, and which of Razer's commands it answers there. macOS may ask you to allow Bluetooth first.")
+            reportNote("Read-only. What your mouse shares over Bluetooth, and which of Razer's commands it answers there. macOS may ask you to allow Bluetooth first.")
             if model.running {
-                running("Reading your mouse over Bluetooth. This can take up to half a minute.")
+                reportRunning("Reading your mouse over Bluetooth. This can take up to half a minute.")
             } else if let report = model.report, let bt = report.bluetooth {
                 card {
                     VStack(spacing: 4) {
@@ -213,15 +213,15 @@ struct DeviceTestView: View {
                         }
                     }
                 }
-                if let error = bt.error { warning(error) }
+                if let error = bt.error { reportWarning(error) }
             }
         }
     }
 
     private var permission: some View {
         VStack(alignment: .leading, spacing: 12) {
-            title("One permission first")
-            note("MacRazer needs Input Monitoring to read your mouse's battery, DPI and lighting. Without it, only the first step can run.")
+            reportTitle("One permission first")
+            reportNote("MacRazer needs Input Monitoring to read your mouse's battery, DPI and lighting. Without it, only the first step can run.")
             card {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Input Monitoring").font(.system(size: 13, weight: .semibold))
@@ -243,9 +243,9 @@ struct DeviceTestView: View {
     private var identify: some View {
         VStack(alignment: .leading, spacing: 10) {
             stepTitle("Identify", changes: false)
-            note("What macOS reports, and which settings your mouse understands.")
+            reportNote("What macOS reports, and which settings your mouse understands.")
             if model.running {
-                running("Asking your mouse which settings it understands. This can take up to half a minute.")
+                reportRunning("Asking your mouse which settings it understands. This can take up to half a minute.")
             } else if let report = model.report {
                 card {
                     VStack(spacing: 4) {
@@ -278,11 +278,11 @@ struct DeviceTestView: View {
     private var battery: some View {
         VStack(alignment: .leading, spacing: 10) {
             if model.notOnMouse(.battery) != nil {
-                title("Battery")
+                reportTitle("Battery")
                 notOnMouse("battery")
             } else {
                 stepTitle("Battery", changes: false)
-                note("Reads the level and whether it's charging.")
+                reportNote("Reads the level and whether it's charging.")
                 batteryBody
             }
         }
@@ -290,7 +290,7 @@ struct DeviceTestView: View {
 
     @ViewBuilder private var batteryBody: some View {
         if model.running {
-            running("Reading the battery…")
+            reportRunning("Reading the battery…")
         } else if let record = model.report?.battery {
             card {
                 VStack(spacing: 4) {
@@ -299,7 +299,7 @@ struct DeviceTestView: View {
                 }
             }
             outcomeRow("Battery", record.outcome)
-            note("Plug in the cable now and check again to see charging detected.")
+            reportNote("Plug in the cable now and check again to see charging detected.")
             Button("Check again") { Task { await model.runBattery() } }
         }
     }
@@ -307,9 +307,9 @@ struct DeviceTestView: View {
     private var dpi: some View {
         VStack(alignment: .leading, spacing: 10) {
             stepTitle("DPI", changes: true)
-            note("Sets a value 50 away from yours, reads it back, then puts yours back.")
+            reportNote("Sets a value 50 away from yours, reads it back, then puts yours back.")
             if model.running {
-                running("Testing DPI…")
+                reportRunning("Testing DPI…")
             } else if let record = model.report?.dpi, record.data != nil || record.error != nil {
                 card {
                     VStack(spacing: 4) {
@@ -337,9 +337,9 @@ struct DeviceTestView: View {
     private var polling: some View {
         VStack(alignment: .leading, spacing: 10) {
             stepTitle("Polling rate", changes: true)
-            note("Tries another rate, reads it back, then puts yours back.")
+            reportNote("Tries another rate, reads it back, then puts yours back.")
             if model.running {
-                running("Testing the polling rate…")
+                reportRunning("Testing the polling rate…")
             } else if let record = model.report?.polling, record.data != nil || record.error != nil {
                 card {
                     VStack(spacing: 4) {
@@ -356,7 +356,7 @@ struct DeviceTestView: View {
     private var lighting: some View {
         VStack(alignment: .leading, spacing: 10) {
             if model.notOnMouse(.lighting) != nil {
-                title("Lighting")
+                reportTitle("Lighting")
                 notOnMouse("lights")
             } else {
                 stepTitle("Lighting", changes: true)
@@ -367,24 +367,24 @@ struct DeviceTestView: View {
 
     @ViewBuilder private var lightingBody: some View {
         if model.running {
-            running("Watch your mouse: dark, then red…")
+            reportRunning("Watch your mouse: dark, then red…")
         } else if let record = model.report?.lighting, record.data != nil {
             if let data = record.data, data.dimShown {
                 question("Did the lights go dark for a moment?", $model.dimmed)
                 if data.redShown { question("Then did they turn red?", $model.turnedRed) }
-                note(data.restored ? "Everything has been put back." : "Something couldn't be put back. Check the lighting in the popover.")
+                reportNote(data.restored ? "Everything has been put back." : "Something couldn't be put back. Check the lighting in the popover.")
             } else {
                 outcomeRow("Lighting", record.outcome)
             }
         } else {
-            note("Watch your mouse while this runs. Its lights go dark for three seconds, then turn red for three seconds. Afterwards they go back to your brightness and to MacRazer's current lighting setting.")
+            reportNote("Watch your mouse while this runs. Its lights go dark for three seconds, then turn red for three seconds. Afterwards they go back to your brightness and to MacRazer's current lighting setting.")
         }
     }
 
     private var buttons: some View {
         VStack(alignment: .leading, spacing: 10) {
             stepTitle("Side buttons", changes: false)
-            note("Press every extra button once. Only this mouse is listened to.")
+            reportNote("Press every extra button once. Only this mouse is listened to.")
             if model.listening {
                 card {
                     VStack(alignment: .leading, spacing: 6) {
@@ -400,9 +400,9 @@ struct DeviceTestView: View {
                         }
                     }
                 }
-                note("Side keys that type numbers are normal on some models. That's useful to know too.")
+                reportNote("Side keys that type numbers are normal on some models. That's useful to know too.")
             } else {
-                warning("MacRazer can't hear this mouse's buttons right now. You can skip this step.")
+                reportWarning("MacRazer can't hear this mouse's buttons right now. You can skip this step.")
             }
         }
     }
@@ -417,17 +417,17 @@ struct DeviceTestView: View {
 
     private func sent(_ report: DeviceReport, _ verdict: DeviceTestVerdict) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            title("Thank you")
+            reportTitle("Thank you")
             card {
                 Text(model.focus == nil ? verdict.thankYou(firmware: report.identify.data?.firmware)
                      : DeviceTestVerdict.focusedThankYou(verdict, leftOut: model.leftOut(verdict)))
                     .font(.system(size: 13)).fixedSize(horizontal: false, vertical: true)
             }
-            note(report.replyEmail.map { "Your report is on its way to the maintainer, who can reply to \($0)." }
+            reportNote(report.replyEmail.map { "Your report is on its way to the maintainer, who can reply to \($0)." }
                  ?? "Your report is on its way to the maintainer.")
             // Only once the report is sent: the person has just helped, and the ask is the
             // footer's quiet button, not a banner. Before the test-again cards' next steps.
-            note(Self.tipLine(model.support))
+            reportNote(Self.tipLine(model.support))
             if report.device.connection == .bluetooth {
                 card {
                     Text("Over its dongle or cable, MacRazer can run the full test. If your mouse has either, switch to it and run the test again from the menu.")
@@ -448,8 +448,8 @@ struct DeviceTestView: View {
     private var reviewForm: some View {
         let report = model.finalReport()
         return VStack(alignment: .leading, spacing: 10) {
-            title("Review")
-            note(model.canSend
+            reportTitle("Review")
+            reportNote(model.canSend
                 ? "Send emails this report to the maintainer. You can also copy it, or open a GitHub issue and paste it in. Nothing leaves your Mac until you choose one."
                 : "Copy the report, or open a GitHub issue and paste it in. Nothing leaves your Mac until you choose one.")
             if let report, let verdict = report.verdict {
@@ -491,7 +491,7 @@ struct DeviceTestView: View {
                 TextField("Your email, if you'd like a reply (optional)", text: $model.replyEmail)
                     .inputBox()
                 if let problem = model.emailProblem {
-                    warning(problem)
+                    reportWarning(problem)
                 } else {
                     // Copy and the GitHub issue are public-facing, so they leave it out.
                     Text("Only Send includes it, and only the maintainer sees it.")
@@ -513,11 +513,13 @@ struct DeviceTestView: View {
                         .font(.system(size: 10)).foregroundStyle(Color.batteryMid)
                 }
             }
-            if model.copied { note("Copied.") }
-            if model.issueOpened { note("The full report is on your clipboard. Paste it into the issue before you submit it.") }
+            if model.copied { reportNote("Copied.") }
+            if model.issueOpened { reportNote("The full report is on your clipboard. Paste it into the issue before you submit it.") }
             switch model.sendState {
-            case .sending: running("Sending…")
-            case .failed(let outcome): warning(Self.sendFailure(outcome))
+            case .sending: reportRunning("Sending…")
+            case .failed(let outcome):
+                reportSendFailure(Self.sendFailure(outcome), mail: ProjectLinks.mail(
+                    subject: "MacRazer device report" + (report.map { ": \($0.device.name)" } ?? "")))
             case .idle, .sent: EmptyView()
             }
         }
@@ -531,11 +533,17 @@ struct DeviceTestView: View {
             : "MacRazer is free. If it saves you a trip to Windows, a tip keeps it going."
     }
 
-    static func sendFailure(_ outcome: DeviceReportSender.Outcome) -> String {
+    /// What the report windows say when Send fails, ending with how to reach us by email
+    /// instead. `emailHint` is that ending, as each window puts it.
+    static func sendFailure(_ outcome: DeviceReportSender.Outcome,
+                            emailHint: String = "press Copy and email the report to \(ProjectLinks.contactEmail)") -> String {
         switch outcome {
-        case .tooMany: return "Too many reports from here today. Try again tomorrow, or open a GitHub issue instead."
-        case .refused: return "The report server didn't accept this report. Open a GitHub issue instead, please, and mention it."
-        case .unavailable, .sent: return "Couldn't reach the report server. Check your connection and try again, or open a GitHub issue."
+        case .tooMany:
+            return "Your report wasn't sent: there have been too many from here today. Try again tomorrow, or \(emailHint)."
+        case .refused:
+            return "Your report wasn't sent: the report server didn't accept it. Open a GitHub issue, or \(emailHint)."
+        case .unavailable, .sent:
+            return "Your report wasn't sent: the report server couldn't be reached. Check your internet connection and try again, or \(emailHint)."
         }
     }
 
@@ -654,18 +662,14 @@ struct DeviceTestView: View {
 
     // MARK: Pieces
 
-    private func title(_ text: String) -> some View {
-        Text(text).font(.system(size: 16, weight: .semibold)).fixedSize(horizontal: false, vertical: true)
-    }
-
     /// A step for something the mouse doesn't have: it says so, and Next moves on.
     private func notOnMouse(_ what: String) -> some View {
-        note("Your \(model.deviceName) has no \(what), so there's nothing to test here. Click Next to go on.")
+        reportNote("Your \(model.deviceName) has no \(what), so there's nothing to test here. Click Next to go on.")
     }
 
     private func stepTitle(_ text: String, changes: Bool) -> some View {
         HStack(spacing: 8) {
-            title(text)
+            reportTitle(text)
             tag(changes ? "Changes, then puts back" : "Reads only", color: changes ? .batteryMid : .razerGreenText)
         }
     }
@@ -674,21 +678,6 @@ struct DeviceTestView: View {
         Text(text).font(.system(size: 10, weight: .medium)).foregroundStyle(color)
             .padding(.horizontal, 8).padding(.vertical, 2)
             .background(Capsule().fill(color.opacity(0.18)))
-    }
-
-    private func note(_ text: String) -> some View {
-        Text(text).font(.system(size: 12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-    }
-
-    private func warning(_ text: String) -> some View {
-        Text(text).font(.system(size: 12)).foregroundStyle(Color.batteryMid).fixedSize(horizontal: false, vertical: true)
-    }
-
-    private func running(_ text: String) -> some View {
-        HStack(spacing: 8) {
-            ProgressView().controlSize(.small)
-            Text(text).font(.system(size: 12)).foregroundStyle(.secondary)
-        }
     }
 
     private func row(_ label: String, _ value: String, color: Color = .primary) -> some View {
