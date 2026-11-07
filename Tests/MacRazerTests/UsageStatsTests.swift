@@ -151,7 +151,11 @@ final class UsageStatsTests: XCTestCase {
         await s.sendIfDue()
         XCTAssertTrue(server.requests.isEmpty)
         s.dismissUnanswered()
-        XCTAssertEqual(s.consent, .declined, "closing the question is a no")
+        XCTAssertEqual(s.consent, .undecided, "closing the question isn't an answer")
+        await s.sendIfDue()
+        XCTAssertTrue(server.requests.isEmpty)
+        s.dismissUnanswered()
+        XCTAssertEqual(s.consent, .declined, "closing it a second time is a no")
         await s.sendIfDue()
         XCTAssertTrue(server.requests.isEmpty)
     }
@@ -220,11 +224,37 @@ final class UsageStatsTests: XCTestCase {
         XCTAssertEqual(s.pendingConsentChanges, [.saidYes, .turnedOff])
     }
 
-    func testClosingTheQuestionIsASaidNo() {
+    func testClosingTheQuestionAsksAgainAWeekLaterThenIsASaidNo() {
         let s = stats(FakeServer())
-        s.dismissUnanswered()
-        XCTAssertEqual(s.pendingConsentChanges, [.saidNo])
+        let closed = Date(timeIntervalSince1970: 1_800_000_000)
+        XCTAssertTrue(s.shouldAskAtLaunch(now: closed), "nobody asked yet")
+        s.dismissUnanswered(now: closed)
+        XCTAssertEqual(s.consent, .undecided)
+        XCTAssertEqual(s.pendingConsentChanges, [.dismissed])
+        XCTAssertFalse(s.shouldAskAtLaunch(now: closed.addingTimeInterval(6 * 86_400)), "not within the week")
+        XCTAssertTrue(s.shouldAskAtLaunch(now: closed.addingTimeInterval(7 * 86_400)))
+        s.dismissUnanswered(now: closed.addingTimeInterval(7 * 86_400))
+        XCTAssertEqual(s.consent, .declined)
+        XCTAssertEqual(s.pendingConsentChanges, [.dismissed, .saidNo])
+        XCTAssertFalse(s.shouldAskAtLaunch(now: closed.addingTimeInterval(30 * 86_400)), "never again after a no")
         XCTAssertEqual(UsageStatsConsent.undecided.countValue, "unasked")
+    }
+
+    func testClosingAfterAnAnswerChangesNothing() {
+        let s = stats(FakeServer())
+        s.setConsent(true)
+        s.dismissUnanswered()
+        XCTAssertEqual(s.consent, .granted)
+        XCTAssertEqual(s.pendingConsentChanges, [.saidYes])
+    }
+
+    func testTheCountersPersistAcrossLaunches() {
+        let d = defaults()
+        stats(FakeServer(), defaults: d).dismissUnanswered(now: Date(timeIntervalSince1970: 1_800_000_000))
+        let later = stats(FakeServer(), defaults: d)
+        XCTAssertFalse(later.shouldAskAtLaunch(now: Date(timeIntervalSince1970: 1_800_000_000 + 86_400)))
+        later.dismissUnanswered()
+        XCTAssertEqual(later.consent, .declined, "the second close, after a relaunch, is the no")
     }
 
     // MARK: Delete My Data

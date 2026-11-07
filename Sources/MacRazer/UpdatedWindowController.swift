@@ -58,7 +58,7 @@ final class UpdatedWindowController: NSObject, AppWindowPresenter, NSWindowDeleg
 
     func windowWillClose(_ notification: Notification) {
         updateChecker.dismissAnnouncement()
-        // The usage stats card was in it. Closing without answering is a no.
+        // The usage stats card was in it. Closing without answering asks again later.
         usageStats.dismissUnanswered()
         // Deferred: the window is still visible during `windowWillClose`, and anything that
         // asks "is a window open?" from here would get the wrong answer.

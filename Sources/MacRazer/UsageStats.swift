@@ -19,9 +19,11 @@ enum UsageStatsConsent: String {
     }
 
     /// A change of answer, for the anonymous daily count: the first answer when asked, and
-    /// turning sharing off (Delete My Data included) or back on later.
+    /// turning sharing off (Delete My Data included) or back on later. `dismissed` is closing
+    /// the question without answering: no answer, so it's asked again later.
     enum Change: String, CaseIterable {
         case saidYes = "said_yes", saidNo = "said_no", turnedOff = "turned_off", turnedOn = "turned_on"
+        case dismissed
 
         /// Nil when nothing changed.
         static func from(_ old: UsageStatsConsent, to new: UsageStatsConsent) -> Change? {
@@ -157,6 +159,16 @@ enum UsageMachineID {
 @MainActor
 final class UsageStats: ObservableObject {
     static let consentKey = "usageStats.consent"
+    /// How many times the question was closed without an answer, and when it may be asked
+    /// again at launch after the first time.
+    static let dismissalsKey = "usageStats.dismissals"
+    static let askAgainAfterKey = "usageStats.askAgainAfter"
+    /// How long a question closed unanswered waits before it's asked again at launch. An
+    /// update asks sooner, in the Updated window, which shows the question to anyone who
+    /// hasn't answered.
+    static let askAgainDelay: TimeInterval = 7 * 86_400
+    /// Closing it this many times without answering is taken as a no.
+    static let dismissalsBeforeNo = 2
     static let pendingChangesKey = "usageStats.pendingChanges"
     static let idKey = "usageStats.id"
     static let lastReportedVersionKey = "usageStats.lastReportedVersion"
@@ -263,6 +275,10 @@ final class UsageStats: ObservableObject {
 
     private func noteChange(to new: UsageStatsConsent) {
         guard let change = UsageStatsConsent.Change.from(consent, to: new) else { return }
+        note(change)
+    }
+
+    private func note(_ change: UsageStatsConsent.Change) {
         var pending = pendingConsentChanges
         if !pending.contains(change) { pending.append(change) }
         defaults.set(pending.map(\.rawValue), forKey: Self.pendingChangesKey)
@@ -281,9 +297,25 @@ final class UsageStats: ObservableObject {
         }
     }
 
-    /// Closing a window that asked, without answering, is a no. It isn't asked again.
-    func dismissUnanswered() {
-        if consent == .undecided { setConsent(false) }
+    /// Closing a window that asked, without answering, isn't an answer: nothing is sent, and
+    /// the question comes back at the next update, or at a launch a week on. Closed unanswered
+    /// a second time, it's taken as a no and not asked again; Settings › Privacy can still
+    /// turn sharing on.
+    func dismissUnanswered(now: Date = Date()) {
+        guard consent == .undecided else { return }
+        let dismissals = defaults.integer(forKey: Self.dismissalsKey) + 1
+        defaults.set(dismissals, forKey: Self.dismissalsKey)
+        if dismissals >= Self.dismissalsBeforeNo { return setConsent(false) }
+        defaults.set(now.addingTimeInterval(Self.askAgainDelay), forKey: Self.askAgainAfterKey)
+        note(.dismissed)
+    }
+
+    /// Whether to ask at launch: nobody has answered, and a question closed unanswered has
+    /// waited its week.
+    func shouldAskAtLaunch(now: Date = Date()) -> Bool {
+        guard consent == .undecided else { return false }
+        guard let after = defaults.object(forKey: Self.askAgainAfterKey) as? Date else { return true }
+        return now >= after
     }
 
     // MARK: Sending

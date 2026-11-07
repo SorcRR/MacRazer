@@ -151,7 +151,8 @@ struct UsageStatsCard: View {
 }
 
 /// Hosts `UsageStatsConsentView` in its own window, opened by the app once, not by a click.
-/// Closing it without answering counts as no: the question isn't asked again.
+/// Closing it without answering isn't an answer: it's asked again later, and taken as a no
+/// only the second time (`UsageStats.dismissUnanswered`).
 @MainActor
 final class UsageStatsWindowController: NSObject, AppWindowPresenter, NSWindowDelegate {
     private let stats: UsageStats
