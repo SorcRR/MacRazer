@@ -308,8 +308,21 @@ final class CrashReportModelTests: XCTestCase {
         let m = model()
         m.deliver = { _ in throw Offline() }
         await m.send()
-        guard case .failed = m.state else { return XCTFail("\(m.state)") }
+        guard case .failed(let message) = m.state else { return XCTFail("\(m.state)") }
         XCTAssertTrue(m.canSend)
+        XCTAssertTrue(message.hasSuffix("email it to us at contact@macrazer.com."))
+    }
+
+    func testTheEmailInsteadCarriesTheReportAndTheComment() throws {
+        let m = model()
+        m.comment = "Opened the popover"
+        m.replyEmail = "person@example.com"
+        let components = try XCTUnwrap(URLComponents(url: m.mailInstead, resolvingAgainstBaseURL: false))
+        XCTAssertEqual(components.scheme, "mailto")
+        XCTAssertEqual(components.path, "contact@macrazer.com")
+        let body = try XCTUnwrap(components.queryItems?.first { $0.name == "body" }?.value)
+        XCTAssertTrue(body.hasPrefix("Opened the popover\n\n{"))
+        XCTAssertLessThanOrEqual(body.count, CrashReportModel.maxMailBody + 40)
     }
 
     func testWhereItCrashedIsTheFirstFrameInOurOwnCode() {

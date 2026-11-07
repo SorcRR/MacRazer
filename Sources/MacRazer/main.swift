@@ -363,11 +363,13 @@ case "render-device-test":
     writeViewPNG(DeviceTestView(model: model, onClose: {}), to: path)
 
 case "render-crash-report":
-    // The window shown on the launch after a crash. `sent` shows the thank-you.
+    // The window shown on the launch after a crash. `sent` shows the thank-you, `failed` a
+    // send that didn't go.
     _ = NSApplication.shared
     let crashPath = outputPath(args.dropFirst(), default: "crash-report-preview.png")
     let crashModel = CrashReportModel.preview()
     if args.contains("sent") { crashModel.loadPreviewSent() }
+    if args.contains("failed") { crashModel.loadPreviewFailed() }
     writeHostedPNG(CrashReportView(model: crashModel, onDone: {}, onDontAskAgain: {}), to: crashPath)
 
 case "render-issue-report":

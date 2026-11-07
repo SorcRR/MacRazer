@@ -53,8 +53,23 @@ final class CrashReportModel: ObservableObject {
             try await deliver(finalReport())
             state = .sent
         } catch {
-            state = .failed("Couldn't send the report. Check your connection and try again.")
+            state = .failed(Self.sendFailure)
         }
+    }
+
+    static let sendFailure = "Your report wasn't sent: the report server couldn't be reached. "
+        + "Check your internet connection and try again, or email it to us at \(ProjectLinks.contactEmail)."
+    /// How much of the report an email link carries. Some mail apps drop a link much longer.
+    static let maxMailBody = 6000
+
+    /// An email with the report in it, for when Send fails: what they wrote, then the report
+    /// shown in the window, cut short if it's too long for a link.
+    var mailInstead: URL {
+        let report = finalReport()
+        var json = CrashReportOutput.json(report)
+        if json.count > Self.maxMailBody { json = String(json.prefix(Self.maxMailBody)) + "\n(cut short)" }
+        let body = (report.comment.map { $0 + "\n\n" } ?? "") + json
+        return ProjectLinks.mail(subject: "MacRazer crash report: \(report.appVersion)", body: body)
     }
 
     // MARK: Summary
@@ -94,4 +109,6 @@ final class CrashReportModel: ObservableObject {
 
     /// The thank-you screen, for `render-crash-report sent`.
     func loadPreviewSent() { state = .sent }
+    /// A send that didn't go, for `render-crash-report failed`.
+    func loadPreviewFailed() { state = .failed(Self.sendFailure) }
 }
