@@ -642,10 +642,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
             .store(in: &cancellables)
         // Debounced: the controller publishes a new mouse's fields one at a time, and the
         // ping should see them all.
-        pluggedRazerMice.send(HIDDevice.razerMice())
+        if usageStats.isAvailable { pluggedRazerMice.send(HIDDevice.razerMice()) }
         Publishers.CombineLatest4(controller.$connected, controller.$deviceID,
                                   controller.$deviceName, controller.$deviceIsBluetooth)
-            .combineLatest(controller.$deviceSupported, pluggedRazerMice)
+            .combineLatest(controller.$deviceSupported, pluggedRazerMice.removeDuplicates())
             .debounce(for: .seconds(2), scheduler: RunLoop.main)
             .sink { [weak self] device, supported, plugged in
                 let (connected, pid, name, bluetooth) = device
@@ -762,8 +762,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         relistRazerMiceWork?.cancel()
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
-            self.razerMiceOnUSB = self.listRazerMiceIfNeeded()
-            self.pluggedRazerMice.send(HIDDevice.razerMice())
+            // One listing for both: the support prompt's (only while it can use it) and the counts'.
+            let all = self.usageStats.isAvailable || self.needsRazerMiceList ? HIDDevice.razerMice() : []
+            self.razerMiceOnUSB = self.needsRazerMiceList ? all : []
+            self.pluggedRazerMice.send(self.usageStats.isAvailable ? all : [])
             // The test's intro names every device that could be the mouse; a plug changes that.
             if self.deviceTestWindow.isVisible { self.deviceTestWindow.model.devicesMayHaveChanged() }
         }
@@ -784,9 +786,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     /// The list is read only for a mouse without Input Monitoring, and only while the prompt is
     /// on. Otherwise, the usual case, a dongle waking from sleep isn't worth an enumeration.
     private func listRazerMiceIfNeeded() -> [HIDDevice.USBMouse] {
-        guard supportPrompt.isEnabled, !DeviceTestModel.inputMonitoringGranted else { return [] }
-        return HIDDevice.razerMice()
+        needsRazerMiceList ? HIDDevice.razerMice() : []
     }
+
+    /// Whether the support prompt can use the list: only while it's on and Input Monitoring is
+    /// missing.
+    private var needsRazerMiceList: Bool { supportPrompt.isEnabled && !DeviceTestModel.inputMonitoringGranted }
 
     private func askForDeviceTestIfClear() {
         guard supportPrompt.isEnabled else { return }

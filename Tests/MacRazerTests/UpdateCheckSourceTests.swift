@@ -100,6 +100,9 @@ final class UpdateCheckSourceTests: XCTestCase {
         XCTAssertEqual(mice.map(\.pid), [0xDB, 0x98, 0x7777], "the opened one first, each product once")
         XCTAssertEqual(mice.map(\.link), ["dongle", "wired", "unknown"])
         XCTAssertEqual(UsageStatsPolicy.connectedMice(opened: nil, plugged: Array(repeating: plugged[1], count: 1)).count, 1)
+        // A Cobra HyperSpeed on its cable (0xDA) with its dongle (0xDB) in is one mouse.
+        let charging = UsageStatsPolicy.mouse(pid: 0xDA, productName: nil, isBluetooth: false, supported: true)
+        XCTAssertEqual(UsageStatsPolicy.connectedMice(opened: charging, plugged: [plugged[0]]).map(\.pid), [0xDA])
         let many = (0..<6).map { HIDDevice.USBMouse(pid: 0x100 + $0, name: "Razer Mouse \($0)") }
         XCTAssertEqual(UsageStatsPolicy.connectedMice(opened: opened, plugged: many).count, WorkerEndpoint.maxMice)
     }

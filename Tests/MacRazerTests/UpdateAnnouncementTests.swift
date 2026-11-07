@@ -15,6 +15,15 @@ final class UpdateAnnouncementTests: XCTestCase {
             lastRun: "0.3.1", current: "0.3.1", dismissed: nil, hasRunBefore: true))
     }
 
+    func testSwitchingToABuildBetweenReleasesIsNotAnUpdate() {
+        XCTAssertFalse(UpdateAnnouncement.shouldAnnounce(
+            lastRun: "0.8.0", current: "0.8.0-dev", dismissed: nil, hasRunBefore: true))
+        XCTAssertFalse(UpdateAnnouncement.shouldAnnounce(
+            lastRun: "0.8.0-dev", current: "0.8.0", dismissed: nil, hasRunBefore: true))
+        XCTAssertTrue(UpdateAnnouncement.shouldAnnounce(
+            lastRun: "0.8.0-dev", current: "0.8.1", dismissed: nil, hasRunBefore: true), "a real update still is")
+    }
+
     func testAFirstInstallIsNotAnUpdate() {
         // Nothing recorded and no trace of an older version: "Updated to 0.3.1" on the very
         // first launch is a claim about a release the user has never seen.

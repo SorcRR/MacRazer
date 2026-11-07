@@ -36,6 +36,12 @@ final class AnonymousCountReporter {
     /// mouse found or an answer changed meanwhile isn't left for the next tick.
     private var sending = false
     private var again = false
+    /// After a count the Worker didn't record, nothing more until the next tick: a refused
+    /// count (a burst, the day's cap) asked again on every plug would only be refused again,
+    /// and would use up the rate limit update checks share.
+    private var quietUntil: Date?
+    /// Just under the app's 15-minute tick, so the tick after a refusal tries again.
+    static let retryAfter: TimeInterval = 14 * 60
 
     init(defaults: UserDefaults = .standard, base: URL? = WorkerEndpoint.base,
          appVersion: String? = AppInfo.version, now: @escaping () -> Date = Date.init,
@@ -66,6 +72,7 @@ final class AnonymousCountReporter {
     }
 
     private func sendOnce() async {
+        if let quietUntil, now() < quietUntil { return }
         let mice = Array(connectedMice().prefix(WorkerEndpoint.maxMice))
         let answer = answer()
         let changes = pendingChanges()
@@ -81,7 +88,11 @@ final class AnonymousCountReporter {
                                                 changes: changes, count: true, base: base) else { return }
         do {
             let (_, response) = try await fetch(url)
-            guard Self.counted(response) else { return }
+            guard Self.counted(response) else {
+                quietUntil = now().addingTimeInterval(Self.retryAfter)
+                return
+            }
+            quietUntil = nil
             defaults.set(day, forKey: Self.dayKey)
             defaults.set(Array(sent.union(mice.map(Self.key))).sorted(), forKey: Self.sentKey)
             if let answer { defaults.set(answer.countValue, forKey: Self.answerKey) }

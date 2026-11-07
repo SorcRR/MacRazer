@@ -39,14 +39,18 @@ final class AnonymousCountReporterTests: XCTestCase {
         var asked: [URL] = []
         var answer = 200
         var recorded = false
-        let sut = reporter(at: { lateEvening }, status: { answer }, counted: { _ in recorded }, requests: { asked.append($0) })
+        var clock = lateEvening.addingTimeInterval(-3 * 3600)
+        let sut = reporter(at: { clock }, status: { answer }, counted: { _ in recorded }, requests: { asked.append($0) })
         sut.connectedMice = { [cobra] }
         await sut.reportIfNeeded()
-        XCTAssertEqual(asked.count, 1)
+        await sut.reportIfNeeded()
+        XCTAssertEqual(asked.count, 1, "refused: nothing more until the next tick, however often it's asked")
+        clock = clock.addingTimeInterval(AnonymousCountReporter.retryAfter)
         await sut.reportIfNeeded()
         XCTAssertEqual(asked.count, 2, "a 200 without x-counted (a burst, the cap, a database error) is sent again")
         answer = 502
         recorded = true
+        clock = clock.addingTimeInterval(AnonymousCountReporter.retryAfter)
         await sut.reportIfNeeded()
         await sut.reportIfNeeded()
         XCTAssertEqual(asked.count, 3, "a 502 with x-counted: the list failed, the count is in")
@@ -74,12 +78,14 @@ final class AnonymousCountReporterTests: XCTestCase {
     func testAFailedSendIsTriedAgain() async {
         var asked: [URL] = []
         var answer: Int? = nil
-        let sut = reporter(at: { lateEvening }, status: { answer }, requests: { asked.append($0) })
+        var clock = lateEvening.addingTimeInterval(-3 * 3600)
+        let sut = reporter(at: { clock }, status: { answer }, requests: { asked.append($0) })
         sut.connectedMice = { [cobra] }
         await sut.reportIfNeeded()
         answer = 503
         await sut.reportIfNeeded()
         answer = 200
+        clock = clock.addingTimeInterval(AnonymousCountReporter.retryAfter)
         await sut.reportIfNeeded()
         await sut.reportIfNeeded()
         XCTAssertEqual(asked.count, 3, "offline and a 503 both leave it due; the 200 settles it")

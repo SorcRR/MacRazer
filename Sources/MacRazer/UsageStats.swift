@@ -91,20 +91,26 @@ enum UsageStatsPolicy {
         return nil
     }
 
-    /// The mouse as a ping names it. The registry's name when MacRazer knows the model, so
-    /// one model isn't counted under several USB product strings; the mouse's own otherwise.
     /// The mice to count: the one MacRazer opened first, then every other Razer mouse plugged
     /// in by cable or dongle (a second mouse, or one whose dongle is in but which is asleep),
-    /// up to the Worker's limit. One product ID once.
+    /// up to the Worker's limit. One mouse once: a model MacRazer knows counts once whatever
+    /// its links (a Cobra HyperSpeed charging on its cable with its dongle in is one mouse),
+    /// and anything else once per product ID and link.
     static func connectedMice(opened: UsagePing.Mouse?, plugged: [HIDDevice.USBMouse]) -> [UsagePing.Mouse] {
-        var mice = opened.map { [$0] } ?? []
-        for usb in plugged where !mice.contains(where: { $0.pid == usb.pid && $0.link != "bluetooth" }) {
-            mice.append(mouse(pid: usb.pid, productName: usb.name, isBluetooth: false,
-                              supported: RazerDevices.fullySupported(pid: usb.pid)))
+        var mice: [UsagePing.Mouse] = []
+        var seen = Set<String>()
+        let candidates = (opened.map { [$0] } ?? []) + plugged.map {
+            mouse(pid: $0.pid, productName: $0.name, isBluetooth: false, supported: RazerDevices.fullySupported(pid: $0.pid))
+        }
+        for m in candidates {
+            let id = RazerDevices.info(pid: m.pid).map { "model:" + RazerDevices.modelName($0.name) } ?? "key:" + m.key
+            if seen.insert(id).inserted { mice.append(m) }
         }
         return Array(mice.prefix(WorkerEndpoint.maxMice))
     }
 
+    /// The mouse as a ping names it. The registry's name when MacRazer knows the model, so
+    /// one model isn't counted under several USB product strings; the mouse's own otherwise.
     static func mouse(pid: Int, productName: String?, isBluetooth: Bool, supported: Bool) -> UsagePing.Mouse {
         let link: String
         if isBluetooth {
