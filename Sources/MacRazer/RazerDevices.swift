@@ -234,7 +234,7 @@ enum RazerDevices {
         // (0x00C8) has no row: every read over it timed out, and a known row would rank it with
         // working mice when choosing which device to open. It's still this model
         // (`unlistedModels`), so the counts take cable and dongle for one mouse.
-        .init(pid: 0x00C7, name: "Razer Pro Click V2 Vertical Edition (Wired)", unverified: [.dpi, .polling, .lighting], hasBattery: true, hasLighting: true, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, brightnessLed: Razer.zeroLed, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, verifiesBrightnessWrite: true),
+        .init(pid: 0x00C7, name: "Razer Pro Click V2 Vertical Edition (Wired)", unverified: [.dpi, .polling, .lighting], hasBattery: true, hasLighting: true, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, brightnessLed: Razer.zeroLed, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, verifiesBrightnessWrite: true, model: RazerDevices.proClickV2Vertical),
         // Naga Pro over the dongle (#69): battery, DPI and stages, polling, static color and
         // brightness all passed the in-app test with 0x1f. 0xFF and 0x80 time out. It has
         // three lit zones and LOGO, SCROLL and BACKLIGHT all answer brightness (ZERO refuses),
@@ -432,10 +432,11 @@ enum RazerDevices {
     private static let unlistedModels: [Int: String] = [
         0x00B6: deathAdderV3Pro, 0x00C2: deathAdderV3ProLater,
         // The Pro Click V2 Vertical Edition's dongle (#35), which nothing answers on yet.
-        0x00C8: "Razer Pro Click V2 Vertical Edition",
+        0x00C8: proClickV2Vertical,
     ]
     static let deathAdderV3Pro = "Razer DeathAdder V3 Pro"
     static let deathAdderV3ProLater = "Razer DeathAdder V3 Pro (later)"
+    static let proClickV2Vertical = "Razer Pro Click V2 Vertical Edition"
     /// An unlisted mouse's model from its name, or nil when generations share the name, so it
     /// can't say which one the mouse is.
     private static func unlistedModel(named name: String) -> String? {

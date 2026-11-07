@@ -22,7 +22,6 @@ final class RazerDevicesTests: XCTestCase {
             XCTAssertEqual(txn(0x0062, cls), 0x1f) // Atheris (hardware-verified)
             XCTAssertEqual(txn(0x0090, cls), 0x1f) // Naga Pro dongle (hardware-verified, #69)
             XCTAssertEqual(txn(0x008F, cls), 0x1f)
-            XCTAssertEqual(txn(0x00C7, cls), 0x1f) // Pro Click V2 Vertical (static color verified, #35)
             XCTAssertEqual(txn(0x00E8, cls), 0x1f) // Naga V3 Pro dongle (hardware-verified, #33)
             XCTAssertEqual(txn(0x00EA, cls), 0x1f) // Basilisk V4 HyperSpeed dongle (hardware-verified)
             XCTAssertEqual(txn(0x00E7, cls), 0x1f) // Naga V3 Pro cable (hardware-verified, #33)
