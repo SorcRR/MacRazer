@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Build a standalone "MacRazer.app" menu bar bundle from the SwiftPM executable.
 #
-#   ./Scripts/build-app.sh           # release build → ./MacRazer.app
+#   ./Scripts/build-app.sh           # optimised build → ./MacRazer.app, versioned <version>-dev
+#   MACRAZER_RELEASE_BUILD=1 ./Scripts/build-app.sh   # the plain version, as release.sh does
 #   open "MacRazer.app"           # launch it
 #
 # Needs Xcode, not just the Command Line Tools: a build for two architectures goes through
@@ -36,6 +37,14 @@ rm -rf "${APP}"
 mkdir -p "${APP}/Contents/MacOS" "${APP}/Contents/Resources"
 cp "${BIN}" "${APP}/Contents/MacOS/${EXEC_NAME}"
 cp Packaging/Info.plist "${APP}/Contents/Info.plist"
+# Only release.sh builds the version as it is. Anything else is a build between releases, and
+# says so: "0.8.0-dev", so the counts and usage stats don't take your own builds for people on
+# 0.8.0. It compares equal to 0.8.0 for updates (VersionCompare reads the 0 of "0-dev").
+if [ "${MACRAZER_RELEASE_BUILD:-0}" != "1" ]; then
+    PLAIN_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "${APP}/Contents/Info.plist")"
+    /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${PLAIN_VERSION}-dev" "${APP}/Contents/Info.plist"
+    echo "▸ Version ${PLAIN_VERSION}-dev (a release build comes from Scripts/release.sh)"
+fi
 [ -f Packaging/AppIcon.icns ] && cp Packaging/AppIcon.icns "${APP}/Contents/Resources/AppIcon.icns"
 
 # The Worker behind Send and the usage stats. Its address comes from DOMAIN in the private

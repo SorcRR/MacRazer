@@ -65,6 +65,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     /// Razer mice on USB, listed again only when a Razer device comes or goes, so the support
     /// tick never enumerates devices itself.
     private var razerMiceOnUSB: [HIDDevice.USBMouse] = []
+    /// Every Razer mouse plugged in by cable or dongle, for the counts: not only the one the
+    /// controller opened. Listed at launch and again on each plug, like `razerMiceOnUSB`, but
+    /// whatever the support prompt's setting.
+    private let pluggedRazerMice = CurrentValueSubject<[HIDDevice.USBMouse], Never>([])
     private var relistRazerMiceWork: DispatchWorkItem?
     private var rescanAccessoriesWork: DispatchWorkItem?
     /// Closing it re-asks the auto-install gate, for the same reason as `updatedWindow`.
@@ -638,15 +642,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
             .store(in: &cancellables)
         // Debounced: the controller publishes a new mouse's fields one at a time, and the
         // ping should see them all.
+        listRazerMice()
         Publishers.CombineLatest4(controller.$connected, controller.$deviceID,
                                   controller.$deviceName, controller.$deviceIsBluetooth)
-            .combineLatest(controller.$deviceSupported)
+            .combineLatest(controller.$deviceSupported, pluggedRazerMice.removeDuplicates())
             .debounce(for: .seconds(2), scheduler: RunLoop.main)
-            .sink { [weak self] device, supported in
+            .sink { [weak self] device, supported, plugged in
                 let (connected, pid, name, bluetooth) = device
-                let mice = connected ? pid.map {
-                    [UsageStatsPolicy.mouse(pid: $0, productName: name, isBluetooth: bluetooth, supported: supported)]
-                } ?? [] : []
+                let opened = connected ? pid.map {
+                    UsageStatsPolicy.mouse(pid: $0, productName: name, isBluetooth: bluetooth, supported: supported)
+                } : nil
+                let mice = UsageStatsPolicy.connectedMice(opened: opened, plugged: plugged)
                 self?.usageStats.setConnectedMice(mice)
                 // A mouse just found goes out now, not at the next update check. No mouse waits
                 // for the count below, so a launch doesn't send once without the mouse and
@@ -730,7 +736,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     /// the test was opened, so nothing asks about that model again.
     private func startSupportPrompt() {
         supportPrompt.trackReports(from: deviceTestWindow.model).store(in: &cancellables)
-        razerMiceOnUSB = listRazerMiceIfNeeded()
+        // Listed already by startUsageStats, which runs first (listRazerMice).
         // The list is kept empty while the setting is off, so turning it on lists what is
         // already plugged in instead of waiting for the next plug event.
         supportPrompt.$isEnabled.dropFirst().removeDuplicates()
@@ -756,7 +762,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         relistRazerMiceWork?.cancel()
         let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
-            self.razerMiceOnUSB = self.listRazerMiceIfNeeded()
+            self.listRazerMice()
             // The test's intro names every device that could be the mouse; a plug changes that.
             if self.deviceTestWindow.isVisible { self.deviceTestWindow.model.devicesMayHaveChanged() }
         }
@@ -774,12 +780,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         DispatchQueue.main.asyncAfter(deadline: .now() + 1, execute: work)
     }
 
-    /// The list is read only for a mouse without Input Monitoring, and only while the prompt is
-    /// on. Otherwise, the usual case, a dongle waking from sleep isn't worth an enumeration.
-    private func listRazerMiceIfNeeded() -> [HIDDevice.USBMouse] {
-        guard supportPrompt.isEnabled, !DeviceTestModel.inputMonitoringGranted else { return [] }
-        return HIDDevice.razerMice()
+    /// The Razer mice plugged in, listed once for both who need them: the counts (in a build
+    /// with the Worker) and the support prompt (while it can use them).
+    /// Off the main thread: an IOKit listing on every plug and dongle wake mustn't hold up the
+    /// menu bar. The results land back on the main thread.
+    private func listRazerMice() {
+        let counts = usageStats.isAvailable, prompt = needsRazerMiceList
+        guard counts || prompt else {
+            razerMiceOnUSB = []
+            return
+        }
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let all = HIDDevice.razerMice()
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.razerMiceOnUSB = prompt ? all : []
+                self.pluggedRazerMice.send(counts ? all : [])
+            }
+        }
     }
+
+    /// Whether the support prompt can use the list of Razer mice: only while it's on and Input
+    /// Monitoring is missing. The counts list them on every Razer plug anyway, in a build with
+    /// the Worker (`relistRazerMice`).
+    private var needsRazerMiceList: Bool { supportPrompt.isEnabled && !DeviceTestModel.inputMonitoringGranted }
 
     private func askForDeviceTestIfClear() {
         guard supportPrompt.isEnabled else { return }

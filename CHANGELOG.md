@@ -6,6 +6,9 @@ expect rough edges until 1.0.
 
 ## [Unreleased]
 
+### Fixed
+- **A "+" in a mouse's name or the version reached the server as a space.**
+
 ### Changed
 - **Closing the usage stats question isn't a no any more.** Before, closing the window (or the
   Updated window's card) without answering counted as no and it never asked again. Now
@@ -13,6 +16,16 @@ expect rough edges until 1.0.
   Updated window if an update comes first). Close it a second time and that's taken as no for
   good.
   Settings › Privacy can still turn sharing on whenever you like.
+- **The anonymous count names every Razer mouse plugged in.** Before, only the mouse MacRazer
+  was controlling went with it. Now a second mouse, or one whose dongle is plugged in while it
+  sleeps, is counted too (up to four). One mouse on its cable with its dongle in still counts
+  once. Usage stats, if you share them, name them the same way.
+- **The anonymous count is sent again until the server says it has it.** A busy server used to
+  answer the update check without recording the count, and the app took that as done.
+- **Builds between releases say so.** A build made with `Scripts/build-app.sh` reports its
+  version with `-dev` on the end, so the counts don't take it for someone on the release.
+  Release builds come from `Scripts/release.sh` and are unchanged, and switching between the
+  two doesn't open the Updated window.
 - **The anonymous count waits for your answer.** While the question is about to show (up to an
   hour) or has just appeared (up to ten minutes), the day's count leaves out "not asked yet", so
   an app that answers a moment later isn't counted both ways.

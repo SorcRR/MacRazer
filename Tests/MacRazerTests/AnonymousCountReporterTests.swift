@@ -21,15 +21,112 @@ final class AnonymousCountReporterTests: XCTestCase {
         return defaults
     }
 
-    /// A reporter whose requests are answered with `status`, or fail when it's nil. `requests`
-    /// collects every URL it asked for.
+    /// A reporter whose requests are answered with `status`, or fail when it's nil. The Worker
+    /// says it recorded the count (`x-counted: 1`) when `counted` says so, by default on a 200.
+    /// `requests` collects every URL it asked for.
     private func reporter(at date: @escaping () -> Date, status: @escaping () -> Int?,
+                          counted: @escaping (Int) -> Bool = { $0 == 200 },
                           requests: @escaping (URL) -> Void) -> AnonymousCountReporter {
         AnonymousCountReporter(defaults: freshDefaults(), base: base, appVersion: "0.7.1", now: date) { url in
             requests(url)
             guard let code = status() else { throw URLError(.notConnectedToInternet) }
-            return (Data("[]".utf8), HTTPURLResponse(url: url, statusCode: code, httpVersion: nil, headerFields: nil)!)
+            let headers = ["x-counted": counted(code) ? "1" : "0"]
+            return (Data("[]".utf8), HTTPURLResponse(url: url, statusCode: code, httpVersion: nil, headerFields: headers)!)
         }
+    }
+
+    func testOnlyACountTheWorkerSaysItRecordedIsDone() async {
+        var asked: [URL] = []
+        var answer = 200
+        var recorded = false
+        var clock = lateEvening.addingTimeInterval(-3 * 3600)
+        let sut = reporter(at: { clock }, status: { answer }, counted: { _ in recorded }, requests: { asked.append($0) })
+        sut.connectedMice = { [cobra] }
+        await sut.reportIfNeeded()
+        await sut.reportIfNeeded()
+        XCTAssertEqual(asked.count, 1, "refused: nothing more until the next tick, however often it's asked")
+        clock = clock.addingTimeInterval(AnonymousCountReporter.retryAfter)
+        await sut.reportIfNeeded()
+        XCTAssertEqual(asked.count, 2, "x-counted: 0 (a burst, the cap, a database error): sent again on the next tick")
+        answer = 502
+        recorded = true
+        clock = clock.addingTimeInterval(2 * AnonymousCountReporter.retryAfter)
+        await sut.reportIfNeeded()
+        await sut.reportIfNeeded()
+        XCTAssertEqual(asked.count, 3, "a 502 with x-counted: the list failed, the count is in")
+    }
+
+    func testRefusalsInARowWaitLongerButAnAnswerDoesntWait() async {
+        var asked: [URL] = []
+        var clock = lateEvening.addingTimeInterval(-20 * 3600)
+        var answer: UsageStatsConsent = .undecided
+        let sut = reporter(at: { clock }, status: { 200 }, counted: { _ in false }, requests: { asked.append($0) })
+        sut.connectedMice = { [cobra] }
+        sut.answer = { answer }
+        await sut.reportIfNeeded()
+        clock = clock.addingTimeInterval(AnonymousCountReporter.retryAfter)
+        await sut.reportIfNeeded()
+        XCTAssertEqual(asked.count, 2)
+        clock = clock.addingTimeInterval(AnonymousCountReporter.retryAfter)
+        await sut.reportIfNeeded()
+        XCTAssertEqual(asked.count, 2, "the second refusal in a row waits twice as long")
+        answer = .granted
+        await sut.reportIfNeeded()
+        await sut.reportIfNeeded()
+        XCTAssertEqual(asked.count, 3, "a new answer goes at once, then waits like the rest")
+    }
+
+    func testAMouseThatMovesToItsCableIsNotCountedAgainThatDay() async {
+        var asked: [URL] = []
+        var mice = [cobra]
+        let sut = reporter(at: { lateEvening }, status: { 200 }, requests: { asked.append($0) })
+        sut.connectedMice = { mice }
+        await sut.reportIfNeeded()
+        mice = [UsagePing.Mouse(pid: 0xDA, name: "Razer Cobra HyperSpeed (Wired)", link: "wired", supported: true)]
+        await sut.reportIfNeeded()
+        XCTAssertEqual(asked.count, 1)
+    }
+
+    func testAWaitFromYesterdaysRefusalsEndsWithTheDay() async {
+        var asked: [URL] = []
+        var clock = lateEvening
+        var recorded = false
+        let sut = reporter(at: { clock }, status: { 200 }, counted: { _ in recorded }, requests: { asked.append($0) })
+        sut.connectedMice = { [cobra] }
+        await sut.reportIfNeeded()
+        XCTAssertEqual(asked.count, 1)
+        clock = lateEvening.addingTimeInterval(45 * 60)   // past midnight UTC, within the wait
+        recorded = true
+        await sut.reportIfNeeded()
+        XCTAssertEqual(asked.count, 2, "the Worker's caps start over with its day")
+    }
+
+    func testARefusedAnswerDoesntPushTheWaitFurther() async {
+        var asked: [URL] = []
+        var clock = lateEvening.addingTimeInterval(-20 * 3600)
+        var answer: UsageStatsConsent = .undecided
+        let sut = reporter(at: { clock }, status: { 200 }, counted: { _ in false }, requests: { asked.append($0) })
+        sut.connectedMice = { [cobra] }
+        sut.answer = { answer }
+        await sut.reportIfNeeded()
+        clock = clock.addingTimeInterval(5 * 60)
+        answer = .granted
+        await sut.reportIfNeeded()
+        XCTAssertEqual(asked.count, 2)
+        clock = clock.addingTimeInterval(5 * 60)
+        await sut.reportIfNeeded()
+        XCTAssertEqual(asked.count, 3, "still the first ten minutes' wait, from the first refusal")
+    }
+
+    func testAWorkerFromBeforeTheHeaderIsTakenAtItsStatus() {
+        let url = URL(string: "https://reports.example.org/v1/releases")!
+        let answer = { (code: Int, headers: [String: String]?) in
+            AnonymousCountReporter.counted(HTTPURLResponse(url: url, statusCode: code, httpVersion: nil, headerFields: headers)!)
+        }
+        XCTAssertTrue(answer(200, nil), "no header: an older Worker, which counted it as before")
+        XCTAssertFalse(answer(503, nil))
+        XCTAssertFalse(answer(200, ["x-counted": "0"]), "said it didn't")
+        XCTAssertTrue(answer(502, ["x-counted": "1"]), "the list failed, the count is in")
     }
 
     func testNoMouseSendsNothing() async {
@@ -47,19 +144,21 @@ final class AnonymousCountReporterTests: XCTestCase {
         await sut.reportIfNeeded()
         XCTAssertEqual(asked.count, 1)
         let items = try XCTUnwrap(URLComponents(url: asked[0], resolvingAgainstBaseURL: false)?.queryItems)
-        XCTAssertEqual(items.map(\.name), ["app", "mouse"])
+        XCTAssertEqual(items.map(\.name), ["app", "mouse", "count"])
         XCTAssertEqual(items[1].value, "00db.dongle.1.Razer Cobra HyperSpeed")
     }
 
     func testAFailedSendIsTriedAgain() async {
         var asked: [URL] = []
         var answer: Int? = nil
-        let sut = reporter(at: { lateEvening }, status: { answer }, requests: { asked.append($0) })
+        var clock = lateEvening.addingTimeInterval(-3 * 3600)
+        let sut = reporter(at: { clock }, status: { answer }, requests: { asked.append($0) })
         sut.connectedMice = { [cobra] }
         await sut.reportIfNeeded()
         answer = 503
         await sut.reportIfNeeded()
         answer = 200
+        clock = clock.addingTimeInterval(AnonymousCountReporter.retryAfter)
         await sut.reportIfNeeded()
         await sut.reportIfNeeded()
         XCTAssertEqual(asked.count, 3, "offline and a 503 both leave it due; the 200 settles it")
@@ -115,7 +214,7 @@ final class AnonymousCountReporterTests: XCTestCase {
         await sut.reportIfNeeded()
         XCTAssertEqual(asked.count, 2)
         let items = try XCTUnwrap(URLComponents(url: asked[0], resolvingAgainstBaseURL: false)?.queryItems)
-        XCTAssertEqual(items.map(\.name), ["app", "stats"])
+        XCTAssertEqual(items.map(\.name), ["app", "stats", "count"])
         XCTAssertEqual(items[1].value, "no")
     }
 
@@ -141,8 +240,8 @@ final class AnonymousCountReporterTests: XCTestCase {
         XCTAssertEqual(asked.count, 3)
         XCTAssertTrue(pending.isEmpty)
         let items = try XCTUnwrap(URLComponents(url: asked[2], resolvingAgainstBaseURL: false)?.queryItems)
-        XCTAssertEqual(items.map(\.name), ["app", "stats", "change"])
-        XCTAssertEqual(items.map(\.value), ["0.7.1", "no", "turned_off"])
+        XCTAssertEqual(items.map(\.name), ["app", "stats", "change", "count"])
+        XCTAssertEqual(items.map(\.value), ["0.7.1", "no", "turned_off", "1"])
     }
 
     func testTheDayIsUTC() {

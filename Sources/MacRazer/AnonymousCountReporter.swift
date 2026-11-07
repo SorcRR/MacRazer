@@ -36,6 +36,23 @@ final class AnonymousCountReporter {
     /// mouse found or an answer changed meanwhile isn't left for the next tick.
     private var sending = false
     private var again = false
+    /// After a count the Worker didn't record, mice wait: a refused count (a burst, the day's
+    /// cap) asked again on every plug would only be refused again, and would use up the rate
+    /// limit update checks share. Each refusal in a row doubles the wait, so a Worker at its
+    /// day's cap isn't asked by every Mac every tick for the rest of the day. An answer or a
+    /// change of answer doesn't wait: it's what the count is most for.
+    private var quietUntil: Date?
+    private var refusals = 0
+    /// The answer and changes the refused count carried: only a different one goes before the
+    /// wait is up.
+    private var refusedAnswer: String?
+    /// The Worker's day the wait was set on.
+    private var quietDay: String?
+    /// The first wait: well under the app's 15-minute tick (which has a minute's slack) and
+    /// counted from when the refused request went out, so the next tick tries again.
+    static let retryAfter: TimeInterval = 10 * 60
+    /// The longest wait between tries.
+    static let longestWait: TimeInterval = 4 * 3600
 
     init(defaults: UserDefaults = .standard, base: URL? = WorkerEndpoint.base,
          appVersion: String? = AppInfo.version, now: @escaping () -> Date = Date.init,
@@ -66,7 +83,7 @@ final class AnonymousCountReporter {
     }
 
     private func sendOnce() async {
-        let mice = Array(connectedMice().prefix(WorkerEndpoint.maxMice))
+        let mice = connectedMice()
         let answer = answer()
         let changes = pendingChanges()
         let day = Self.day(of: now())
@@ -74,16 +91,35 @@ final class AnonymousCountReporter {
         let sent = sameDay ? Set(defaults.stringArray(forKey: Self.sentKey) ?? []) : []
         let sentAnswer = sameDay ? defaults.string(forKey: Self.answerKey) : nil
         // A Mac with no Worker, or nothing to send at all, has nothing to count.
-        let newMouse = mice.contains { !sent.contains(Self.key($0)) }
+        let newMouse = mice.contains { !sent.contains(Self.sentKey($0)) }
         let newAnswer = answer.map { $0.countValue != sentAnswer } ?? false
+        let answerNow = (answer?.countValue ?? "") + "|" + changes.map(\.rawValue).joined(separator: ",")
+        let answerChanged = (newAnswer || !changes.isEmpty) && answerNow != refusedAnswer
+        // A wait from a refusal yesterday ends with the Worker's day: its caps start over.
+        if quietDay != day { quietUntil = nil; refusals = 0; refusedAnswer = nil }
+        let waiting = quietUntil.map { now() < $0 } ?? false
+        if waiting, !answerChanged { return }
         guard newMouse || newAnswer || !changes.isEmpty,
               let url = WorkerEndpoint.releases(appVersion: appVersion, mice: mice, stats: answer,
-                                                changes: changes, base: base) else { return }
+                                                changes: changes, count: true, base: base) else { return }
+        let started = now()
         do {
             let (_, response) = try await fetch(url)
-            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return }
+            guard Self.counted(response) else {
+                refusedAnswer = answerNow
+                // An answer that went before the wait was up leaves the wait as it was.
+                if waiting { return }
+                let wait = min(Self.retryAfter * pow(2, Double(refusals)), Self.longestWait)
+                refusals += 1
+                quietUntil = started.addingTimeInterval(wait)
+                quietDay = day
+                return
+            }
+            quietUntil = nil
+            refusals = 0
+            refusedAnswer = nil
             defaults.set(day, forKey: Self.dayKey)
-            defaults.set(Array(sent.union(mice.map(Self.key))).sorted(), forKey: Self.sentKey)
+            defaults.set(Array(sent.union(mice.map(Self.sentKey))).sorted(), forKey: Self.sentKey)
             if let answer { defaults.set(answer.countValue, forKey: Self.answerKey) }
             if !changes.isEmpty { changesSent(changes) }
         } catch {
@@ -91,9 +127,30 @@ final class AnonymousCountReporter {
         }
     }
 
+    /// Whether the Worker recorded the count. It says `x-counted: 1` when it did, even when the
+    /// update list itself failed (a 502 while GitHub is down), and `x-counted: 0` when it
+    /// didn't (a burst, the day's cap, a database error), so that's sent again on the next
+    /// tick. A Worker from before the header says neither: then a 2xx is taken as counted, as
+    /// it always was, rather than sending the whole count every tick.
+    static func counted(_ response: URLResponse) -> Bool {
+        guard let http = response as? HTTPURLResponse else { return false }
+        switch http.value(forHTTPHeaderField: "x-counted") {
+        case "1": return true
+        case "0": return false
+        default: return (200..<300).contains(http.statusCode)
+        }
+    }
+
     /// What the Worker counts a mouse by: its product ID and link.
     static func key(_ mouse: UsagePing.Mouse) -> String {
         String(format: "%04x", mouse.pid & 0xFFFF) + ".\(mouse.link)"
+    }
+
+    /// What a mouse counts as sent by today: its model when MacRazer knows it, so a mouse that
+    /// moves from its dongle to its cable during the day isn't counted again; its product ID
+    /// and link otherwise.
+    static func sentKey(_ mouse: UsagePing.Mouse) -> String {
+        RazerDevices.model(pid: mouse.pid) != nil ? UsageStatsPolicy.countIdentity(mouse) : key(mouse)
     }
 
     /// The UTC calendar day, as the Worker writes it.

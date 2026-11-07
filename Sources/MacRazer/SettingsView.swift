@@ -494,7 +494,7 @@ struct SettingsView: View {
         settingRow(
             symbol: "chart.bar.fill", tint: Color(nsColor: .systemPurple),
             title: "Share anonymous usage stats",
-            detail: "Your mouse model, app version and macOS version, sent when you install, update or "
+            detail: "Your Razer mouse models, app version and macOS version, sent when you install, update or "
                 + "plug in a new mouse. It helps me decide which mice to support next.",
             isOn: Binding(get: { usageStats.consent == .granted }, set: { usageStats.setConsent($0) })
         ) {

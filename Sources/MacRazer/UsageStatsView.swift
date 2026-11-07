@@ -119,7 +119,7 @@ struct UsageStatsCard: View {
                         ? "Thanks! You can turn it off or delete what's stored in Settings › Privacy."
                         : "Okay, no usage stats will be sent. You can change your mind in Settings › Privacy.")
                 } else {
-                    sectionNote("Share your mouse model, app version and macOS version, plus a scrambled ID "
+                    sectionNote("Share your Razer mouse models, app version and macOS version, plus a scrambled ID "
                         + "for this Mac so it's only counted once. Nothing personal. You can turn it off in Settings.")
                     if showDetails {
                         UsageStatsSummary(ping: stats.preview)

@@ -79,4 +79,46 @@ final class UpdateCheckSourceTests: XCTestCase {
                        "https://reports.example.org/v1/releases?app=dev")
         XCTAssertNil(WorkerEndpoint.releases(appVersion: "0.6.0", base: nil))
     }
+
+    /// The Worker reads a "+" as a space, as a form decoder does.
+    func testAPlusArrivesAsAPlus() {
+        let base = URL(string: "https://reports.example.org")
+        let mouse = UsagePing.Mouse(pid: 0x99, name: "Pro+ Edition", link: "wired", supported: false)
+        let url = WorkerEndpoint.releases(appVersion: "0.9.0+abc", mice: [mouse], count: true, base: base)!
+        XCTAssertEqual(url.absoluteString,
+                       "https://reports.example.org/v1/releases?app=0.9.0%2Babc&mouse=0099.wired.0.Pro%2B%20Edition&count=1")
+        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)!.queryItems!
+        XCTAssertEqual(items.map(\.value), ["0.9.0+abc", "0099.wired.0.Pro+ Edition", "1"])
+        XCTAssertEqual(WorkerEndpoint.download(tag: "v1.0+x", base: base)?.absoluteString,
+                       "https://reports.example.org/v1/download?via=update&tag=v1.0%2Bx")
+    }
+
+    func testTheCountsCountEveryRazerMousePluggedInOnce() {
+        let opened = UsageStatsPolicy.mouse(pid: 0xDB, productName: nil, isBluetooth: false, supported: true)
+        let plugged = [HIDDevice.USBMouse(pid: 0xDB, name: "Razer Cobra HyperSpeed"),
+                       HIDDevice.USBMouse(pid: 0x98, name: "Razer DeathAdder Essential"),
+                       HIDDevice.USBMouse(pid: 0x01F0, name: "Razer Something New"),
+                       HIDDevice.USBMouse(pid: 0x0287, name: "Razer Keyboard With A Pointer")]
+        let mice = UsageStatsPolicy.connectedMice(opened: opened, plugged: plugged)
+        XCTAssertEqual(mice.map(\.pid), [0xDB, 0x98, 0x01F0], "the opened one first, each mouse once, no keyboard")
+        XCTAssertEqual(mice.map(\.link), ["dongle", "wired", "unknown"])
+        XCTAssertEqual(UsageStatsPolicy.connectedMice(opened: nil, plugged: Array(repeating: plugged[1], count: 1)).count, 1)
+        // A Cobra HyperSpeed on its cable (0xDA) with its dongle (0xDB) in is one mouse.
+        let charging = UsageStatsPolicy.mouse(pid: 0xDA, productName: nil, isBluetooth: false, supported: true)
+        XCTAssertEqual(UsageStatsPolicy.connectedMice(opened: charging, plugged: [plugged[0]]).map(\.pid), [0xDA])
+        // The DeathAdder V3 Pro's cable has no row of its own, but is that model's; its two
+        // generations share a name and are two mice.
+        let deathAdder = [HIDDevice.USBMouse(pid: 0xB6, name: "Razer DeathAdder V3 Pro"),
+                          HIDDevice.USBMouse(pid: 0xB7, name: "Razer DeathAdder V3 Pro"),
+                          HIDDevice.USBMouse(pid: 0xC3, name: "Razer DeathAdder V3 Pro")]
+        XCTAssertEqual(UsageStatsPolicy.connectedMice(opened: nil, plugged: deathAdder).map(\.pid), [0xB6, 0xC3])
+        // A Mouse Dock Pro plugged in beside the mouse is how it connects, not a second mouse;
+        // opened by the controller, it's the mouse on it.
+        let dock = HIDDevice.USBMouse(pid: 0xA4, name: "Razer Mouse Dock Pro")
+        XCTAssertEqual(UsageStatsPolicy.connectedMice(opened: opened, plugged: [dock]).map(\.pid), [0xDB])
+        let onDock = UsageStatsPolicy.mouse(pid: 0xA4, productName: nil, isBluetooth: false, supported: false)
+        XCTAssertEqual(UsageStatsPolicy.connectedMice(opened: onDock, plugged: [dock]).map(\.pid), [0xA4])
+        let many = (0..<6).map { HIDDevice.USBMouse(pid: 0x100 + $0, name: "Razer Mouse \($0)") }
+        XCTAssertEqual(UsageStatsPolicy.connectedMice(opened: opened, plugged: many).count, WorkerEndpoint.maxMice)
+    }
 }

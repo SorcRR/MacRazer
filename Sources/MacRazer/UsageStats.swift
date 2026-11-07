@@ -86,9 +86,44 @@ enum UsageStatsPolicy {
         // A `swift run` build has no version, and its pings would only be noise.
         guard consent == .granted, let version else { return nil }
         guard let lastReportedVersion else { return .first }
+        // Raw: a switch between a release and its -dev build is reported, so the stats keep the
+        // label of what this Mac runs now (the Updated window ignores that switch instead).
         if lastReportedVersion != version { return .update }
         if connected.contains(where: { !reportedMice.contains($0.key) }) { return .mouse }
         return nil
+    }
+
+    /// Razer gives mice product IDs below this; keyboards and the rest start here.
+    static let firstNonMousePID = 0x0200
+    /// Receivers a mouse is used through: the Mouse Dock Pro and the HyperFlux V2 pad.
+    static let receiverPIDs: Set<Int> = [0x00A4, 0x00CF]
+
+    /// What makes two mice one for the counts: the model when MacRazer knows it (a mouse's
+    /// cable and dongle are one), the product ID and link otherwise. The daily count's "sent
+    /// today" goes by the same (`AnonymousCountReporter.sentKey`).
+    static func countIdentity(_ mouse: UsagePing.Mouse) -> String {
+        RazerDevices.model(pid: mouse.pid).map { "model:" + $0 } ?? mouse.key
+    }
+
+    /// The mice to count: the one MacRazer opened first, then every other Razer mouse plugged
+    /// in by cable or dongle (a second mouse, or one whose dongle is in but which is asleep),
+    /// up to the Worker's limit. One mouse once (`countIdentity`): a Cobra HyperSpeed charging
+    /// on its cable with its dongle in is one mouse.
+    static func connectedMice(opened: UsagePing.Mouse?, plugged: [HIDDevice.USBMouse]) -> [UsagePing.Mouse] {
+        var mice: [UsagePing.Mouse] = []
+        var seen = Set<String>()
+        // A plugged device counts only if it's a mouse MacRazer knows, or in the product range
+        // Razer gives mice: a keyboard with a pointer interface mustn't take a mouse's place.
+        // A dock or charging pad's receiver (Mouse Dock Pro, HyperFlux V2) is how a mouse
+        // connects, not another mouse: counted only when the controller opened it.
+        let mouseLike = plugged.filter {
+            !receiverPIDs.contains($0.pid) && (RazerDevices.model(pid: $0.pid) != nil || $0.pid < Self.firstNonMousePID)
+        }
+        let candidates = (opened.map { [$0] } ?? []) + mouseLike.map {
+            mouse(pid: $0.pid, productName: $0.name, isBluetooth: false, supported: RazerDevices.fullySupported(pid: $0.pid))
+        }
+        for m in candidates where seen.insert(countIdentity(m)).inserted { mice.append(m) }
+        return Array(mice.prefix(WorkerEndpoint.maxMice))
     }
 
     /// The mouse as a ping names it. The registry's name when MacRazer knows the model, so
