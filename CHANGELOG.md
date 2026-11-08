@@ -14,8 +14,8 @@ expect rough edges until 1.0.
   and you see them before you send. Send emails it to the maintainer. Open GitHub issue is the
   public way, and leaves your name and email out (#123).
 - **Crash reports.** If MacRazer quits unexpectedly, it offers to send the crash report next
-  time it opens. Nothing goes unless you press Send, and Settings › Privacy can turn the
-  question off (#126).
+  time it opens, and shows what's in it first. Nothing goes unless you press Send, and
+  Settings › Helping out can turn the question off (#126).
 - **Test the lighting on an untested keyboard or mousepad.** Its card in the popover now has a
   Test it button. The lights go dark, then red, then back to how they were, and you say what you
   saw. The result goes to us the same way a mouse test does, so the UNTESTED tag can come off.
