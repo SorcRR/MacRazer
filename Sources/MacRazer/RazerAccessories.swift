@@ -4,7 +4,7 @@
 import Foundation
 
 /// What kind of accessory a row is, for its icon and the words on its card.
-enum AccessoryKind: String, Equatable, Sendable {
+enum AccessoryKind: String, Codable, Equatable, Sendable {
     case keyboard
     case mousepad
 

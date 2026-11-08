@@ -7,6 +7,9 @@ expect rough edges until 1.0.
 ## [Unreleased]
 
 ### Added
+- **Test the lighting on an untested keyboard or mousepad.** Its card in the popover now has a
+  Test it button. The lights go dark, then red, then back to how they were, and you say what you
+  saw. The result goes to us the same way a mouse test does, so the UNTESTED tag can come off.
 - **Razer Basilisk Mobile, over its 2.4 GHz dongle.** Battery, DPI and its stages, polling rate
   and a static color with brightness all passed the device test. Its lighting has a color and off but no
   effects, so the popover offers just those two. The cable is recognised too, but nothing has been tested on

@@ -24,6 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     private lazy var permissionsWindow = PermissionsWindowController(model: permissions, controller: controller)
     private lazy var deviceTestWindow = DeviceTestWindowController(
         model: DeviceTestModel(controller: controller, permissions: permissions))
+    private lazy var accessoryTestWindow = AccessoryTestWindowController(model: AccessoryTestModel())
     private let updateChecker = UpdateChecker()
     private let launchAtLogin = LaunchAtLogin()
     private let appearance = AppearanceSettings.shared
@@ -188,6 +189,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
                 guard let self else { return }
                 self.popover.performClose(nil)
                 self.present(self.deviceTestWindow)
+            },
+            onTestAccessory: { [weak self] accessory in
+                guard let self else { return }
+                self.popover.performClose(nil)
+                self.windowRequested = true
+                self.accessoryTestWindow.show(accessory)
             }))
         hosting.sizingOptions = [.preferredContentSize] // popover auto-fits the SwiftUI content
         popover.contentViewController = hosting
@@ -629,7 +636,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         // The device test in particular: an install ends in a relaunch, and that must never
         // happen while a step has a test value on someone's mouse.
         let windows: [AppWindowPresenter] = [remapWindow, permissionsWindow, aboutWindow, settingsWindow,
-                                             updatedWindow, deviceTestWindow, crashReportWindow,
+                                             updatedWindow, deviceTestWindow, accessoryTestWindow, crashReportWindow,
                                              usageStatsWindow, supportPromptWindow, issueReportWindow]
         return windows.contains { $0.isVisible }
     }
@@ -995,10 +1002,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     /// A device test step may have the mouse dark, red, or at a test DPI, and puts it back when
     /// it finishes, a few seconds at most. Quitting first would leave it that way: the history
     /// flush below only waits two seconds for the device queue, less than the lighting step.
+    /// A keyboard or mousepad's lighting test is the same.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        let model = deviceTestWindow.model
-        guard model.running else { return .terminateNow }
-        model.whenIdle { NSApp.reply(toApplicationShouldTerminate: true) }
+        let mouse = deviceTestWindow.model, accessory = accessoryTestWindow.model
+        guard mouse.running || accessory.running else { return .terminateNow }
+        mouse.whenIdle { accessory.whenIdle { NSApp.reply(toApplicationShouldTerminate: true) } }
         return .terminateLater
     }
 

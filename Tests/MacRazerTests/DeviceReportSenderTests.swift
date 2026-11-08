@@ -11,8 +11,9 @@ final class DeviceReportSenderTests: XCTestCase {
 
     // MARK: The full report, shared with the Worker's tests
 
-    /// Every field set, so the Worker's schema is checked against all of them. Add any new
-    /// field here too; `testTheWorkerGetsEveryField` then fails until the fixture and the
+    /// Every field set, so the Worker's schema is checked against all of them, except
+    /// `accessory`, which only a keyboard or mousepad report has (`AccessoryTestTests.accessoryReport`,
+    /// the Worker's accessory-report.json). Add any new field here too; `testTheWorkerGetsEveryField` then fails until the fixture and the
     /// Worker's `validate.ts` catch up.
     static func fullReport() -> DeviceReport {
         let exchange = RecordingChannel.Exchange(commandClass: 0x04, commandId: 0x85, transactionId: 0x1F, status: 0x02,

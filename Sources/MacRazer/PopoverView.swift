@@ -69,6 +69,9 @@ struct PopoverView: View {
     /// limited support.
     /// Not defaulted, for the same reason as `onOpenSettings`.
     var onOpenDeviceTest: () -> Void
+    /// Opens the lighting test for an untested keyboard or mousepad, from its card.
+    /// Not defaulted, for the same reason as `onOpenSettings`.
+    var onTestAccessory: (AccessoryController) -> Void
 
     enum Page { case main, color, buttons, usage, profiles, whatsNew }
     @State private var page: Page = .main
@@ -1586,7 +1589,8 @@ struct PopoverView: View {
                     AccessoryCard(accessory: accessory, hasMouse: !noMouse && !controller.lightHasFixedColor,
                                   mouseGlow: mouseGlow,
                                   // A lone accessory starts open: there's nothing else to see.
-                                  startsOpen: devices.count == 1) {
+                                  startsOpen: devices.count == 1,
+                                  onTest: { onTestAccessory(accessory) }) {
                         colorTarget = .accessory(accessory.id)
                         accessoryColor = accessory.lighting.color.swiftUIColor
                         page = .color

@@ -723,7 +723,7 @@
     "transactionId" : 31
   },
   "replyEmail" : "person@example.com",
-  "schemaVersion" : 4,
+  "schemaVersion" : 5,
   "verdict" : {
     "failed" : [
 
