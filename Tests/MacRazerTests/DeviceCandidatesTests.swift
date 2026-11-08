@@ -7,14 +7,15 @@ import XCTest
 /// Which devices count as a possible mouse, the intro's hint when there's more than one, and
 /// what the review asks about a dock.
 final class DeviceCandidatesTests: XCTestCase {
-    /// The Basilisk Ultimate report's setup: its Mouse Dock (0x007E) and its dongle (0x0088),
-    /// neither in the registry, plus an Ornata V2 keyboard.
+    /// A Mouse Dock (0x007E) next to a mouse's dongle, neither in the registry, plus an
+    /// Ornata V2 keyboard. First seen in a Basilisk Ultimate report; that dongle has a row
+    /// now, so a Mamba Wireless receiver (0x0073) stands in for it.
     private let dock: [HIDInterfaceInfo] = [
         .init(pid: 0x007E, locationID: 0x1100000, usagePage: 0x01, usage: 0x02, maxFeatureReportSize: 90, productName: "Razer Mouse Dock"),
         .init(pid: 0x007E, locationID: 0x1100000, usagePage: 0x01, usage: 0x06, maxFeatureReportSize: 0, productName: "Razer Mouse Dock"),
     ]
     private let dongle: [HIDInterfaceInfo] = [
-        .init(pid: 0x0088, locationID: 0x1200000, usagePage: 0x01, usage: 0x02, maxFeatureReportSize: 90, productName: "Razer Basilisk Ultimate Dongle"),
+        .init(pid: 0x0073, locationID: 0x1200000, usagePage: 0x01, usage: 0x02, maxFeatureReportSize: 90, productName: "Razer Mamba Wireless Receiver"),
     ]
     private let keyboard: [HIDInterfaceInfo] = [
         .init(pid: 0x025D, locationID: 0x1000000, usagePage: 0x01, usage: 0x02, maxFeatureReportSize: 90, productName: "Razer Ornata V2"),
@@ -23,8 +24,8 @@ final class DeviceCandidatesTests: XCTestCase {
     func testCandidatesLeaveOutTheKeyboardAndKeepSelectionsOrder() {
         let interfaces = keyboard + dongle + dock
         let candidates = HIDDeviceSelection.candidates(interfaces: interfaces)
-        XCTAssertEqual(candidates.map(\.key.pid), [0x007E, 0x0088], "lower USB location first; no keyboard")
-        XCTAssertEqual(candidates.map(\.name), ["Razer Mouse Dock", "Razer Basilisk Ultimate Dongle"])
+        XCTAssertEqual(candidates.map(\.key.pid), [0x007E, 0x0073], "lower USB location first; no keyboard")
+        XCTAssertEqual(candidates.map(\.name), ["Razer Mouse Dock", "Razer Mamba Wireless Receiver"])
         XCTAssertEqual(HIDDeviceSelection.controlInterfaceIndex(interfaces: interfaces), candidates.first?.index)
     }
 
@@ -37,10 +38,10 @@ final class DeviceCandidatesTests: XCTestCase {
 
     func testLabelsNumberDevicesThatShareAName() {
         let candidates = HIDDeviceSelection.candidates(interfaces: dock + dongle + [
-            .init(pid: 0x0088, locationID: 0x1300000, usagePage: 0x01, usage: 0x02, maxFeatureReportSize: 90, productName: "Razer Basilisk Ultimate Dongle"),
+            .init(pid: 0x0073, locationID: 0x1300000, usagePage: 0x01, usage: 0x02, maxFeatureReportSize: 90, productName: "Razer Mamba Wireless Receiver"),
         ])
         XCTAssertEqual(DeviceTestModel.deviceLabels(candidates), [
-            "Razer Mouse Dock", "Razer Basilisk Ultimate Dongle 1", "Razer Basilisk Ultimate Dongle 2",
+            "Razer Mouse Dock", "Razer Mamba Wireless Receiver 1", "Razer Mamba Wireless Receiver 2",
         ], "not in the registry, so numbered")
     }
 
@@ -154,13 +155,13 @@ final class DeviceCandidatesTests: XCTestCase {
     func testTheHintNamesEveryDeviceAndTheOneUnderTest() {
         let two = [
             HIDDeviceSelection.Candidate(key: .init(pid: 0x007E, locationID: 1), name: "Razer Mouse Dock", index: 0),
-            HIDDeviceSelection.Candidate(key: .init(pid: 0x0088, locationID: 2), name: "Razer Basilisk Ultimate Dongle", index: 1),
+            HIDDeviceSelection.Candidate(key: .init(pid: 0x0073, locationID: 2), name: "Razer Mamba Wireless Receiver", index: 1),
         ]
         XCTAssertEqual(DeviceTestModel.unplugHint(two, testing: "Razer Mouse Dock"),
-                       "More than one Razer device that could be a mouse is plugged in: Razer Mouse Dock and Razer Basilisk Ultimate Dongle. For an accurate test, unplug all but the one you want to test. The test will run on Razer Mouse Dock.")
+                       "More than one Razer device that could be a mouse is plugged in: Razer Mouse Dock and Razer Mamba Wireless Receiver. For an accurate test, unplug all but the one you want to test. The test will run on Razer Mouse Dock.")
         let three = two + [HIDDeviceSelection.Candidate(key: .init(pid: 0x00C5, locationID: 3), name: "Razer DeathAdder V3 HyperSpeed", index: 2)]
         XCTAssertTrue(DeviceTestModel.unplugHint(three, testing: nil)
-            .contains("Razer Mouse Dock, Razer Basilisk Ultimate Dongle, and Razer DeathAdder V3 HyperSpeed. For an accurate test, unplug all but the one you want to test."))
+            .contains("Razer Mouse Dock, Razer Mamba Wireless Receiver, and Razer DeathAdder V3 HyperSpeed. For an accurate test, unplug all but the one you want to test."))
         XCTAssertFalse(DeviceTestModel.unplugHint(three, testing: nil).contains("will run on"))
     }
 }

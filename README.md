@@ -87,18 +87,20 @@ says so.
 | Razer Naga Trinity | DPI, DPI stages, polling, lighting, brightness | anonymous report |
 | Razer Viper V3 HyperSpeed | Battery, DPI, DPI stages, polling | anonymous report |
 | Razer Basilisk V3 | DPI, DPI stages, polling, lighting, brightness | SuperSpacer54376 |
+| Razer Basilisk V2 | DPI, DPI stages, polling, lighting, brightness | anonymous report |
 | Razer DeathAdder Essential | DPI, DPI stages, polling, brightness (its one light is green only) | anonymous report |
 | Razer Naga V2 Pro (Wired) | Battery, DPI, DPI stages, polling, lighting, brightness | anonymous report |
 | Razer Pro Click V2 | Battery, DPI, DPI stages, polling | anonymous report |
 | Razer Pro Click (wired + wireless) | Battery, DPI, DPI stages, polling (it has no lighting) | anonymous reports |
 | Razer Viper | DPI, DPI stages, polling, lighting, brightness (wired only) | anonymous report |
-| Razer DeathAdder V3 Pro (Wireless, both dongles) | Battery, DPI, DPI stages, polling (it has no lighting) | anonymous reports |
+| Razer DeathAdder V3 Pro (Wireless, both dongles, and the first one's cable) | Battery, DPI, DPI stages, polling (it has no lighting) | anonymous reports |
 | Razer Viper V3 Pro SE (Wireless) | Battery, DPI, DPI stages, polling (it has no lighting) | anonymous report |
 | Razer Naga V2 HyperSpeed | Battery, DPI, DPI stages, polling (it has no lighting) | anonymous reports |
 | Razer Basilisk X HyperSpeed | Battery, DPI, DPI stages, polling (it has no lighting) | MagnetTileMan |
 | Razer Orochi V2 (Wireless) | Battery, DPI, DPI stages, polling (it has no lighting) | anonymous report |
 | Razer DeathAdder V3 HyperSpeed (wired + wireless) | Battery, DPI, DPI stages, polling (it has no lighting) | fxaxg and anonymous reports |
 | Razer DeathAdder V2 Pro (Wireless) | Battery, DPI, polling, lighting | anonymous reports |
+| Razer DeathAdder V2 Pro (Wired) | Battery, DPI, DPI stages, polling; lighting not working yet | anonymous report |
 | Razer Viper Ultimate (Wired) | Battery, DPI, polling, lighting | anonymous report |
 | Razer Taipan | DPI, polling; lighting not working yet | anonymous report |
 | Razer Basilisk V4 HyperSpeed (wired + wireless) | Battery, DPI, DPI stages; polling not working yet | anonymous reports |
@@ -108,8 +110,11 @@ says so.
 | Razer Mouse Dock Pro (with a Naga V3 Pro) | Battery, DPI, lighting, brightness; polling not working yet | anonymous report |
 | Razer HyperFlux V2 (with the mouse on it) | Battery, DPI, DPI stages, polling; lighting not confirmed yet | anonymous report |
 | Razer Naga Chroma | DPI, polling; lighting not working yet | anonymous report |
+| Razer Naga Hex V2 | DPI, polling; lighting not working yet | foivos92 |
+| Razer Basilisk Ultimate (Wireless) | Battery, DPI, DPI stages, polling; lighting not working yet | anonymous report |
 | Razer Basilisk V3 Pro 35K (Wired) | Battery, DPI, DPI stages, polling; lighting not working yet | anonymous report |
 | Razer Basilisk V3 Pro 35K (Bluetooth) | Battery; DPI and lighting not tried yet | anonymous reports |
+| Razer Basilisk V4 HyperSpeed (Bluetooth) | Battery; DPI and lighting not tried yet | anonymous report |
 | Razer Pro Click V2 Vertical Edition (Wired) | Battery, a static color; DPI, polling, brightness and the other effects not tried yet. Its dongle isn't supported yet | [@k6n7frbrtc-hub](https://github.com/k6n7frbrtc-hub) |
 | Razer Orochi 2013 | DPI only | [@raphaelchenouard](https://github.com/raphaelchenouard) |
 | Razer DeathAdder Essential (2018, White Edition) | Nothing; values from OpenRazer | — |
@@ -207,7 +212,7 @@ macOS 14 or later, on Apple Silicon or Intel.
 control protocol. The **Cobra HyperSpeed and Basilisk V3 X HyperSpeed also work over
 Bluetooth**: battery, DPI stages, brightness and a static lighting colour. Polling rate, other
 lighting effects, custom DPI values and profiles still need the dongle or a cable. On the
-Basilisk V3 Pro 35K, only the battery is confirmed over Bluetooth so far. MacRazer asks for Bluetooth access the
+Basilisk V3 Pro 35K and Basilisk V4 HyperSpeed, only the battery is confirmed over Bluetooth so far. MacRazer asks for Bluetooth access the
 first time it finds the mouse there.
 
 Other models are a plain pointer over Bluetooth, so MacRazer can't read or change anything.

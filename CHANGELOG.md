@@ -18,6 +18,15 @@ expect rough edges until 1.0.
   polling, brightness and the other effects come from OpenRazer and haven't been confirmed on
   this mouse yet, so the app asks for a device test. Its HyperSpeed dongle isn't supported yet.
   Thanks to @k6n7frbrtc-hub (#35).
+- **Six more mice from test reports.**
+  - **Basilisk V2:** DPI, stages, polling and lighting all work.
+  - **DeathAdder V3 Pro on its cable:** everything works. Its first dongle already did.
+  - **Naga Hex V2:** DPI and polling work. Its lights use older commands MacRazer doesn't
+    send yet, so they stay hidden. Thanks to foivos92.
+  - **Basilisk Ultimate over its dongle** and **DeathAdder V2 Pro on its cable:** battery, DPI
+    and polling work. Lighting didn't, so it stays hidden until a test shows it does.
+  - **Basilisk V4 HyperSpeed over Bluetooth:** battery works. DPI and lighting haven't been
+    tried there yet.
 
 ### Fixed
 - **A "+" in a mouse's name or the version reached the server as a space.**
