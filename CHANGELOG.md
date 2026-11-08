@@ -6,7 +6,16 @@ expect rough edges until 1.0.
 
 ## [Unreleased]
 
+## [0.9.0] — 2026-11-08
+
 ### Added
+- **Report an Issue.** A new item in the menu bar menu opens a short form: what went wrong,
+  and optionally your name and an email for a reply. The app and mouse details go with it,
+  and you see them before you send. Send emails it to the maintainer. Open GitHub issue is the
+  public way, and leaves your name and email out (#123).
+- **Crash reports.** If MacRazer quits unexpectedly, it offers to send the crash report next
+  time it opens, and shows what's in it first. Nothing goes unless you press Send, and
+  Settings › Helping out can turn the question off (#126).
 - **Test the lighting on an untested keyboard or mousepad.** Its card in the popover now has a
   Test it button. The lights go dark, then red, then back to how they were, and you say what you
   saw. The result goes to us the same way a mouse test does, so the UNTESTED tag can come off.
@@ -32,6 +41,8 @@ expect rough edges until 1.0.
 - **A "+" in a mouse's name or the version reached the server as a space.**
 
 ### Changed
+- **Bigger buttons.** The polling rate, lighting effect, DPI stage and sleep timer choices are
+  taller chips that are easier to hit (#124).
 - **No more test prompts that can't be answered.** The Basilisk V4 HyperSpeed, Basilisk V4 Pro,
   Viper V4 Pro and Viper 8KHz refuse the polling command the test sends, so a test could only
   record the same refusal. Owners were still asked to run it, on each link. Now polling doesn't
