@@ -7,6 +7,14 @@ expect rough edges until 1.0.
 ## [Unreleased]
 
 ### Added
+- **Razer Basilisk Mobile, over its 2.4 GHz dongle.** Battery, DPI and its stages, polling rate
+  and a static color with brightness all passed the device test. Its lighting has a color and off but no
+  effects, so the popover offers just those two. The cable is recognised too, but nothing has been tested on
+  it yet, so the app asks for a device test there. Thanks to @oss3 (#83).
+- **Razer Pro Click V2 Vertical Edition, on its cable.** Battery and a static color work; DPI,
+  polling, brightness and the other effects come from OpenRazer and haven't been confirmed on
+  this mouse yet, so the app asks for a device test. Its HyperSpeed dongle isn't supported yet.
+  Thanks to @k6n7frbrtc-hub (#35).
 - **Six more mice from test reports.**
   - **Basilisk V2:** DPI, stages, polling and lighting all work.
   - **DeathAdder V3 Pro on its cable:** everything works. Its first dongle already did.
@@ -16,14 +24,6 @@ expect rough edges until 1.0.
     and polling work. Lighting didn't, so it stays hidden until a test shows it does.
   - **Basilisk V4 HyperSpeed over Bluetooth:** battery works. DPI and lighting haven't been
     tried there yet.
-- **Razer Basilisk Mobile, over its 2.4 GHz dongle.** Battery, DPI and its stages, polling rate
-  and a static color with brightness all passed the device test. Its lighting has a color and off but no
-  effects, so the popover offers just those two. The cable is recognised too, but nothing has been tested on
-  it yet, so the app asks for a device test there. Thanks to @oss3 (#83).
-- **Razer Pro Click V2 Vertical Edition, on its cable.** Battery and a static color work; DPI,
-  polling, brightness and the other effects come from OpenRazer and haven't been confirmed on
-  this mouse yet, so the app asks for a device test. Its HyperSpeed dongle isn't supported yet.
-  Thanks to @k6n7frbrtc-hub (#35).
 
 ### Fixed
 - **A "+" in a mouse's name or the version reached the server as a space.**

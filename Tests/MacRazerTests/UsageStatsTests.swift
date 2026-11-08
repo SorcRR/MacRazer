@@ -10,7 +10,7 @@ import XCTest
 final class UsageStatsTests: XCTestCase {
     private let endpoint = URL(string: "https://reports.example/v1/stats")!
     private let cobra = UsagePing.Mouse(pid: 0x00B0, name: "Razer Cobra Pro (Wireless)", link: "dongle", supported: true)
-    private let unknown = UsagePing.Mouse(pid: 0x00B6, name: "Razer DeathAdder V3 Pro", link: "unknown", supported: false)
+    private let unknown = UsagePing.Mouse(pid: 0x0073, name: "Razer Mamba Wireless", link: "unknown", supported: false)
 
     /// Records every request and answers each with the next status, 200 once they run out.
     /// A status of 0 is a request that never got an answer.

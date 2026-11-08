@@ -279,15 +279,16 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(RazerDevices.support(pid: 0x00B6), .full)
         XCTAssertEqual(RazerDevices.connection(pid: 0x00B6), .wired)
         XCTAssertTrue(RazerDevices.canCharge(pid: 0x00B7), "the V3 Pro's dongle now has a cable to charge on")
-        XCTAssertEqual(RazerDevices.support(pid: 0x0050), .full, "no lights MacRazer can drive, nothing left to ask")
-        XCTAssertFalse(RazerDevices.info(pid: 0x0050)!.hasLighting)
-        // Lighting still to confirm: hidden until a report shows it's safe.
-        for pid in [0x0088, 0x007C] {
+        // Lighting still to confirm: hidden until a report shows it works and is safe.
+        for pid in [0x0050, 0x0088, 0x007C] {
             XCTAssertEqual(RazerDevices.unverified(pid: pid), [.lighting], String(format: "0x%04X", pid))
             XCTAssertFalse(RazerDevices.info(pid: pid)!.hasLighting)
         }
         XCTAssertEqual(RazerDevices.unverified(pid: 0x00EC), [.dpi, .lighting])
         XCTAssertEqual(RazerDevices.connection(pid: 0x00EC), .bluetooth)
+        // A cable report can't settle the dongle's lighting: only a fully supported row is
+        // answered by a report from another link.
+        XCTAssertEqual(RazerDevices.rowsAnswered(byReportFrom: 0x0086, name: "Razer Basilisk Ultimate", on: .wired), [])
     }
 
     /// The other two all-passed mice from the 2026-11-04 reports.

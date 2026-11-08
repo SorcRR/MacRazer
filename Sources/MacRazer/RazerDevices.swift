@@ -238,9 +238,10 @@ enum RazerDevices {
         // Naga Hex V2 (in-app report on firmware v1.0, credited to foivos92): DPI and polling
         // passed with 0x1f. It has no battery: the read answers with zeros. Every LED group
         // answers brightness with 0 and ignores writes: OpenRazer drives this model with the
-        // older standard-matrix commands, which nothing here builds, so lighting stays hidden.
-        // 16000 is the vendor spec; the mouse took a 45000 DPI write without clamping.
-        .init(pid: 0x0050, name: "Razer Naga Hex V2", unverified: [], hasBattery: false, hasLighting: false, maxDPI: 16000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
+        // older standard-matrix commands, which nothing here builds, so lighting stays hidden
+        // and unverified, as on the Naga Chroma. The stage table read returns 0x03, so the
+        // popover shows no stages. 16000 is the vendor spec; it took 45000 without clamping.
+        .init(pid: 0x0050, name: "Razer Naga Hex V2", unverified: [.lighting], hasBattery: false, hasLighting: false, maxDPI: 16000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
         // DeathAdder Essential (two in-app reports, no credit given): wired only, battery 0x05.
         // DPI, the stage table and polling passed with 0x1f (every id answers on the cable);
         // it ships at 125 Hz. Its one light is green only (vendor spec): brightness on LOGO
