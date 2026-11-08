@@ -175,6 +175,9 @@ final class AccessoryTestTests: XCTestCase {
                                                           standardId: 0x3F, lightingId: 0x3F)),
             lighting: .init(outcome: .failed, data: .init(groups: ["ZERO": 255], dimShown: true, redShown: true,
                                                          dimmed: true, turnedRed: false, restored: true)))
+        // Fixed, not this machine's: the fixture must match on every Mac that runs the tests.
+        report.appVersion = "0.9.0"
+        report.macOSVersion = "26.6.2"
         report.credit = "@someone"
         report.verdict = report.currentVerdict()
         return report
