@@ -6,6 +6,8 @@ expect rough edges until 1.0.
 
 ## [Unreleased]
 
+## [0.9.0] — 2026-11-08
+
 ### Added
 - **Test the lighting on an untested keyboard or mousepad.** Its card in the popover now has a
   Test it button. The lights go dark, then red, then back to how they were, and you say what you
