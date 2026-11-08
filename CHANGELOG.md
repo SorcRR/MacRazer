@@ -7,6 +7,15 @@ expect rough edges until 1.0.
 ## [Unreleased]
 
 ### Added
+- **Six more mice from test reports.**
+  - **Basilisk V2:** DPI, stages, polling and lighting all work.
+  - **DeathAdder V3 Pro on its cable:** everything works. Its first dongle already did.
+  - **Naga Hex V2:** DPI and polling work. Its lights use older commands MacRazer doesn't
+    send yet, so they stay hidden. Thanks to foivos92.
+  - **Basilisk Ultimate over its dongle** and **DeathAdder V2 Pro on its cable:** battery, DPI
+    and polling work. Lighting didn't, so it stays hidden until a test shows it does.
+  - **Basilisk V4 HyperSpeed over Bluetooth:** battery works. DPI and lighting haven't been
+    tried there yet.
 - **Razer Basilisk Mobile, over its 2.4 GHz dongle.** Battery, DPI and its stages, polling rate
   and a static color with brightness all passed the device test. Its lighting has a color and off but no
   effects, so the popover offers just those two. The cable is recognised too, but nothing has been tested on

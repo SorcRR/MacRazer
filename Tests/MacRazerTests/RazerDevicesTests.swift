@@ -260,12 +260,34 @@ final class RazerDevicesTests: XCTestCase {
     /// dongle, and a cable of neither can't say which one it belongs with.
     func testDeathAdderV3ProGenerationsStayApart() {
         let name = "Razer DeathAdder V3 Pro"
-        XCTAssertEqual(RazerDevices.rowsAnswered(byReportFrom: 0x00B6, name: name, on: .wired), [0x00B7])
+        XCTAssertEqual(RazerDevices.rowsAnswered(byReportFrom: 0x00B6, name: name, on: .wired), [],
+                       "the first generation's cable has its own row now: nothing left to ask")
         XCTAssertEqual(RazerDevices.rowsAnswered(byReportFrom: 0x00C2, name: name, on: .wired), [0x00C3])
         XCTAssertEqual(RazerDevices.rowsAnswered(byReportFrom: 0xFFF0, name: name, on: .wired), [])
-        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00B7), [.init(connection: .wired, missing: nil)])
+        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00B7), [])
+        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00C3), [.init(connection: .wired, missing: nil)])
         XCTAssertEqual(RazerDevices.rowsAnswered(byReportFrom: 0x00B7, name: name, on: .wirelessDongle), [],
                        "the other generation's dongle isn't its cable")
+    }
+
+    /// The six mice from the 2026-11-07 and 11-08 reports.
+    func testMiceFromTheNovemberEighthReports() {
+        // Everything passed, with what each lacks marked.
+        XCTAssertEqual(RazerDevices.support(pid: 0x0085), .full)
+        XCTAssertEqual(RazerDevices.notOnMouse(pid: 0x0085), [.battery])
+        XCTAssertEqual(RazerDevices.maxDPI(pid: 0x0085), 20000)
+        XCTAssertEqual(RazerDevices.support(pid: 0x00B6), .full)
+        XCTAssertEqual(RazerDevices.connection(pid: 0x00B6), .wired)
+        XCTAssertTrue(RazerDevices.canCharge(pid: 0x00B7), "the V3 Pro's dongle now has a cable to charge on")
+        XCTAssertEqual(RazerDevices.support(pid: 0x0050), .full, "no lights MacRazer can drive, nothing left to ask")
+        XCTAssertFalse(RazerDevices.info(pid: 0x0050)!.hasLighting)
+        // Lighting still to confirm: hidden until a report shows it's safe.
+        for pid in [0x0088, 0x007C] {
+            XCTAssertEqual(RazerDevices.unverified(pid: pid), [.lighting], String(format: "0x%04X", pid))
+            XCTAssertFalse(RazerDevices.info(pid: pid)!.hasLighting)
+        }
+        XCTAssertEqual(RazerDevices.unverified(pid: 0x00EC), [.dpi, .lighting])
+        XCTAssertEqual(RazerDevices.connection(pid: 0x00EC), .bluetooth)
     }
 
     /// The other two all-passed mice from the 2026-11-04 reports.
@@ -500,7 +522,7 @@ final class RazerDevicesTests: XCTestCase {
     /// The Bluetooth Cobra HyperSpeed is the same mouse as the dongle one: same LED for
     /// brightness (verified over BLE: LOGO answers, SCROLL refuses) and same discharge curve.
     func testBluetoothCobraHyperSpeed() {
-        XCTAssertEqual(RazerDevices.bluetoothPIDs, [0x00BA, 0x00CE, 0x00DC])
+        XCTAssertEqual(RazerDevices.bluetoothPIDs, [0x00BA, 0x00CE, 0x00DC, 0x00EC])
         XCTAssertEqual(RazerDevices.bluetoothModelNames, ["Razer Cobra HyperSpeed", "Razer Basilisk V3 X HyperSpeed"],
                        "user-facing text names the model, not the link")
         XCTAssertEqual(RazerDevices.brightnessLed(pid: 0x00DC), Razer.logoLed)
