@@ -675,29 +675,17 @@ final class DeviceTestModel: ObservableObject {
     /// The report as it would leave the window now: answers folded in, fields cleaned, and
     /// the verdict worked out.
     func finalReport() -> DeviceReport? {
-        guard var report else { return nil }
-        report.comment = Self.reportComment(comment, dockMouse: testsDock ? dockMouse : nil)
-        report.credit = DeviceReportOutput.cleaned(credit, max: DeviceReportOutput.maxCredit,
-                                                   units: DeviceReportOutput.maxCreditUnits, singleLine: true)
-        report.replyEmail = emailProblem == nil
-            ? DeviceReportOutput.cleaned(replyEmail, max: DeviceReportOutput.maxEmail,
-                                         units: DeviceReportOutput.maxEmail, singleLine: true) : nil
-        report.verdict = report.currentVerdict()
-        // Every way out carries the same report, so the one sized for Send. Fitting encodes it
-        // to measure it, and the review screen asks on every keystroke, so the last fit is kept.
-        if let lastFit, lastFit.input == report { return lastFit.output }
-        let fitted = DeviceReportOutput.fitted(report)
-        lastFit = (report, fitted)
-        return fitted
+        guard let report else { return nil }
+        // Every way out carries the same report, so the one sized for Send.
+        return fit.fitted(DeviceReportOutput.prepared(
+            report, comment: Self.reportComment(comment, dockMouse: testsDock ? dockMouse : nil),
+            credit: credit, replyEmail: replyEmail))
     }
-    private var lastFit: (input: DeviceReport, output: DeviceReport)?
+    private var fit = DeviceReportOutput.FitCache()
 
-    /// Copies the report without the reply email: a clipboard tends to end up pasted somewhere
-    /// public, and the address is only for the maintainer.
     func copyReport() {
         guard let report = finalReport() else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(DeviceReportOutput.json(report, forPublic: true), forType: .string)
+        ReportShare.copy(report)
         copied = true
     }
 
@@ -716,10 +704,8 @@ final class DeviceTestModel: ObservableObject {
 
     func openGitHubIssue() {
         guard let report = finalReport() else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(DeviceReportOutput.issueClipboard(report), forType: .string)
+        ReportShare.openIssue(report)
         issueOpened = true
-        NSWorkspace.shared.open(DeviceReportOutput.githubIssue(report))
     }
 
     // MARK: - Ending
@@ -931,5 +917,23 @@ enum DeviceTestFlow {
     static func skipped(focus: [RazerFeature]?) -> Set<DeviceTestModel.Stage> {
         guard let focus else { return [] }
         return Set(RazerFeature.allCases.filter { !focus.contains($0) }.map(stage(for:))).union([.buttons])
+    }
+}
+
+/// Copy and Open GitHub issue, shared by the mouse and accessory test windows.
+@MainActor
+enum ReportShare {
+    /// Without the reply email: a clipboard tends to end up pasted somewhere public, and the
+    /// address is only for the maintainer.
+    static func copy(_ report: DeviceReport) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(DeviceReportOutput.json(report, forPublic: true), forType: .string)
+    }
+
+    /// Puts the full report on the clipboard and opens a new issue that asks for it.
+    static func openIssue(_ report: DeviceReport) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(DeviceReportOutput.issueClipboard(report), forType: .string)
+        NSWorkspace.shared.open(DeviceReportOutput.githubIssue(report))
     }
 }

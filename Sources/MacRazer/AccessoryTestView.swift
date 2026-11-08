@@ -52,7 +52,9 @@ struct AccessoryTestView: View {
             if !model.canShowRed {
                 reportNote("Pick an effect for it in MacRazer first and the test can check colours too. Without one there's nothing to put back afterwards.")
             }
-            if model.accessory?.synapseRunning == true {
+            if model.accessory?.canWrite == false {
+                reportWarning("Razer Synapse has this \(model.noun)'s colours. Turn on Use MacRazer on its card to run the test.")
+            } else if model.accessory?.synapseRunning == true {
                 reportWarning("Razer Synapse is running and may change the lights during the test. Quitting it first gives a clearer result.")
             }
             reportNote("Nothing leaves your Mac until you choose to send it.")
@@ -66,11 +68,13 @@ struct AccessoryTestView: View {
                 reportRunning(model.canShowRed ? "Watch your \(model.noun): dark, then red…" : "Watch your \(model.noun): dark for a moment…")
             } else if let record = model.report?.lighting {
                 if let data = record.data, data.dimShown {
-                    question("Did the lights go dark for a moment?", $model.dimmed)
-                    if data.redShown { question("Then did they turn red?", $model.turnedRed) }
+                    reportQuestion("Did the lights go dark for a moment?", $model.dimmed)
+                    if data.redShown { reportQuestion("Then did they turn red?", $model.turnedRed) }
                     reportNote(data.restored
                                ? "Everything has been put back."
                                : "Something couldn't be put back. Check its lighting in the popover.")
+                } else if model.unreachable {
+                    reportWarning("MacRazer lost touch with your \(model.noun) before the test could start. Check it's plugged in, close this window and try again.")
                 } else {
                     reportWarning("Your \(model.noun) didn't take the lighting commands, so there was nothing to watch. Send the report anyway: it shows us which commands it refused.")
                 }
@@ -88,11 +92,11 @@ struct AccessoryTestView: View {
             if let report, let verdict = report.verdict {
                 card {
                     VStack(spacing: 4) {
-                        row(report.device.name, String(format: "0x%04X", report.device.productID)
+                        reportRow(report.device.name, String(format: "0x%04X", report.device.productID)
                             + (report.identify.data?.firmware.map { ", \($0)" } ?? ""))
-                        if !verdict.passed.isEmpty { row("Worked", verdict.passed.joined(separator: ", "), color: .razerGreenText) }
-                        if !verdict.failed.isEmpty { row("Didn't work", verdict.failed.joined(separator: ", "), color: .batteryMid) }
-                        if !verdict.skipped.isEmpty { row("Not sure", verdict.skipped.joined(separator: ", ")) }
+                        if !verdict.passed.isEmpty { reportRow("Worked", verdict.passed.joined(separator: ", "), color: .razerGreenText) }
+                        if !verdict.failed.isEmpty { reportRow("Didn't work", verdict.failed.joined(separator: ", "), color: .batteryMid) }
+                        if !verdict.skipped.isEmpty { reportRow("Not sure", verdict.skipped.joined(separator: ", ")) }
                     }
                 }
                 DisclosureGroup("Show full report") {
@@ -157,7 +161,7 @@ struct AccessoryTestView: View {
                 Spacer()
                 Button("Start") { model.start() }
                     .keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
-                    .disabled(model.running || model.accessory?.isOpen != true)
+                    .disabled(model.running || model.accessory?.isOpen != true || model.accessory?.canWrite != true)
             case .lighting:
                 Button("Cancel", action: onClose).disabled(model.running)
                 Spacer()
@@ -185,27 +189,4 @@ struct AccessoryTestView: View {
         .controlSize(.large)
     }
 
-    // MARK: Pieces
-
-    private func row(_ label: String, _ value: String, color: Color = .primary) -> some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(label).foregroundStyle(.secondary)
-            Spacer(minLength: 12)
-            Text(value).foregroundStyle(color).multilineTextAlignment(.trailing)
-        }
-        .font(.system(size: 12))
-    }
-
-    private func question(_ text: String, _ answer: Binding<DeviceTestModel.Answer?>) -> some View {
-        card {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(text).font(.system(size: 12, weight: .medium))
-                ChoiceButtons(selection: answer, options: [
-                    .init(value: .some(.yes), title: "Yes", icon: "checkmark.circle"),
-                    .init(value: .some(.no), title: "No", icon: "xmark.circle"),
-                    .init(value: .some(.unsure), title: "Not sure", icon: "questionmark.circle"),
-                ])
-            }
-        }
-    }
 }

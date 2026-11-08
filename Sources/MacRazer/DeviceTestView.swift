@@ -107,8 +107,8 @@ struct DeviceTestView: View {
                 reportTitle("Help finish support for your \(model.deviceName)")
                 card {
                     VStack(spacing: 4) {
-                        row("Already works", Self.list(works), color: .razerGreenText)
-                        row("Still needs testing", Self.list(missing), color: .batteryMid)
+                        reportRow("Already works", Self.list(works), color: .razerGreenText)
+                        reportRow("Still needs testing", Self.list(missing), color: .batteryMid)
                     }
                 }
                 if model.onlyOtherLinksConfirm.isEmpty {
@@ -199,17 +199,17 @@ struct DeviceTestView: View {
             } else if let report = model.report, let bt = report.bluetooth {
                 card {
                     VStack(spacing: 4) {
-                        row("Name", report.device.name)
-                        row("Product ID", String(format: "0x%04X", report.device.productID))
-                        row("Razer's service", bt.razerService ? "Yes" : "No")
+                        reportRow("Name", report.device.name)
+                        reportRow("Product ID", String(format: "0x%04X", report.device.productID))
+                        reportRow("Razer's service", bt.razerService ? "Yes" : "No")
                         // The report's own reading: Razer's battery read when it answered, else
                         // the standard service, so this shows what will be sent.
-                        row("Battery", report.battery.data?.percent.map { "\($0)%" } ?? "Unknown")
+                        reportRow("Battery", report.battery.data?.percent.map { "\($0)%" } ?? "Unknown")
                         if let reads = report.capabilities?.reads {
-                            row("Answered", "\(reads.filter { $0.answer == .answered }.count) of \(reads.count) reads")
+                            reportRow("Answered", "\(reads.filter { $0.answer == .answered }.count) of \(reads.count) reads")
                         }
                         if let table = report.capabilities?.buttonTable, !table.isEmpty {
-                            row("Button table", "\(table.count) \(table.count == 1 ? "entry" : "entries")")
+                            reportRow("Button table", "\(table.count) \(table.count == 1 ? "entry" : "entries")")
                         }
                     }
                 }
@@ -249,11 +249,11 @@ struct DeviceTestView: View {
             } else if let report = model.report {
                 card {
                     VStack(spacing: 4) {
-                        row("Name", report.device.name)
-                        row("Product ID", String(format: "0x%04X", report.device.productID))
-                        row("Firmware", report.identify.data?.firmware ?? "Unknown")
-                        row("Interfaces", "\(report.device.interfaces.count)" + (report.device.controlInterface != nil ? ", control found" : ""))
-                        row("Command format", commandFormat(report.identify.data))
+                        reportRow("Name", report.device.name)
+                        reportRow("Product ID", String(format: "0x%04X", report.device.productID))
+                        reportRow("Firmware", report.identify.data?.firmware ?? "Unknown")
+                        reportRow("Interfaces", "\(report.device.interfaces.count)" + (report.device.controlInterface != nil ? ", control found" : ""))
+                        reportRow("Command format", commandFormat(report.identify.data))
                     }
                 }
                 outcomeRow("Identify", report.identify.outcome)
@@ -294,8 +294,8 @@ struct DeviceTestView: View {
         } else if let record = model.report?.battery {
             card {
                 VStack(spacing: 4) {
-                    row("Battery", record.data?.percent.map { "\($0)%" } ?? "No answer")
-                    row("Charging", record.data?.charging.map { $0 ? "Yes" : "No" } ?? "No answer")
+                    reportRow("Battery", record.data?.percent.map { "\($0)%" } ?? "No answer")
+                    reportRow("Charging", record.data?.charging.map { $0 ? "Yes" : "No" } ?? "No answer")
                 }
             }
             outcomeRow("Battery", record.outcome)
@@ -313,11 +313,11 @@ struct DeviceTestView: View {
             } else if let record = model.report?.dpi, record.data != nil || record.error != nil {
                 card {
                     VStack(spacing: 4) {
-                        row("Yours", record.data?.original.map(String.init) ?? "No answer")
-                        row("Test, read back", "\(record.data?.test.map(String.init) ?? "–"), \(record.data?.readBack.map(String.init) ?? "–")")
-                        row("Put back", record.data?.restored == true ? "Yes" : "No", color: record.data?.restored == true ? .razerGreenText : .batteryMid)
-                        if let stages = record.data?.stages { row("Stages", stages.map(String.init).joined(separator: " · ")) }
-                        if let max = record.data?.maxProbe { row("Highest it kept", String(max)) }
+                        reportRow("Yours", record.data?.original.map(String.init) ?? "No answer")
+                        reportRow("Test, read back", "\(record.data?.test.map(String.init) ?? "–"), \(record.data?.readBack.map(String.init) ?? "–")")
+                        reportRow("Put back", record.data?.restored == true ? "Yes" : "No", color: record.data?.restored == true ? .razerGreenText : .batteryMid)
+                        if let stages = record.data?.stages { reportRow("Stages", stages.map(String.init).joined(separator: " · ")) }
+                        if let max = record.data?.maxProbe { reportRow("Highest it kept", String(max)) }
                     }
                 }
                 outcomeRow("DPI", record.outcome)
@@ -343,9 +343,9 @@ struct DeviceTestView: View {
             } else if let record = model.report?.polling, record.data != nil || record.error != nil {
                 card {
                     VStack(spacing: 4) {
-                        row("Yours", record.data?.original.map { "\($0) Hz" } ?? "No answer")
-                        row("Test, read back", "\(record.data?.test.map { "\($0) Hz" } ?? "–"), \(record.data?.readBack.map { "\($0) Hz" } ?? "–")")
-                        row("Put back", record.data?.restored == true ? "Yes" : "No", color: record.data?.restored == true ? .razerGreenText : .batteryMid)
+                        reportRow("Yours", record.data?.original.map { "\($0) Hz" } ?? "No answer")
+                        reportRow("Test, read back", "\(record.data?.test.map { "\($0) Hz" } ?? "–"), \(record.data?.readBack.map { "\($0) Hz" } ?? "–")")
+                        reportRow("Put back", record.data?.restored == true ? "Yes" : "No", color: record.data?.restored == true ? .razerGreenText : .batteryMid)
                     }
                 }
                 outcomeRow("Polling rate", record.outcome)
@@ -370,8 +370,8 @@ struct DeviceTestView: View {
             reportRunning("Watch your mouse: dark, then red…")
         } else if let record = model.report?.lighting, record.data != nil {
             if let data = record.data, data.dimShown {
-                question("Did the lights go dark for a moment?", $model.dimmed)
-                if data.redShown { question("Then did they turn red?", $model.turnedRed) }
+                reportQuestion("Did the lights go dark for a moment?", $model.dimmed)
+                if data.redShown { reportQuestion("Then did they turn red?", $model.turnedRed) }
                 reportNote(data.restored ? "Everything has been put back." : "Something couldn't be put back. Check the lighting in the popover.")
             } else {
                 outcomeRow("Lighting", record.outcome)
@@ -455,14 +455,14 @@ struct DeviceTestView: View {
             if let report, let verdict = report.verdict {
                 card {
                     VStack(spacing: 4) {
-                        row(report.device.name, String(format: "0x%04X", report.device.productID) + (report.identify.data?.firmware.map { ", \($0)" } ?? ""))
-                        if !verdict.passed.isEmpty { row("Worked", verdict.passed.joined(separator: ", "), color: .razerGreenText) }
-                        if !verdict.failed.isEmpty { row("Didn't work", verdict.failed.joined(separator: ", "), color: .batteryMid) }
-                        if !verdict.notSupported.isEmpty { row("Not on this mouse", verdict.notSupported.joined(separator: ", ")) }
+                        reportRow(report.device.name, String(format: "0x%04X", report.device.productID) + (report.identify.data?.firmware.map { ", \($0)" } ?? ""))
+                        if !verdict.passed.isEmpty { reportRow("Worked", verdict.passed.joined(separator: ", "), color: .razerGreenText) }
+                        if !verdict.failed.isEmpty { reportRow("Didn't work", verdict.failed.joined(separator: ", "), color: .batteryMid) }
+                        if !verdict.notSupported.isEmpty { reportRow("Not on this mouse", verdict.notSupported.joined(separator: ", ")) }
                         let leftOut = model.leftOut(verdict)
-                        if !leftOut.isEmpty { row("Already verified", leftOut.joined(separator: ", ")) }
+                        if !leftOut.isEmpty { reportRow("Already verified", leftOut.joined(separator: ", ")) }
                         let skipped = verdict.skipped.filter { !leftOut.contains($0) }
-                        if !skipped.isEmpty { row("Skipped", skipped.joined(separator: ", ")) }
+                        if !skipped.isEmpty { reportRow("Skipped", skipped.joined(separator: ", ")) }
                     }
                 }
                 DisclosureGroup("Show full report") {
@@ -684,15 +684,6 @@ struct DeviceTestView: View {
             .background(Capsule().fill(color.opacity(0.18)))
     }
 
-    private func row(_ label: String, _ value: String, color: Color = .primary) -> some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(label).foregroundStyle(.secondary)
-            Spacer(minLength: 12)
-            Text(value).foregroundStyle(color).multilineTextAlignment(.trailing)
-        }
-        .font(.system(size: 12))
-    }
-
     private func outcomeRow(_ label: String, _ outcome: DeviceReport.Outcome) -> some View {
         let (text, color): (String, Color) = {
             switch outcome {
@@ -702,19 +693,7 @@ struct DeviceTestView: View {
             case .skipped: return ("Skipped", .secondary)
             }
         }()
-        return row(label, text, color: color)
+        return reportRow(label, text, color: color)
     }
 
-    private func question(_ text: String, _ answer: Binding<DeviceTestModel.Answer?>) -> some View {
-        card {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(text).font(.system(size: 12, weight: .medium))
-                ChoiceButtons(selection: answer, options: [
-                    .init(value: .some(.yes), title: "Yes", icon: "checkmark.circle"),
-                    .init(value: .some(.no), title: "No", icon: "xmark.circle"),
-                    .init(value: .some(.unsure), title: "Not sure", icon: "questionmark.circle"),
-                ])
-            }
-        }
-    }
 }

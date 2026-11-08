@@ -59,6 +59,32 @@ enum DeviceReportOutput {
         report.accessory?.kind.label.lowercased() ?? "mouse"
     }
 
+    /// The report as it leaves a test window: `comment` already cleaned by the window (the
+    /// mouse test puts the dock line ahead of it), the credit and reply email cleaned here, a
+    /// bad email left out, and the verdict worked out. Not yet `fitted`: see `FitCache`.
+    static func prepared(_ report: DeviceReport, comment: String?, credit: String, replyEmail: String) -> DeviceReport {
+        var report = report
+        report.comment = comment
+        report.credit = cleaned(credit, max: maxCredit, units: maxCreditUnits, singleLine: true)
+        report.replyEmail = emailProblem(replyEmail) == nil
+            ? cleaned(replyEmail, max: maxEmail, units: maxEmail, singleLine: true) : nil
+        report.verdict = report.currentVerdict()
+        return report
+    }
+
+    /// `fitted`, remembered for the last report it was asked about. Fitting encodes the
+    /// report to measure it, and a review screen asks on every keystroke.
+    struct FitCache {
+        private var last: (input: DeviceReport, output: DeviceReport)?
+
+        mutating func fitted(_ report: DeviceReport) -> DeviceReport {
+            if let last, last.input == report { return last.output }
+            let output = DeviceReportOutput.fitted(report)
+            last = (report, output)
+            return output
+        }
+    }
+
     static func issueTitle(_ report: DeviceReport) -> String {
         let prefix = report.verdict?.subjectPrefix(noun: noun(report)) ?? "Device report"
         return "\(prefix): \(report.device.name) (\(String(format: "0x%04X", report.device.productID)))"

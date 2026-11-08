@@ -123,6 +123,35 @@ final class AccessoryTestTests: XCTestCase {
         XCTAssertEqual(DeviceReportOutput.issueTitle(r), "New keyboard: all passed: Razer Ornata V3 (0x02A1)")
     }
 
+    func testAnAccessoryThatWentAwayIsAPartialReportNotAFailure() {
+        // Nothing was asked, so the maintainer mustn't read it as refused commands.
+        var r = DeviceTestSteps.accessoryReport(info: ornata, name: ornata.name, interfaces: [], control: nil,
+                                                identify: .init(outcome: .skipped), lighting: .init(outcome: .skipped))
+        r.verdict = r.currentVerdict()
+        XCTAssertEqual(r.verdict?.kind, .partlyTested)
+        XCTAssertEqual(r.verdict?.failed, [])
+    }
+
+    func testNothingIsPutBackOverSynapse() {
+        let defaults = UserDefaults(suiteName: "AccessoryTestTests.\(UUID())")!
+        AccessoryController.store(AccessoryLighting(effect: .staticColor, color: RGB(r: 0, g: 255, b: 0), brightness: 50),
+                                  pid: ornata.pid, defaults: defaults)
+        let accessory = AccessoryController(id: .init(pid: ornata.pid, locationID: 1), info: ornata, defaults: defaults)
+        XCTAssertNotNil(accessory.lightingRestoreReport(), "MacRazer's own effect goes back")
+        accessory.loadPreviewState(synapse: true)
+        XCTAssertFalse(accessory.canWrite)
+        XCTAssertNil(accessory.lightingRestoreReport(), "Synapse has the colours: leave them alone")
+    }
+
+    func testTheFitIsKeptForAnUnchangedReport() {
+        var cache = DeviceReportOutput.FitCache()
+        let r = report(lighting: .passed)
+        XCTAssertEqual(cache.fitted(r), DeviceReportOutput.fitted(r))
+        var changed = r
+        changed.comment = "different"
+        XCTAssertEqual(cache.fitted(changed).comment, "different", "a new report is fitted afresh")
+    }
+
     func testThankYouSaysWhatHappensNext() {
         let v = report(lighting: .passed).verdict!
         XCTAssertTrue(AccessoryTestModel.thankYou(v, noun: "keyboard").contains("UNTESTED tag comes off"))

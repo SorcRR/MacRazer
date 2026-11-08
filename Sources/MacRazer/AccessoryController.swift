@@ -432,10 +432,11 @@ final class AccessoryController: ObservableObject, Identifiable, @unchecked Send
     }
 
     /// The effect command that puts back what the accessory should show, for the lighting
-    /// test to end on. Nil when MacRazer has set nothing on it: its own effect can't be read,
-    /// so the test then leaves colours alone. Main thread.
+    /// test to end on. Nil when MacRazer has set nothing on it, or Synapse has its colours:
+    /// either way the effect showing can't be read, so the test then leaves colours alone.
+    /// Main thread.
     func lightingRestoreReport() -> RazerReport? {
-        guard let intended = intendedLighting, let effect = intended.effect else { return nil }
+        guard canWrite, let intended = intendedLighting, let effect = intended.effect else { return nil }
         return RazerAccessories.report(for: effect, color: intended.color,
                                        waveSpeed: intended.waveSpeed ?? WaveSpeed.standard, on: info)
     }

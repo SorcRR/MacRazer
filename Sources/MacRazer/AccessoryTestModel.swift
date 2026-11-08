@@ -69,12 +69,20 @@ final class AccessoryTestModel: ObservableObject {
     // MARK: Running
 
     func start() {
-        guard let accessory, !running else { return }
+        guard let accessory, accessory.canWrite, !running else { return }
+        // Set here, not in the task: the screen shows the spinner from the first frame, and a
+        // second Start can't slip in before the task begins.
+        running = true
+        unreachable = false
         stage = .lighting
         dimmed = nil
         turnedRed = nil
         Task { await run(accessory) }
     }
+
+    /// The accessory went away before the test could talk to it. Its report says so rather
+    /// than reading as lighting that failed.
+    @Published private(set) var unreachable = false
 
     private struct Result: Sendable {
         let name: String
@@ -85,7 +93,6 @@ final class AccessoryTestModel: ObservableObject {
     }
 
     private func run(_ accessory: AccessoryController) async {
-        running = true
         defer { running = false }
         let info = accessory.info
         let restore = accessory.lightingRestoreReport()
@@ -99,10 +106,13 @@ final class AccessoryTestModel: ObservableObject {
         // Closed and reset while it ran: the result is for a window that has moved on.
         guard generation == started else { return }
         guard let result else {
+            // Nothing was asked, so nothing failed: both steps are skipped, and the verdict is a
+            // partial report, not a protocol failure.
+            unreachable = true
+            let note = "The \(noun) wasn't reachable."
             report = DeviceTestSteps.accessoryReport(
                 info: info, name: info.name, interfaces: [], control: nil,
-                identify: .init(outcome: .failed, error: "The \(noun) wasn't reachable."),
-                lighting: .init(outcome: .skipped, error: "The \(noun) wasn't reachable."))
+                identify: .init(outcome: .skipped, error: note), lighting: .init(outcome: .skipped, error: note))
             return
         }
         report = DeviceTestSteps.accessoryReport(info: info, name: result.name.isEmpty ? info.name : result.name,
@@ -137,25 +147,18 @@ final class AccessoryTestModel: ObservableObject {
     /// The report as it would leave the window now: answers folded in, fields cleaned, and
     /// the verdict worked out.
     func finalReport() -> DeviceReport? {
-        guard var report else { return nil }
-        report.comment = DeviceReportOutput.cleaned(comment, max: DeviceReportOutput.maxComment,
-                                                    units: DeviceReportOutput.maxCommentUnits, singleLine: false)
-        report.credit = DeviceReportOutput.cleaned(credit, max: DeviceReportOutput.maxCredit,
-                                                   units: DeviceReportOutput.maxCreditUnits, singleLine: true)
-        report.replyEmail = emailProblem == nil
-            ? DeviceReportOutput.cleaned(replyEmail, max: DeviceReportOutput.maxEmail,
-                                         units: DeviceReportOutput.maxEmail, singleLine: true) : nil
-        report.verdict = report.currentVerdict()
-        return DeviceReportOutput.fitted(report)
+        guard let report else { return nil }
+        let comment = DeviceReportOutput.cleaned(comment, max: DeviceReportOutput.maxComment,
+                                                 units: DeviceReportOutput.maxCommentUnits, singleLine: false)
+        return fit.fitted(DeviceReportOutput.prepared(report, comment: comment, credit: credit, replyEmail: replyEmail))
     }
+    private var fit = DeviceReportOutput.FitCache()
 
     var emailProblem: String? { DeviceReportOutput.emailProblem(replyEmail) }
 
-    /// Without the reply email: a clipboard tends to end up pasted somewhere public.
     func copyReport() {
         guard let report = finalReport() else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(DeviceReportOutput.json(report, forPublic: true), forType: .string)
+        ReportShare.copy(report)
         copied = true
     }
 
@@ -173,10 +176,8 @@ final class AccessoryTestModel: ObservableObject {
 
     func openGitHubIssue() {
         guard let report = finalReport() else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(DeviceReportOutput.issueClipboard(report), forType: .string)
+        ReportShare.openIssue(report)
         issueOpened = true
-        NSWorkspace.shared.open(DeviceReportOutput.githubIssue(report))
     }
 
     /// What the thank-you says, from the verdict. A model already tested is told it still
@@ -192,7 +193,7 @@ final class AccessoryTestModel: ObservableObject {
         case .newPartlyPassed:
             return "Its lighting didn't work, so your report shows us exactly what to fix for your \(noun)."
         case .partlyTested:
-            return "Some answers were \"Not sure\", so this is a partial report. It still helps."
+            return "Part of the test didn't run or had a \"Not sure\", so this is a partial report. It still helps."
         }
     }
 
@@ -208,6 +209,7 @@ final class AccessoryTestModel: ObservableObject {
         copied = false
         issueOpened = false
         sendState = .idle
+        unreachable = false
         generation += 1
     }
 }

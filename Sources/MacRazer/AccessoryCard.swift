@@ -172,7 +172,8 @@ struct AccessoryCard: View {
                 VStack(alignment: .leading, spacing: 8) {
                     if accessory.synapseRunning { synapseToggleRow }
                     if accessory.canWrite { controls }
-                    if !info.verified { testRow }
+                    // Not while Synapse has its colours: the test would write over them.
+                    if !info.verified && accessory.canWrite { testRow }
                 }
                 .padding(.horizontal, 12)
                 .padding(.bottom, 12)

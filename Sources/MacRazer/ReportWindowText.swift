@@ -19,6 +19,30 @@ func reportWarning(_ text: String) -> some View {
     Text(text).font(.system(size: 12)).foregroundStyle(Color.batteryMid).fixedSize(horizontal: false, vertical: true)
 }
 
+/// A label and its value on one line, as the review card lists them.
+@MainActor func reportRow(_ label: String, _ value: String, color: Color = .primary) -> some View {
+    HStack(alignment: .firstTextBaseline) {
+        Text(label).foregroundStyle(.secondary)
+        Spacer(minLength: 12)
+        Text(value).foregroundStyle(color).multilineTextAlignment(.trailing)
+    }
+    .font(.system(size: 12))
+}
+
+/// A yes, no or not-sure question about what the person saw, as the lighting steps ask it.
+@MainActor func reportQuestion(_ text: String, _ answer: Binding<DeviceTestModel.Answer?>) -> some View {
+    card {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(text).font(.system(size: 12, weight: .medium))
+            ChoiceButtons(selection: answer, options: [
+                .init(value: .some(.yes), title: "Yes", icon: "checkmark.circle"),
+                .init(value: .some(.no), title: "No", icon: "xmark.circle"),
+                .init(value: .some(.unsure), title: "Not sure", icon: "questionmark.circle"),
+            ])
+        }
+    }
+}
+
 func reportRunning(_ text: String) -> some View {
     HStack(spacing: 8) {
         ProgressView().controlSize(.small)
