@@ -132,6 +132,8 @@ struct AccessoryCard: View {
     let hasMouse: Bool
     /// What the mouse's light shows, for the icon and the dot while following it.
     let mouseGlow: AccessoryIcon.Glow
+    /// Opens the lighting test, offered while the model is untested.
+    let onTest: () -> Void
     /// Opens the colour page for this accessory.
     let onPickColor: () -> Void
 
@@ -143,10 +145,11 @@ struct AccessoryCard: View {
 
     /// `startsOpen` applies until the person opens or closes the card once.
     init(accessory: AccessoryController, hasMouse: Bool, mouseGlow: AccessoryIcon.Glow, startsOpen: Bool,
-         onPickColor: @escaping () -> Void) {
+         onTest: @escaping () -> Void, onPickColor: @escaping () -> Void) {
         self.accessory = accessory
         self.hasMouse = hasMouse
         self.mouseGlow = mouseGlow
+        self.onTest = onTest
         self.onPickColor = onPickColor
         _expanded = AppStorage(wrappedValue: startsOpen, "popoverAccessoryExpanded.\(accessory.info.pid)")
         _brightness = State(initialValue: Double(accessory.lighting.brightness))
@@ -169,6 +172,7 @@ struct AccessoryCard: View {
                 VStack(alignment: .leading, spacing: 8) {
                     if accessory.synapseRunning { synapseToggleRow }
                     if accessory.canWrite { controls }
+                    if !info.verified { testRow }
                 }
                 .padding(.horizontal, 12)
                 .padding(.bottom, 12)
@@ -296,6 +300,23 @@ struct AccessoryCard: View {
                 .font(.system(size: 10.5))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// An untested model's way to say whether the lighting works on it.
+    private var testRow: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "checkmark.seal")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+            Text("Not tried on this \(info.kind.label.lowercased()) yet.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 6)
+            Button("Test it", action: onTest)
+                .controlSize(.small)
+                .help("A short test of its lighting. You can send us the result.")
         }
     }
 

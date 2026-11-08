@@ -1,0 +1,180 @@
+{
+  "accessory" : {
+    "brightnessLed" : 0,
+    "effectLed" : 0,
+    "kind" : "mousepad",
+    "transactionId" : 63,
+    "verified" : false
+  },
+  "appVersion" : "16.0",
+  "battery" : {
+    "exchanges" : [
+
+    ],
+    "outcome" : "skipped"
+  },
+  "buttons" : {
+    "exchanges" : [
+
+    ],
+    "outcome" : "skipped"
+  },
+  "credit" : "@someone",
+  "device" : {
+    "controlInterface" : 0,
+    "interfaces" : [
+      {
+        "maxFeatureReportSize" : 90,
+        "maxInputReportSize" : 8,
+        "product" : "Razer Firefly V2 Pro",
+        "productID" : 3080,
+        "transport" : "USB",
+        "usage" : 2,
+        "usagePage" : 1
+      }
+    ],
+    "name" : "Razer Firefly V2 Pro",
+    "productID" : 3080,
+    "vendorID" : 5426
+  },
+  "dpi" : {
+    "exchanges" : [
+
+    ],
+    "outcome" : "skipped"
+  },
+  "identify" : {
+    "data" : {
+      "firmware" : "v1.0",
+      "lightingAttempts" : [
+        {
+          "answered" : false,
+          "groups" : [
+
+          ],
+          "id" : 31,
+          "refused" : false
+        },
+        {
+          "answered" : true,
+          "groups" : [
+            "ZERO"
+          ],
+          "id" : 63,
+          "refused" : false
+        },
+        {
+          "answered" : false,
+          "groups" : [
+
+          ],
+          "id" : 255,
+          "refused" : false
+        },
+        {
+          "answered" : false,
+          "groups" : [
+
+          ],
+          "id" : 8,
+          "refused" : false
+        },
+        {
+          "answered" : false,
+          "groups" : [
+
+          ],
+          "id" : 128,
+          "refused" : false
+        }
+      ],
+      "lightingId" : 63,
+      "standardAttempts" : [
+        {
+          "answered" : false,
+          "groups" : [
+
+          ],
+          "id" : 31,
+          "refused" : false
+        },
+        {
+          "answered" : true,
+          "groups" : [
+            "ZERO"
+          ],
+          "id" : 63,
+          "refused" : false
+        },
+        {
+          "answered" : false,
+          "groups" : [
+
+          ],
+          "id" : 255,
+          "refused" : false
+        },
+        {
+          "answered" : false,
+          "groups" : [
+
+          ],
+          "id" : 8,
+          "refused" : false
+        },
+        {
+          "answered" : false,
+          "groups" : [
+
+          ],
+          "id" : 128,
+          "refused" : false
+        }
+      ],
+      "standardId" : 63
+    },
+    "exchanges" : [
+
+    ],
+    "outcome" : "passed"
+  },
+  "lighting" : {
+    "data" : {
+      "dimShown" : true,
+      "dimmed" : true,
+      "groups" : {
+        "ZERO" : 255
+      },
+      "redShown" : true,
+      "restored" : true,
+      "turnedRed" : false
+    },
+    "exchanges" : [
+
+    ],
+    "outcome" : "failed"
+  },
+  "macOSVersion" : "26.6.2",
+  "polling" : {
+    "exchanges" : [
+
+    ],
+    "outcome" : "skipped"
+  },
+  "schemaVersion" : 5,
+  "verdict" : {
+    "failed" : [
+      "Lighting"
+    ],
+    "kind" : "newPartlyPassed",
+    "notSupported" : [
+
+    ],
+    "passed" : [
+      "Identify"
+    ],
+    "skipped" : [
+
+    ]
+  }
+}

@@ -199,12 +199,12 @@ case "render-ui":
     let launchAtLogin = LaunchAtLogin()
     launchAtLogin.loadPreviewState()
     // Accessories under "Other Razer devices": `keyboard` (Cynosa Chroma), `pad` (Firefly V2),
-    // `three` (both plus an untested Ornata V3). Then `follow` (the keyboard follows the
+    // `three` (both plus an untested Ornata V3), `untested` (the Ornata V3 alone, open). Then `follow` (the keyboard follows the
     // mouse), `wave`, `synapse` (Synapse running; `macrazer` gives the pad back to MacRazer).
     var accessoryPIDs: [Int] = []
     if args.contains("keyboard") || args.contains("three") { accessoryPIDs.append(0x022A) }
     if args.contains("pad") || args.contains("three") { accessoryPIDs.append(0x0C04) }
-    if args.contains("three") { accessoryPIDs.append(0x02A1) }
+    if args.contains("three") || args.contains("untested") { accessoryPIDs.append(0x02A1) }
     if !accessoryPIDs.isEmpty {
         Accessories.shared.loadPreviewState(pids: accessoryPIDs,
                                             followsMouse: args.contains("follow") ? [0x022A] : [],
@@ -252,7 +252,7 @@ case "render-ui":
         : AnyView(PopoverView(controller: controller, remapper: ButtonRemapper(), updateChecker: updateChecker,
                               launchAtLogin: launchAtLogin, appearance: renderAppearance,
                               onOpenSettings: {},
-                              onOpenDeviceTest: {})) // no windows in a render
+                              onOpenDeviceTest: {}, onTestAccessory: { _ in })) // no windows in a render
     // `hosted` draws native controls (segmented pickers, switches) instead of placeholders.
     if args.contains("hosted") { writeHostedPNG(rootView, to: path) } else { writeViewPNG(rootView, to: path) }
 
@@ -361,6 +361,20 @@ case "render-device-test":
     if args.contains("sent") { model.previewSendState(.sent) }
     if args.contains("failed") { model.previewSendState(.failed(.tooMany)) }
     writeViewPNG(DeviceTestView(model: model, onClose: {}), to: path)
+
+case "render-accessory-test":
+    // The lighting test for a keyboard or mousepad, without one plugged in:
+    // `render-accessory-test [intro|lighting|review] [pad] [sent] [path.png]`.
+    _ = NSApplication.shared
+    let accessoryPath = outputPath(args.dropFirst(), default: "accessory-test-preview.png")
+    let accessoryStage: AccessoryTestModel.Stage = args.contains("review") ? .review
+        : args.contains("lighting") ? .lighting : .intro
+    let accessoryInfo = RazerAccessories.info(pid: args.contains("pad") ? 0x0C08 : 0x02A1)!
+    let previewAccessory = AccessoryController(id: .init(pid: accessoryInfo.pid, locationID: 0), info: accessoryInfo)
+    previewAccessory.loadPreviewState()
+    let accessoryModel = AccessoryTestModel(reportEndpoint: URL(string: "https://reports.example/"))
+    accessoryModel.loadPreview(accessoryStage, accessory: previewAccessory, sent: args.contains("sent"))
+    writeHostedPNG(AccessoryTestView(model: accessoryModel, onClose: {}), to: accessoryPath)
 
 case "render-crash-report":
     // The window shown on the launch after a crash. `sent` shows the thank-you, `failed` a

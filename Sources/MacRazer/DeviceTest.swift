@@ -11,7 +11,7 @@ import Foundation
 /// Never in here: the serial number (the app keys a mouse by it, and it names one physical
 /// unit), USB locations, or anything about the Mac beyond its OS version.
 struct DeviceReport: Codable, Equatable {
-    static let currentSchema = 4
+    static let currentSchema = 5
 
     var schemaVersion = DeviceReport.currentSchema
     var appVersion: String
@@ -32,6 +32,9 @@ struct DeviceReport: Codable, Equatable {
     /// (`DeviceTestSteps.bluetoothReport`). Schema 4. Its reads are in `capabilities`, with
     /// the Bluetooth key's class and command in place of the USB ones.
     var bluetooth: BluetoothData?
+    /// Set for a keyboard or mousepad's lighting test (`AccessoryTestModel`), which runs only
+    /// Identify and Lighting. Schema 5. Nil for a mouse.
+    var accessory: AccessoryData?
     var verdict: DeviceTestVerdict?
     var comment: String?
     /// How the person would like to be credited in the README, if at all.
@@ -214,6 +217,25 @@ struct DeviceReport: Codable, Equatable {
         var error: String?
     }
 
+    /// What MacRazer drives a keyboard or mousepad with (`RazerAccessoryInfo`), so the report
+    /// says what the app had, the way `registry` does for a mouse.
+    struct AccessoryData: Codable, Equatable {
+        var kind: AccessoryKind
+        /// Tried on real hardware before this report.
+        var verified: Bool
+        var transactionId: UInt8
+        var effectLed: UInt8
+        var brightnessLed: UInt8
+
+        init(_ info: RazerAccessoryInfo) {
+            kind = info.kind
+            verified = info.verified
+            transactionId = info.transactionId
+            effectLed = info.effectLed
+            brightnessLed = info.brightnessLed
+        }
+    }
+
     struct CapabilityRead: Codable, Equatable {
         /// Which read, e.g. "pollingRate2" or "zoneEffect" (with `led`).
         var name: String
@@ -242,8 +264,14 @@ struct DeviceReport: Codable, Equatable {
 extension DeviceReport {
     /// The verdict for the steps as they stand. Buttons are left out: there is nothing a mouse
     /// can get wrong by having a particular set of them.
+    /// A keyboard or mousepad is tested on Identify and Lighting alone: it has none of the rest.
     func currentVerdict() -> DeviceTestVerdict {
-        DeviceTestVerdict.make(knownFullySupported: registry?.fullySupported ?? false, steps: [
+        if let accessory {
+            return DeviceTestVerdict.make(knownFullySupported: accessory.verified, steps: [
+                ("Identify", identify.outcome), ("Lighting", lighting.outcome),
+            ])
+        }
+        return DeviceTestVerdict.make(knownFullySupported: registry?.fullySupported ?? false, steps: [
             ("Identify", identify.outcome), ("Battery", battery.outcome), ("DPI", dpi.outcome),
             ("Polling rate", polling.outcome), ("Lighting", lighting.outcome),
         ])
@@ -327,13 +355,16 @@ struct DeviceTestVerdict: Codable, Equatable {
     }
 
     /// The email subject's prefix, so the maintainer's inbox sorts itself.
-    var subjectPrefix: String {
+    var subjectPrefix: String { subjectPrefix(noun: "mouse") }
+
+    /// `subjectPrefix` for a device that isn't a mouse: "New keyboard: all passed".
+    func subjectPrefix(noun: String) -> String {
         let ran = passed.count + failed.count
         switch kind {
         case .confirmed: return "Confirmation"
         case .possibleRegression: return "Possible regression"
-        case .newAllPassed: return "New mouse: all passed"
-        case .newPartlyPassed: return "New mouse: \(passed.count) of \(ran) passed"
+        case .newAllPassed: return "New \(noun): all passed"
+        case .newPartlyPassed: return "New \(noun): \(passed.count) of \(ran) passed"
         case .partlyTested: return "Partly tested"
         }
     }
@@ -371,16 +402,51 @@ enum DeviceTestSteps {
     static func identify(_ device: TransactionChannel, registry: RazerDeviceInfo?,
                          others: () -> [DeviceReport.InterfaceAttempt] = { [] })
         -> (record: DeviceReport.StepRecord<DeviceReport.IdentifyData>, sweep: [DeviceProbe.LEDAnswer]?) {
+        let found = identify(device, preferredStandard: registry?.transactionId,
+                             preferredMatrix: registry?.matrixTransactionId, others: others)
+        var record = found.record
+        // On a known model, the ids on record must be ones the mouse answers to: that is the
+        // regression a confirmation exists to catch, and lighting's id counts only where the
+        // model has lighting at all.
+        if let registry, let data = record.data {
+            let standard = data.standardAttempts + (data.dpiAttempts ?? [])
+            if !standard.contains(where: { $0.id == registry.transactionId && $0.answered }) { record.outcome = .failed }
+            if registry.hasLighting,
+               !data.lightingAttempts.contains(where: { $0.id == registry.matrixTransactionId && $0.answered }) {
+                record.outcome = .failed
+            }
+        }
+        return (record, found.sweep)
+    }
+
+    /// `identify` on a keyboard or mousepad. It fails when the id MacRazer stamps on its
+    /// lighting commands gets no brightness answer: that id is what the card uses.
+    static func identifyAccessory(_ device: TransactionChannel, info: RazerAccessoryInfo)
+        -> (record: DeviceReport.StepRecord<DeviceReport.IdentifyData>, sweep: [DeviceProbe.LEDAnswer]?) {
+        let found = identify(device, preferredStandard: info.transactionId,
+                             preferredMatrix: info.transactionId, others: { [] })
+        var record = found.record
+        if record.data?.lightingAttempts.contains(where: { $0.id == info.transactionId && $0.answered }) != true {
+            record.outcome = .failed
+        }
+        return (record, found.sweep)
+    }
+
+    /// Tries every transaction id, preferred ones first, then reads the firmware with the one
+    /// chosen. Passed when some read got a real answer.
+    private static func identify(_ device: TransactionChannel, preferredStandard: UInt8?, preferredMatrix: UInt8?,
+                                 others: () -> [DeviceReport.InterfaceAttempt])
+        -> (record: DeviceReport.StepRecord<DeviceReport.IdentifyData>, sweep: [DeviceProbe.LEDAnswer]?) {
         let recording = RecordingChannel(base: device)
         let firmware = DeviceProbe.discoverTransactionIds(recording, read: RazerCommands.getFirmwareVersion(),
-                                                          preferred: registry?.transactionId)
+                                                          preferred: preferredStandard)
         let dpi = firmware.contains(where: \.answered) ? nil
-            : DeviceProbe.discoverTransactionIds(recording, read: RazerCommands.getDPI(), preferred: registry?.transactionId)
+            : DeviceProbe.discoverTransactionIds(recording, read: RazerCommands.getDPI(), preferred: preferredStandard)
         let standard = firmware + (dpi ?? [])
         // An answer to either read beats a refusal of either, and the firmware read's come first.
         let standardId = DeviceProbe.chosenId(standard)
         let lighting = DeviceProbe.discoverMatrixTransactionIds(recording, standard: standardId ?? 0x1F,
-                                                                preferred: registry?.matrixTransactionId)
+                                                                preferred: preferredMatrix)
         let lightingId = DeviceProbe.chosenId(lighting)
 
         var data = DeviceReport.IdentifyData(
@@ -398,16 +464,7 @@ enum DeviceTestSteps {
             if !tried.isEmpty { data.otherInterfaces = tried }
         }
 
-        // Passed only when some read got a real answer. On a known model, the ids on record
-        // must be ones the mouse answers to: that is the regression a confirmation exists to
-        // catch, and lighting's id counts only where the model has lighting at all.
-        var outcome: DeviceReport.Outcome = standard.contains(where: \.answered) ? .passed : .failed
-        if let registry {
-            if !standard.contains(where: { $0.id == registry.transactionId && $0.answered }) { outcome = .failed }
-            if registry.hasLighting, !lighting.contains(where: { $0.id == registry.matrixTransactionId && $0.answered }) {
-                outcome = .failed
-            }
-        }
+        let outcome: DeviceReport.Outcome = standard.contains(where: \.answered) ? .passed : .failed
         let sweep = lighting.first(where: { $0.id == lightingId })?.sweep
         return (.init(outcome: outcome, data: data, exchanges: recording.exchanges), sweep)
     }
@@ -799,7 +856,9 @@ enum DeviceTestSteps {
     /// own setting: an effect can't be read back) and to each group's brightness. The
     /// questions come afterwards, so nothing is held waiting on the person.
     static func lighting(_ channel: DeviceProbeChannel, sweep: [DeviceProbe.LEDAnswer]?,
-                         restoreEffect: RazerReport?, seconds: Double,
+                         restoreEffect: RazerReport?,
+                         red: RazerReport = RazerCommands.setStatic(rgb: RGB(r: 255, g: 0, b: 0)),
+                         seconds: Double,
                          wait: (Double) -> Void = { Thread.sleep(forTimeInterval: $0) })
         -> DeviceReport.StepRecord<DeviceReport.LightingData> {
         var record = DeviceReport.StepRecord<DeviceReport.LightingData>()
@@ -827,7 +886,7 @@ enum DeviceTestSteps {
 
         if let restoreEffect {
             for (_, led, _) in answering { _ = try? DeviceProbe.writeBrightness(channel, raw: 255, led: led) }
-            data.redShown = (try? DeviceProbe.applyLighting(channel, RazerCommands.setStatic(rgb: RGB(r: 255, g: 0, b: 0)))) != nil
+            data.redShown = (try? DeviceProbe.applyLighting(channel, red)) != nil
             if data.redShown { wait(seconds) }
             let effectBack = (try? DeviceProbe.applyLighting(channel, restoreEffect)) != nil
             allBack = restoreBrightness(channel, answering) && effectBack && allBack
@@ -865,4 +924,37 @@ enum DeviceTestSteps {
 
     /// A refusal (0x03) or not-supported (0x05) is the mouse saying no, as opposed to a
     /// timeout or a garbled answer, which say nothing about what it has.
+}
+
+// MARK: - Accessories
+
+extension DeviceTestSteps {
+    /// The lighting test for a keyboard or mousepad (`AccessoryTestModel`), in one go on its
+    /// queue: Identify, then the mouse's own lighting step with this model's red. Everything
+    /// it changes is back before it returns.
+    static func accessoryLighting(_ device: TransactionChannel, info: RazerAccessoryInfo, restoreEffect: RazerReport?,
+                                  seconds: Double, wait: (Double) -> Void = { Thread.sleep(forTimeInterval: $0) })
+        -> (identify: DeviceReport.StepRecord<DeviceReport.IdentifyData>,
+            lighting: DeviceReport.StepRecord<DeviceReport.LightingData>) {
+        let (identify, sweep) = identifyAccessory(device, info: info)
+        let standard = identify.data?.standardId ?? info.transactionId
+        let matrix = identify.data?.lightingId ?? info.transactionId
+        let red = RazerCommands.effect(.staticColor, color: RGB(r: 255, g: 0, b: 0), led: info.effectLed)
+        let lighting = recorded(device, standard: standard, matrix: matrix) {
+            Self.lighting($0, sweep: sweep, restoreEffect: restoreEffect, red: red, seconds: seconds, wait: wait)
+        }
+        return (identify, lighting)
+    }
+
+    /// The report for an accessory's lighting test. Battery, DPI, polling and buttons stay
+    /// skipped and out of the verdict (`DeviceReport.currentVerdict`): an accessory has none.
+    static func accessoryReport(info: RazerAccessoryInfo, name: String, interfaces: [DeviceProbe.Interface],
+                                control: Int?, identify: DeviceReport.StepRecord<DeviceReport.IdentifyData>,
+                                lighting: DeviceReport.StepRecord<DeviceReport.LightingData>) -> DeviceReport {
+        var report = DeviceTestModel.emptyReport(pid: info.pid, name: name, interfaces: interfaces,
+                                                 control: control, identify: identify)
+        report.lighting = lighting
+        report.accessory = .init(info)
+        return report
+    }
 }

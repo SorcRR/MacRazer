@@ -54,8 +54,13 @@ enum DeviceReportOutput {
         return r
     }
 
+    /// "mouse", or "keyboard" or "mousepad" for an accessory's lighting test.
+    static func noun(_ report: DeviceReport) -> String {
+        report.accessory?.kind.label.lowercased() ?? "mouse"
+    }
+
     static func issueTitle(_ report: DeviceReport) -> String {
-        let prefix = report.verdict?.subjectPrefix ?? "Device report"
+        let prefix = report.verdict?.subjectPrefix(noun: noun(report)) ?? "Device report"
         return "\(prefix): \(report.device.name) (\(String(format: "0x%04X", report.device.productID)))"
     }
 
@@ -68,7 +73,9 @@ enum DeviceReportOutput {
         if let verdict = report.verdict {
             if !verdict.passed.isEmpty { lines.append("Passed: " + verdict.passed.joined(separator: ", ")) }
             if !verdict.failed.isEmpty { lines.append("Failed: " + verdict.failed.joined(separator: ", ")) }
-            if !verdict.notSupported.isEmpty { lines.append("Not on this mouse: " + verdict.notSupported.joined(separator: ", ")) }
+            if !verdict.notSupported.isEmpty {
+                lines.append("Not on this \(noun(report)): " + verdict.notSupported.joined(separator: ", "))
+            }
             if !verdict.skipped.isEmpty { lines.append("Skipped: " + verdict.skipped.joined(separator: ", ")) }
         }
         if let reads = report.capabilities?.reads {
