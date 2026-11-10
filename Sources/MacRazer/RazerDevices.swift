@@ -522,7 +522,8 @@ enum RazerDevices {
         // passed with 0x1f. No battery (0x05). Its control interface is the fourth one. Only
         // SCROLL answers brightness, and it reads back what was written, but the owner saw
         // neither the dim nor the red, so lighting stays hidden until a test shows it working.
-        // 18000 is the vendor spec.
+        // The zone effect read answers on 0x00, 0x01 and 0x11, which a working report should
+        // pick the zones from. 18000 is the vendor spec.
         .init(pid: 0x0096, name: "Razer Naga X", unverified: [.lighting], hasBattery: false, hasLighting: false, maxDPI: 18000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
         // Mamba Tournament Edition (in-app report on firmware v1.3, no credit given): DPI and
         // polling passed with 0x1f. It's wired only: the battery read answers with zeros. Every
