@@ -325,7 +325,17 @@ private struct SideButtonResetNotice: View {
     @ObservedObject var controller: MouseController
 
     var body: some View {
-        if controller.checksSideButtons && !controller.remappedSideButtons.isEmpty {
+        if controller.checksSideButtons && controller.remappedSideButtons.isEmpty,
+           let done = controller.sideButtonResetDone {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "checkmark.circle").foregroundStyle(.secondary)
+                Text(done).font(.system(size: 11)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else if controller.checksSideButtons && !controller.remappedSideButtons.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .top, spacing: 8) {
                     Image(systemName: "exclamationmark.triangle").foregroundStyle(Color.batteryMid)

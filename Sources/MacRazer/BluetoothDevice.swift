@@ -223,27 +223,38 @@ final class BluetoothDevice: NSObject, RazerTransport, @unchecked Sendable {
         return slot
     }
 
-    /// Puts a side button's factory block back in the slot in use, then reads it back.
+    /// Puts a side button's factory block back in each profile slot that holds its remap
+    /// (`SideButtonReset.slotsToReset`), then reads every written slot and the slot in use back.
+    /// Returns the slots written.
     ///
-    /// The slot comes from 03/82, which was only measured on the Basilisk V4 Pro. Before
-    /// writing, the entry is read from that slot and must hold the same block the in-use read
-    /// showed; otherwise the byte may name another slot, and nothing is written
-    /// (`SideButtonReset.ResetError.slotUnconfirmed`). Only the write exchange is retried. The
-    /// read-back runs once, and a mismatch is never followed by another write.
-    func resetButtonFunction(_ remap: SideButtonReset.Remap) throws {
-        let slot = readActiveSlot()
-        // A slot read the mouse refuses confirms nothing either, and nothing has been written.
-        guard let slotPayload = try? readButtonFunctionPayload(remap.id, slot: slot),
-              SideButtonReset.slotHolds(remap, slotPayload: slotPayload) else {
-            throw SideButtonReset.ResetError.slotUnconfirmed
+    /// Every slot is read before anything is written, and only slots whose read matches the
+    /// remap exactly are written. Only the write exchanges are retried. The read-backs run
+    /// once, and a mismatch is never followed by another write.
+    func resetButtonFunction(_ remap: SideButtonReset.Remap) throws -> [UInt8] {
+        let active = readActiveSlot()
+        var reads: [UInt8: Data] = [:]
+        for slot in SideButtonReset.slots {
+            // A slot the mouse refuses to read holds nothing this reset can confirm.
+            if let payload = try? readButtonFunctionPayload(remap.id, slot: slot) { reads[slot] = payload }
         }
-        let request = BLEProtocol.Request(key: .buttonFunctionSet(remap.id, slot: slot),
-                                          payload: BLEProtocol.buttonFunctionPayload(id: remap.id, block: remap.factory, slot: slot),
-                                          reply: .ack)
-        try RazerRetry.run(attempts: HIDDevice.defaultAttempts) { _ = try exchange(request) }
-        guard try BLEProtocol.parseButtonFunction(id: remap.id, readButtonFunctionPayload(remap.id)).current == remap.factory else {
-            throw SideButtonReset.ResetError.notReadBack
+        let targets = try SideButtonReset.slotsToReset(remap, activeSlot: active, slotPayloads: reads)
+        for (index, slot) in targets.enumerated() {
+            let request = BLEProtocol.Request(key: .buttonFunctionSet(remap.id, slot: slot),
+                                              payload: BLEProtocol.buttonFunctionPayload(id: remap.id, block: remap.factory, slot: slot),
+                                              reply: .ack)
+            do {
+                try RazerRetry.run(attempts: HIDDevice.defaultAttempts) { _ = try exchange(request) }
+            } catch where index > 0 {
+                // Earlier slots already took the reset, so don't say nothing changed.
+                throw SideButtonReset.ResetError.partlyWritten
+            }
         }
+        for slot in targets + [0x00] {
+            guard try BLEProtocol.parseButtonFunction(id: remap.id, readButtonFunctionPayload(remap.id, slot: slot)).current == remap.factory else {
+                throw SideButtonReset.ResetError.notReadBack
+            }
+        }
+        return targets
     }
 
     private func exchange(_ request: BLEProtocol.Request) throws -> Data {

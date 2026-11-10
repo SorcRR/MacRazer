@@ -65,20 +65,65 @@ final class SideButtonResetTests: XCTestCase {
         XCTAssertNil(SideButtonReset.describe([0x02, 0x02, 0x01, 0x00, 0, 0, 0]))
     }
 
-    func testTheWriteWaitsForTheSlotToHoldTheSameRemap() throws {
+    private var factoryBack: [UInt8] { [4, 0, 1, 1, 1, 1, 4, 4, 0, 0, 0, 0] }
+
+    func testASlotHoldsTheRemapOnlyWhenItsReadMatchesExactly() throws {
         let remap = try XCTUnwrap(SideButtonReset.remap(id: 4, payload: reply(back)))
-        // The slot 03/82 named holds the same Ctrl+V: that is the slot in use.
         XCTAssertTrue(SideButtonReset.slotHolds(remap, slotPayload: reply(back)))
-        // It holds the factory Back, so it is another slot: write nothing.
-        XCTAssertFalse(SideButtonReset.slotHolds(remap, slotPayload: reply([4, 0, 1, 1, 1, 1, 4, 4, 0, 0, 0, 0])))
+        XCTAssertFalse(SideButtonReset.slotHolds(remap, slotPayload: reply(factoryBack)))
+        // Ctrl+X instead of Ctrl+V: one byte off.
+        XCTAssertFalse(SideButtonReset.slotHolds(remap, slotPayload: reply([4, 0, 2, 1, 2, 1, 1, 4, 27, 0, 0, 0])))
         // Another entry's reply, or one too short to read.
         XCTAssertFalse(SideButtonReset.slotHolds(remap, slotPayload: reply(forward)))
         XCTAssertFalse(SideButtonReset.slotHolds(remap, slotPayload: Data(back)))
         XCTAssertEqual(BLEProtocol.Key.buttonFunctionGet(4, slot: 2).bytes, [0x08, 0x84, 0x02, 0x04])
     }
 
+    func testTheSameRemapInEverySlotResetsEverySlot() throws {
+        let remap = try XCTUnwrap(SideButtonReset.remap(id: 4, payload: reply(back)))
+        let reads = Dictionary(uniqueKeysWithValues: SideButtonReset.slots.map { ($0, reply(back)) })
+        // Whatever slot 03/82 names, even a wrong one, every slot holding it is written.
+        XCTAssertEqual(try SideButtonReset.slotsToReset(remap, activeSlot: 2, slotPayloads: reads), [1, 2, 3, 4, 5])
+        XCTAssertEqual(try SideButtonReset.slotsToReset(remap, activeSlot: 1, slotPayloads: reads), [1, 2, 3, 4, 5])
+        // Three of five hold it, one holds something else: only the three.
+        let some: [UInt8: Data] = [1: reply(back), 2: reply(factoryBack), 3: reply(back), 4: reply(back),
+                                   5: reply([4, 0, 2, 1, 2, 1, 1, 4, 27, 0, 0, 0])]
+        XCTAssertEqual(try SideButtonReset.slotsToReset(remap, activeSlot: 3, slotPayloads: some), [1, 3, 4])
+        XCTAssertEqual(SideButtonReset.doneText(profiles: 3), "Side buttons reset on all 3 profiles that had the remap.")
+    }
+
+    func testTheRemapOnlyInTheReportedSlotResetsThatSlot() throws {
+        let remap = try XCTUnwrap(SideButtonReset.remap(id: 4, payload: reply(back)))
+        let reads: [UInt8: Data] = [1: reply(factoryBack), 2: reply(back), 3: reply(factoryBack)]
+        XCTAssertEqual(try SideButtonReset.slotsToReset(remap, activeSlot: 2, slotPayloads: reads), [2])
+        XCTAssertEqual(SideButtonReset.doneText(profiles: 1), "Side buttons reset.")
+    }
+
+    func testTheRemapOnlyInAnotherSlotWritesNothing() throws {
+        let remap = try XCTUnwrap(SideButtonReset.remap(id: 4, payload: reply(back)))
+        let reads: [UInt8: Data] = [1: reply(factoryBack), 2: reply(factoryBack), 3: reply(back)]
+        XCTAssertThrowsError(try SideButtonReset.slotsToReset(remap, activeSlot: 1, slotPayloads: reads)) {
+            XCTAssertEqual($0 as? SideButtonReset.ResetError, .slotUnconfirmed)
+        }
+        // The named slot refused its read: the same.
+        XCTAssertThrowsError(try SideButtonReset.slotsToReset(remap, activeSlot: 1, slotPayloads: [3: reply(back)])) {
+            XCTAssertEqual($0 as? SideButtonReset.ResetError, .slotUnconfirmed)
+        }
+    }
+
+    func testTheRemapInNoSlotWritesNothing() throws {
+        let remap = try XCTUnwrap(SideButtonReset.remap(id: 4, payload: reply(back)))
+        XCTAssertThrowsError(try SideButtonReset.slotsToReset(remap, activeSlot: 1, slotPayloads: [1: reply(factoryBack)])) {
+            XCTAssertEqual($0 as? SideButtonReset.ResetError, .notInAnySlot)
+        }
+        XCTAssertThrowsError(try SideButtonReset.slotsToReset(remap, activeSlot: 1, slotPayloads: [:])) {
+            XCTAssertEqual($0 as? SideButtonReset.ResetError, .notInAnySlot)
+        }
+    }
+
     func testFailuresReadAsPlainSentences() {
-        let errors: [Error] = [SideButtonReset.ResetError.slotUnconfirmed, SideButtonReset.ResetError.notReadBack,
+        let errors: [Error] = [SideButtonReset.ResetError.slotUnconfirmed, SideButtonReset.ResetError.notInAnySlot,
+                               SideButtonReset.ResetError.notReadBack, SideButtonReset.ResetError.partlyWritten,
                                HIDDevice.HIDError.timeout, HIDDevice.HIDError.commandFailed]
         for error in errors {
             let text = SideButtonReset.failureText(error)
@@ -87,6 +132,8 @@ final class SideButtonResetTests: XCTestCase {
             XCTAssertFalse(text.contains("—"), text)
         }
         XCTAssertTrue(SideButtonReset.failureText(SideButtonReset.ResetError.slotUnconfirmed).contains("changed nothing"))
+        XCTAssertTrue(SideButtonReset.failureText(SideButtonReset.ResetError.notInAnySlot).contains("changed nothing"))
+        XCTAssertFalse(SideButtonReset.doneText(profiles: 3).contains("—"))
     }
 
     func testTheResetWriteIsTheFactoryBlockInTheActiveSlot() {

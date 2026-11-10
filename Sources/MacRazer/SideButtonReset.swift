@@ -29,17 +29,47 @@ enum SideButtonReset {
 
     /// Why a reset stopped.
     enum ResetError: Error, Equatable {
-        /// The slot the write would go to doesn't hold the remap the in-use read showed, so it
-        /// may not be the slot in use. Nothing was written.
+        /// The remap is in one profile slot only, and not the one 03/82 named, so which slot is
+        /// in use is unclear. Nothing was written.
         case slotUnconfirmed
+        /// No profile slot read back the remap the in-use read showed. Nothing was written.
+        case notInAnySlot
         /// The write went through but the mouse didn't read back the factory block.
         case notReadBack
+        /// Some profile slots took the write and a later one didn't.
+        case partlyWritten
     }
 
-    /// Whether a read of the slot about to be written holds the same current block as `remap`,
+    /// The profile slots a reset reads. 03/82 answers 1 to 5.
+    static let slots: ClosedRange<UInt8> = 1...5
+
+    /// Whether a read of a profile slot holds exactly the same current block as `remap`,
     /// which was read from the slot in use. A reply that doesn't parse is no.
     static func slotHolds(_ remap: Remap, slotPayload: Data) -> Bool {
         (try? BLEProtocol.parseButtonFunction(id: remap.id, slotPayload))?.current == remap.current
+    }
+
+    /// The profile slots a reset of `remap` writes, from reads of each slot (a slot the mouse
+    /// refused to read is left out). 03/82 was only measured on the Basilisk V4 Pro, and
+    /// Synapse often saves one remap to every profile, so the slot it names holding the remap
+    /// proves little on its own.
+    ///
+    /// - The remap in more than one slot: every slot holding it, since the one in use is among
+    ///   them and they all hold the same leftover remap.
+    /// - In the named slot only: that slot.
+    /// - In another slot only: `slotUnconfirmed`. In none: `notInAnySlot`.
+    ///
+    /// A slot whose read differs from the remap in any byte is never written.
+    static func slotsToReset(_ remap: Remap, activeSlot: UInt8, slotPayloads: [UInt8: Data]) throws -> [UInt8] {
+        let holders = slotPayloads.filter { slotHolds(remap, slotPayload: $0.value) }.keys.sorted()
+        if holders.isEmpty { throw ResetError.notInAnySlot }
+        if holders.count == 1 && holders != [activeSlot] { throw ResetError.slotUnconfirmed }
+        return holders
+    }
+
+    /// The notice's line after a reset that went through, by how many profile slots it wrote.
+    static func doneText(profiles: Int) -> String {
+        profiles > 1 ? "Side buttons reset on all \(profiles) profiles that had the remap." : "Side buttons reset."
     }
 
     /// The notice's line for a failed reset, in plain words.
@@ -47,6 +77,10 @@ enum SideButtonReset {
         switch error {
         case ResetError.slotUnconfirmed:
             return "MacRazer couldn't confirm which profile the mouse is using, so it changed nothing."
+        case ResetError.notInAnySlot:
+            return "MacRazer couldn't find the remap in the mouse's profiles, so it changed nothing."
+        case ResetError.partlyWritten:
+            return "The mouse took the reset on some profiles but not all. Try again."
         case ResetError.notReadBack:
             return "The mouse didn't read the button back as reset, so it may not have worked."
         case HIDDevice.HIDError.timeout, HIDDevice.HIDError.notFound:

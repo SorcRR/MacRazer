@@ -128,6 +128,8 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     @Published private(set) var remappedSideButtons: [SideButtonReset.Remap] = []
     @Published private(set) var isResettingSideButtons = false
     @Published private(set) var sideButtonResetError: String?
+    /// The line a reset that went through leaves on the page (`SideButtonReset.doneText`).
+    @Published private(set) var sideButtonResetDone: String?
     /// A Razer mouse seen on Bluetooth while we aren't controlling one, and why.
     @Published private(set) var bluetoothMouse: BluetoothMouseStatus?
     /// No mouse is known at all: never seen this session, or unplugged (which forgets its
@@ -801,6 +803,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 self.update(\.dpiCycleButtonBinding, nil)
                 self.update(\.remappedSideButtons, [])
                 self.update(\.sideButtonResetError, nil)
+                self.update(\.sideButtonResetDone, nil)
                 // Same for the sleep timeout: the controls wait for a fresh read.
                 self.update(\.sleepTimeout, nil)
                 if gone {
@@ -1315,7 +1318,8 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         }
     }
 
-    /// Writes each remapped side button's factory block back (`BluetoothDevice.resetButtonFunction`).
+    /// Writes each remapped side button's factory block back to every profile slot that holds
+    /// it (`BluetoothDevice.resetButtonFunction`).
     /// Each button leaves the list as soon as its write is confirmed, so a reset that stops
     /// halfway still shows only what is left.
     func resetSideButtons() {
@@ -1324,6 +1328,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         publish {
             self.isResettingSideButtons = true
             self.sideButtonResetError = nil
+            self.sideButtonResetDone = nil
         }
         userCommand { [weak self] in
             guard let self else { return }
@@ -1332,11 +1337,16 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                       RazerDevices.detectsOnboardSideButtonRemaps(pid: bluetooth.productID) else {
                     throw HIDDevice.HIDError.notSupported
                 }
+                var written = Set<UInt8>()
                 for remap in remaps {
-                    try bluetooth.resetButtonFunction(remap)
+                    written.formUnion(try bluetooth.resetButtonFunction(remap))
                     self.publish { self.update(\.remappedSideButtons, self.remappedSideButtons.filter { $0.id != remap.id }) }
                 }
-                self.publish { self.isResettingSideButtons = false }
+                let done = SideButtonReset.doneText(profiles: written.count)
+                self.publish {
+                    self.isResettingSideButtons = false
+                    self.sideButtonResetDone = done
+                }
             } catch {
                 let text = SideButtonReset.failureText(error)
                 self.publish {
