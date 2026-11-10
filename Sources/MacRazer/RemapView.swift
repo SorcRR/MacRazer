@@ -58,9 +58,9 @@ struct RemapView: View {
         .frame(width: width)
         .onAppear {
             remapper.refreshAccessibility(prompt: false)
-            controller?.checkSideButtonsIfSupported()
         }
         .overlay { if recordingButton != nil || recordingDpiCycleShortcut { recorderOverlay } }
+        .background { if let controller { SideButtonCheckTrigger(controller: controller) } }
     }
 
     /// The permission banner, or the paused note and the "press a button" hint.
@@ -303,6 +303,24 @@ struct RemapView: View {
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.batteryMid.opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
+    }
+}
+
+/// Reads the side buttons when the page opens and again whenever the mouse comes back, as a
+/// disconnect clears what was read. A background view: the notice is empty until something
+/// was found, and an empty view never appears.
+private struct SideButtonCheckTrigger: View {
+    @ObservedObject var controller: MouseController
+
+    private var checks: Bool {
+        controller.connected && controller.deviceIsBluetooth
+            && controller.deviceID.map(RazerDevices.detectsOnboardSideButtonRemaps(pid:)) == true
+    }
+
+    var body: some View {
+        Color.clear
+            .onAppear { controller.checkSideButtonsIfSupported() }
+            .onChange(of: checks) { _, now in if now { controller.checkSideButtonsIfSupported() } }
     }
 }
 

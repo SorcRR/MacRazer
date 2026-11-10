@@ -58,6 +58,13 @@ final class SideButtonResetTests: XCTestCase {
         XCTAssertTrue(SideButtonReset.noticeText([remap]).contains("Back does something else"))
     }
 
+    func testSwappedButtonsAndALoneModifierAreDescribedHonestly() throws {
+        let swapped = try XCTUnwrap(SideButtonReset.remap(id: 4, payload: reply([4, 0, 1, 1, 1, 1, 5, 4, 0, 0, 0, 0])))
+        XCTAssertEqual(SideButtonReset.describe(swapped.current), "Forward")
+        XCTAssertFalse(SideButtonReset.noticeText([swapped]).contains("mouse buttons"))
+        XCTAssertNil(SideButtonReset.describe([0x02, 0x02, 0x01, 0x00, 0, 0, 0]))
+    }
+
     func testTheResetWriteIsTheFactoryBlockInTheActiveSlot() {
         XCTAssertEqual(BLEProtocol.Key.buttonFunctionSet(4, slot: 2).bytes, [0x08, 0x04, 0x02, 0x04])
         XCTAssertEqual(BLEProtocol.buttonFunctionPayload(id: 4, block: SideButtonReset.mouseBlock(4), slot: 2),
@@ -70,7 +77,7 @@ final class SideButtonResetTests: XCTestCase {
                       SideButtonReset.remap(id: 5, payload: reply(forward))].compactMap { $0 }
         let text = SideButtonReset.noticeText(remaps)
         XCTAssertTrue(text.contains("Back sends ⌃V and Forward sends ⌃C"), text)
-        XCTAssertTrue(text.contains("they aren't mouse buttons"))
+        XCTAssertTrue(text.contains("until they're reset"))
         XCTAssertFalse(text.contains("—"))
     }
 

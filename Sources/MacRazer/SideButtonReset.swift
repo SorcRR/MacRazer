@@ -52,10 +52,9 @@ enum SideButtonReset {
         case (0x00, _):
             return "nothing"
         case (0x01, 0x01):
-            let names: [UInt8: String] = [1: "Left Click", 2: "Right Click", 3: "Middle Click",
-                                          4: "Back", 5: "Forward", 9: "Scroll Up", 10: "Scroll Down"]
-            return names[block[2]]
-        case (0x02, 0x02) where block[3] != 0 || block[2] != 0:
+            return BLEProtocol.DPIButtonBinding.allCases.first { $0.buttonID == block[2] }?.label
+        case (0x02, 0x02) where block[3] != 0:
+            // A lone modifier (usage 0) has no key to name, so it gets the generic text.
             return BLEProtocol.shortcutLabel(hidUsage: block[3], modifiers: block[2])
         default:
             return nil
@@ -69,9 +68,9 @@ enum SideButtonReset {
             return "\(name(remap.id)) does something else"
         }
         let list = ListFormatter.localizedString(byJoining: parts)
-        let pronoun = remaps.count == 1 ? "it isn't a mouse button" : "they aren't mouse buttons"
+        let pronoun = remaps.count == 1 ? "it's" : "they're"
         return "Your mouse has its side buttons saved to other functions, probably by Razer Synapse: "
-            + "\(list). MacRazer can't remap them while \(pronoun). "
-            + "Resetting puts them back to Back and Forward in the mouse itself, which removes what was saved there."
+            + "\(list). Configure Buttons can't remap them as Back and Forward until \(pronoun) reset. "
+            + "Resetting puts them back in the mouse itself, which removes what was saved there."
     }
 }

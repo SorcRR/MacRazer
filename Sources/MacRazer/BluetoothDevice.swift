@@ -213,10 +213,12 @@ final class BluetoothDevice: NSObject, RazerTransport, @unchecked Sendable {
     }
 
     /// The onboard profile slot in use, or 1 when the mouse doesn't say (the slot the Basilisk
-    /// V3 X's DPI Cycle write goes to).
+    /// V3 X's DPI Cycle write goes to). Retried, so one lost reply doesn't send a write to the
+    /// wrong slot.
     func readActiveSlot() -> UInt8 {
         let request = BLEProtocol.Request(key: .activeSlotGet, payload: [], reply: .ack)
-        guard let payload = try? exchange(request), let slot = payload.first, (1...5).contains(slot) else { return 0x01 }
+        guard let payload = try? RazerRetry.run(attempts: HIDDevice.defaultAttempts, { try exchange(request) }),
+              let slot = payload.first, (1...5).contains(slot) else { return 0x01 }
         return slot
     }
 
@@ -227,9 +229,11 @@ final class BluetoothDevice: NSObject, RazerTransport, @unchecked Sendable {
         let request = BLEProtocol.Request(key: .buttonFunctionSet(id, slot: slot),
                                           payload: BLEProtocol.buttonFunctionPayload(id: id, block: block, slot: slot),
                                           reply: .ack)
-        _ = try exchange(request)
-        guard try BLEProtocol.parseButtonFunction(id: id, readButtonFunctionPayload(id)).current == block else {
-            throw HIDDevice.HIDError.badResponse
+        try RazerRetry.run(attempts: HIDDevice.defaultAttempts) {
+            _ = try exchange(request)
+            guard try BLEProtocol.parseButtonFunction(id: id, readButtonFunctionPayload(id)).current == block else {
+                throw HIDDevice.HIDError.badResponse
+            }
         }
     }
 

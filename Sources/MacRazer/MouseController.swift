@@ -1302,7 +1302,11 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 if let remap = SideButtonReset.remap(id: id, payload: payload) { remaps.append(remap) }
             }
             let found = remaps
-            self.publish { self.update(\.remappedSideButtons, found) }
+            // A read that ends after the mouse went away says nothing about it now.
+            self.publish {
+                guard self.connected, self.deviceIsBluetooth else { return }
+                self.update(\.remappedSideButtons, found)
+            }
         }
     }
 
