@@ -51,6 +51,10 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     @Published private(set) var charging = false
     @Published private(set) var dpi: Int = 0
     @Published private(set) var pollRate: Int = 0
+    /// The mouse was read at 250 Hz since it connected, so the picker keeps a 250 chip to go
+    /// back to after another rate is chosen. OpenRazer doesn't list 250, so it isn't offered
+    /// on a mouse never seen at it.
+    @Published private(set) var offersQuarterPollRate = false
     @Published private(set) var brightness: Int = 100 // percent
     /// Lighting state is controller-owned like DPI/brightness: published on successful
     /// device writes only. There's no lighting readback command, so this is the app's
@@ -123,6 +127,13 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     @Published private(set) var dpiCycleButtonBinding: BLEProtocol.DPIButtonBinding?
     @Published private(set) var dpiCycleButtonError: String?
     @Published private(set) var isUpdatingDpiCycleButton = false
+    /// Side buttons the mouse's own table sends something else for (`SideButtonReset`), read
+    /// over Bluetooth by `checkSideButtons`. Empty until read, and on other mice.
+    @Published private(set) var remappedSideButtons: [SideButtonReset.Remap] = []
+    @Published private(set) var isResettingSideButtons = false
+    @Published private(set) var sideButtonResetError: String?
+    /// The line a reset that went through leaves on the page (`SideButtonReset.doneText`).
+    @Published private(set) var sideButtonResetDone: String?
     /// A Razer mouse seen on Bluetooth while we aren't controlling one, and why.
     @Published private(set) var bluetoothMouse: BluetoothMouseStatus?
     /// No mouse is known at all: never seen this session, or unplugged (which forgets its
@@ -150,6 +161,8 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     }
     /// The light has one colour of its own (`RazerDeviceInfo.fixedColor`): brightness only.
     var lightHasFixedColor: Bool { deviceID.map(RazerDevices.fixedColor(pid:)) ?? false }
+    /// False where the light takes effects but has no brightness (`RazerDeviceInfo.hasBrightness`).
+    var lightHasBrightness: Bool { deviceID.map(RazerDevices.hasBrightness(pid:)) ?? true }
     var supportsFreeDPI: Bool { !deviceIsBluetooth }
     /// False over Bluetooth on a model whose DPI nobody has set there (`writesDPI`): the
     /// stage chips show the mouse's stages but don't switch them.
@@ -794,6 +807,10 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 // what it holds when it comes back (firmware can reset it). Forget it, so the F20
                 // bridge stays unconfirmed until it's read again.
                 self.update(\.dpiCycleButtonBinding, nil)
+                self.update(\.remappedSideButtons, [])
+                self.update(\.sideButtonResetError, nil)
+                self.update(\.sideButtonResetDone, nil)
+                self.update(\.offersQuarterPollRate, false)
                 // Same for the sleep timeout: the controls wait for a fresh read.
                 self.update(\.sleepTimeout, nil)
                 if gone {
@@ -892,7 +909,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             ? activeDpiStage.map { stages[$0] }
             : read(RazerCommands.getDPI()) { Int(RazerCommands.parseDPI($0).x) }
         let p = read(RazerCommands.getPollingRate()) { RazerCommands.parsePollingRate($0) }
-        let b = read(RazerCommands.getBrightness(led: RazerDevices.brightnessLed(pid: dev.productID))) { RazerCommands.brightnessPercent(fromRaw: $0.arguments[2]) }
+        let b = RazerDevices.hasBrightness(pid: dev.productID)
+            ? read(RazerCommands.getBrightness(led: RazerDevices.brightnessLed(pid: dev.productID))) { RazerCommands.brightnessPercent(fromRaw: $0.arguments[2]) }
+            : nil
         let sleep: Int? = {
             guard RazerDevices.supportsSleepTimeout(pid: dev.productID),
                   let bluetooth = dev as? BluetoothDevice,
@@ -903,7 +922,10 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         }()
         publish {
             if let d { self.update(\.dpi, d) }
-            if let p { self.update(\.pollRate, p) }
+            if let p {
+                self.update(\.pollRate, p)
+                if p == 250 { self.update(\.offersQuarterPollRate, true) }
+            }
             if let b { self.update(\.brightness, b) }
             if !stages.isEmpty { self.update(\.dpiStages, stages) }
             self.update(\.activeDpiStage, activeDpiStage)
@@ -1274,6 +1296,82 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         }
     }
 
+    /// The connected mouse is one whose side buttons `checkSideButtons` reads: on Bluetooth and
+    /// with `detectsOnboardSideButtonRemaps`. Main thread.
+    var checksSideButtons: Bool {
+        connected && deviceIsBluetooth && deviceID.map(RazerDevices.detectsOnboardSideButtonRemaps(pid:)) == true
+    }
+
+    /// `checkSideButtons` when `checksSideButtons`. For the Configure Buttons page opening, so
+    /// other mice queue nothing.
+    func checkSideButtonsIfSupported() {
+        guard checksSideButtons else { return }
+        checkSideButtons()
+    }
+
+    /// Reads the side buttons' entries on a mouse with `detectsOnboardSideButtonRemaps`. A read
+    /// only: a failure leaves the list as it was and says nothing, as the page works without it.
+    func checkSideButtons() {
+        userCommand { [weak self] in
+            guard let self,
+                  let bluetooth = try? self.ensureDevice() as? BluetoothDevice,
+                  RazerDevices.detectsOnboardSideButtonRemaps(pid: bluetooth.productID) else { return }
+            var remaps: [SideButtonReset.Remap] = []
+            for id in SideButtonReset.ids {
+                guard let payload = try? bluetooth.readButtonFunctionPayload(id) else { return }
+                if let remap = SideButtonReset.remap(id: id, payload: payload) { remaps.append(remap) }
+            }
+            let found = remaps
+            // A read that ends after the mouse went away says nothing about it now.
+            self.publish {
+                guard self.connected, self.deviceIsBluetooth else { return }
+                self.update(\.remappedSideButtons, found)
+            }
+        }
+    }
+
+    /// Writes each remapped side button's factory block back to every profile slot that holds
+    /// it (`BluetoothDevice.resetButtonFunction`).
+    /// Each button leaves the list as soon as its write is confirmed, so a reset that stops
+    /// halfway still shows only what is left.
+    func resetSideButtons() {
+        let remaps = remappedSideButtons
+        guard !remaps.isEmpty else { return }
+        publish {
+            self.isResettingSideButtons = true
+            self.sideButtonResetError = nil
+            self.sideButtonResetDone = nil
+        }
+        userCommand { [weak self] in
+            guard let self else { return }
+            do {
+                guard let bluetooth = try self.ensureDevice() as? BluetoothDevice,
+                      RazerDevices.detectsOnboardSideButtonRemaps(pid: bluetooth.productID) else {
+                    throw HIDDevice.HIDError.notSupported
+                }
+                var written = Set<UInt8>()
+                for remap in remaps {
+                    written.formUnion(try bluetooth.resetButtonFunction(remap))
+                    self.publish { self.update(\.remappedSideButtons, self.remappedSideButtons.filter { $0.id != remap.id }) }
+                }
+                let done = SideButtonReset.doneText(profiles: written.count)
+                self.publish {
+                    self.isResettingSideButtons = false
+                    self.sideButtonResetDone = done
+                }
+            } catch {
+                let text = SideButtonReset.failureText(error)
+                self.publish {
+                    self.isResettingSideButtons = false
+                    self.sideButtonResetError = text
+                    self.lastWriteFailure = Date()
+                }
+            }
+            // Read again either way, so the notice shows what the mouse holds now.
+            self.checkSideButtons()
+        }
+    }
+
     /// Always sent, the current rate too: the app's idea of it can be stale (not read yet, or
     /// another change still queued), and dropping a click on it would lose the user's last
     /// choice. Only an actual change un-marks the active profile.
@@ -1500,7 +1598,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             // Lighting commands only count on models that have lighting — the Atheris
             // (correctly) refuses them, and that must not block its profiles from applying.
             let hasLighting = RazerDevices.hasLighting(pid: dev.productID)
-            let brightOK = !hasLighting
+            let brightOK = !hasLighting || !RazerDevices.hasBrightness(pid: dev.productID)
                 || (try? Self.writeBrightness(RazerCommands.brightnessRaw(fromPercent: brightnessPct), to: dev)) != nil
             // Built for the mouse it reaches: if that changed since the profile was read, an
             // effect it lacks lands as one it has.
@@ -1621,6 +1719,16 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         dpiStages = [400, 800, 1600, 3200, 6400]
         activeDpiStage = 3
         dpi = 3200
+    }
+
+    /// For the `render-remap side-buttons` preview: the Cobra over Bluetooth with its side
+    /// buttons saved to Ctrl+V and Ctrl+C, as the report that led to `SideButtonReset` had them.
+    func setPreviewSideButtonsRemapped() {
+        setPreviewBluetoothConnected()
+        remappedSideButtons = [
+            .init(id: 4, current: [0x02, 0x02, 0x01, 0x19, 0, 0, 0], factory: SideButtonReset.mouseBlock(4)),
+            .init(id: 5, current: [0x02, 0x02, 0x01, 0x06, 0, 0, 0], factory: SideButtonReset.mouseBlock(5)),
+        ]
     }
 
     /// For the `render-ui bluetooth` preview: a Razer mouse is on Bluetooth, so no USB control

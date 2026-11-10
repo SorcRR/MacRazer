@@ -7,6 +7,23 @@ expect rough edges until 1.0.
 ## [Unreleased]
 
 ### Added
+- **Reset side buttons saved in the mouse.** If Razer Synapse saved other functions to a
+  Cobra HyperSpeed's side buttons (a keyboard shortcut, say), they never reach Configure
+  Buttons as buttons. On Bluetooth the page now says what they send and offers Reset Side
+  Buttons, which puts Back and Forward back in the mouse itself. No Windows needed.
+- **More mice from test reports.**
+  - **Fully supported now:** Basilisk V3 Pro and Viper V3 Pro over their dongles, and the
+    DeathAdder V2 X HyperSpeed.
+  - **Mouse Dock V2 Pro:** the mouse on it gets battery, DPI and lighting, as with the first
+    Mouse Dock Pro. Thanks to cparedes.
+  - **Pro Click V2 Vertical Edition over its dongle**, and the **Pro Click V2 on its cable**.
+    Thanks to tekumara for the Vertical's cable tests. The Vertical's light takes effects but
+    has no brightness, so a test of it no longer fails Identify.
+  - **DeathAdder V3:** DPI works. Its polling rate needs a newer command.
+  - **Basilisk V3 Pro 35K over its dongle**, **DeathAdder Elite** and **DeathAdder V2:**
+    battery, DPI and polling work; lighting waits on a test.
+- **Tested keyboards and mousepads.** The Ornata V3, Ornata V3 X and Goliathus Chroma Extended
+  lost their UNTESTED tag after passing the lighting test.
 - **The device test looks for what can take your side buttons.** The button step and Review
   say when Razer Synapse or another Razer helper is running, or another app watches mouse
   buttons. The report names them too, and nothing else about your apps. A GitHub issue
@@ -18,6 +35,16 @@ expect rough edges until 1.0.
   pass the step, since they may come from the keyboard.
 - **The Bluetooth test has a button step now.** Side buttons that go unheard over Bluetooth
   show up in its report.
+
+### Fixed
+- **Brightness on the Goliathus Chroma Extended.** It answers brightness on a different light
+  than MacRazer used, so the slider did nothing.
+- **250 Hz polling is read correctly.** A mouse left at 250 Hz showed no rate, and the device
+  test couldn't put it back.
+- **No brightness slider on the Pro Click V2 Vertical Edition.** Its light takes effects but
+  has no brightness, so the slider only ever failed.
+- **No cable test for the Mouse Docks.** The dock's cable is the mouse's own link, so the test
+  stopped asking for it.
 
 ## [0.9.0] — 2026-11-08
 

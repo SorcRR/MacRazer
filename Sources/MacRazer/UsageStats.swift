@@ -95,8 +95,9 @@ enum UsageStatsPolicy {
 
     /// Razer gives mice product IDs below this; keyboards and the rest start here.
     static let firstNonMousePID = 0x0200
-    /// Receivers a mouse is used through: the Mouse Dock Pro and the HyperFlux V2 pad.
-    static let receiverPIDs: Set<Int> = [0x00A4, 0x00CF]
+    /// Receivers a mouse is used through: the Mouse Dock Pro, the Mouse Dock V2 Pro and the
+    /// HyperFlux V2 pad.
+    static let receiverPIDs: Set<Int> = [0x00A4, 0x00F1, 0x00CF]
 
     /// What makes two mice one for the counts: the model when MacRazer knows it (a mouse's
     /// cable and dongle are one), the product ID and link otherwise. The daily count's "sent

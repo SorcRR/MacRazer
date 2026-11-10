@@ -60,10 +60,12 @@ struct RemapView: View {
             remapper.refreshAccessibility(prompt: false)
         }
         .overlay { if recordingButton != nil || recordingDpiCycleShortcut { recorderOverlay } }
+        .background { if let controller { SideButtonCheckTrigger(controller: controller) } }
     }
 
     /// The permission banner, or the paused note and the "press a button" hint.
     @ViewBuilder private var notices: some View {
+        if let controller { SideButtonResetNotice(controller: controller) }
         if !remapper.remappingPermissionsGranted {
             accessibilityBanner
         } else {
@@ -301,6 +303,63 @@ struct RemapView: View {
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.batteryMid.opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
+    }
+}
+
+/// Reads the side buttons when the page opens and again whenever the mouse comes back, as a
+/// disconnect clears what was read. A background view: the notice is empty until something
+/// was found, and an empty view never appears.
+private struct SideButtonCheckTrigger: View {
+    @ObservedObject var controller: MouseController
+
+    var body: some View {
+        Color.clear
+            .onAppear { controller.checkSideButtonsIfSupported() }
+            .onChange(of: controller.checksSideButtons) { _, now in if now { controller.checkSideButtonsIfSupported() } }
+    }
+}
+
+/// Side buttons saved in the mouse to send something else (by Synapse, say), which the
+/// remapper can't see as buttons, and a reset that puts them back (`SideButtonReset`).
+private struct SideButtonResetNotice: View {
+    @ObservedObject var controller: MouseController
+
+    var body: some View {
+        if controller.checksSideButtons && controller.remappedSideButtons.isEmpty,
+           let done = controller.sideButtonResetDone {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "checkmark.circle").foregroundStyle(.secondary)
+                Text(done).font(.system(size: 11)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else if controller.checksSideButtons && !controller.remappedSideButtons.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle").foregroundStyle(Color.batteryMid)
+                    Text(SideButtonReset.noticeText(controller.remappedSideButtons))
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                }
+                HStack(spacing: 8) {
+                    Button(controller.isResettingSideButtons ? "Resetting…" : "Reset Side Buttons") {
+                        controller.resetSideButtons()
+                    }
+                    .disabled(controller.isResettingSideButtons)
+                    if let error = controller.sideButtonResetError {
+                        Text(error).font(.system(size: 10)).foregroundStyle(Color.batteryMid)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .font(.system(size: 11))
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.batteryMid.opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
+        }
     }
 }
 

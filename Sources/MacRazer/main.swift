@@ -204,7 +204,8 @@ case "render-ui":
     var accessoryPIDs: [Int] = []
     if args.contains("keyboard") || args.contains("three") { accessoryPIDs.append(0x022A) }
     if args.contains("pad") || args.contains("three") { accessoryPIDs.append(0x0C04) }
-    if args.contains("three") || args.contains("untested") { accessoryPIDs.append(0x02A1) }
+    if args.contains("three") { accessoryPIDs.append(0x02A1) }
+    if args.contains("untested") { accessoryPIDs.append(0x028F) }
     if !accessoryPIDs.isEmpty {
         Accessories.shared.loadPreviewState(pids: accessoryPIDs,
                                             followsMouse: args.contains("follow") ? [0x022A] : [],
@@ -369,7 +370,7 @@ case "render-accessory-test":
     let accessoryPath = outputPath(args.dropFirst(), default: "accessory-test-preview.png")
     let accessoryStage: AccessoryTestModel.Stage = args.contains("review") ? .review
         : args.contains("lighting") ? .lighting : .intro
-    let accessoryInfo = RazerAccessories.info(pid: args.contains("pad") ? 0x0C08 : 0x02A1)!
+    let accessoryInfo = RazerAccessories.info(pid: args.contains("pad") ? 0x0C08 : 0x028F)!
     let previewAccessory = AccessoryController(id: .init(pid: accessoryInfo.pid, locationID: 0), info: accessoryInfo)
     previewAccessory.loadPreviewState()
     let accessoryModel = AccessoryTestModel(reportEndpoint: URL(string: "https://reports.example/"))
@@ -406,7 +407,13 @@ case "render-remap":
     let r = ButtonRemapper()
     r.loadPreviewState()
     // `wide`: the popover's two-column Buttons page, with the DPI button section.
-    if args.contains("wide") {
+    // `side-buttons`: the window with the notice for side buttons saved to other functions.
+    if args.contains("side-buttons") {
+        let mouse = MouseController()
+        mouse.loadPreviewState()
+        mouse.setPreviewSideButtonsRemapped()
+        writeViewPNG(RemapView(remapper: r, controller: mouse), to: path)
+    } else if args.contains("wide") {
         let mouse = MouseController()
         mouse.loadPreviewState()
         writeViewPNG(RemapView(remapper: r, controller: mouse, onBack: {}, width: PopoverLayout.twoColumnWidth, twoColumns: true), to: path)
@@ -576,8 +583,9 @@ case "poll":
         let before = try DeviceProbe.readPollingRate(dev).value
         print("Current polling rate: \(before)Hz")
         if let arg = args.dropFirst().first, let hz = Int(arg) {
-            guard RazerCommands.supportedPollingRates.contains(hz) else {
-                print("Unsupported rate. Choose one of: \(RazerCommands.supportedPollingRates.map { "\($0)" }.joined(separator: ", "))Hz")
+            // 250 Hz too: not in OpenRazer's table, but the byte is 1000 over the rate.
+            guard RazerCommands.supportedPollingRates.contains(hz) || hz == 250 else {
+                print("Unsupported rate. Choose one of: 125, 250, 500, 1000Hz")
                 exit(64)
             }
             print("Setting polling rate to \(hz)Hz …")

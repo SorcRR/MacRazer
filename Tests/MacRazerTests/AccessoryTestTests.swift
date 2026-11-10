@@ -26,7 +26,7 @@ final class AccessoryTestTests: XCTestCase {
     }
 
     /// The Ornata V3: 0x1F, effects and brightness on BACKLIGHT.
-    private let ornata = RazerAccessories.info(pid: 0x02A1)!
+    private let ornata = RazerAccessories.info(pid: 0x028F)!
 
     /// A keyboard lit only on BACKLIGHT, answering lighting commands on `id` alone.
     private func keyboard(answering id: UInt8, brightness: UInt8 = 200) -> Spy {
@@ -120,7 +120,7 @@ final class AccessoryTestTests: XCTestCase {
         XCTAssertEqual(accessory.transactionId, 0x1F)
         XCTAssertEqual(accessory.effectLed, Razer.backlightLed)
         XCTAssertNil(r.registry, "the mouse registry has nothing to say about a keyboard")
-        XCTAssertEqual(DeviceReportOutput.issueTitle(r), "New keyboard: all passed: Razer Ornata V3 (0x02A1)")
+        XCTAssertEqual(DeviceReportOutput.issueTitle(r), "New keyboard: all passed: Razer Ornata V3 (0x028F)")
     }
 
     func testAnAccessoryThatWentAwayIsAPartialReportNotAFailure() {
@@ -150,6 +150,23 @@ final class AccessoryTestTests: XCTestCase {
         var changed = r
         changed.comment = "different"
         XCTAssertEqual(cache.fitted(changed).comment, "different", "a new report is fitted afresh")
+    }
+
+    /// Verified by the first reports from the lighting test: each keeps OpenRazer's other
+    /// effects marked untried, and the Goliathus reads brightness where it answered.
+    func testReportedAccessoriesAreVerified() throws {
+        for pid in [0x02A1, 0x02A2, 0x0C02] {
+            let info = try XCTUnwrap(RazerAccessories.info(pid: pid))
+            XCTAssertTrue(info.verified, String(format: "0x%04X", pid))
+            XCTAssertTrue(info.isTested(.staticColor))
+            XCTAssertFalse(info.isTested(.spectrum))
+        }
+        let goliathus = try XCTUnwrap(RazerAccessories.info(pid: 0x0C02))
+        XCTAssertEqual(goliathus.brightnessLed, Razer.logoLed, "ZERO_LED refuses brightness on it")
+        XCTAssertEqual(goliathus.effectLed, Razer.zeroLed)
+        XCTAssertFalse(goliathus.supports(.wave))
+        XCTAssertFalse(RazerAccessories.info(pid: 0x0C06)!.verified, "the other Goliathus pads are still untried")
+        XCTAssertFalse(RazerAccessories.info(pid: 0x028F)!.verified, "the Ornata V3's other id is still untried")
     }
 
     func testThankYouSaysWhatHappensNext() {
