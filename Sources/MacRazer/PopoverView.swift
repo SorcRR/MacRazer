@@ -115,10 +115,11 @@ struct PopoverView: View {
     @State private var gearHovered = false
     @State private var tipHovered = false
 
-    /// The three rates every mouse takes, and 250 Hz while the mouse is at it, so its chip
-    /// shows as chosen. Not offered otherwise: OpenRazer doesn't list it.
+    /// The three rates every mouse takes, and 250 Hz once the mouse was read at it
+    /// (`offersQuarterPollRate`), so the chip stays to go back to.
     private var pollRates: [Int] {
-        controller.pollRate == 250 ? [125, 250, 500, 1000] : RazerCommands.supportedPollingRates
+        controller.offersQuarterPollRate || controller.pollRate == 250
+            ? [125, 250, 500, 1000] : RazerCommands.supportedPollingRates
     }
     private let defaultStages = [400, 800, 1600, 3200, 6400]
     /// The connected mouse's actual configured DPI stages, or sensible defaults.
