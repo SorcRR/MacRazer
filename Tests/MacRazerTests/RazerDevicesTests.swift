@@ -65,7 +65,9 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(wired?.maxDPI, 30000)
         XCTAssertEqual(wired?.brightnessLed, Razer.zeroLed)
         XCTAssertEqual(wired?.unverified, [.polling, .lighting], "DPI passed on the cable")
-        XCTAssertEqual(wired?.verifiesBrightnessWrite, true, "ZERO_LED is OpenRazer's word only")
+        XCTAssertEqual(wired?.hasBrightness, false, "no LED group answers brightness")
+        XCTAssertFalse(RazerDevices.hasBrightness(pid: 0x00C8), "nor over the dongle")
+        XCTAssertTrue(RazerDevices.hasLighting(pid: 0x00C8), "effects still work")
         let dongle = RazerDevices.info(pid: 0x00C8)
         XCTAssertEqual(dongle?.connection, .wirelessDongle, "its dongle answers now")
         XCTAssertEqual(dongle?.unverified, [.lighting])
@@ -310,15 +312,22 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(RazerDevices.unverified(pid: 0x00F1), [.polling])
         XCTAssertTrue(UsageStatsPolicy.receiverPIDs.contains(0x00F1))
         XCTAssertTrue(DeviceTestModel.isDock(name: "Razer Mouse Dock V2 Pro"))
+        for dock in [0x00A4, 0x00F1] {
+            XCTAssertFalse(RazerDevices.linksToTest(besides: dock).contains { $0.connection == .wired },
+                           "a dock's cable is the mouse's own link")
+        }
+        XCTAssertEqual(RazerDevices.brightnessLeds(pid: 0x00CD), [Razer.logoLed], "no unconfirmed scroll zone")
     }
 
-    /// Identify fails a known model whose lighting id no longer answers, but only where some id
-    /// answered brightness at all: the Pro Click V2s' light has no brightness to read.
+    /// Identify fails a known model whose lighting id no longer answers, except on a light
+    /// with no brightness to read (the Pro Click V2 Vertical Edition).
     func testIdentifyIgnoresLightingThatHasNoBrightness() {
         let mouse = FakeMouse()
         mouse.refuse = { $0.commandClass == 0x0F }
         let (record, _) = DeviceTestSteps.identify(mouse, registry: RazerDevices.info(pid: 0x00C7))
         XCTAssertEqual(record.outcome, .passed)
+        let (lit, _) = DeviceTestSteps.identify(mouse, registry: RazerDevices.info(pid: 0x00AB))
+        XCTAssertEqual(lit.outcome, .failed, "a lit model that answers no brightness still fails")
     }
 
     /// The other two all-passed mice from the 2026-11-04 reports.

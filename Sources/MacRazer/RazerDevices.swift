@@ -116,6 +116,11 @@ struct RazerDeviceInfo {
     var supportsStageEditing = false
     /// Read brightness back after setting it, and treat a mismatch as a failed write.
     var verifiesBrightnessWrite = false
+    /// False for a light that takes effects but has no brightness: every LED group refuses
+    /// it (the Pro Click V2 Vertical Edition). The popover hides the slider, the poll skips
+    /// the read, a profile doesn't count the write, and the device test's Identify doesn't
+    /// expect a brightness answer.
+    var hasBrightness = true
     /// False for a wireless mouse that never connects by cable (the AA-cell ones), so the
     /// device test and the support prompt don't ask for a cable test it can't have.
     var hasCableLink = true
@@ -272,16 +277,16 @@ enum RazerDevices {
         // and wave on ZERO_LED, but breathing on BACKLIGHT_LED, which this app doesn't do per
         // effect yet: lighting stays unverified until a device test shows what answers. 30000
         // DPI is the vendor spec (Focus Pro 30K sensor). ZERO_LED for brightness is OpenRazer's
-        // word only, so a write is read back and a refusal shows. Two later reports on the
+        // word only, but no group answers it, so the slider is hidden. Two later reports on the
         // cable (credited to tekumara) passed DPI and stages. Their polling read answered 0x04,
         // which is 250 Hz. No LED group answers brightness, on the cable or the dongle, but the
         // zone effect read answers on 0x00 and 0x0A, and the dongle's owner can switch effects:
         // its lighting is effects only. Lighting stays unverified until a test shows that.
-        .init(pid: 0x00C7, name: "Razer Pro Click V2 Vertical Edition (Wired)", unverified: [.polling, .lighting], hasBattery: true, hasLighting: true, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, brightnessLed: Razer.zeroLed, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, verifiesBrightnessWrite: true, model: RazerDevices.proClickV2Vertical),
+        .init(pid: 0x00C7, name: "Razer Pro Click V2 Vertical Edition (Wired)", unverified: [.polling, .lighting], hasBattery: true, hasLighting: true, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, brightnessLed: Razer.zeroLed, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, hasBrightness: false, model: RazerDevices.proClickV2Vertical),
         // Its HyperSpeed dongle (in-app report on firmware v1.0, no credit given): battery, DPI
         // and stages, and polling passed with 0x1f. 0xFF and 0x80 time out, which is why the
         // first tries over it found nothing. Lighting as on the cable: effects, no brightness.
-        .init(pid: 0x00C8, name: "Razer Pro Click V2 Vertical Edition", unverified: [.lighting], hasBattery: true, hasLighting: true, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, brightnessLed: Razer.zeroLed, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, verifiesBrightnessWrite: true, model: RazerDevices.proClickV2Vertical),
+        .init(pid: 0x00C8, name: "Razer Pro Click V2 Vertical Edition", unverified: [.lighting], hasBattery: true, hasLighting: true, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, brightnessLed: Razer.zeroLed, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, hasBrightness: false, model: RazerDevices.proClickV2Vertical),
         // Naga Pro over the dongle (#69): battery, DPI and stages, polling, static color and
         // brightness all passed the in-app test with 0x1f. 0xFF and 0x80 time out. It has
         // three lit zones and LOGO, SCROLL and BACKLIGHT all answer brightness (ZERO refuses),
@@ -316,14 +321,17 @@ enum RazerDevices {
         // it: battery, DPI, static color and brightness passed with 0x1f. The classic polling
         // command answers "not supported" (0x05). Brightness stays on LOGO_LED alone, since
         // other mice the dock pairs with may lack the Naga's side panel. The dock's own
-        // lighting is not reachable here.
-        .init(pid: 0x00A4, name: "Razer Mouse Dock Pro", unverified: [.polling], hasBattery: true, hasLighting: true, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, acceptsClassicPolling: false),
+        // lighting is not reachable here. Its cable is the mouse's own link, under the mouse's
+        // own product id, so the test doesn't ask for one.
+        .init(pid: 0x00A4, name: "Razer Mouse Dock Pro", unverified: [.polling], hasBattery: true, hasLighting: true, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, hasCableLink: false, acceptsClassicPolling: false),
         // Mouse Dock V2 Pro: like the Mouse Dock Pro, a charging dock that is the receiver for
         // the mouse on it. One report (credited to cparedes) with a Basilisk V4 Pro on it:
         // battery, DPI and stages, and lighting passed with 0x1f. The classic polling command
         // answers 0x05, as on the V4 Pro itself. Brightness on LOGO_LED alone, as on the first
-        // dock. 35000 covers the V4 Pro; another mouse on it clamps to its own maximum.
-        .init(pid: 0x00F1, name: "Razer Mouse Dock V2 Pro", unverified: [.polling], hasBattery: true, hasLighting: true, maxDPI: 35000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, acceptsClassicPolling: false),
+        // dock. 35000 covers the V4 Pro. The dock doesn't say which mouse is on it, so the
+        // slider goes that high for any mouse, and one with a lower ceiling holds its own top.
+        // No cable test, as on the first dock.
+        .init(pid: 0x00F1, name: "Razer Mouse Dock V2 Pro", unverified: [.polling], hasBattery: true, hasLighting: true, maxDPI: 35000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, hasCableLink: false, acceptsClassicPolling: false),
         // HyperFlux V2 charging mat: like the Mouse Dock Pro, the mat is the receiver for the
         // mouse on it, so what answers is that mouse. The one report (no credit given) passed
         // battery, DPI and stages, and polling with 0x1f. 0x80 times out, and 0xFF answers with
@@ -476,8 +484,9 @@ enum RazerDevices {
         // recorded for the slider for when they are. 35000 is the spec.
         .init(pid: 0x00CC, name: "Razer Basilisk V3 Pro 35K (Wired)", unverified: [.lighting], hasBattery: true, hasLighting: false, maxDPI: 35000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
         // Its dongle (in-app report on firmware v2.50, no credit given): battery, DPI and
-        // stages, and polling passed. Lighting failed, as on the cable's first report.
-        .init(pid: 0x00CD, name: "Razer Basilisk V3 Pro 35K (Wireless)", unverified: [.lighting], hasBattery: true, hasLighting: false, maxDPI: 35000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
+        // stages, and polling passed. Lighting failed, as on the cable's first report. No
+        // extra zones recorded: a report that shows lighting working says which answer.
+        .init(pid: 0x00CD, name: "Razer Basilisk V3 Pro 35K (Wireless)", unverified: [.lighting], hasBattery: true, hasLighting: false, maxDPI: 35000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
         // Basilisk V3 Pro over its dongle (in-app report on firmware v1.1, no credit given):
         // battery, DPI and stages, polling and lighting all passed with 0x1f. LOGO and SCROLL
         // answer brightness, and both dimmed and came back. 30000 is the vendor spec. Its
@@ -743,6 +752,7 @@ enum RazerDevices {
     static func verifiesBrightnessWrite(pid: Int) -> Bool { info(pid: pid)?.verifiesBrightnessWrite ?? false }
     static func acceptsClassicPolling(pid: Int) -> Bool { info(pid: pid)?.acceptsClassicPolling ?? true }
     static func fixedColor(pid: Int) -> Bool { info(pid: pid)?.fixedColor ?? false }
+    static func hasBrightness(pid: Int) -> Bool { info(pid: pid)?.hasBrightness ?? true }
     static func effects(pid: Int) -> [LightingEffect] { info(pid: pid)?.effects ?? LightingEffect.allCases }
     /// Empty for a model not on record: the test is how anyone finds out.
     static func notOnMouse(pid: Int) -> Set<RazerFeature> { info(pid: pid)?.notOnMouse ?? [] }

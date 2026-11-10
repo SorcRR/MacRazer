@@ -411,10 +411,10 @@ enum DeviceTestSteps {
         if let registry, let data = record.data {
             let standard = data.standardAttempts + (data.dpiAttempts ?? [])
             if !standard.contains(where: { $0.id == registry.transactionId && $0.answered }) { record.outcome = .failed }
-            // Only where some id got a brightness answer: a light that takes effects but has no
-            // brightness (the Pro Click V2 Vertical Edition) answers none, and that says
-            // nothing about the id.
-            if registry.hasLighting, data.lightingAttempts.contains(where: \.answered),
+            // Not on a light that takes effects but has no brightness (the Pro Click V2
+            // Vertical Edition): it answers no brightness read, and that says nothing about
+            // the id.
+            if registry.hasLighting, registry.hasBrightness,
                !data.lightingAttempts.contains(where: { $0.id == registry.matrixTransactionId && $0.answered }) {
                 record.outcome = .failed
             }

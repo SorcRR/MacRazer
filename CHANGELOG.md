@@ -26,6 +26,10 @@ expect rough edges until 1.0.
   than MacRazer used, so the slider did nothing.
 - **250 Hz polling is read correctly.** A mouse left at 250 Hz showed no rate, and the device
   test couldn't put it back.
+- **No brightness slider on the Pro Click V2 Vertical Edition.** Its light takes effects but
+  has no brightness, so the slider only ever failed.
+- **No cable test for the Mouse Docks.** The dock's cable is the mouse's own link, so the test
+  stopped asking for it.
 
 ## [0.9.0] — 2026-11-08
 

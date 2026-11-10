@@ -577,8 +577,9 @@ case "poll":
         let before = try DeviceProbe.readPollingRate(dev).value
         print("Current polling rate: \(before)Hz")
         if let arg = args.dropFirst().first, let hz = Int(arg) {
-            guard RazerCommands.supportedPollingRates.contains(hz) else {
-                print("Unsupported rate. Choose one of: \(RazerCommands.supportedPollingRates.map { "\($0)" }.joined(separator: ", "))Hz")
+            // 250 Hz too: not in OpenRazer's table, but the byte is 1000 over the rate.
+            guard RazerCommands.supportedPollingRates.contains(hz) || hz == 250 else {
+                print("Unsupported rate. Choose one of: 125, 250, 500, 1000Hz")
                 exit(64)
             }
             print("Setting polling rate to \(hz)Hz …")
