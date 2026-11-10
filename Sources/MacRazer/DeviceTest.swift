@@ -354,12 +354,15 @@ struct DeviceTestVerdict: Codable, Equatable {
                                  notSupported: notSupported, skipped: skipped)
     }
 
+    /// "A", "A and B", "A, B and C", for a sentence.
+    static func names(_ items: [String]) -> String {
+        items.count < 2 ? items.joined() : items.dropLast().joined(separator: ", ") + " and " + items.last!
+    }
+
     /// What the window says once Send worked. A known model that passed everything is told
     /// it is already supported: the report is what lets the supported list say so.
     func thankYou(firmware: String?) -> String {
-        func names(_ steps: [String]) -> String {
-            steps.count < 2 ? steps.joined() : steps.dropLast().joined(separator: ", ") + " and " + steps.last!
-        }
+        let names = Self.names
         switch kind {
         case .confirmed:
             return "Your mouse is already fully supported, and your report confirms it"
@@ -378,9 +381,6 @@ struct DeviceTestVerdict: Codable, Equatable {
     /// `thankYou` for a run limited to what was still missing. `leftOut` are the steps it
     /// passed over as already verified, which don't make the report partial.
     static func focusedThankYou(_ verdict: DeviceTestVerdict, leftOut: [String]) -> String {
-        func names(_ steps: [String]) -> String {
-            steps.count < 2 ? steps.joined() : steps.dropLast().joined(separator: ", ") + " and " + steps.last!
-        }
         if !verdict.failed.isEmpty {
             return "\(names(verdict.failed)) still didn't work, so your report shows us exactly what to fix."
         }

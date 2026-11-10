@@ -435,9 +435,7 @@ struct DeviceTestView: View {
     /// What the button step and Review say about software that can take the buttons, or nil
     /// when there is none.
     nonisolated static func softwareWarning(_ software: DeviceReport.SoftwareData) -> String? {
-        func names(_ list: [String]) -> String {
-            list.count < 2 ? list.joined() : list.dropLast().joined(separator: ", ") + " and " + list.last!
-        }
+        let names = DeviceTestVerdict.names
         var lines: [String] = []
         if !software.razer.isEmpty {
             lines.append("Razer software is running: \(names(software.razer)). It can take over the side buttons, so MacRazer may not see them. Quit it and press the buttons again.")
@@ -510,7 +508,7 @@ struct DeviceTestView: View {
                     }
                 }
                 if let warning = report.software.flatMap(Self.softwareWarning) { reportWarning(warning) }
-                reportNote("The report also names any Razer apps, or apps that watch mouse buttons, running on this Mac. Nothing else about your apps.")
+                reportNote("The report also names any Razer apps or apps that watch mouse buttons running on this Mac. With keys recorded, it names any app that sent one. Nothing else about your apps.")
                 DisclosureGroup("Show full report") {
                     ScrollView {
                         Text(DeviceReportOutput.json(report, forPublic: true))
@@ -702,7 +700,10 @@ struct DeviceTestView: View {
             Button("Skip") { skip() }.disabled(model.running)
             Button("Run") { runCurrentStep() }.disabled(model.running).keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
         case .buttons:
-            Button(model.buttonsSeen.isEmpty && model.keysSeen.isEmpty ? "Skip" : "Next") { model.next() }.keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
+            // No Return shortcut while keys are recorded: the Return that pressed Next would
+            // land in the report as a key, and a side button set to Return would skip ahead.
+            Button(model.buttonsSeen.isEmpty && model.keysSeen.isEmpty ? "Skip" : "Next") { model.next() }
+                .keyboardShortcut(model.recordKeys ? nil : .defaultAction).buttonStyle(RazerProminentButtonStyle())
         default:
             Button("Next") { model.next() }
                 .disabled(model.running || model.report == nil || (model.stage == .lighting && !model.lightingAnswered))

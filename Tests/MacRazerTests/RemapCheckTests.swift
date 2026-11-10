@@ -27,6 +27,11 @@ final class RemapCheckTests: XCTestCase {
         XCTAssertNil(RemapSoftware.razerName(executablePath: "/Users/me/gitrepos/razer-cobra-mac/.build/debug/MacRazer"))
         XCTAssertNil(RemapSoftware.razerName(executablePath: "/Applications/Safari.app/Contents/MacOS/Safari"))
         XCTAssertNil(RemapSoftware.razerName(executablePath: "/System/Library/Razer/whatever"), "macOS's own folders")
+        XCTAssertNil(RemapSoftware.razerName(executablePath: "/Users/me/gitrepos/razer-cobra-mac/.build/debug/swift-build"),
+                     "a folder that only has the word in it")
+        XCTAssertNil(RemapSoftware.razerName(executablePath: "/Users/frazer/bin/tool"))
+        XCTAssertEqual(RemapSoftware.razerName(executablePath: "/Library/PrivilegedHelperTools/com.razer.rzupdater"),
+                       "com.razer.rzupdater")
     }
 
     func testNamesAreDistinctSortedAndCapped() {

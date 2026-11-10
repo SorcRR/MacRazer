@@ -34,20 +34,28 @@ enum RemapSoftware {
 
     /// The name to report for a Razer process, or nil for anything else. Matched on the path
     /// rather than a list of names: Razer renames its helpers between Synapse versions, and
-    /// they all live in a folder or app with Razer in its name (Razer Synapse.app,
-    /// /Library/Application Support/Razer). MacRazer itself, and macOS's own folders, never
-    /// match.
+    /// they all live in a folder or app named for Razer (Razer Synapse.app,
+    /// /Library/Application Support/Razer, com.razer.*). A folder that only contains the word,
+    /// like a project called razer-tools or a home folder called frazer, doesn't count.
+    /// MacRazer itself, and macOS's own folders, never match.
     static func razerName(executablePath path: String) -> String? {
-        guard !path.hasPrefix("/System/"), !path.hasPrefix("/usr/"),
-              path.range(of: "razer", options: .caseInsensitive) != nil else { return nil }
+        guard !path.hasPrefix("/System/"), !path.hasPrefix("/usr/") else { return nil }
         let components = path.split(separator: "/").map(String.init)
         guard let executable = components.last,
-              !components.contains(where: { $0.range(of: "macrazer", options: .caseInsensitive) != nil })
-        else { return nil }
+              !components.contains(where: { $0.range(of: "macrazer", options: .caseInsensitive) != nil }),
+              components.contains(where: isRazerFolder) else { return nil }
         // The outermost app names it, as Activity Monitor would. A daemon outside any app
         // goes by its executable.
         if let app = components.first(where: { $0.hasSuffix(".app") }) { return String(app.dropLast(4)) }
         return executable
+    }
+
+    /// "Razer", "Razer Synapse.app", "com.razer.rzupdater": a name that is Razer's, not one
+    /// that merely has the word in it.
+    private static func isRazerFolder(_ component: String) -> Bool {
+        let name = component.lowercased()
+        return name == "razer" || name.hasPrefix("razer ") || name.hasPrefix("com.razer")
+            || (name.hasPrefix("razer") && name.hasSuffix(".app"))
     }
 
     /// Distinct, sorted and capped, so the report stays small and the same set reads the same.
@@ -171,6 +179,8 @@ final class KeystrokeCapture: @unchecked Sendable {
     private var source: CFRunLoopSource?
     /// Retained for the C callback's context, released by `stop()`.
     private var selfContext: UnsafeMutableRawPointer?
+    /// `postedBy`'s answer per process, so a burst of posted keys costs one lookup.
+    private var appNames: [pid_t: String?] = [:]
 
     enum Event {
         case keyDown(keyCode: Int, flags: CGEventFlags, autorepeat: Bool, postedBy: String?)
@@ -226,10 +236,10 @@ final class KeystrokeCapture: @unchecked Sendable {
         case .keyDown:
             capture.onKey(.keyDown(keyCode: Int(event.getIntegerValueField(.keyboardEventKeycode)), flags: event.flags,
                                    autorepeat: event.getIntegerValueField(.keyboardEventAutorepeat) != 0,
-                                   postedBy: postedBy(event)))
+                                   postedBy: capture.postedBy(event)))
         case .flagsChanged:
             capture.onKey(.flagsChanged(keyCode: Int(event.getIntegerValueField(.keyboardEventKeycode)),
-                                        flags: event.flags, postedBy: postedBy(event)))
+                                        flags: event.flags, postedBy: capture.postedBy(event)))
         default: break
         }
         return Unmanaged.passUnretained(event)
@@ -237,10 +247,13 @@ final class KeystrokeCapture: @unchecked Sendable {
 
     /// The app that posted a key, for one that didn't come from a keyboard or mouse: the
     /// sign of a remapper at work. Nil for a key from hardware.
-    private static func postedBy(_ event: CGEvent) -> String? {
+    private func postedBy(_ event: CGEvent) -> String? {
         let pid = pid_t(event.getIntegerValueField(.eventSourceUnixProcessID))
-        if pid > 0, let name = ButtonRemapper.appName(pid: pid) {
-            return String(name.prefix(RemapSoftware.maxNameLength))
+        if pid > 0 {
+            if appNames[pid] == nil {
+                appNames[pid] = .some(ButtonRemapper.appName(pid: pid).map { String($0.prefix(RemapSoftware.maxNameLength)) })
+            }
+            if let name = appNames[pid] ?? nil { return name }
         }
         let state = event.getIntegerValueField(.eventSourceStateID)
         return state == Int64(CGEventSourceStateID.hidSystemState.rawValue) ? nil : "unknown"
