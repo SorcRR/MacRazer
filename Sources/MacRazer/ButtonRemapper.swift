@@ -340,22 +340,29 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
     }
 
     private func refreshCompetingTaps() {
-        let taps = (Self.eventTaps() ?? []).map {
+        let names = Self.currentCompetingTapApps()
+        if names != competingTapApps { competingTapApps = names }
+    }
+
+    /// The apps whose taps compete with ours (`competingTapPIDs`), each once. Also what the
+    /// device test reports (`RemapSoftware`).
+    static func currentCompetingTapApps() -> [String] {
+        let taps = (eventTaps() ?? []).map {
             TapEntry(pid: $0.tappingProcess, tappedPID: $0.processBeingTapped, enabled: $0.enabled,
                      listenOnly: $0.options == .listenOnly, eventsOfInterest: $0.eventsOfInterest)
         }
         // Apps only: macOS's own daemons tap mouse events too, and passing clicks on is their job.
         var names: [String] = []
-        for pid in Self.competingTapPIDs(taps, ownPID: getpid()) {
-            guard let name = Self.appName(pid: pid), !names.contains(name) else { continue }
+        for pid in competingTapPIDs(taps, ownPID: getpid()) {
+            guard let name = appName(pid: pid), !names.contains(name) else { continue }
             names.append(name)
         }
-        if names != competingTapApps { competingTapApps = names }
+        return names
     }
 
     /// The app a process belongs to, or nil for one of macOS's own. A helper launched by
     /// launchd has no `NSRunningApplication`, so the `.app` around its executable names it.
-    private static func appName(pid: pid_t) -> String? {
+    static func appName(pid: pid_t) -> String? {
         if let app = NSRunningApplication(processIdentifier: pid), let bundleID = app.bundleIdentifier {
             return bundleID.hasPrefix("com.apple.") ? nil : app.localizedName ?? bundleID
         }

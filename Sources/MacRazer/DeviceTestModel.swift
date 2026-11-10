@@ -84,6 +84,19 @@ final class DeviceTestModel: ObservableObject {
     /// Whether the button step could open the mouse to listen. False means it can't hear
     /// presses (no Input Monitoring, or the mouse went away), and the step says so.
     @Published private(set) var listening = false
+    /// The button step's opt-in: also record ordinary key presses, for side buttons set on
+    /// the mouse (or by software) to send keys. It hears the keyboard too, so it starts off
+    /// on every run, and turning it off clears what it recorded.
+    @Published var recordKeys = false {
+        didSet { if recordKeys != oldValue { updateKeyCapture() } }
+    }
+    @Published private(set) var keysSeen: [DeviceReport.KeyPress] = []
+    /// Why recording keys couldn't start, for the step to show.
+    @Published private(set) var keyCaptureProblem: String?
+    /// Razer's software and other button-grabbing apps, as the button step or Review last saw.
+    @Published private(set) var software = DeviceReport.SoftwareData()
+    /// The run is the Bluetooth test, whose steps are its own screen, then the button step.
+    @Published private(set) var bluetoothRun = false
     @Published var comment = ""
     /// Which mouse sits on the dock or mat under test. Its PID is the dock's, so the report
     /// can't tell otherwise. Sent as the first line of the comment.
@@ -105,6 +118,8 @@ final class DeviceTestModel: ObservableObject {
     let controller: MouseController
     private let permissions: PermissionsModel
     private var capture: ButtonCapture?
+    private var keyCapture: KeystrokeCapture?
+    private var keyLog = KeystrokeLog()
     private var standardId: UInt8 = 0x1F
     private var matrixId: UInt8 = 0x1F
     /// A known model's per-command ids, used as the app's own traffic would.
@@ -192,7 +207,9 @@ final class DeviceTestModel: ObservableObject {
     /// The screens a focused run passes over.
     var skippedStages: Set<Stage> { DeviceTestFlow.skipped(focus: focus) }
     /// The stages the progress bar and the step count show for this run.
-    var visibleSteps: [Stage] { Self.steps.filter { !skippedStages.contains($0) } }
+    var visibleSteps: [Stage] {
+        bluetoothRun ? [.bluetooth, .buttons, .review] : Self.steps.filter { !skippedStages.contains($0) }
+    }
     /// What a step left out of a focused run records, so the report doesn't read as if the
     /// person skipped it.
     static let alreadyVerified = "Already verified on this mouse, so this run left it out."
@@ -331,6 +348,7 @@ final class DeviceTestModel: ObservableObject {
         // A window closed mid-step and reopened: that step is still finishing on the device.
         guard !running else { return }
         blocker = nil
+        bluetoothRun = false
         if missingOnly, case .partly(_, let missing) = support { focus = missing } else { focus = nil }
         // A mouse on Bluetooth with the dongle still plugged in gets this far. Identify finds
         // that out on the device queue, which knows the link for certain.
@@ -382,6 +400,7 @@ final class DeviceTestModel: ObservableObject {
         lacking = Self.lacking(pid: pid, sweep: nil)
         if var marked = report { Self.markNotOnMouse(&marked, lacking: lacking); report = marked }
         stage = .review
+        noteSoftware()
     }
 
     private func begin() {
@@ -431,6 +450,7 @@ final class DeviceTestModel: ObservableObject {
             sessionOpen = true
         }
         pin()
+        bluetoothRun = true
         stage = .bluetooth
         Task { await runBluetooth(name: mouse.name) }
     }
@@ -624,11 +644,64 @@ final class DeviceTestModel: ObservableObject {
 
     private func startListening() {
         buttonsSeen = []
+        keyLog = KeystrokeLog()
+        keysSeen = []
+        noteSoftware()
         let capture = ButtonCapture { [weak self] label in
             Task { @MainActor in self?.saw(label) }
         }
         self.capture = capture
-        listening = capture.start(vendorID: Razer.vendorId, productID: report?.device.productID ?? 0)
+        // The report's own vendor: a mouse on Bluetooth enumerates under BLEProtocol's.
+        listening = capture.start(vendorID: report?.device.vendorID ?? Razer.vendorId,
+                                  productID: report?.device.productID ?? 0)
+        updateKeyCapture()
+    }
+
+    /// Starts or stops the key tap to match `recordKeys` and the screen: it runs only while
+    /// the button step shows with recording on.
+    private func updateKeyCapture() {
+        if !recordKeys {
+            keyCapture?.stop()
+            keyCapture = nil
+            keyLog = KeystrokeLog()
+            keysSeen = []
+            keyCaptureProblem = nil
+            return
+        }
+        guard stage == .buttons, keyCapture == nil else { return }
+        let capture = KeystrokeCapture { [weak self] event in
+            MainActor.assumeIsolated { self?.heard(event) }
+        }
+        switch capture.start() {
+        case .started:
+            keyCapture = capture
+            keyCaptureProblem = nil
+        case .denied, .failed:
+            // Off first: turning it off clears the problem along with the keys.
+            recordKeys = false
+            keyCaptureProblem = Self.keyCaptureRefused
+        }
+    }
+
+    static let keyCaptureRefused = "MacRazer needs Input Monitoring to hear keys. Allow it in System Settings, then reopen MacRazer and this test."
+
+    private func heard(_ event: KeystrokeCapture.Event) {
+        guard recordKeys, stage == .buttons else { return }
+        switch event {
+        case .keyDown(let keyCode, let flags, let autorepeat, let postedBy):
+            keyLog.keyDown(keyCode: keyCode, flags: flags, autorepeat: autorepeat, postedBy: postedBy)
+        case .flagsChanged(let keyCode, let flags, let postedBy):
+            keyLog.flagsChanged(keyCode: keyCode, flags: flags, postedBy: postedBy)
+        }
+        let sorted = keyLog.sorted
+        if sorted != keysSeen { keysSeen = sorted }
+    }
+
+    /// Looks again for software that can take the buttons, and puts what it found in the
+    /// report. On arriving at the button step and Review: the person may have quit it since.
+    private func noteSoftware() {
+        software = RemapSoftware.scan()
+        report?.software = software
     }
 
     private func saw(_ label: String) {
@@ -639,9 +712,23 @@ final class DeviceTestModel: ObservableObject {
         capture?.stop()
         capture = nil
         listening = false
-        report?.buttons = .init(outcome: buttonsSeen.isEmpty ? .skipped : .passed,
-                                data: .init(seen: buttonsSeen))
+        keyCapture?.stop()
+        keyCapture = nil
+        report?.buttons = Self.buttonsRecord(seen: buttonsSeen, keys: recordKeys ? keysSeen : nil)
     }
+
+    /// The button step's record. Only the mouse's own buttons pass it. Keys alone may be the
+    /// keyboard, bumped while recording, so they stay in the report but leave the step
+    /// unconfirmed (`skipped`). A side button that types a key on the mouse itself shows up
+    /// in `seen` as a keyboard usage, so that case still passes.
+    nonisolated static func buttonsRecord(seen: [String], keys: [DeviceReport.KeyPress]?)
+        -> DeviceReport.StepRecord<DeviceReport.ButtonsData> {
+        let keysOnly = seen.isEmpty && !(keys ?? []).isEmpty
+        return .init(outcome: seen.isEmpty ? .skipped : .passed, data: .init(seen: seen, keys: keys),
+                     error: keysOnly ? keysOnlyNote : nil)
+    }
+
+    nonisolated static let keysOnlyNote = "Only keys were heard, no mouse buttons. They may be from the keyboard."
 
     // MARK: - Moving between screens
 
@@ -652,6 +739,7 @@ final class DeviceTestModel: ObservableObject {
 
     func back() {
         guard !running, let target = DeviceTestFlow.back(from: stage, identifyRan: report?.identify.data != nil,
+                                                                 bluetooth: bluetoothRun,
                                                                  skipping: skippedStages)
         else { return }
         move(to: target)
@@ -666,6 +754,7 @@ final class DeviceTestModel: ObservableObject {
         case .battery where report?.battery.data == nil:
             if notOnMouse(.battery) == nil { Task { await runBattery() } } else { Task { await checkBatteryQuietly() } }
         case .buttons: startListening()
+        case .review: noteSoftware()
         default: break
         }
     }
@@ -716,6 +805,8 @@ final class DeviceTestModel: ObservableObject {
         capture?.stop()
         capture = nil
         listening = false
+        keyCapture?.stop()
+        keyCapture = nil
         // The Bluetooth test is still reading over its own connection: resuming the app's reads
         // now would reopen the app's, and the rest would go unanswered. It ends the session
         // itself when it's done.
@@ -773,6 +864,11 @@ final class DeviceTestModel: ObservableObject {
         dimmed = nil
         turnedRed = nil
         buttonsSeen = []
+        recordKeys = false
+        keysSeen = []
+        keyCaptureProblem = nil
+        software = .init()
+        bluetoothRun = false
         comment = ""
         dockMouse = ""
         credit = ""
@@ -857,21 +953,26 @@ enum DeviceTestFlow {
         case .dpi: return .polling
         case .polling: return .lighting
         case .lighting: return .buttons
-        case .buttons, .bluetooth: return .review
+        // The Bluetooth test has a button step too: side buttons that go unheard over
+        // Bluetooth are what it most needs to show.
+        case .bluetooth: return .buttons
+        case .buttons: return .review
         case .intro, .permission, .review: return nil
         }
     }
 
     /// `identifyRan` is false when the test went straight to Review without Input Monitoring:
-    /// there are no steps behind it to go back to.
-    static func back(from stage: DeviceTestModel.Stage, identifyRan: Bool) -> DeviceTestModel.Stage? {
+    /// there are no steps behind it to go back to. `bluetooth` is the Bluetooth test, whose
+    /// button step follows its own screen.
+    static func back(from stage: DeviceTestModel.Stage, identifyRan: Bool,
+                     bluetooth: Bool = false) -> DeviceTestModel.Stage? {
         switch stage {
         case .battery: return .identify
         case .dpi: return .battery
         case .polling: return .dpi
         case .lighting: return .polling
-        case .buttons: return .lighting
-        case .review: return identifyRan ? .buttons : nil
+        case .buttons: return bluetooth ? .bluetooth : .lighting
+        case .review: return identifyRan || bluetooth ? .buttons : nil
         case .intro, .permission, .bluetooth, .identify: return nil
         }
     }
@@ -885,10 +986,10 @@ enum DeviceTestFlow {
 
     /// `back`, passing over the screens in `skipping`. Identify is never skipped, so there is
     /// always somewhere to land.
-    static func back(from stage: DeviceTestModel.Stage, identifyRan: Bool,
+    static func back(from stage: DeviceTestModel.Stage, identifyRan: Bool, bluetooth: Bool = false,
                      skipping: Set<DeviceTestModel.Stage>) -> DeviceTestModel.Stage? {
-        var target = back(from: stage, identifyRan: identifyRan)
-        while let t = target, skipping.contains(t) { target = back(from: t, identifyRan: identifyRan) }
+        var target = back(from: stage, identifyRan: identifyRan, bluetooth: bluetooth)
+        while let t = target, skipping.contains(t) { target = back(from: t, identifyRan: identifyRan, bluetooth: bluetooth) }
         return target
     }
 

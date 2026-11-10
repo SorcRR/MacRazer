@@ -41,6 +41,27 @@
   },
   "buttons" : {
     "data" : {
+      "keys" : [
+        {
+          "keyCode" : 9,
+          "modifiers" : [
+            "control"
+          ]
+        },
+        {
+          "keyCode" : 8,
+          "modifiers" : [
+            "command"
+          ],
+          "postedBy" : "Razer Synapse"
+        },
+        {
+          "keyCode" : 56,
+          "modifiers" : [
+            "shift"
+          ]
+        }
+      ],
       "seen" : [
         "09:04",
         "09:05",
@@ -723,7 +744,16 @@
     "transactionId" : 31
   },
   "replyEmail" : "person@example.com",
-  "schemaVersion" : 5,
+  "schemaVersion" : 6,
+  "software" : {
+    "mouseTaps" : [
+      "BetterTouchTool"
+    ],
+    "razer" : [
+      "Razer Synapse",
+      "RzEngineMonService"
+    ]
+  },
   "verdict" : {
     "failed" : [
 

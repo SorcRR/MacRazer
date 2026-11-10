@@ -24,6 +24,17 @@ expect rough edges until 1.0.
     battery, DPI and polling work; lighting waits on a test.
 - **Tested keyboards and mousepads.** The Ornata V3, Ornata V3 X and Goliathus Chroma Extended
   lost their UNTESTED tag after passing the lighting test.
+- **The device test looks for what can take your side buttons.** The button step and Review
+  say when Razer Synapse or another Razer helper is running, or another app watches mouse
+  buttons. The report names them too, and nothing else about your apps. A GitHub issue
+  names only Razer's apps and counts the rest.
+- **Record keyboard keys in the button step.** An opt-in checkbox also records ordinary key
+  presses. It catches side buttons set to type a shortcut, like Ctrl+C. It hears your
+  keyboard as well, so press only the mouse's buttons while it's on. It keeps each key and its
+  modifiers, only while the step is open, and turning it off clears them. Keys alone don't
+  pass the step, since they may come from the keyboard.
+- **The Bluetooth test has a button step now.** Side buttons that go unheard over Bluetooth
+  show up in its report.
 
 ### Fixed
 - **Brightness on the Goliathus Chroma Extended.** It answers brightness on a different light

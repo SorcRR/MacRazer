@@ -9,9 +9,11 @@ import Foundation
 /// exactly what leaves their Mac.
 ///
 /// Never in here: the serial number (the app keys a mouse by it, and it names one physical
-/// unit), USB locations, or anything about the Mac beyond its OS version.
+/// unit), USB locations, or anything about the Mac beyond its OS version and the few apps
+/// that can take over the mouse's buttons (`software`). Keys the person pressed are only here
+/// when they turned on recording them, and then only as key codes (`ButtonsData.keys`).
 struct DeviceReport: Codable, Equatable {
-    static let currentSchema = 5
+    static let currentSchema = 6
 
     var schemaVersion = DeviceReport.currentSchema
     var appVersion: String
@@ -35,6 +37,10 @@ struct DeviceReport: Codable, Equatable {
     /// Set for a keyboard or mousepad's lighting test (`AccessoryTestModel`), which runs only
     /// Identify and Lighting. Schema 5. Nil for a mouse.
     var accessory: AccessoryData?
+    /// Razer's software and other button-grabbing apps running when the button step or Review
+    /// last looked (`RemapSoftware`). Schema 6. Empty lists mean it looked and found none; nil
+    /// in earlier reports and an accessory's.
+    var software: SoftwareData?
     var verdict: DeviceTestVerdict?
     var comment: String?
     /// How the person would like to be credited in the README, if at all.
@@ -182,6 +188,39 @@ struct DeviceReport: Codable, Equatable {
         /// Each distinct input seen, as "page:usage" in hex, e.g. "09:04" for button 4 or
         /// "07:1e" for a key that types 1.
         var seen: [String] = []
+        /// Schema 6. The keys macOS saw while the person had "record keyboard keys" on, each
+        /// once, sorted. Nil when they never turned it on; empty when they did and nothing came.
+        var keys: [KeyPress]?
+    }
+
+    /// One distinct key press: a macOS virtual key code (not a HID usage like `seen`'s) and
+    /// the modifiers held with it. A modifier pressed alone is its own key code with itself
+    /// as the modifier.
+    struct KeyPress: Codable, Hashable, Comparable {
+        var keyCode: Int
+        /// Of "control", "option", "shift", "command", in that order.
+        var modifiers: [String]
+        /// The app that posted the key, for one that didn't come from hardware: a remapper
+        /// turning a button into a shortcut. "unknown" when macOS doesn't say which.
+        var postedBy: String?
+
+        static func < (a: KeyPress, b: KeyPress) -> Bool {
+            (a.keyCode, a.modifiers.joined(separator: "+"), a.postedBy ?? "")
+                < (b.keyCode, b.modifiers.joined(separator: "+"), b.postedBy ?? "")
+        }
+    }
+
+    struct SoftwareData: Codable, Equatable {
+        /// Razer processes, by app or executable name (`RemapSoftware.razerName`).
+        var razer: [String] = []
+        /// Other apps whose event tap can drop an extra-button click
+        /// (`ButtonRemapper.competingTapPIDs`).
+        var mouseTaps: [String] = []
+        /// How many of `mouseTaps` a public copy left out (`DeviceReportOutput.publicCopy`).
+        /// Nil in the report Send emails, which names them all.
+        var otherApps: Int?
+
+        var isEmpty: Bool { razer.isEmpty && mouseTaps.isEmpty && (otherApps ?? 0) == 0 }
     }
 
     /// One answer per read in `DeviceTestSteps.capabilityReads`, in that order.
@@ -318,12 +357,15 @@ struct DeviceTestVerdict: Codable, Equatable {
                                  notSupported: notSupported, skipped: skipped)
     }
 
+    /// "A", "A and B", "A, B and C", for a sentence.
+    static func names(_ items: [String]) -> String {
+        items.count < 2 ? items.joined() : items.dropLast().joined(separator: ", ") + " and " + items.last!
+    }
+
     /// What the window says once Send worked. A known model that passed everything is told
     /// it is already supported: the report is what lets the supported list say so.
     func thankYou(firmware: String?) -> String {
-        func names(_ steps: [String]) -> String {
-            steps.count < 2 ? steps.joined() : steps.dropLast().joined(separator: ", ") + " and " + steps.last!
-        }
+        let names = Self.names
         switch kind {
         case .confirmed:
             return "Your mouse is already fully supported, and your report confirms it"
@@ -342,9 +384,6 @@ struct DeviceTestVerdict: Codable, Equatable {
     /// `thankYou` for a run limited to what was still missing. `leftOut` are the steps it
     /// passed over as already verified, which don't make the report partial.
     static func focusedThankYou(_ verdict: DeviceTestVerdict, leftOut: [String]) -> String {
-        func names(_ steps: [String]) -> String {
-            steps.count < 2 ? steps.joined() : steps.dropLast().joined(separator: ", ") + " and " + steps.last!
-        }
         if !verdict.failed.isEmpty {
             return "\(names(verdict.failed)) still didn't work, so your report shows us exactly what to fix."
         }
