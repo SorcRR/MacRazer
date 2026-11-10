@@ -90,8 +90,8 @@ final class SupportPromptWordingTests: XCTestCase {
         XCTAssertTrue(RazerDevices.needsReport(pid: 0x00CE), "its cable still has lighting to confirm")
         let card = SupportPromptView.card(pid: 0x00CE)
         XCTAssertTrue(card.otherLinksOnly, "no test to run on Bluetooth")
-        XCTAssertEqual(card.title, "Test its other connection")
-        XCTAssertTrue(card.detail.contains("its cable"), card.detail)
+        XCTAssertEqual(card.title, "Test its other connections", "its cable and its dongle")
+        XCTAssertTrue(card.detail.contains("cable"), card.detail)
         XCTAssertFalse(SupportPromptView.card(pid: 0x00CC).otherLinksOnly, "a USB row still runs its own test")
     }
 

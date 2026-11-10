@@ -224,7 +224,7 @@ final class DeviceTestTests: XCTestCase {
         // There'd be no way to write it back, so the step doesn't change it at all.
         let mouse = FakeMouse()
         var odd = RazerCommands.setPollingRate(1000)
-        odd.arguments[0] = 0x04
+        odd.arguments[0] = 0x03
         mouse.holds(odd)
         let record = DeviceTestSteps.polling(mouse)
         XCTAssertEqual(record.outcome, .failed)
