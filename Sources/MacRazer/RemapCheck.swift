@@ -177,8 +177,6 @@ final class KeystrokeCapture: @unchecked Sendable {
     private let onKey: (Event) -> Void
     private var tap: CFMachPort?
     private var source: CFRunLoopSource?
-    /// Retained for the C callback's context, released by `stop()`.
-    private var selfContext: UnsafeMutableRawPointer?
     /// `postedBy`'s answer per process, so a burst of posted keys costs one lookup.
     private var appNames: [pid_t: String?] = [:]
 
@@ -191,6 +189,10 @@ final class KeystrokeCapture: @unchecked Sendable {
         self.onKey = onKey
     }
 
+    /// The tap holds only an unretained pointer to the capture, so dropping the last
+    /// reference always ends it: a path that forgets `stop()` can't leave it listening.
+    deinit { stop() }
+
     var isRunning: Bool { tap != nil }
 
     func start() -> StartResult {
@@ -199,20 +201,17 @@ final class KeystrokeCapture: @unchecked Sendable {
             _ = CGRequestListenEventAccess()
             return .denied
         }
-        let context = Unmanaged.passRetained(self).toOpaque()
+        // Unretained: the owner keeps the capture alive, and deinit removes the tap first.
+        let context = Unmanaged.passUnretained(self).toOpaque()
         let mask = (CGEventMask(1) << CGEventType.keyDown.rawValue) | (CGEventMask(1) << CGEventType.flagsChanged.rawValue)
         guard let tap = CGEvent.tapCreate(tap: .cgSessionEventTap, place: .tailAppendEventTap, options: .listenOnly,
                                           eventsOfInterest: mask, callback: Self.callback, userInfo: context)
-        else {
-            Unmanaged<KeystrokeCapture>.fromOpaque(context).release()
-            return .failed
-        }
+        else { return .failed }
         let source = CFMachPortCreateRunLoopSource(nil, tap, 0)
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
         self.tap = tap
         self.source = source
-        selfContext = context
         return .started
     }
 
@@ -221,10 +220,6 @@ final class KeystrokeCapture: @unchecked Sendable {
         if let source { CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes) }
         tap = nil
         source = nil
-        if let context = selfContext {
-            selfContext = nil
-            Unmanaged<KeystrokeCapture>.fromOpaque(context).release()
-        }
     }
 
     private static let callback: CGEventTapCallBack = { _, type, event, userInfo in
@@ -258,6 +253,4 @@ final class KeystrokeCapture: @unchecked Sendable {
         let state = event.getIntegerValueField(.eventSourceStateID)
         return state == Int64(CGEventSourceStateID.hidSystemState.rawValue) ? nil : "unknown"
     }
-
-    deinit { stop() }
 }

@@ -503,12 +503,13 @@ struct DeviceTestView: View {
                         let skipped = verdict.skipped.filter { !leftOut.contains($0) }
                         if !skipped.isEmpty { reportRow("Skipped", skipped.joined(separator: ", ")) }
                         if let keys = report.buttons.data?.keys {
-                            reportRow("Keys recorded", keys.isEmpty ? "None" : keys.map(\.displayName).joined(separator: ", "))
+                            reportRow(report.buttons.outcome == .passed || keys.isEmpty ? "Keys recorded" : "Keys only, no buttons",
+                                      keys.isEmpty ? "None" : keys.map(\.displayName).joined(separator: ", "))
                         }
                     }
                 }
                 if let warning = report.software.flatMap(Self.softwareWarning) { reportWarning(warning) }
-                reportNote("The report also names any Razer apps or apps that watch mouse buttons running on this Mac. With keys recorded, it names any app that sent one. Nothing else about your apps.")
+                reportNote("The report also names any Razer apps or apps that watch mouse buttons running on this Mac. With keys recorded, it names any app that sent one. Nothing else about your apps. A GitHub issue names only Razer's.")
                 DisclosureGroup("Show full report") {
                     ScrollView {
                         Text(DeviceReportOutput.json(report, forPublic: true))

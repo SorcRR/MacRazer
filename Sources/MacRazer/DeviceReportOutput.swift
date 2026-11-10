@@ -16,15 +16,41 @@ enum DeviceReportOutput {
     static let maxCreditUnits = 256
     static let maxEmail = 254
 
-    /// The report as JSON. `forPublic` drops the reply email: a GitHub issue is public, and
-    /// the address is only ever meant for the maintainer.
+    /// The report as JSON. `forPublic` gives `publicCopy`: a GitHub issue is public.
     static func json(_ report: DeviceReport, forPublic: Bool, pretty: Bool = true) -> String {
-        var copy = report
-        if forPublic { copy.replyEmail = nil }
+        let copy = forPublic ? publicCopy(report) : report
         let encoder = JSONEncoder()
         encoder.outputFormatting = pretty ? [.prettyPrinted, .sortedKeys] : [.sortedKeys]
         return String(decoding: (try? encoder.encode(copy)) ?? Data(), as: UTF8.self)
     }
+
+    /// The report as a GitHub issue may show it. No reply email: that is only for the
+    /// maintainer. Of the apps running on the person's Mac, only Razer's are named. Any other
+    /// app that watches mouse buttons, or sent a recorded key, becomes a count or "another app".
+    /// The report Send emails keeps every name.
+    static func publicCopy(_ report: DeviceReport) -> DeviceReport {
+        var copy = report
+        copy.replyEmail = nil
+        let razer = Set(report.software?.razer ?? [])
+        if var software = copy.software {
+            let others = software.mouseTaps.filter { !razer.contains($0) }.count + (software.otherApps ?? 0)
+            software.mouseTaps = software.mouseTaps.filter(razer.contains)
+            software.otherApps = others == 0 ? nil : others
+            copy.software = software
+        }
+        if var data = copy.buttons.data, let keys = data.keys {
+            var kept: [DeviceReport.KeyPress] = []
+            for var key in keys {
+                if let app = key.postedBy, !razer.contains(app) { key.postedBy = anotherApp }
+                if !kept.contains(key) { kept.append(key) }
+            }
+            data.keys = kept
+            copy.buttons.data = data
+        }
+        return copy
+    }
+
+    static let anotherApp = "another app"
 
     /// The most a report may be, as compact JSON: the Worker refuses anything bigger.
     static let maxReportBytes = 16 * 1024
@@ -93,6 +119,7 @@ enum DeviceReportOutput {
     /// A short readable summary for the top of an issue, above the full JSON. `withComment`
     /// false leaves the comment out, for a link that would be too long with it.
     static func summary(_ report: DeviceReport, withComment: Bool = true) -> String {
+        let report = publicCopy(report)
         var lines = ["**\(report.device.name)**, product ID \(String(format: "0x%04X", report.device.productID))"
                      + (report.identify.data?.firmware.map { ", firmware \($0)" } ?? "")
                      + (report.device.connection.map { $0 == .bluetooth ? ", over Bluetooth" : ", over the \($0.rawValue)" } ?? "")]
@@ -122,10 +149,13 @@ enum DeviceReportOutput {
             lines.append("Also answers: " + (answered.isEmpty ? "none of the extra reads" : answered.joined(separator: ", ")))
         }
         if let software = report.software, !software.isEmpty {
-            lines.append("Running, can take the buttons: " + (software.razer + software.mouseTaps).joined(separator: ", "))
+            var names = software.razer + software.mouseTaps
+            if let others = software.otherApps { names.append("\(others) other \(others == 1 ? "app" : "apps")") }
+            lines.append("Running, can take the buttons: " + DeviceTestVerdict.names(names))
         }
         if let keys = report.buttons.data?.keys {
-            lines.append("Keys recorded: " + (keys.isEmpty ? "none" : keys.map(\.displayName).joined(separator: ", ")))
+            let label = report.buttons.outcome == .passed || keys.isEmpty ? "Keys recorded" : "Keys only, no mouse buttons"
+            lines.append(label + ": " + (keys.isEmpty ? "none" : keys.map(\.displayName).joined(separator: ", ")))
         }
         if withComment, let comment = report.comment, !comment.isEmpty {
             lines.append("\n> " + comment.replacingOccurrences(of: "\n", with: "\n> "))

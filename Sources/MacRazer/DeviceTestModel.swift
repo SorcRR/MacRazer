@@ -714,10 +714,21 @@ final class DeviceTestModel: ObservableObject {
         listening = false
         keyCapture?.stop()
         keyCapture = nil
-        let keys = recordKeys ? keysSeen : nil
-        report?.buttons = .init(outcome: buttonsSeen.isEmpty && (keys ?? []).isEmpty ? .skipped : .passed,
-                                data: .init(seen: buttonsSeen, keys: keys))
+        report?.buttons = Self.buttonsRecord(seen: buttonsSeen, keys: recordKeys ? keysSeen : nil)
     }
+
+    /// The button step's record. Only the mouse's own buttons pass it. Keys alone may be the
+    /// keyboard, bumped while recording, so they stay in the report but leave the step
+    /// unconfirmed (`skipped`). A side button that types a key on the mouse itself shows up
+    /// in `seen` as a keyboard usage, so that case still passes.
+    nonisolated static func buttonsRecord(seen: [String], keys: [DeviceReport.KeyPress]?)
+        -> DeviceReport.StepRecord<DeviceReport.ButtonsData> {
+        let keysOnly = seen.isEmpty && !(keys ?? []).isEmpty
+        return .init(outcome: seen.isEmpty ? .skipped : .passed, data: .init(seen: seen, keys: keys),
+                     error: keysOnly ? keysOnlyNote : nil)
+    }
+
+    nonisolated static let keysOnlyNote = "Only keys were heard, no mouse buttons. They may be from the keyboard."
 
     // MARK: - Moving between screens
 

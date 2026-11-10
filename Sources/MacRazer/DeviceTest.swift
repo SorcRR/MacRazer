@@ -216,8 +216,11 @@ struct DeviceReport: Codable, Equatable {
         /// Other apps whose event tap can drop an extra-button click
         /// (`ButtonRemapper.competingTapPIDs`).
         var mouseTaps: [String] = []
+        /// How many of `mouseTaps` a public copy left out (`DeviceReportOutput.publicCopy`).
+        /// Nil in the report Send emails, which names them all.
+        var otherApps: Int?
 
-        var isEmpty: Bool { razer.isEmpty && mouseTaps.isEmpty }
+        var isEmpty: Bool { razer.isEmpty && mouseTaps.isEmpty && (otherApps ?? 0) == 0 }
     }
 
     /// One answer per read in `DeviceTestSteps.capabilityReads`, in that order.
