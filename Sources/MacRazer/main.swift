@@ -204,7 +204,8 @@ case "render-ui":
     var accessoryPIDs: [Int] = []
     if args.contains("keyboard") || args.contains("three") { accessoryPIDs.append(0x022A) }
     if args.contains("pad") || args.contains("three") { accessoryPIDs.append(0x0C04) }
-    if args.contains("three") || args.contains("untested") { accessoryPIDs.append(0x02A1) }
+    if args.contains("three") { accessoryPIDs.append(0x02A1) }
+    if args.contains("untested") { accessoryPIDs.append(0x028F) }
     if !accessoryPIDs.isEmpty {
         Accessories.shared.loadPreviewState(pids: accessoryPIDs,
                                             followsMouse: args.contains("follow") ? [0x022A] : [],
@@ -369,7 +370,7 @@ case "render-accessory-test":
     let accessoryPath = outputPath(args.dropFirst(), default: "accessory-test-preview.png")
     let accessoryStage: AccessoryTestModel.Stage = args.contains("review") ? .review
         : args.contains("lighting") ? .lighting : .intro
-    let accessoryInfo = RazerAccessories.info(pid: args.contains("pad") ? 0x0C08 : 0x02A1)!
+    let accessoryInfo = RazerAccessories.info(pid: args.contains("pad") ? 0x0C08 : 0x028F)!
     let previewAccessory = AccessoryController(id: .init(pid: accessoryInfo.pid, locationID: 0), info: accessoryInfo)
     previewAccessory.loadPreviewState()
     let accessoryModel = AccessoryTestModel(reportEndpoint: URL(string: "https://reports.example/"))

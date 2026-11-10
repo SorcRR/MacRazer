@@ -68,10 +68,16 @@ enum RazerAccessories {
         keyboard(0x022C, "Razer Cynosa Chroma Pro", transactionId: 0x3F),
         keyboard(0x023F, "Razer Cynosa Lite", transactionId: 0x3F),
         // #75 (MaxL34): an Ornata V3 next to a Naga V3 Pro.
-        keyboard(0x02A1, "Razer Ornata V3", transactionId: 0x1F),
+        // Hardware-verified from in-app reports, 2026-11-10: brightness on BACKLIGHT dimmed and
+        // came back, and a static colour landed. The other effects follow OpenRazer.
+        .init(pid: 0x02A1, name: "Razer Ornata V3", kind: .keyboard, verified: true, transactionId: 0x1F,
+              effectLed: Razer.backlightLed, brightnessLed: Razer.backlightLed,
+              untestedEffects: [.breathing, .spectrum, .wave, .off]),
         keyboard(0x028F, "Razer Ornata V3", transactionId: 0x1F),
         keyboard(0x0294, "Razer Ornata V3 X", transactionId: 0x1F),
-        keyboard(0x02A2, "Razer Ornata V3 X", transactionId: 0x1F),
+        .init(pid: 0x02A2, name: "Razer Ornata V3 X", kind: .keyboard, verified: true, transactionId: 0x1F,
+              effectLed: Razer.backlightLed, brightnessLed: Razer.backlightLed,
+              untestedEffects: [.breathing, .spectrum, .wave, .off]),
         keyboard(0x02A3, "Razer Ornata V3 Tenkeyless", transactionId: 0x1F),
 
         // Mousepads (OpenRazer `razeraccessory_driver.c`): effects on ZERO_LED.
@@ -86,7 +92,13 @@ enum RazerAccessories {
         pad(0x0C08, "Razer Firefly V2 Pro"),
         // No wave in OpenRazer for the Goliathus pads.
         pad(0x0C01, "Razer Goliathus Chroma", wave: false),
-        pad(0x0C02, "Razer Goliathus Chroma Extended", wave: false),
+        // Goliathus Chroma Extended, from an in-app report on firmware v1.1: brightness reads
+        // on LOGO_LED (ZERO_LED refuses it), and dimmed and came back there. A static colour on
+        // ZERO_LED landed. The other effects follow OpenRazer.
+        .init(pid: 0x0C02, name: "Razer Goliathus Chroma Extended", kind: .mousepad, verified: true,
+              transactionId: 0x3F, effectLed: Razer.zeroLed, brightnessLed: Razer.logoLed,
+              effects: LightingEffect.allCases.filter { $0 != .wave },
+              untestedEffects: [.breathing, .spectrum, .off]),
         pad(0x0C06, "Razer Goliathus Chroma 3XL", wave: false),
         // Not the original Firefly (0x0C00): OpenRazer drives it with the older standard-matrix
         // commands, which nothing here builds.
