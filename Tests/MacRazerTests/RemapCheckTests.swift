@@ -154,6 +154,11 @@ final class RemapCheckTests: XCTestCase {
         XCTAssertEqual(DeviceReportOutput.publicCopy(DeviceReportOutput.publicCopy(report)).software?.otherApps, 2,
                        "a second pass keeps the count")
         XCTAssertNil(copy.replyEmail)
+
+        report.software = .init()
+        report.buttons.data?.keys = [Key(keyCode: 8, modifiers: ["command"], postedBy: "Razer Synapse")]
+        XCTAssertEqual(DeviceReportOutput.publicCopy(report).buttons.data?.keys?.first?.postedBy, "Razer Synapse",
+                       "still Razer's after Synapse quit and Review scanned again")
     }
 
     // MARK: Keys alone

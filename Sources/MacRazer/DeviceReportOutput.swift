@@ -31,17 +31,20 @@ enum DeviceReportOutput {
     static func publicCopy(_ report: DeviceReport) -> DeviceReport {
         var copy = report
         copy.replyEmail = nil
-        let razer = Set(report.software?.razer ?? [])
+        // Razer's by the scan, or by its name: a key Synapse posted still says so after the
+        // person quit it and Review scanned again.
+        let scanned = Set(report.software?.razer ?? [])
+        let razer = { (name: String) in scanned.contains(name) || name.lowercased().hasPrefix("razer") }
         if var software = copy.software {
-            let others = software.mouseTaps.filter { !razer.contains($0) }.count + (software.otherApps ?? 0)
-            software.mouseTaps = software.mouseTaps.filter(razer.contains)
+            let others = software.mouseTaps.filter { !razer($0) }.count + (software.otherApps ?? 0)
+            software.mouseTaps = software.mouseTaps.filter(razer)
             software.otherApps = others == 0 ? nil : others
             copy.software = software
         }
         if var data = copy.buttons.data, let keys = data.keys {
             var kept: [DeviceReport.KeyPress] = []
             for var key in keys {
-                if let app = key.postedBy, !razer.contains(app) { key.postedBy = anotherApp }
+                if let app = key.postedBy, !razer(app) { key.postedBy = anotherApp }
                 if !kept.contains(key) { kept.append(key) }
             }
             data.keys = kept
