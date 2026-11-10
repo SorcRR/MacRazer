@@ -232,7 +232,9 @@ final class BluetoothDevice: NSObject, RazerTransport, @unchecked Sendable {
     /// read-back runs once, and a mismatch is never followed by another write.
     func resetButtonFunction(_ remap: SideButtonReset.Remap) throws {
         let slot = readActiveSlot()
-        guard SideButtonReset.slotHolds(remap, slotPayload: try readButtonFunctionPayload(remap.id, slot: slot)) else {
+        // A slot read the mouse refuses confirms nothing either, and nothing has been written.
+        guard let slotPayload = try? readButtonFunctionPayload(remap.id, slot: slot),
+              SideButtonReset.slotHolds(remap, slotPayload: slotPayload) else {
             throw SideButtonReset.ResetError.slotUnconfirmed
         }
         let request = BLEProtocol.Request(key: .buttonFunctionSet(remap.id, slot: slot),

@@ -48,7 +48,7 @@ enum SideButtonReset {
         case ResetError.slotUnconfirmed:
             return "MacRazer couldn't confirm which profile the mouse is using, so it changed nothing."
         case ResetError.notReadBack:
-            return "The mouse didn't read back Back and Forward, so the reset may not have worked."
+            return "The mouse didn't read the button back as reset, so it may not have worked."
         case HIDDevice.HIDError.timeout, HIDDevice.HIDError.notFound:
             return "The mouse stopped answering. Check that it's on and try again."
         default:
