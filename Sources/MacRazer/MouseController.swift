@@ -51,6 +51,10 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     @Published private(set) var charging = false
     @Published private(set) var dpi: Int = 0
     @Published private(set) var pollRate: Int = 0
+    /// The mouse was read at 250 Hz since it connected, so the picker keeps a 250 chip to go
+    /// back to after another rate is chosen. OpenRazer doesn't list 250, so it isn't offered
+    /// on a mouse never seen at it.
+    @Published private(set) var offersQuarterPollRate = false
     @Published private(set) var brightness: Int = 100 // percent
     /// Lighting state is controller-owned like DPI/brightness: published on successful
     /// device writes only. There's no lighting readback command, so this is the app's
@@ -150,6 +154,8 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     }
     /// The light has one colour of its own (`RazerDeviceInfo.fixedColor`): brightness only.
     var lightHasFixedColor: Bool { deviceID.map(RazerDevices.fixedColor(pid:)) ?? false }
+    /// False where the light takes effects but has no brightness (`RazerDeviceInfo.hasBrightness`).
+    var lightHasBrightness: Bool { deviceID.map(RazerDevices.hasBrightness(pid:)) ?? true }
     var supportsFreeDPI: Bool { !deviceIsBluetooth }
     /// False over Bluetooth on a model whose DPI nobody has set there (`writesDPI`): the
     /// stage chips show the mouse's stages but don't switch them.
@@ -794,6 +800,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 // what it holds when it comes back (firmware can reset it). Forget it, so the F20
                 // bridge stays unconfirmed until it's read again.
                 self.update(\.dpiCycleButtonBinding, nil)
+                self.update(\.offersQuarterPollRate, false)
                 // Same for the sleep timeout: the controls wait for a fresh read.
                 self.update(\.sleepTimeout, nil)
                 if gone {
@@ -892,7 +899,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             ? activeDpiStage.map { stages[$0] }
             : read(RazerCommands.getDPI()) { Int(RazerCommands.parseDPI($0).x) }
         let p = read(RazerCommands.getPollingRate()) { RazerCommands.parsePollingRate($0) }
-        let b = read(RazerCommands.getBrightness(led: RazerDevices.brightnessLed(pid: dev.productID))) { RazerCommands.brightnessPercent(fromRaw: $0.arguments[2]) }
+        let b = RazerDevices.hasBrightness(pid: dev.productID)
+            ? read(RazerCommands.getBrightness(led: RazerDevices.brightnessLed(pid: dev.productID))) { RazerCommands.brightnessPercent(fromRaw: $0.arguments[2]) }
+            : nil
         let sleep: Int? = {
             guard RazerDevices.supportsSleepTimeout(pid: dev.productID),
                   let bluetooth = dev as? BluetoothDevice,
@@ -903,7 +912,10 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         }()
         publish {
             if let d { self.update(\.dpi, d) }
-            if let p { self.update(\.pollRate, p) }
+            if let p {
+                self.update(\.pollRate, p)
+                if p == 250 { self.update(\.offersQuarterPollRate, true) }
+            }
             if let b { self.update(\.brightness, b) }
             if !stages.isEmpty { self.update(\.dpiStages, stages) }
             self.update(\.activeDpiStage, activeDpiStage)
@@ -1500,7 +1512,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             // Lighting commands only count on models that have lighting — the Atheris
             // (correctly) refuses them, and that must not block its profiles from applying.
             let hasLighting = RazerDevices.hasLighting(pid: dev.productID)
-            let brightOK = !hasLighting
+            let brightOK = !hasLighting || !RazerDevices.hasBrightness(pid: dev.productID)
                 || (try? Self.writeBrightness(RazerCommands.brightnessRaw(fromPercent: brightnessPct), to: dev)) != nil
             // Built for the mouse it reaches: if that changed since the profile was read, an
             // effect it lacks lands as one it has.

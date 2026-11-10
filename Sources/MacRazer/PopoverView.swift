@@ -115,7 +115,12 @@ struct PopoverView: View {
     @State private var gearHovered = false
     @State private var tipHovered = false
 
-    private let pollRates = RazerCommands.supportedPollingRates
+    /// The three rates every mouse takes, and 250 Hz once the mouse was read at it
+    /// (`offersQuarterPollRate`), so the chip stays to go back to.
+    private var pollRates: [Int] {
+        controller.offersQuarterPollRate || controller.pollRate == 250
+            ? [125, 250, 500, 1000] : RazerCommands.supportedPollingRates
+    }
     private let defaultStages = [400, 800, 1600, 3200, 6400]
     /// The connected mouse's actual configured DPI stages, or sensible defaults.
     private var displayedStages: [Int] {
@@ -1470,6 +1475,8 @@ struct PopoverView: View {
         let battery = controller.deviceHasBattery
         switch hz {
         case 1000: return "Smoothest and quickest to respond. Best for gaming."
+        case 250: return battery ? "Easy on the battery, and smoother than 125 Hz."
+                                 : "Smoother than 125 Hz, but less than 500 Hz."
         case 500: return battery ? "Smooth for everyday work, and easier on the battery."
                                  : "Smooth for everyday work."
         case 125: return battery ? "Lasts longest on a charge. The pointer can feel less smooth, "
@@ -1490,7 +1497,9 @@ struct PopoverView: View {
     /// The Lighting row's expanded content; the row itself shows the effect and brightness.
     private var lightingContent: some View {
         VStack(alignment: .leading, spacing: 8) {
-            BrightnessSlider(value: $brightnessValue) { controller.setBrightness($0) }
+            if controller.lightHasBrightness {
+                BrightnessSlider(value: $brightnessValue) { controller.setBrightness($0) }
+            }
             // Bound straight to the controller: setEffect publishes only on a successful
             // device write, so a failed change snaps the picker back by itself — no local
             // state, no suppression flags.
@@ -1543,6 +1552,7 @@ struct PopoverView: View {
         if Int(brightnessValue) == 0 { return "Off" }
         if !controller.supportsLightingEffects { return "\(Int(brightnessValue))%" }
         if controller.effect == .off { return "Off" }
+        if !controller.lightHasBrightness { return controller.effect.rawValue }
         return "\(controller.effect.rawValue) · \(Int(brightnessValue))%"
     }
 
@@ -1553,7 +1563,7 @@ struct PopoverView: View {
     private var showsLightingBatteryHint: Bool {
         // Bluetooth can't set or read an effect, only a colour, so `effect` there is left
         // over from USB and says nothing about whether the lights are on.
-        controller.deviceHasBattery && !controller.charging
+        controller.deviceHasBattery && !controller.charging && controller.lightHasBrightness
             && (controller.effect != .off || !controller.supportsLightingEffects)
             && Int(brightnessValue) > Battery.lightingHintBrightnessPercent
     }

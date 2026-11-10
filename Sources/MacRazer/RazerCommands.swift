@@ -261,6 +261,7 @@ enum RazerCommands {
         switch hz {
         case 1000: r.arguments[0] = 0x01
         case 500:  r.arguments[0] = 0x02
+        case 250:  r.arguments[0] = 0x04
         case 125:  r.arguments[0] = 0x08
         default:   r.arguments[0] = 0x02 // driver default is 500Hz
         }
@@ -278,6 +279,9 @@ enum RazerCommands {
         switch resp.arguments[0] {
         case 0x01: return 1000
         case 0x02: return 500
+        // Not in OpenRazer's table, but the byte is 1000 divided by the rate, and a Pro Click V2
+        // Vertical Edition left at 250 Hz answers it.
+        case 0x04: return 250
         case 0x08: return 125
         default:   return 0
         }
