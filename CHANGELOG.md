@@ -7,6 +7,10 @@ expect rough edges until 1.0.
 ## [Unreleased]
 
 ### Added
+- **Reset side buttons saved in the mouse.** If Razer Synapse saved other functions to a
+  Cobra HyperSpeed's side buttons (a keyboard shortcut, say), they never reach Configure
+  Buttons as buttons. On Bluetooth the page now says what they send and offers Reset Side
+  Buttons, which puts Back and Forward back in the mouse itself. No Windows needed.
 - **More mice from test reports.**
   - **Fully supported now:** Basilisk V3 Pro and Viper V3 Pro over their dongles, and the
     DeathAdder V2 X HyperSpeed.

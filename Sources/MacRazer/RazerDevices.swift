@@ -113,6 +113,10 @@ struct RazerDeviceInfo {
     let dischargeCurveModelKey: String?
     var supportsDpiButtonBinding = false
     var supportsSleepTimeout = false
+    /// Read the side buttons' entries in the mouse's function table over Bluetooth and offer to
+    /// put them back when something (Razer Synapse) saved other functions there
+    /// (`SideButtonReset`). Off for any mouse whose remaps MacRazer writes to that table itself.
+    var detectsOnboardSideButtonRemaps = false
     var supportsStageEditing = false
     /// Read brightness back after setting it, and treat a mismatch as a failed write.
     var verifiesBrightnessWrite = false
@@ -163,7 +167,7 @@ enum RazerDevices {
         // Over Bluetooth (vendor 0x068E). Hardware-verified with this app: battery, serial,
         // DPI stages and brightness on LOGO_LED, the same LED as over USB. Transaction ids
         // don't apply: BLE frames carry their own request id.
-        .init(pid: 0x00DC, name: "Razer Cobra HyperSpeed (Bluetooth)", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .bluetooth, silhouette: .cobraPro, dischargeCurveModelKey: "cobra-hyperspeed"),
+        .init(pid: 0x00DC, name: "Razer Cobra HyperSpeed (Bluetooth)", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .bluetooth, silhouette: .cobraPro, dischargeCurveModelKey: "cobra-hyperspeed", detectsOnboardSideButtonRemaps: true),
         // Basilisk V3 X HyperSpeed over Bluetooth. The shared BLE layer covers battery, DPI,
         // stages and static lighting; the DPI Cycle assignment is handled by BluetoothDevice.
         // Its only lit zone is the scroll wheel, so brightness must target SCROLL_LED.
@@ -741,6 +745,7 @@ enum RazerDevices {
     static func maxDPI(pid: Int) -> Int { info(pid: pid)?.maxDPI ?? 26000 }
     static func supportsDpiButtonBinding(pid: Int) -> Bool { info(pid: pid)?.supportsDpiButtonBinding ?? false }
     static func supportsSleepTimeout(pid: Int) -> Bool { info(pid: pid)?.supportsSleepTimeout ?? false }
+    static func detectsOnboardSideButtonRemaps(pid: Int) -> Bool { info(pid: pid)?.detectsOnboardSideButtonRemaps ?? false }
     static func supportsStageEditing(pid: Int) -> Bool { info(pid: pid)?.supportsStageEditing ?? false }
     /// Editing a stage over the dongle or cable: any USB row whose DPI is verified. The stage
     /// write itself isn't covered by the device test yet, so the controller reads the table

@@ -49,6 +49,36 @@ enum BLEProtocol {
         // BluetoothDevice helper before the UI reports success.
         static let dpiButtonGet = Key(0x08, 0x84, 0x00, 0x60)
         static let dpiButtonSet = Key(0x08, 0x04, 0x01, 0x60)
+        /// Any entry of that function table, by its id (the DPI Cycle entry is 0x60).
+        /// Slot 0 reads the slot in use; 1-5 read that slot.
+        static func buttonFunctionGet(_ id: UInt8, slot: UInt8 = 0x00) -> Key { Key(0x08, 0x84, slot, id) }
+        static func buttonFunctionSet(_ id: UInt8, slot: UInt8 = 0x01) -> Key { Key(0x08, 0x04, slot, id) }
+        /// The onboard profile slot the mouse is using, as one byte (Basilisk V4 Pro, #55).
+        static let activeSlotGet = Key(0x03, 0x82, 0x00, 0x00)
+    }
+
+    /// One entry of the mouse's function table: what the button does now, and its factory
+    /// default. A read answers `id, flag`, then the two 7-byte blocks interleaved byte by byte,
+    /// current first (the DPI Cycle parser below reads only the current one). On the
+    /// Basilisk V4 Pro a flag of 01 means the entry's HyperShift layer is set, and the second
+    /// block is then that layer instead (bthstest, #55, 2026-10-19).
+    struct ButtonFunction: Equatable {
+        let current: [UInt8]
+        let factory: [UInt8]
+    }
+
+    static func parseButtonFunction(id: UInt8, _ payload: Data) throws -> ButtonFunction {
+        let bytes = Array(payload)
+        guard bytes.count >= 16, bytes[0] == id else { throw HIDDevice.HIDError.badResponse }
+        let packed = Array(bytes[2..<16])
+        return ButtonFunction(current: stride(from: 0, to: 14, by: 2).map { packed[$0] },
+                              factory: stride(from: 1, to: 14, by: 2).map { packed[$0] })
+    }
+
+    /// `layer` 01 writes the HyperShift layer, as 02/0C's third argument does over USB. The
+    /// first byte is the slot it goes to, as 02/0C's first argument is (#55, 2026-10-22).
+    static func buttonFunctionPayload(id: UInt8, block: [UInt8], layer: UInt8 = 0, slot: UInt8 = 0x01) -> [UInt8] {
+        [slot, id, layer] + block
     }
 
     /// Assignments supported by the Basilisk V3 X HyperSpeed's DPI Cycle control. Media
