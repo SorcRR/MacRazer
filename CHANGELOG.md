@@ -6,6 +6,17 @@ expect rough edges until 1.0.
 
 ## [Unreleased]
 
+### Added
+- **The device test looks for what can take your side buttons.** The button step and Review
+  say when Razer Synapse or another Razer helper is running, or another app watches mouse
+  buttons. The report names them too, and nothing else about your apps.
+- **Record keyboard keys in the button step.** An opt-in checkbox also records ordinary key
+  presses. It catches side buttons set to type a shortcut, like Ctrl+C. It hears your
+  keyboard as well, so press only the mouse's buttons while it's on. It keeps each key and its
+  modifiers, only while the step is open, and turning it off clears them.
+- **The Bluetooth test has a button step now.** Side buttons that go unheard over Bluetooth
+  show up in its report.
+
 ## [0.9.0] — 2026-11-08
 
 ### Added

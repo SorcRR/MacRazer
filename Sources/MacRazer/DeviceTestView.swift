@@ -384,27 +384,68 @@ struct DeviceTestView: View {
     private var buttons: some View {
         VStack(alignment: .leading, spacing: 10) {
             stepTitle("Side buttons", changes: false)
-            reportNote("Press every extra button once. Only this mouse is listened to.")
-            if model.listening {
+            reportNote(model.recordKeys
+                ? "Press every extra button once. Only press the mouse's buttons now."
+                : "Press every extra button once. Only this mouse is listened to.")
+            if let warning = Self.softwareWarning(model.software) { reportWarning(warning) }
+            if model.listening || model.recordKeys {
                 card {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(model.buttonsSeen.isEmpty ? "Nothing yet" : "Seen so far")
+                        let nothing = model.buttonsSeen.isEmpty && model.keysSeen.isEmpty
+                        Text(nothing ? "Nothing yet" : "Seen so far")
                             .font(.system(size: 11)).foregroundStyle(.secondary)
                         FlowLayout(spacing: 6) {
                             ForEach(model.buttonsSeen, id: \.self) { label in
-                                Text(ButtonCapture.friendlyName(label))
-                                    .font(.system(size: 11, weight: .medium))
-                                    .padding(.horizontal, 9).padding(.vertical, 4)
-                                    .background(Capsule().fill(Color.razerGreen.opacity(0.25)))
+                                chip(ButtonCapture.friendlyName(label), color: .razerGreen)
+                            }
+                            ForEach(model.keysSeen, id: \.self) { key in
+                                chip(key.displayName + (key.postedBy.map { " (from \($0))" } ?? ""), color: .batteryMid)
                             }
                         }
                     }
                 }
+            }
+            if model.listening {
                 reportNote("Side keys that type numbers are normal on some models. That's useful to know too.")
             } else {
-                reportWarning("MacRazer can't hear this mouse's buttons right now. You can skip this step.")
+                reportWarning("MacRazer can't hear this mouse's buttons right now. Recording keys below may still catch them.")
+            }
+            Toggle(isOn: $model.recordKeys) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Also record keyboard keys").font(.system(size: 12))
+                    Text("For side buttons set to type a shortcut, like Ctrl+C. This also hears your keyboard. So while it's on, press only the mouse's buttons. MacRazer keeps just each key and its modifiers, and only while this step is open. Turning it off clears them.")
+                        .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .toggleStyle(.checkbox)
+            if let problem = model.keyCaptureProblem {
+                reportWarning(problem)
+                Button("Open System Settings") { model.openSettings() }.buttonStyle(.link)
             }
         }
+    }
+
+    private func chip(_ text: String, color: Color) -> some View {
+        Text(text)
+            .font(.system(size: 11, weight: .medium))
+            .padding(.horizontal, 9).padding(.vertical, 4)
+            .background(Capsule().fill(color.opacity(0.25)))
+    }
+
+    /// What the button step and Review say about software that can take the buttons, or nil
+    /// when there is none.
+    nonisolated static func softwareWarning(_ software: DeviceReport.SoftwareData) -> String? {
+        func names(_ list: [String]) -> String {
+            list.count < 2 ? list.joined() : list.dropLast().joined(separator: ", ") + " and " + list.last!
+        }
+        var lines: [String] = []
+        if !software.razer.isEmpty {
+            lines.append("Razer software is running: \(names(software.razer)). It can take over the side buttons, so MacRazer may not see them. Quit it and press the buttons again.")
+        }
+        if !software.mouseTaps.isEmpty {
+            lines.append("\(names(software.mouseTaps)) also \(software.mouseTaps.count == 1 ? "watches" : "watch") mouse buttons and can catch them before MacRazer does.")
+        }
+        return lines.isEmpty ? nil : lines.joined(separator: " ")
     }
 
     @ViewBuilder private var review: some View {
@@ -463,8 +504,13 @@ struct DeviceTestView: View {
                         if !leftOut.isEmpty { reportRow("Already verified", leftOut.joined(separator: ", ")) }
                         let skipped = verdict.skipped.filter { !leftOut.contains($0) }
                         if !skipped.isEmpty { reportRow("Skipped", skipped.joined(separator: ", ")) }
+                        if let keys = report.buttons.data?.keys {
+                            reportRow("Keys recorded", keys.isEmpty ? "None" : keys.map(\.displayName).joined(separator: ", "))
+                        }
                     }
                 }
+                if let warning = report.software.flatMap(Self.softwareWarning) { reportWarning(warning) }
+                reportNote("The report also names any Razer apps, or apps that watch mouse buttons, running on this Mac. Nothing else about your apps.")
                 DisclosureGroup("Show full report") {
                     ScrollView {
                         Text(DeviceReportOutput.json(report, forPublic: true))
@@ -656,7 +702,7 @@ struct DeviceTestView: View {
             Button("Skip") { skip() }.disabled(model.running)
             Button("Run") { runCurrentStep() }.disabled(model.running).keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
         case .buttons:
-            Button(model.buttonsSeen.isEmpty ? "Skip" : "Next") { model.next() }.keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
+            Button(model.buttonsSeen.isEmpty && model.keysSeen.isEmpty ? "Skip" : "Next") { model.next() }.keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
         default:
             Button("Next") { model.next() }
                 .disabled(model.running || model.report == nil || (model.stage == .lighting && !model.lightingAnswered))

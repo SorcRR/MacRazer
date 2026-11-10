@@ -49,7 +49,12 @@ final class DeviceReportSenderTests: XCTestCase {
                             data: .init(groups: ["LOGO": 10], dimShown: true, redShown: true, dimmed: true,
                                         turnedRed: true, restored: true)),
             // 0c:223 is AC Home: consumer usages run past two hex digits.
-            buttons: .init(outcome: .passed, data: .init(seen: ["09:04", "09:05", "07:1e", "0c:223"]), error: "none"),
+            // The keys: a ⌃V from hardware, a ⌘C a remapper posted, and Shift pressed alone.
+            buttons: .init(outcome: .passed, data: .init(seen: ["09:04", "09:05", "07:1e", "0c:223"], keys: [
+                .init(keyCode: 9, modifiers: ["control"], postedBy: nil),
+                .init(keyCode: 8, modifiers: ["command"], postedBy: "Razer Synapse"),
+                .init(keyCode: 56, modifiers: ["shift"], postedBy: nil),
+            ]), error: "none"),
             // Every read the app makes, so the Worker's schema sees every name and LED id,
             // and every kind of answer.
             capabilities: .init(reads: DeviceTestSteps.capabilityReads.enumerated().map { i, read in
@@ -64,6 +69,7 @@ final class DeviceReportSenderTests: XCTestCase {
             // A dongle report never has this; here so the Worker's schema sees every field.
             bluetooth: .init(services: [BLEProtocol.serviceUUID, "180F"], razerService: true, pnpVendorID: 0x068E,
                              pnpProductID: 0x00DC, pnpVersion: 0x0100, batteryLevel: 64, error: "an example error"),
+            software: .init(razer: ["Razer Synapse", "RzEngineMonService"], mouseTaps: ["BetterTouchTool"]),
             verdict: nil, comment: "Works on my Mac.\nSide buttons too.", credit: "@someone",
             replyEmail: "person@example.com", exchangesDropped: ["lighting"])
         report.polling.error = "an example error"

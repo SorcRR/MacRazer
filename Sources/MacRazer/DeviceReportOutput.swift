@@ -121,6 +121,12 @@ enum DeviceReportOutput {
             }
             lines.append("Also answers: " + (answered.isEmpty ? "none of the extra reads" : answered.joined(separator: ", ")))
         }
+        if let software = report.software, !software.isEmpty {
+            lines.append("Running, can take the buttons: " + (software.razer + software.mouseTaps).joined(separator: ", "))
+        }
+        if let keys = report.buttons.data?.keys {
+            lines.append("Keys recorded: " + (keys.isEmpty ? "none" : keys.map(\.displayName).joined(separator: ", ")))
+        }
         if withComment, let comment = report.comment, !comment.isEmpty {
             lines.append("\n> " + comment.replacingOccurrences(of: "\n", with: "\n> "))
         }
