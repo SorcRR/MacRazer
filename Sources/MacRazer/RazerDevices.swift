@@ -404,16 +404,15 @@ enum RazerDevices {
         // and the other two thumb buttons sent nothing standard during the button step.
         .init(pid: 0x00EB, name: "Razer Basilisk V4 HyperSpeed (Wired)", unverified: [.polling], hasBattery: true, hasLighting: false, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, acceptsClassicPolling: false),
         // Pro Click V2 over the dongle (in-app report, no credit given): battery, DPI and stages,
-        // and polling passed with 0x1f. 0xFF and 0x80 time out. Every LED group refuses
-        // brightness (0x03), which first read as no lighting. But the zone effect read answers
-        // on 0x00 and 0x0A, and a cable report's owner wrote that lighting "no longer" worked
-        // once it was hidden: like the Vertical Edition, its light takes effects but has no
-        // brightness. The controls are back, unverified, until a test confirms them. 30000 is
-        // the vendor spec.
-        .init(pid: 0x00D1, name: "Razer Pro Click V2", unverified: [.lighting], hasBattery: true, hasLighting: true, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, brightnessLed: Razer.zeroLed, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, verifiesBrightnessWrite: true),
+        // and polling passed with 0x1f. 0xFF and 0x80 time out. No lighting (every group
+        // returns 0x03). 30000 is the vendor spec, as for the Vertical Edition. Its zone effect
+        // read answers on 0x00 and 0x0A, though, and a cable report's owner wrote "Lighting no
+        // longer working": it may take effects without brightness, like the Vertical. Not
+        // changed here until that's tried.
+        .init(pid: 0x00D1, name: "Razer Pro Click V2", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.lighting]),
         // Its cable (in-app report on firmware v1.0, no credit given): battery, DPI and stages,
         // and polling passed with 0x1f. Lighting as over the dongle.
-        .init(pid: 0x00D0, name: "Razer Pro Click V2 (Wired)", unverified: [.lighting], hasBattery: true, hasLighting: true, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, brightnessLed: Razer.zeroLed, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, verifiesBrightnessWrite: true),
+        .init(pid: 0x00D0, name: "Razer Pro Click V2 (Wired)", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.lighting]),
         // Pro Click over the dongle and on the cable (in-app reports on firmware v1.2, no credit
         // given): battery, DPI and stages, and polling passed with 0x1f, and every id answers.
         // No lighting: every group answers 0x05. The firmware echoed a 45000 DPI write; 16000
@@ -477,31 +476,32 @@ enum RazerDevices {
         // recorded for the slider for when they are. 35000 is the spec.
         .init(pid: 0x00CC, name: "Razer Basilisk V3 Pro 35K (Wired)", unverified: [.lighting], hasBattery: true, hasLighting: false, maxDPI: 35000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
         // Its dongle (in-app report on firmware v2.50, no credit given): battery, DPI and
-        // stages, and polling passed with 0x1f. Lighting failed, as on the cable's first report.
+        // stages, and polling passed. Lighting failed, as on the cable's first report.
         .init(pid: 0x00CD, name: "Razer Basilisk V3 Pro 35K (Wireless)", unverified: [.lighting], hasBattery: true, hasLighting: false, maxDPI: 35000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
         // Basilisk V3 Pro over its dongle (in-app report on firmware v1.1, no credit given):
-        // battery, DPI and stages, polling and lighting all passed with 0x1f. 30000 is the
-        // vendor spec. Its cable (0x00AA) has no row yet.
-        .init(pid: 0x00AB, name: "Razer Basilisk V3 Pro (Wireless)", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
+        // battery, DPI and stages, polling and lighting all passed with 0x1f. LOGO and SCROLL
+        // answer brightness, and both dimmed and came back. 30000 is the vendor spec. Its
+        // cable (0x00AA) has no row yet.
+        .init(pid: 0x00AB, name: "Razer Basilisk V3 Pro (Wireless)", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
         // DeathAdder V3 on the cable (two in-app reports on firmware v1.1, no credit given): DPI
-        // and stages passed with 0x1f. No battery and no lighting. Like the Basilisk V4 models
+        // and stages passed. No battery and no lighting. Like the Basilisk V4 models
         // it refuses the classic polling command (0x05) and answers the newer one, which this
         // app doesn't send yet. 30000 is the vendor spec.
         .init(pid: 0x00B2, name: "Razer DeathAdder V3", unverified: [.polling], hasBattery: false, hasLighting: false, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, acceptsClassicPolling: false, notOnMouse: [.battery, .lighting]),
         // DeathAdder V2 X HyperSpeed over its dongle (in-app report on firmware v1.2, no credit
-        // given): battery, DPI and stages, and polling passed with 0x1f. It runs on an AA cell,
+        // given): battery, DPI and stages, and polling passed. It runs on an AA cell,
         // so there's no cable and no charging read. No lighting. 14000 is the vendor spec.
         .init(pid: 0x009C, name: "Razer DeathAdder V2 X HyperSpeed", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 14000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, hasCableLink: false, canCharge: false, notOnMouse: [.lighting]),
         // Viper V3 Pro over its dongle (in-app report on firmware v1.12, no credit given):
-        // battery, DPI and stages, and polling passed with 0x1f. No lighting. 35000 is the
+        // battery, DPI and stages, and polling passed. No lighting. 35000 is the
         // vendor spec. Its cable has no row yet.
         .init(pid: 0x00C1, name: "Razer Viper V3 Pro (Wireless)", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 35000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.lighting]),
         // DeathAdder Elite (in-app report on firmware v1.6, no credit given): DPI and polling
-        // passed with 0x1f. No battery. Lighting was skipped, so it stays hidden until a test
+        // passed. No battery. Lighting was skipped, so it stays hidden until a test
         // runs it. 16000 is the vendor spec.
         .init(pid: 0x005C, name: "Razer DeathAdder Elite", unverified: [.lighting], hasBattery: false, hasLighting: false, maxDPI: 16000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
         // DeathAdder V2 (in-app report on firmware v1.4, no credit given): DPI and polling
-        // passed with 0x1f. No battery. Lighting was skipped, as on the Elite. 20000 is the
+        // passed. No battery. Lighting was skipped, as on the Elite. 20000 is the
         // vendor spec.
         .init(pid: 0x0084, name: "Razer DeathAdder V2", unverified: [.lighting], hasBattery: false, hasLighting: false, maxDPI: 20000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
     ]

@@ -95,7 +95,7 @@ says so.
 | Razer Basilisk V2 | DPI, DPI stages, polling, lighting, brightness | anonymous report |
 | Razer DeathAdder Essential | DPI, DPI stages, polling, brightness (its one light is green only) | anonymous report |
 | Razer Naga V2 Pro (Wired) | Battery, DPI, DPI stages, polling, lighting, brightness | anonymous report |
-| Razer Pro Click V2 (wired + wireless) | Battery, DPI, DPI stages, polling; lighting effects not confirmed yet (it has no brightness) | anonymous reports |
+| Razer Pro Click V2 (wired + wireless) | Battery, DPI, DPI stages, polling | anonymous reports |
 | Razer Pro Click (wired + wireless) | Battery, DPI, DPI stages, polling (it has no lighting) | anonymous reports |
 | Razer Viper | DPI, DPI stages, polling, lighting, brightness (wired only) | anonymous report |
 | Razer DeathAdder V3 Pro (Wireless, both dongles, and the first one's cable) | Battery, DPI, DPI stages, polling (it has no lighting) | anonymous reports |

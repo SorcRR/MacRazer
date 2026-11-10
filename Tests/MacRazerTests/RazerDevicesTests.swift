@@ -295,7 +295,7 @@ final class RazerDevicesTests: XCTestCase {
 
     /// The mice from the reports after 0.9.0 (2026-11-08 to 11-10).
     func testMiceFromTheZeroNineReports() {
-        for pid in [0x00AB, 0x009C, 0x00C1] {
+        for pid in [0x00AB, 0x009C, 0x00C1, 0x00D0] {
             XCTAssertEqual(RazerDevices.support(pid: pid), .full, String(format: "0x%04X", pid))
         }
         XCTAssertFalse(RazerDevices.canCharge(pid: 0x009C), "it runs on an AA cell")
@@ -474,11 +474,9 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00E6), [])
         XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00EA), [])
 
-        // Pro Click V2: its light takes effects but has no brightness, so the controls are
-        // back and lighting waits on a test, on both links.
-        XCTAssertEqual(RazerDevices.unverified(pid: 0x00D1), [.lighting], "Pro Click V2")
-        XCTAssertTrue(RazerDevices.hasLighting(pid: 0x00D1))
-        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00D1), [.init(connection: .wired, missing: [.lighting])])
+        XCTAssertTrue(RazerDevices.fullySupported(pid: 0x00D1), "Pro Click V2")
+        XCTAssertFalse(RazerDevices.hasLighting(pid: 0x00D1))
+        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00D1), [], "its cable has a row now, and passed")
 
         XCTAssertTrue(RazerDevices.fullySupported(pid: 0x00A7), "Naga V2 Pro")
         XCTAssertTrue(RazerDevices.hasLighting(pid: 0x00A7))
