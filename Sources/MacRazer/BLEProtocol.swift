@@ -50,7 +50,8 @@ enum BLEProtocol {
         static let dpiButtonGet = Key(0x08, 0x84, 0x00, 0x60)
         static let dpiButtonSet = Key(0x08, 0x04, 0x01, 0x60)
         /// Any entry of that function table, by its id (the DPI Cycle entry is 0x60).
-        static func buttonFunctionGet(_ id: UInt8) -> Key { Key(0x08, 0x84, 0x00, id) }
+        /// Slot 0 reads the slot in use; 1-5 read that slot.
+        static func buttonFunctionGet(_ id: UInt8, slot: UInt8 = 0x00) -> Key { Key(0x08, 0x84, slot, id) }
         static func buttonFunctionSet(_ id: UInt8, slot: UInt8 = 0x01) -> Key { Key(0x08, 0x04, slot, id) }
         /// The onboard profile slot the mouse is using, as one byte (Basilisk V4 Pro, #55).
         static let activeSlotGet = Key(0x03, 0x82, 0x00, 0x00)

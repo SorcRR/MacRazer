@@ -27,6 +27,35 @@ enum SideButtonReset {
         let factory: [UInt8]
     }
 
+    /// Why a reset stopped.
+    enum ResetError: Error, Equatable {
+        /// The slot the write would go to doesn't hold the remap the in-use read showed, so it
+        /// may not be the slot in use. Nothing was written.
+        case slotUnconfirmed
+        /// The write went through but the mouse didn't read back the factory block.
+        case notReadBack
+    }
+
+    /// Whether a read of the slot about to be written holds the same current block as `remap`,
+    /// which was read from the slot in use. A reply that doesn't parse is no.
+    static func slotHolds(_ remap: Remap, slotPayload: Data) -> Bool {
+        (try? BLEProtocol.parseButtonFunction(id: remap.id, slotPayload))?.current == remap.current
+    }
+
+    /// The notice's line for a failed reset, in plain words.
+    static func failureText(_ error: Error) -> String {
+        switch error {
+        case ResetError.slotUnconfirmed:
+            return "MacRazer couldn't confirm which profile the mouse is using, so it changed nothing."
+        case ResetError.notReadBack:
+            return "The mouse didn't read back Back and Forward, so the reset may not have worked."
+        case HIDDevice.HIDError.timeout, HIDDevice.HIDError.notFound:
+            return "The mouse stopped answering. Check that it's on and try again."
+        default:
+            return "The mouse didn't take the reset. Try again, or reset the buttons in Razer Synapse."
+        }
+    }
+
     /// The block a mouse button is, by its HID number.
     static func mouseBlock(_ hidButton: UInt8) -> [UInt8] { [0x01, 0x01, hidButton, 0, 0, 0, 0] }
 

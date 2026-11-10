@@ -65,6 +65,30 @@ final class SideButtonResetTests: XCTestCase {
         XCTAssertNil(SideButtonReset.describe([0x02, 0x02, 0x01, 0x00, 0, 0, 0]))
     }
 
+    func testTheWriteWaitsForTheSlotToHoldTheSameRemap() throws {
+        let remap = try XCTUnwrap(SideButtonReset.remap(id: 4, payload: reply(back)))
+        // The slot 03/82 named holds the same Ctrl+V: that is the slot in use.
+        XCTAssertTrue(SideButtonReset.slotHolds(remap, slotPayload: reply(back)))
+        // It holds the factory Back, so it is another slot: write nothing.
+        XCTAssertFalse(SideButtonReset.slotHolds(remap, slotPayload: reply([4, 0, 1, 1, 1, 1, 4, 4, 0, 0, 0, 0])))
+        // Another entry's reply, or one too short to read.
+        XCTAssertFalse(SideButtonReset.slotHolds(remap, slotPayload: reply(forward)))
+        XCTAssertFalse(SideButtonReset.slotHolds(remap, slotPayload: Data(back)))
+        XCTAssertEqual(BLEProtocol.Key.buttonFunctionGet(4, slot: 2).bytes, [0x08, 0x84, 0x02, 0x04])
+    }
+
+    func testFailuresReadAsPlainSentences() {
+        let errors: [Error] = [SideButtonReset.ResetError.slotUnconfirmed, SideButtonReset.ResetError.notReadBack,
+                               HIDDevice.HIDError.timeout, HIDDevice.HIDError.commandFailed]
+        for error in errors {
+            let text = SideButtonReset.failureText(error)
+            XCTAssertFalse(text.contains("operation couldn"), text)
+            XCTAssertFalse(text.contains("status 0x"), text)
+            XCTAssertFalse(text.contains("—"), text)
+        }
+        XCTAssertTrue(SideButtonReset.failureText(SideButtonReset.ResetError.slotUnconfirmed).contains("changed nothing"))
+    }
+
     func testTheResetWriteIsTheFactoryBlockInTheActiveSlot() {
         XCTAssertEqual(BLEProtocol.Key.buttonFunctionSet(4, slot: 2).bytes, [0x08, 0x04, 0x02, 0x04])
         XCTAssertEqual(BLEProtocol.buttonFunctionPayload(id: 4, block: SideButtonReset.mouseBlock(4), slot: 2),

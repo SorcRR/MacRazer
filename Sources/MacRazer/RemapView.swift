@@ -312,15 +312,10 @@ struct RemapView: View {
 private struct SideButtonCheckTrigger: View {
     @ObservedObject var controller: MouseController
 
-    private var checks: Bool {
-        controller.connected && controller.deviceIsBluetooth
-            && controller.deviceID.map(RazerDevices.detectsOnboardSideButtonRemaps(pid:)) == true
-    }
-
     var body: some View {
         Color.clear
             .onAppear { controller.checkSideButtonsIfSupported() }
-            .onChange(of: checks) { _, now in if now { controller.checkSideButtonsIfSupported() } }
+            .onChange(of: controller.checksSideButtons) { _, now in if now { controller.checkSideButtonsIfSupported() } }
     }
 }
 
@@ -329,13 +324,8 @@ private struct SideButtonCheckTrigger: View {
 private struct SideButtonResetNotice: View {
     @ObservedObject var controller: MouseController
 
-    private var checks: Bool {
-        controller.connected && controller.deviceIsBluetooth
-            && controller.deviceID.map(RazerDevices.detectsOnboardSideButtonRemaps(pid:)) == true
-    }
-
     var body: some View {
-        if checks && !controller.remappedSideButtons.isEmpty {
+        if controller.checksSideButtons && !controller.remappedSideButtons.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .top, spacing: 8) {
                     Image(systemName: "exclamationmark.triangle").foregroundStyle(Color.batteryMid)

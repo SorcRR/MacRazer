@@ -1281,11 +1281,16 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         }
     }
 
-    /// `checkSideButtons` when the connected mouse is one it checks. For the Configure Buttons
-    /// page opening, so other mice queue nothing.
+    /// The connected mouse is one whose side buttons `checkSideButtons` reads: on Bluetooth and
+    /// with `detectsOnboardSideButtonRemaps`. Main thread.
+    var checksSideButtons: Bool {
+        connected && deviceIsBluetooth && deviceID.map(RazerDevices.detectsOnboardSideButtonRemaps(pid:)) == true
+    }
+
+    /// `checkSideButtons` when `checksSideButtons`. For the Configure Buttons page opening, so
+    /// other mice queue nothing.
     func checkSideButtonsIfSupported() {
-        guard connected, deviceIsBluetooth,
-              deviceID.map(RazerDevices.detectsOnboardSideButtonRemaps(pid:)) == true else { return }
+        guard checksSideButtons else { return }
         checkSideButtons()
     }
 
@@ -1310,7 +1315,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         }
     }
 
-    /// Writes each remapped side button's factory block back, each read back by the write.
+    /// Writes each remapped side button's factory block back (`BluetoothDevice.resetButtonFunction`).
+    /// Each button leaves the list as soon as its write is confirmed, so a reset that stops
+    /// halfway still shows only what is left.
     func resetSideButtons() {
         let remaps = remappedSideButtons
         guard !remaps.isEmpty else { return }
@@ -1325,15 +1332,16 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                       RazerDevices.detectsOnboardSideButtonRemaps(pid: bluetooth.productID) else {
                     throw HIDDevice.HIDError.notSupported
                 }
-                for remap in remaps { try bluetooth.writeButtonFunction(remap.id, block: remap.factory) }
-                self.publish {
-                    self.isResettingSideButtons = false
-                    self.update(\.remappedSideButtons, [])
+                for remap in remaps {
+                    try bluetooth.resetButtonFunction(remap)
+                    self.publish { self.update(\.remappedSideButtons, self.remappedSideButtons.filter { $0.id != remap.id }) }
                 }
+                self.publish { self.isResettingSideButtons = false }
             } catch {
+                let text = SideButtonReset.failureText(error)
                 self.publish {
                     self.isResettingSideButtons = false
-                    self.sideButtonResetError = "The mouse didn't confirm the reset: \(error.localizedDescription)"
+                    self.sideButtonResetError = text
                     self.lastWriteFailure = Date()
                 }
             }
