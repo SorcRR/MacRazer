@@ -406,7 +406,13 @@ case "render-remap":
     let r = ButtonRemapper()
     r.loadPreviewState()
     // `wide`: the popover's two-column Buttons page, with the DPI button section.
-    if args.contains("wide") {
+    // `side-buttons`: the window with the notice for side buttons saved to other functions.
+    if args.contains("side-buttons") {
+        let mouse = MouseController()
+        mouse.loadPreviewState()
+        mouse.setPreviewSideButtonsRemapped()
+        writeViewPNG(RemapView(remapper: r, controller: mouse), to: path)
+    } else if args.contains("wide") {
         let mouse = MouseController()
         mouse.loadPreviewState()
         writeViewPNG(RemapView(remapper: r, controller: mouse, onBack: {}, width: PopoverLayout.twoColumnWidth, twoColumns: true), to: path)

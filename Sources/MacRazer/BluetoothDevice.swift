@@ -205,6 +205,34 @@ final class BluetoothDevice: NSObject, RazerTransport, @unchecked Sendable {
         }
     }
 
+    /// One entry of the mouse's function table, as the mouse sent it (`id, flag`, then the
+    /// current and factory blocks interleaved; `BLEProtocol.parseButtonFunction`).
+    func readButtonFunctionPayload(_ id: UInt8) throws -> Data {
+        let request = BLEProtocol.Request(key: .buttonFunctionGet(id), payload: [], reply: .ack)
+        return try RazerRetry.run(attempts: HIDDevice.defaultAttempts) { try exchange(request) }
+    }
+
+    /// The onboard profile slot in use, or 1 when the mouse doesn't say (the slot the Basilisk
+    /// V3 X's DPI Cycle write goes to).
+    func readActiveSlot() -> UInt8 {
+        let request = BLEProtocol.Request(key: .activeSlotGet, payload: [], reply: .ack)
+        guard let payload = try? exchange(request), let slot = payload.first, (1...5).contains(slot) else { return 0x01 }
+        return slot
+    }
+
+    /// Writes one entry's base layer in the active slot and checks the mouse reads it back
+    /// before returning.
+    func writeButtonFunction(_ id: UInt8, block: [UInt8]) throws {
+        let slot = readActiveSlot()
+        let request = BLEProtocol.Request(key: .buttonFunctionSet(id, slot: slot),
+                                          payload: BLEProtocol.buttonFunctionPayload(id: id, block: block, slot: slot),
+                                          reply: .ack)
+        _ = try exchange(request)
+        guard try BLEProtocol.parseButtonFunction(id: id, readButtonFunctionPayload(id)).current == block else {
+            throw HIDDevice.HIDError.badResponse
+        }
+    }
+
     private func exchange(_ request: BLEProtocol.Request) throws -> Data {
         let id = nextID
         // Stay clear of 0x00 and 0x01: the mouse uses 0x01 for its unsolicited frame.

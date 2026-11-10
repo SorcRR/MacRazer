@@ -58,12 +58,14 @@ struct RemapView: View {
         .frame(width: width)
         .onAppear {
             remapper.refreshAccessibility(prompt: false)
+            controller?.checkSideButtonsIfSupported()
         }
         .overlay { if recordingButton != nil || recordingDpiCycleShortcut { recorderOverlay } }
     }
 
     /// The permission banner, or the paused note and the "press a button" hint.
     @ViewBuilder private var notices: some View {
+        if let controller { SideButtonResetNotice(controller: controller) }
         if !remapper.remappingPermissionsGranted {
             accessibilityBanner
         } else {
@@ -301,6 +303,45 @@ struct RemapView: View {
         .padding(10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.batteryMid.opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
+    }
+}
+
+/// Side buttons saved in the mouse to send something else (by Synapse, say), which the
+/// remapper can't see as buttons, and a reset that puts them back (`SideButtonReset`).
+private struct SideButtonResetNotice: View {
+    @ObservedObject var controller: MouseController
+
+    private var checks: Bool {
+        controller.connected && controller.deviceIsBluetooth
+            && controller.deviceID.map(RazerDevices.detectsOnboardSideButtonRemaps(pid:)) == true
+    }
+
+    var body: some View {
+        if checks && !controller.remappedSideButtons.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle").foregroundStyle(Color.batteryMid)
+                    Text(SideButtonReset.noticeText(controller.remappedSideButtons))
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                }
+                HStack(spacing: 8) {
+                    Button(controller.isResettingSideButtons ? "Resetting…" : "Reset Side Buttons") {
+                        controller.resetSideButtons()
+                    }
+                    .disabled(controller.isResettingSideButtons)
+                    if let error = controller.sideButtonResetError {
+                        Text(error).font(.system(size: 10)).foregroundStyle(Color.batteryMid)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .font(.system(size: 11))
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.batteryMid.opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
+        }
     }
 }
 

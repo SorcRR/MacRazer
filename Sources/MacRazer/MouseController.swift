@@ -123,6 +123,11 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     @Published private(set) var dpiCycleButtonBinding: BLEProtocol.DPIButtonBinding?
     @Published private(set) var dpiCycleButtonError: String?
     @Published private(set) var isUpdatingDpiCycleButton = false
+    /// Side buttons the mouse's own table sends something else for (`SideButtonReset`), read
+    /// over Bluetooth by `checkSideButtons`. Empty until read, and on other mice.
+    @Published private(set) var remappedSideButtons: [SideButtonReset.Remap] = []
+    @Published private(set) var isResettingSideButtons = false
+    @Published private(set) var sideButtonResetError: String?
     /// A Razer mouse seen on Bluetooth while we aren't controlling one, and why.
     @Published private(set) var bluetoothMouse: BluetoothMouseStatus?
     /// No mouse is known at all: never seen this session, or unplugged (which forgets its
@@ -794,6 +799,8 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 // what it holds when it comes back (firmware can reset it). Forget it, so the F20
                 // bridge stays unconfirmed until it's read again.
                 self.update(\.dpiCycleButtonBinding, nil)
+                self.update(\.remappedSideButtons, [])
+                self.update(\.sideButtonResetError, nil)
                 // Same for the sleep timeout: the controls wait for a fresh read.
                 self.update(\.sleepTimeout, nil)
                 if gone {
@@ -1274,6 +1281,63 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         }
     }
 
+    /// `checkSideButtons` when the connected mouse is one it checks. For the Configure Buttons
+    /// page opening, so other mice queue nothing.
+    func checkSideButtonsIfSupported() {
+        guard connected, deviceIsBluetooth,
+              deviceID.map(RazerDevices.detectsOnboardSideButtonRemaps(pid:)) == true else { return }
+        checkSideButtons()
+    }
+
+    /// Reads the side buttons' entries on a mouse with `detectsOnboardSideButtonRemaps`. A read
+    /// only: a failure leaves the list as it was and says nothing, as the page works without it.
+    func checkSideButtons() {
+        userCommand { [weak self] in
+            guard let self,
+                  let bluetooth = try? self.ensureDevice() as? BluetoothDevice,
+                  RazerDevices.detectsOnboardSideButtonRemaps(pid: bluetooth.productID) else { return }
+            var remaps: [SideButtonReset.Remap] = []
+            for id in SideButtonReset.ids {
+                guard let payload = try? bluetooth.readButtonFunctionPayload(id) else { return }
+                if let remap = SideButtonReset.remap(id: id, payload: payload) { remaps.append(remap) }
+            }
+            let found = remaps
+            self.publish { self.update(\.remappedSideButtons, found) }
+        }
+    }
+
+    /// Writes each remapped side button's factory block back, each read back by the write.
+    func resetSideButtons() {
+        let remaps = remappedSideButtons
+        guard !remaps.isEmpty else { return }
+        publish {
+            self.isResettingSideButtons = true
+            self.sideButtonResetError = nil
+        }
+        userCommand { [weak self] in
+            guard let self else { return }
+            do {
+                guard let bluetooth = try self.ensureDevice() as? BluetoothDevice,
+                      RazerDevices.detectsOnboardSideButtonRemaps(pid: bluetooth.productID) else {
+                    throw HIDDevice.HIDError.notSupported
+                }
+                for remap in remaps { try bluetooth.writeButtonFunction(remap.id, block: remap.factory) }
+                self.publish {
+                    self.isResettingSideButtons = false
+                    self.update(\.remappedSideButtons, [])
+                }
+            } catch {
+                self.publish {
+                    self.isResettingSideButtons = false
+                    self.sideButtonResetError = "The mouse didn't confirm the reset: \(error.localizedDescription)"
+                    self.lastWriteFailure = Date()
+                }
+            }
+            // Read again either way, so the notice shows what the mouse holds now.
+            self.checkSideButtons()
+        }
+    }
+
     /// Always sent, the current rate too: the app's idea of it can be stale (not read yet, or
     /// another change still queued), and dropping a click on it would lose the user's last
     /// choice. Only an actual change un-marks the active profile.
@@ -1621,6 +1685,16 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         dpiStages = [400, 800, 1600, 3200, 6400]
         activeDpiStage = 3
         dpi = 3200
+    }
+
+    /// For the `render-remap side-buttons` preview: the Cobra over Bluetooth with its side
+    /// buttons saved to Ctrl+V and Ctrl+C, as the report that led to `SideButtonReset` had them.
+    func setPreviewSideButtonsRemapped() {
+        setPreviewBluetoothConnected()
+        remappedSideButtons = [
+            .init(id: 4, current: [0x02, 0x02, 0x01, 0x19, 0, 0, 0], factory: SideButtonReset.mouseBlock(4)),
+            .init(id: 5, current: [0x02, 0x02, 0x01, 0x06, 0, 0, 0], factory: SideButtonReset.mouseBlock(5)),
+        ]
     }
 
     /// For the `render-ui bluetooth` preview: a Razer mouse is on Bluetooth, so no USB control
