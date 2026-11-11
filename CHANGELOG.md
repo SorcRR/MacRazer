@@ -14,7 +14,7 @@ expect rough edges until 1.0.
     mode, Smart-Reel and its sensitivity and scroll acceleration on the cable and dongle.
   - **Lighting per zone:** the logo, wheel and underglow each get their own effect, colour
     and brightness, with Reactive added to the effects.
-  - **DPI modes:** Single or Stages, kept in the mouse.
+  - **DPI up to 50,000**, its sensor's top, with Single or Stages modes kept in the mouse.
   - **Profiles are the mouse's onboard slots.** Up to 5, each with its DPI, lighting, wheel
     settings and remaps, so they work with MacRazer closed. Add, switch, rename, reset or
     delete them from the Profiles menu. A switch made on the mouse is followed.
@@ -59,6 +59,8 @@ expect rough edges until 1.0.
   show up in its report.
 
 ### Fixed
+- **The Basilisk V4 HyperSpeed goes up to 33,000 DPI**, its sensor's top. The slider
+  stopped at 26,000.
 - **Brightness on the Goliathus Chroma Extended.** It answers brightness on a different light
   than MacRazer used, so the slider did nothing.
 - **250 Hz polling is read correctly.** A mouse left at 250 Hz showed no rate, and the device

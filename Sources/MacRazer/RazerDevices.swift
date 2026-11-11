@@ -392,32 +392,32 @@ enum RazerDevices {
         // DPI answered with 0x1f. 0xFF and 0x80 time out. Every LED group refuses brightness,
         // so no lighting. The classic polling command answers "not supported" (0x05), so it
         // takes polling_rate2, as the V4 Pro does in #55. Polling stays unverified until a
-        // test passes it, and 1000 Hz is its top rate (HyperSpeed). The 26000 DPI
-        // ceiling is the app's default for unknown models, not a measured value. The name has
+        // test passes it, and 1000 Hz is its top rate (HyperSpeed). 33000 DPI is the vendor
+        // spec (its Focus X 33K Gen-3 sensor). The name has
         // no "(Wireless)": usage stats count models by it, and 0.6 already sent it this way.
-        .init(pid: 0x00EA, name: "Razer Basilisk V4 HyperSpeed", unverified: [.polling], hasBattery: true, hasLighting: false, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, usesPollingRate2: true),
+        .init(pid: 0x00EA, name: "Razer Basilisk V4 HyperSpeed", unverified: [.polling], hasBattery: true, hasLighting: false, maxDPI: 33000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, usesPollingRate2: true),
         // Basilisk V4 Pro over the dongle (in-app report, no credit given): battery, DPI and
         // stages, static color and brightness passed with 0x1f. LOGO and SCROLL answer
         // brightness, ZERO and BACKLIGHT return 0x03. The classic polling command answers
         // "not supported" (0x05), the same gap as the V4 HyperSpeed, so the row stays
-        // unverified. 35000 is the vendor spec (its Focus Pro 35K sensor).
+        // unverified. 50000 is the vendor spec (its Focus Pro 50K Gen-3 sensor).
         // 8000 Hz is from fn-milans's work on this mouse (#55), not yet from a report.
         // fn-milans also confirmed on the mouse (#55, firmware v1.1, 2026-10-19): the sleep
         // timer, the wheel controls, the low-battery threshold, each lighting zone, the
         // onboard slots and remaps saved in its button table (`OnboardButtons`).
-        .init(pid: 0x00E3, name: "Razer Basilisk V4 Pro (Wireless)", unverified: [.polling], hasBattery: true, hasLighting: true, maxDPI: 35000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, supportsSleepTimeout: true, usesPollingRate2: true, maxPollingRate: 8000, hasWheelControls: true, hasSmartReelSensitivity: true, hasScrollAcceleration: true, supportsLowBatteryThreshold: true, hasOnboardSlots: true, supportsDpiModes: true, lightingZones: basiliskV4ProZones, buttonTable: .basiliskV4Pro, dpiStagesCountFromOne: true),
+        .init(pid: 0x00E3, name: "Razer Basilisk V4 Pro (Wireless)", unverified: [.polling], hasBattery: true, hasLighting: true, maxDPI: 50000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, supportsSleepTimeout: true, usesPollingRate2: true, maxPollingRate: 8000, hasWheelControls: true, hasSmartReelSensitivity: true, hasScrollAcceleration: true, supportsLowBatteryThreshold: true, hasOnboardSlots: true, supportsDpiModes: true, lightingZones: basiliskV4ProZones, buttonTable: .basiliskV4Pro, dpiStagesCountFromOne: true),
         // Basilisk V4 Pro on the cable (in-app report on firmware v1.1 from by_hlz): battery,
         // DPI and stages, static color and brightness passed with 0x1f, and every id answers.
         // LOGO and SCROLL answer brightness. The classic polling command answers 0x05, as over
-        // the dongle. Its control interface is the fourth one. Same 35000 ceiling as the dongle.
+        // the dongle. Its control interface is the fourth one. Same 50000 ceiling as the dongle.
         // 8000 Hz is from fn-milans's work on this mouse (#55), not yet from a report.
-        .init(pid: 0x00E2, name: "Razer Basilisk V4 Pro (Wired)", unverified: [.polling], hasBattery: true, hasLighting: true, maxDPI: 35000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, supportsSleepTimeout: true, usesPollingRate2: true, maxPollingRate: 8000, hasWheelControls: true, hasSmartReelSensitivity: true, hasScrollAcceleration: true, supportsLowBatteryThreshold: true, hasOnboardSlots: true, supportsDpiModes: true, lightingZones: basiliskV4ProZones, buttonTable: .basiliskV4Pro, dpiStagesCountFromOne: true),
+        .init(pid: 0x00E2, name: "Razer Basilisk V4 Pro (Wired)", unverified: [.polling], hasBattery: true, hasLighting: true, maxDPI: 50000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, supportsSleepTimeout: true, usesPollingRate2: true, maxPollingRate: 8000, hasWheelControls: true, hasSmartReelSensitivity: true, hasScrollAcceleration: true, supportsLowBatteryThreshold: true, hasOnboardSlots: true, supportsDpiModes: true, lightingZones: basiliskV4ProZones, buttonTable: .basiliskV4Pro, dpiStagesCountFromOne: true),
         // Basilisk V4 Pro over Bluetooth (#55, fn-milans, firmware v1.1). It names itself
         // "BSK V4 PRO" (vendor 0x068E). Battery, serial, DPI stages, LOGO brightness and the
         // sleep timer answered, and DPI and brightness changes worked. Remaps go to the same
         // button table as over USB, but the side trigger has no entry there. The wheel
         // settings are USB-only so far, and Bluetooth has no polling command.
-        .init(pid: 0x00E4, name: "Razer Basilisk V4 Pro (Bluetooth)", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 35000, transactionId: 0x1f, matrixTransactionId: 0x1f, brightnessLed: Razer.logoLed, connection: .bluetooth, silhouette: .cobra, dischargeCurveModelKey: nil, supportsSleepTimeout: true, supportsStageEditing: true, supportsLowBatteryThreshold: true, hasOnboardSlots: true, supportsDpiModes: true, lightingZones: basiliskV4ProZones, buttonTable: .basiliskV4Pro),
+        .init(pid: 0x00E4, name: "Razer Basilisk V4 Pro (Bluetooth)", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 50000, transactionId: 0x1f, matrixTransactionId: 0x1f, brightnessLed: Razer.logoLed, connection: .bluetooth, silhouette: .cobra, dischargeCurveModelKey: nil, supportsSleepTimeout: true, supportsStageEditing: true, supportsLowBatteryThreshold: true, hasOnboardSlots: true, supportsDpiModes: true, lightingZones: basiliskV4ProZones, buttonTable: .basiliskV4Pro),
         // DeathAdder V3 HyperSpeed over the dongle (in-app report, no credit given): DPI and
         // stages and polling passed with 0x1f. It has no lighting (every group answers 0x05).
         // The battery read timed out in the first report and in a 0.7.0 run on firmware v1.10,
@@ -465,7 +465,7 @@ enum RazerDevices {
         // interface is the fourth one. The owner found 2 of its 4 thumb buttons and one wheel
         // tilt unusable for remapping: the tilt sends horizontal scroll (consumer page 0x238),
         // and the other two thumb buttons sent nothing standard during the button step.
-        .init(pid: 0x00EB, name: "Razer Basilisk V4 HyperSpeed (Wired)", unverified: [.polling], hasBattery: true, hasLighting: false, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, usesPollingRate2: true),
+        .init(pid: 0x00EB, name: "Razer Basilisk V4 HyperSpeed (Wired)", unverified: [.polling], hasBattery: true, hasLighting: false, maxDPI: 33000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, usesPollingRate2: true),
         // Pro Click V2 over the dongle (in-app report, no credit given): battery, DPI and stages,
         // and polling passed with 0x1f. 0xFF and 0x80 time out. No lighting (every group
         // returns 0x03). 30000 is the vendor spec, as for the Vertical Edition. Its zone effect

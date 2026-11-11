@@ -72,7 +72,7 @@ final class RazerCommandsTests: XCTestCase {
 
     func testSetDPIClampsRange() {
         XCTAssertEqual(RazerCommands.parseDPI(RazerCommands.setDPI(x: 50, y: 50)).x, 100)
-        XCTAssertEqual(RazerCommands.parseDPI(RazerCommands.setDPI(x: 51000, y: 51000)).x, 45000)
+        XCTAssertEqual(RazerCommands.parseDPI(RazerCommands.setDPI(x: 51000, y: 51000)).x, 50000)
     }
 
     func testParseDPIStages() {
@@ -137,7 +137,7 @@ final class RazerCommandsTests: XCTestCase {
     func testSetDPIStagesClampsAndRoundTrips() {
         // Set layout matches the get-response layout, so parseDPIStages round-trips it.
         let r = RazerCommands.setDPIStages([50, 800, 51000, 1600, 3200, 6400, 9999], activeStage: 9)
-        XCTAssertEqual(RazerCommands.parseDPIStages(r), [100, 800, 45000, 1600, 3200],
+        XCTAssertEqual(RazerCommands.parseDPIStages(r), [100, 800, 50000, 1600, 3200],
                        "values clamp to the protocol range; the table caps at 5 stages")
         XCTAssertEqual(RazerCommands.parseActiveDPIStage(r), 4, "active index clamps to the last stage")
     }

@@ -239,9 +239,9 @@ enum RazerCommands {
     /// Devices store at most 5 stages (dataSize 0x26 = 3 header bytes + 5 × 7-byte records).
     static let maxDPIStages = 5
 
-    /// The highest DPI any write sends (OpenRazer's driver clamp). Each mouse's own `maxDPI`
-    /// caps the slider below this; the Viper V4 Pro's 45000 is the highest of any row.
-    static let dpiCeiling = 45000
+    /// The highest DPI any write sends. Each mouse's own `maxDPI` caps the slider below this;
+    /// 50000 is the Basilisk V4 Pro's sensor (Focus Pro 50K), the highest of any row.
+    static let dpiCeiling = 50000
 
     /// razer_chroma_misc_set_dpi_stages(VARSTORE, count, active_stage, dpi[])
     ///   get_razer_report(0x04, 0x06, 0x26); args: [VARSTORE, active, count,

@@ -150,7 +150,7 @@ final class RazerDevicesTests: XCTestCase {
             XCTAssertTrue(RazerDevices.hasBattery(pid: pid))
             XCTAssertTrue(RazerDevices.hasLighting(pid: pid))
             XCTAssertEqual(RazerDevices.brightnessLed(pid: pid), Razer.logoLed)
-            XCTAssertEqual(RazerDevices.maxDPI(pid: pid), 35000)
+            XCTAssertEqual(RazerDevices.maxDPI(pid: pid), 50000, "Focus Pro 50K, and the mouse read 50000 back")
             XCTAssertEqual(RazerDevices.unverified(pid: pid), [.polling], "polling_rate2 still waits on a report")
         }
         XCTAssertTrue(RazerDevices.fullySupported(pid: 0x00E4), "Bluetooth has no polling command")
