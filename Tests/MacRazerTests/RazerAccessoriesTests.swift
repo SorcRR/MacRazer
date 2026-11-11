@@ -73,6 +73,19 @@ final class RazerAccessoriesTests: XCTestCase {
         }
     }
 
+    /// The Goliathus Chroma and its Extended answer brightness on LOGO_LED, not ZERO_LED.
+    func testTestedGoliathusPadsDimOnTheLogoLed() throws {
+        for pid in [0x0C01, 0x0C02] {
+            let pad = try XCTUnwrap(RazerAccessories.info(pid: pid))
+            XCTAssertTrue(pad.verified, pad.name)
+            XCTAssertEqual(pad.transactionId, 0x3F, pad.name)
+            XCTAssertEqual(pad.effectLed, Razer.zeroLed, pad.name)
+            XCTAssertEqual(pad.brightnessLed, Razer.logoLed, pad.name)
+            XCTAssertTrue(pad.isTested(.staticColor), pad.name)
+            XCTAssertFalse(pad.supports(.wave), pad.name)
+        }
+    }
+
     /// Untested pads follow OpenRazer exactly, and the Goliathus ones have no wave there.
     func testUntestedPadsFollowOpenRazer() {
         let pads = RazerAccessories.known.filter { $0.kind == .mousepad && !$0.verified }
@@ -83,7 +96,7 @@ final class RazerAccessoriesTests: XCTestCase {
             XCTAssertEqual(pad.brightnessLed, Razer.zeroLed, pad.name)
             XCTAssertFalse(pad.isTested(.staticColor), pad.name)
         }
-        XCTAssertEqual(RazerAccessories.info(pid: 0x0C01)?.supports(.wave), false, "Goliathus Chroma")
+        XCTAssertEqual(RazerAccessories.info(pid: 0x0C06)?.supports(.wave), false, "Goliathus Chroma 3XL")
         XCTAssertEqual(RazerAccessories.info(pid: 0x0C08)?.supports(.wave), true, "Firefly V2 Pro")
         XCTAssertNil(RazerAccessories.info(pid: 0x0C00), "the original Firefly takes other commands")
     }

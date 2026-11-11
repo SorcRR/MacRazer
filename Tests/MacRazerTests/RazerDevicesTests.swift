@@ -304,9 +304,18 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(RazerDevices.unverified(pid: 0x00B2), [.polling])
         XCTAssertFalse(RazerDevices.acceptsClassicPolling(pid: 0x00B2))
         XCTAssertEqual(RazerDevices.notOnMouse(pid: 0x00B2), [.battery, .lighting])
-        for pid in [0x00CD, 0x005C, 0x0084] {
+        for pid in [0x00CD, 0x005C, 0x0096, 0x0046] {
             XCTAssertEqual(RazerDevices.unverified(pid: pid), [.lighting], String(format: "0x%04X", pid))
             XCTAssertFalse(RazerDevices.hasLighting(pid: pid))
+        }
+        // DeathAdder V2: its lighting passed, on LOGO and SCROLL.
+        XCTAssertEqual(RazerDevices.support(pid: 0x0084), .full, "DeathAdder V2")
+        XCTAssertTrue(RazerDevices.hasLighting(pid: 0x0084))
+        XCTAssertEqual(RazerDevices.info(pid: 0x0084)?.extraBrightnessLeds, [Razer.scrollLed])
+        // Naga X and Mamba Tournament Edition: wired only, no battery.
+        for pid in [0x0096, 0x0046] {
+            XCTAssertEqual(RazerDevices.notOnMouse(pid: pid), [.battery], String(format: "0x%04X", pid))
+            XCTAssertEqual(RazerDevices.info(pid: pid)?.connection, .wired)
         }
         // The second Mouse Dock: a receiver, like the first, so the counts look past it.
         XCTAssertEqual(RazerDevices.unverified(pid: 0x00F1), [.polling])

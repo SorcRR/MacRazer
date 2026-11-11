@@ -91,7 +91,14 @@ enum RazerAccessories {
               untestedEffects: [.breathing, .spectrum, .wave, .off]),
         pad(0x0C08, "Razer Firefly V2 Pro"),
         // No wave in OpenRazer for the Goliathus pads.
-        pad(0x0C01, "Razer Goliathus Chroma", wave: false),
+        //
+        // Goliathus Chroma, from an in-app report on firmware v1.1: as on the Extended,
+        // brightness reads on LOGO_LED (ZERO_LED refuses it), and dimmed and came back there.
+        // A static colour on ZERO_LED landed. The other effects follow OpenRazer.
+        .init(pid: 0x0C01, name: "Razer Goliathus Chroma", kind: .mousepad, verified: true,
+              transactionId: 0x3F, effectLed: Razer.zeroLed, brightnessLed: Razer.logoLed,
+              effects: LightingEffect.allCases.filter { $0 != .wave },
+              untestedEffects: [.breathing, .spectrum, .off]),
         // Goliathus Chroma Extended, from an in-app report on firmware v1.1: brightness reads
         // on LOGO_LED (ZERO_LED refuses it), and dimmed and came back there. A static colour on
         // ZERO_LED landed. The other effects follow OpenRazer.

@@ -513,10 +513,25 @@ enum RazerDevices {
         // passed. No battery. Lighting was skipped, so it stays hidden until a test
         // runs it. 16000 is the vendor spec.
         .init(pid: 0x005C, name: "Razer DeathAdder Elite", unverified: [.lighting], hasBattery: false, hasLighting: false, maxDPI: 16000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
-        // DeathAdder V2 (in-app report on firmware v1.4, no credit given): DPI and polling
-        // passed. No battery. Lighting was skipped, as on the Elite. 20000 is the
-        // vendor spec.
-        .init(pid: 0x0084, name: "Razer DeathAdder V2", unverified: [.lighting], hasBattery: false, hasLighting: false, maxDPI: 20000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
+        // DeathAdder V2 (two in-app reports on firmware v1.4, no credit given): DPI and stages,
+        // and polling passed with 0x1f. No battery. The first report skipped lighting. In the
+        // second, LOGO and SCROLL answered brightness, both dimmed and came back, and a static
+        // color landed, so the slider writes both. 20000 is the vendor spec.
+        .init(pid: 0x0084, name: "Razer DeathAdder V2", unverified: [], hasBattery: false, hasLighting: true, maxDPI: 20000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
+        // Naga X (in-app report on firmware v1.0, no credit given): DPI and stages, and polling
+        // passed with 0x1f. No battery (0x05). Its control interface is the fourth one. Only
+        // SCROLL answers brightness, and it reads back what was written, but the owner saw
+        // neither the dim nor the red, so lighting stays hidden until a test shows it working.
+        // The zone effect read answers on 0x00, 0x01 and 0x11, which a working report should
+        // pick the zones from. 18000 is the vendor spec.
+        .init(pid: 0x0096, name: "Razer Naga X", unverified: [.lighting], hasBattery: false, hasLighting: false, maxDPI: 18000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
+        // Mamba Tournament Edition (in-app report on firmware v1.3, no credit given): DPI and
+        // polling passed with 0x1f. It's wired only: the battery read answers with zeros. Every
+        // LED group answers brightness with 0 and ignores writes, as on the Naga Hex V2:
+        // OpenRazer drives it with the older standard-matrix commands, which nothing here
+        // builds, so lighting stays hidden. The stage table read returns 0x03, so the popover
+        // shows no stages. 16000 is the vendor spec.
+        .init(pid: 0x0046, name: "Razer Mamba Tournament Edition", unverified: [.lighting], hasBattery: false, hasLighting: false, maxDPI: 16000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
     ]
 
     static func info(pid: Int) -> RazerDeviceInfo? { known.first { $0.pid == pid } }
