@@ -1372,7 +1372,10 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 for (zone, lit) in done { all[zone] = lit }
                 self.showZoneLighting(all)
                 if done.count < wanted.count { self.lastWriteFailure = Date() }
-                if !done.isEmpty { self.clearActiveProfileIfNeeded() }
+                if !done.isEmpty {
+                    self.clearActiveProfileIfNeeded()
+                    self.lightingChanges &+= 1 // so "Also light the keyboard" follows the zones
+                }
             }
         }
     }
