@@ -23,7 +23,7 @@ expect rough edges until 1.0.
   - **Basilisk V3 Pro 35K over its dongle:** battery, DPI and polling work. **DeathAdder
     Elite:** DPI and polling work. Lighting waits on a test on both.
   - **Naga X** and **Mamba Tournament Edition:** DPI and polling work. Their lighting
-    doesn't yet.
+    doesn't work yet.
 - **Tested keyboards and mousepads.** The Ornata V3, Ornata V3 X, Goliathus Chroma and
   Goliathus Chroma Extended lost their UNTESTED tag after passing the lighting test.
 - **The device test looks for what can take your side buttons.** The button step and Review

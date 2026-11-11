@@ -52,8 +52,8 @@ Razer mice that use the same HID protocol family, but those are untested, so tre
   follow the mouse's lighting. Tested on the Cynosa Chroma, Ornata V3 and Ornata V3 X
   keyboards and the Firefly V2, Goliathus Chroma and Goliathus Chroma Extended mousepads. The
   Cynosa Chroma Pro, Cynosa Lite, the Ornata V3's other versions, the Firefly V2 Pro and the
-  Goliathus Chroma 3XL use the same commands but are untested. An untested one's card has a Test it
-  button.
+  Goliathus Chroma 3XL use the same commands but are untested. An untested one's card has a
+  Test it button.
 - **Asks for help with a new mouse.** When a mouse MacRazer doesn't fully support connects, a
   small window offers the device test (see below). It can be turned off in Settings.
 - Settings are written to the mouse's **onboard memory** where supported, so they persist when
