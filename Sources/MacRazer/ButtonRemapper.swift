@@ -33,7 +33,7 @@ enum RemapAction: Codable, Equatable, Sendable {
     case cycleScrollMode
     /// A wheel step, once per press or `repeating` while held. Sideways the mouse only
     /// repeats (`OnboardButtons.scrollBlock`).
-    case scroll(direction: ScrollDirection, repeating: Bool)
+    case scroll(direction: ScrollRemapDirection, repeating: Bool)
     /// One DPI stage up or down, stopping at the ends.
     case dpiStage(up: Bool)
     /// The button does nothing.
@@ -64,10 +64,72 @@ enum RemapAction: Codable, Equatable, Sendable {
 
     static func intervalMs(perSecond rate: Int) -> Int { 1000 / rate }
     static func perSecond(_ intervalMs: Int) -> Int { intervalMs > 0 ? 1000 / intervalMs : 0 }
+
+    /// The actions 0.9.0 and earlier know (`RemapStorage`).
+    var isLegacy: Bool {
+        switch self {
+        case .passthrough, .keystroke, .mouseButton, .doubleClick, .mediaKey: return true
+        default: return false
+        }
+    }
+}
+
+/// Remap tables as stored. 0.9.0 and earlier decode a whole `[Int: RemapAction]` or nothing,
+/// so one action they don't know would cost every remap, and in a profile every profile. The
+/// actions they know stay where they always were; the rest go in a table of their own
+/// (`Extended`), which an older build never reads and which is decoded entry by entry, so a
+/// later action can't take the others down either.
+enum RemapStorage {
+    static func split(_ table: [Int: RemapAction]) -> (legacy: [Int: RemapAction], extended: [Int: RemapAction]) {
+        let old = table.filter { isLegacy(button: $0.key, action: $0.value) }
+        return (old, table.filter { !isLegacy(button: $0.key, action: $0.value) })
+    }
+
+    /// An entry 0.9.0 can show: an action it knows, on a button it lists. It knows the DPI
+    /// button (-1) and real button numbers, not the hardware controls (`HardwareButton`) or
+    /// the HyperShift layer, which it would list as stray "Button" rows.
+    private static func isLegacy(button: Int, action: RemapAction) -> Bool {
+        action.isLegacy && button >= -1 && !ButtonRemapper.isHyperShiftKey(button)
+    }
+
+    /// The two tables as one. Where both have a button, the older build's edit is the newer.
+    static func merge(legacy: [Int: RemapAction], extended: [Int: RemapAction]) -> [Int: RemapAction] {
+        extended.merging(legacy) { _, legacy in legacy }
+    }
+
+    /// The table of newer actions, skipping any entry this build can't read.
+    struct Extended: Codable, Equatable {
+        var table: [Int: RemapAction]
+
+        init(_ table: [Int: RemapAction]) { self.table = table }
+
+        private struct Key: CodingKey {
+            var stringValue: String
+            var intValue: Int? { Int(stringValue) }
+            init(stringValue: String) { self.stringValue = stringValue }
+            init?(intValue: Int) { stringValue = String(intValue) }
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: Key.self)
+            var table: [Int: RemapAction] = [:]
+            for key in container.allKeys {
+                guard let button = key.intValue,
+                      let action = try? container.decode(RemapAction.self, forKey: key) else { continue }
+                table[button] = action
+            }
+            self.table = table
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: Key.self)
+            for (button, action) in table { try container.encode(action, forKey: Key(stringValue: String(button))) }
+        }
+    }
 }
 
 /// Which way a `.scroll` remap scrolls.
-enum ScrollDirection: String, Codable, CaseIterable, Sendable {
+enum ScrollRemapDirection: String, Codable, CaseIterable, Sendable {
     case up, down, left, right
 
     var label: String { "Scroll " + rawValue.capitalized }
@@ -137,6 +199,8 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
     }
     var remappingPermissionsGranted: Bool { accessibilityGranted && eventTapAvailable }
     private var defaultsKey: String { "buttonMappings-\(activeKey)" }
+    /// Where the actions 0.9.0 doesn't know are kept (`RemapStorage`).
+    private var extendedDefaultsKey: String { "buttonMappingsExtended-\(activeKey)" }
     /// Mirrors `MouseController.connected` (wired in AppDelegate; main-thread, same as the
     /// tap callback). While the mouse is offline — powered off, asleep, dongle unplugged —
     /// its mappings must not fire: the tap can't tell which device sent a click, so they'd
@@ -884,8 +948,14 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         // a disconnect would otherwise be saved under the meaningless "none" key and
         // silently dropped on reconnect.
         guard activeKey != "none" else { return }
-        if let data = try? JSONEncoder().encode(mappings) {
+        let (legacy, extended) = RemapStorage.split(mappings)
+        if let data = try? JSONEncoder().encode(legacy) {
             defaults.set(data, forKey: defaultsKey)
+        }
+        if extended.isEmpty {
+            defaults.removeObject(forKey: extendedDefaultsKey)
+        } else if let data = try? JSONEncoder().encode(RemapStorage.Extended(extended)) {
+            defaults.set(data, forKey: extendedDefaultsKey)
         }
     }
 
@@ -903,8 +973,12 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
             defaults.removeObject(forKey: defaultsKey)
             return
         }
-        guard let data = defaults.data(forKey: defaultsKey),
-              let decoded = try? JSONDecoder().decode([Int: RemapAction].self, from: data) else { return }
+        let legacy = defaults.data(forKey: defaultsKey)
+            .flatMap { try? JSONDecoder().decode([Int: RemapAction].self, from: $0) } ?? [:]
+        let extended = defaults.data(forKey: extendedDefaultsKey)
+            .flatMap { try? JSONDecoder().decode(RemapStorage.Extended.self, from: $0) }?.table ?? [:]
+        let decoded = RemapStorage.merge(legacy: legacy, extended: extended)
+        guard !decoded.isEmpty else { return }
         let kept = withoutUnremappable(decoded)
         mappings = kept
         seenButtons.formUnion(kept.keys)

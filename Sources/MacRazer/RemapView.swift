@@ -416,7 +416,7 @@ struct RemapView: View {
                 if offersDoubleClick { item("Double Click", .doubleClick) }
                 if inMouse {
                     Divider()
-                    ForEach(ScrollDirection.allCases, id: \.self) { direction in
+                    ForEach(ScrollRemapDirection.allCases, id: \.self) { direction in
                         // Sideways the mouse only has the repeating scroll (`scrollBlock`).
                         item(direction.label, .scroll(direction: direction, repeating: !direction.isVertical))
                     }

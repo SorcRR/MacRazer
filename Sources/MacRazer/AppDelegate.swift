@@ -347,7 +347,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
             .combineLatest(controller.$deviceID)
             .debounce(for: .milliseconds(300), scheduler: RunLoop.main)
             .sink { [weak self] _, _ in
-                guard let self else { return }
+                // Only a mouse with a known function table has anything to write.
+                guard let self, self.remapper.mappingsLiveInMouse else { return }
                 self.controller.setOnboardMappings(self.remapper.mappings, deviceKey: self.remapper.activeDeviceKey)
             }
             .store(in: &cancellables)

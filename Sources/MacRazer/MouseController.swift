@@ -2928,7 +2928,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             }
         }
         let defaults = UserDefaults.standard
-        for prefix in ["learnedDischargeRate-", "buttonMappings-", "customDPI-", "dpiCycleSoftwareAction-"] {
+        for prefix in ["learnedDischargeRate-", "buttonMappings-", "buttonMappingsExtended-", "customDPI-", "dpiCycleSoftwareAction-"] {
             let srcKey = "\(prefix)\(old)", dstKey = "\(prefix)\(new)"
             if let value = defaults.object(forKey: srcKey), defaults.object(forKey: dstKey) == nil {
                 defaults.set(value, forKey: dstKey)

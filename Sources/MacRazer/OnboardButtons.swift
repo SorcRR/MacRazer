@@ -173,13 +173,13 @@ enum OnboardButtons {
     static let cycleScrollModeBlock: [UInt8] = [0x12, 0x01, 0x01, 0, 0, 0, 0]
 
     /// The wheel's HID values in a mouse block: up, down, left, right.
-    static let wheelValues: [ScrollDirection: UInt8] = [.up: 0x09, .down: 0x0A, .left: 0x68, .right: 0x69]
+    static let wheelValues: [ScrollRemapDirection: UInt8] = [.up: 0x09, .down: 0x0A, .left: 0x68, .right: 0x69]
 
     /// A wheel step. Once per press is a mouse block (01 01 09 on any button); while held it
     /// is the tilt's own factory block, type 0E every 20 ms (0E 01 68 00 14). Sideways only
     /// the repeating form works: 01 01 68 and 69 sent nothing (2026-10-22), so a sideways
     /// scroll always repeats, as the tilt does.
-    static func scrollBlock(_ direction: ScrollDirection, repeating: Bool) -> [UInt8]? {
+    static func scrollBlock(_ direction: ScrollRemapDirection, repeating: Bool) -> [UInt8]? {
         guard let value = wheelValues[direction] else { return nil }
         if direction.isVertical && !repeating { return mouseBlock(value) }
         guard repeating else { return nil }

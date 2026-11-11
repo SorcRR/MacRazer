@@ -68,7 +68,18 @@ struct MouseProfile: Codable, Identifiable, Equatable {
     var color: RGB
 
     var lightingEffect: LightingEffect { LightingEffect(rawValue: effect) ?? .off }
-    var buttonMappings: [Int: RemapAction]
+    /// The remaps, kept as two tables (`RemapStorage`) so 0.9.0 and earlier still read the
+    /// profile list when a profile holds an action they don't know.
+    var buttonMappings: [Int: RemapAction] {
+        get { RemapStorage.merge(legacy: legacyMappings, extended: extendedMappings?.table ?? [:]) }
+        set {
+            let (legacy, extended) = RemapStorage.split(newValue)
+            legacyMappings = legacy
+            extendedMappings = extended.isEmpty ? nil : RemapStorage.Extended(extended)
+        }
+    }
+    private var legacyMappings: [Int: RemapAction] = [:]
+    private var extendedMappings: RemapStorage.Extended?
     /// The onboard DPI stage table (what the mouse's DPI button cycles). Optional so
     /// profiles saved before this existed keep decoding (they apply without touching the
     /// stage table, exactly as they always did).
@@ -83,6 +94,12 @@ struct MouseProfile: Codable, Identifiable, Equatable {
     /// The wave's speed byte (`WaveSpeed`). Optional for the same reason: older profiles
     /// apply at whatever speed the slider has.
     var waveSpeed: UInt8?
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, dpi, pollRate, brightness, effect, color, dpiStages, onboardSlot, zones, waveSpeed
+        case legacyMappings = "buttonMappings"
+        case extendedMappings = "extendedButtonMappings"
+    }
 
     init(name: String, dpi: Int, pollRate: Int, brightness: Int, effect: String, color: RGB,
          buttonMappings: [Int: RemapAction], dpiStages: [Int]? = nil, waveSpeed: UInt8? = nil) {
