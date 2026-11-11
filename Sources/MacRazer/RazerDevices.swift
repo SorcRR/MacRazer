@@ -493,9 +493,12 @@ enum RazerDevices {
         .init(pid: 0x00CD, name: "Razer Basilisk V3 Pro 35K (Wireless)", unverified: [.lighting], hasBattery: true, hasLighting: false, maxDPI: 35000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
         // Basilisk V3 Pro over its dongle (in-app report on firmware v1.1, no credit given):
         // battery, DPI and stages, polling and lighting all passed with 0x1f. LOGO and SCROLL
-        // answer brightness, and both dimmed and came back. 30000 is the vendor spec. Its
-        // cable (0x00AA) has no row yet.
+        // answer brightness, and both dimmed and came back. 30000 is the vendor spec.
         .init(pid: 0x00AB, name: "Razer Basilisk V3 Pro (Wireless)", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
+        // Its cable (in-app report on firmware v1.1, no credit given): battery (charging), DPI
+        // and stages, polling and lighting all passed with 0x1f, as over the dongle. LOGO and
+        // SCROLL dimmed and came back. It took a 45000 write; 30000 stays as the vendor spec.
+        .init(pid: 0x00AA, name: "Razer Basilisk V3 Pro (Wired)", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
         // DeathAdder V3 on the cable (two in-app reports on firmware v1.1, no credit given): DPI
         // and stages passed. No battery and no lighting. Like the Basilisk V4 models
         // it refuses the classic polling command (0x05) and answers the newer one, which this

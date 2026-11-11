@@ -295,12 +295,16 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(RazerDevices.rowsAnswered(byReportFrom: 0x0086, name: "Razer Basilisk Ultimate", on: .wired), [])
     }
 
-    /// The mice from the reports after 0.9.0 (2026-11-08 to 11-10).
+    /// The mice from the reports after 0.9.0 (2026-11-08 to 11-11).
     func testMiceFromTheZeroNineReports() {
-        for pid in [0x00AB, 0x009C, 0x00C1, 0x00D0] {
+        for pid in [0x00AB, 0x00AA, 0x009C, 0x00C1, 0x00D0] {
             XCTAssertEqual(RazerDevices.support(pid: pid), .full, String(format: "0x%04X", pid))
         }
         XCTAssertFalse(RazerDevices.canCharge(pid: 0x009C), "it runs on an AA cell")
+        // Basilisk V3 Pro: the cable row matches the dongle's, with LOGO and SCROLL.
+        XCTAssertEqual(RazerDevices.info(pid: 0x00AA)?.extraBrightnessLeds, [Razer.scrollLed])
+        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00AA), [], "the dongle is tested too")
+        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00AB), [], "and so is the cable now")
         XCTAssertEqual(RazerDevices.unverified(pid: 0x00B2), [.polling])
         XCTAssertFalse(RazerDevices.acceptsClassicPolling(pid: 0x00B2))
         XCTAssertEqual(RazerDevices.notOnMouse(pid: 0x00B2), [.battery, .lighting])

@@ -89,7 +89,7 @@ says so.
 | Razer Naga Trinity | DPI, DPI stages, polling, lighting, brightness | anonymous report |
 | Razer Viper V3 HyperSpeed | Battery, DPI, DPI stages, polling | anonymous report |
 | Razer Basilisk V3 | DPI, DPI stages, polling, lighting, brightness | SuperSpacer54376 |
-| Razer Basilisk V3 Pro (Wireless) | Battery, DPI, DPI stages, polling, lighting, brightness | anonymous report |
+| Razer Basilisk V3 Pro (wired + wireless) | Battery, DPI, DPI stages, polling, lighting, brightness | anonymous reports |
 | Razer Viper V3 Pro (Wireless) | Battery, DPI, DPI stages, polling (it has no lighting) | anonymous report |
 | Razer DeathAdder V2 | DPI, DPI stages, polling, lighting, brightness (wired only) | anonymous reports |
 | Razer DeathAdder V2 X HyperSpeed | Battery, DPI, DPI stages, polling (it has no lighting) | anonymous report |

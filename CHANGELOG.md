@@ -12,8 +12,8 @@ expect rough edges until 1.0.
   Buttons as buttons. On Bluetooth the page now says what they send and offers Reset Side
   Buttons, which puts Back and Forward back in the mouse itself. No Windows needed.
 - **More mice from test reports.**
-  - **Fully supported now:** Basilisk V3 Pro and Viper V3 Pro over their dongles, the
-    DeathAdder V2 X HyperSpeed and the DeathAdder V2.
+  - **Fully supported now:** the Basilisk V3 Pro on its cable and its dongle, the Viper V3
+    Pro over its dongle, the DeathAdder V2 X HyperSpeed and the DeathAdder V2.
   - **Mouse Dock V2 Pro:** the mouse on it gets battery, DPI and lighting, as with the first
     Mouse Dock Pro. Thanks to cparedes.
   - **Pro Click V2 Vertical Edition over its dongle**, and the **Pro Click V2 on its cable**.
