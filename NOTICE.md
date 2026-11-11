@@ -25,6 +25,10 @@ It is GPL because it is derived from OpenRazer (see below).
  HyperSpeed.
 - The app uses its **own original mouse icon/logo**; it does not bundle or display Razer's
  logo or marks.
+- **Scroll-source research:** [Scroll Reverser](https://github.com/pilotmoon/Scroll-Reverser)
+ by **[@pilotmoon](https://github.com/pilotmoon)** documents identifying a scroll event's
+ HID sender and preserving its line, pixel and fixed-point deltas. MacRazer's scroll
+ reversal is implemented here using the system interfaces; no Scroll Reverser code is bundled.
 - Hardware findings unique to this project (e.g. brightness living on the LOGO LED, the
  31 ms request/response timing on macOS) were verified on real hardware and are documented
  in [`docs/DOCUMENTATION.md`](docs/DOCUMENTATION.md).

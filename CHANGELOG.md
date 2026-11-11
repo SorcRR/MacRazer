@@ -7,6 +7,10 @@ expect rough edges until 1.0.
 ## [Unreleased]
 
 ### Added
+- **Reverse scrolling on Razer mice.** A switch under Settings › General reverses wheel
+  and tilt scrolling on Razer mice while trackpads and other mice keep their directions.
+  Off by default, saved once for the app, and active while MacRazer is running with
+  Accessibility permission. The macOS Natural scrolling preference stays as set.
 - **Reset side buttons saved in the mouse.** If Razer Synapse saved other functions to a
   Cobra HyperSpeed's side buttons (a keyboard shortcut, say), they never reach Configure
   Buttons as buttons. On Bluetooth the page now says what they send and offers Reset Side

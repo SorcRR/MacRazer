@@ -60,6 +60,7 @@ struct SettingsView: View {
     /// The crash window's "Don't Ask Again" writes the same key, so this is how to undo it.
     @AppStorage(CrashLogScanner.offerKey) private var offerCrashReports = true
     @ObservedObject var appearance: AppearanceSettings = .shared
+    @ObservedObject var scrolling: ScrollSettings = .shared
     @ObservedObject var usageStats: UsageStats = .shared
     @ObservedObject var supportPrompt: SupportPrompt = .shared
     @State var pane: SettingsPane = .general
@@ -86,7 +87,10 @@ struct SettingsView: View {
         .background(closeShortcuts)
         // The login switch mirrors the system's registration, which the user can change in
         // System Settings while this window sits open in the background.
-        .onAppear { launchAtLogin.refresh() }
+        .onAppear {
+            launchAtLogin.refresh()
+            scrolling.refreshAccessibility()
+        }
     }
 
     /// Privacy only exists in a build that can send stats: see `WorkerEndpoint`.
@@ -317,6 +321,9 @@ struct SettingsView: View {
         settingsGroup("Startup") {
             launchAtLoginRow
         }
+        settingsGroup("Scrolling") {
+            reverseScrollingRow
+        }
         settingsGroup("Menu bar and sounds") {
             // Hidden rather than disabled for a mouse with no battery: there is no
             // percentage to show, so the switch would be a promise about nothing.
@@ -364,6 +371,32 @@ struct SettingsView: View {
     }
 
     // MARK: Rows
+
+    private var reverseScrollingRow: some View {
+        settingRow(
+            symbol: "arrow.up.arrow.down", tint: .teal,
+            title: "Reverse scrolling on Razer mice",
+            detail: "Reverse wheel and tilt scrolling on Razer mice. Trackpads and other mice keep their direction. MacRazer must be running.",
+            isOn: Binding(get: { scrolling.enabled }, set: { scrolling.setEnabled($0) }),
+            enabled: scrolling.sourceIdentificationAvailable
+        ) {
+            if !scrolling.sourceIdentificationAvailable {
+                sectionNote("Scroll reversal is unavailable on this version of macOS.", color: .batteryMid)
+            } else if scrolling.enabled && !scrolling.accessibilityGranted {
+                sectionNote("Allow Accessibility to reverse scrolling.", color: .batteryMid)
+                HStack {
+                    Button("Open Settings") { SystemSettingsPanes.openAccessibility() }
+                    Button("Re-check") { scrolling.refreshAccessibility(prompt: true) }
+                }
+                .font(.system(size: 11))
+                .buttonStyle(.bordered)
+            } else if scrolling.enabled && controller.connected && !scrolling.eventTapAvailable {
+                sectionNote("Scroll reversal could not start. Re-check Accessibility and try again.", color: .batteryMid)
+                Button("Re-check") { scrolling.refreshAccessibility() }
+                    .font(.system(size: 11))
+            }
+        }
+    }
 
     private var launchAtLoginRow: some View {
         settingRow(

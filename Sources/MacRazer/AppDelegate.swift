@@ -19,6 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     private var monitor: HIDMonitor?
     private var bluetoothMonitor: HIDMonitor?
     private let remapper = ButtonRemapper()
+    private let scrolling = ScrollSettings.shared
     private lazy var remapWindow = RemapWindowController(remapper: remapper, controller: controller)
     private lazy var permissions = PermissionsModel(remapper: remapper, controller: controller)
     private lazy var permissionsWindow = PermissionsWindowController(model: permissions, controller: controller)
@@ -312,6 +313,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
 
         remapper.start()
         remapper.observeDpiCycle(controller: controller)
+        controller.$connected.combineLatest(remapper.$accessibilityGranted)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] connected, _ in
+                self?.scrolling.update(connected: connected, accessibilityGranted: AXIsProcessTrusted())
+            }.store(in: &cancellables)
 
         // Load the connected mouse's own button mappings when the device changes (per-unit key).
         controller.$deviceKey
@@ -1011,6 +1017,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        scrolling.stop()
         monitor?.invalidate()
         updateTimer?.invalidate()
         updatePathMonitor?.cancel()

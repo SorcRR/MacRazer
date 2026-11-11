@@ -25,12 +25,12 @@ enum SystemSettingsPanes {
 ///
 /// - **Input Monitoring** — required to open the Razer HID device for battery / DPI / polling
 ///   / lighting. macOS gates this because the device enumerates as a keyboard/mouse.
-/// - **Accessibility** — required *only* for the button-remapping `CGEvent` tap.
+/// - **Accessibility** — required for button remapping and reversing mouse scrolling.
 @MainActor
 final class PermissionsModel: ObservableObject {
     /// Input Monitoring granted (the blocking permission — nothing reads from the mouse without it).
     @Published private(set) var inputMonitoring = false
-    /// Accessibility granted (optional — only the remap feature needs it).
+    /// Accessibility granted (optional — button remapping and scroll reversal need it).
     @Published private(set) var accessibility = false
     /// Input Monitoring is granted at the API level, but the *running* process still can't open
     /// the device — the grant only takes effect after a relaunch. The classic macOS TCC gotcha.

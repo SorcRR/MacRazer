@@ -24,7 +24,7 @@ struct PermissionsView: View {
             )
             permissionRow(
                 title: "Accessibility",
-                why: "Only for remapping the extra mouse buttons. Skip it if you don't remap buttons.",
+                why: "For button remapping and reversing mouse scrolling. Optional if you use neither feature.",
                 granted: model.accessibility,
                 required: false,
                 grant: { model.grantAccessibility() },
