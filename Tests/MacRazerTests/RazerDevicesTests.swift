@@ -295,7 +295,7 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(RazerDevices.rowsAnswered(byReportFrom: 0x0086, name: "Razer Basilisk Ultimate", on: .wired), [])
     }
 
-    /// The mice from the reports after 0.9.0 (2026-11-08 to 11-10).
+    /// The mice from the reports after 0.9.0 (2026-11-08 to 11-11).
     func testMiceFromTheZeroNineReports() {
         for pid in [0x00AB, 0x00AA, 0x009C, 0x00C1, 0x00D0] {
             XCTAssertEqual(RazerDevices.support(pid: pid), .full, String(format: "0x%04X", pid))
