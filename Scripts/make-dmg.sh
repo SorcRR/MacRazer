@@ -27,7 +27,9 @@ OUT_DMG="${OUT_DIR}/MacRazer.dmg"
 echo "▸ Building ${APP}…"
 ./Scripts/build-app.sh
 
-VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Packaging/Info.plist)"
+# The app's own version: "0.8.0-dev" for any build but release.sh's (build-app.sh), so a test
+# DMG is never named like the release.
+VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "${APP}/Contents/Info.plist")"
 VERSIONED_DMG="${OUT_DIR}/MacRazer-${VERSION}.dmg"
 
 echo "▸ Staging DMG contents…"

@@ -1,0 +1,24 @@
+{
+  "description" : "The battery reads 0% after sleep.\n\tUntil I unplug the dongle.",
+  "details" : {
+    "appVersion" : "0.8.0",
+    "macOS" : "26.1",
+    "mice" : [
+      {
+        "link" : "dongle",
+        "name" : "Razer Basilisk V3 Pro",
+        "productID" : 171,
+        "supported" : true
+      },
+      {
+        "link" : "wired",
+        "name" : "Razer Viper Mini",
+        "productID" : 138,
+        "supported" : false
+      }
+    ]
+  },
+  "name" : "Sam",
+  "replyEmail" : "person@example.com",
+  "schema" : 1
+}

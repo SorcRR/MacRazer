@@ -13,7 +13,7 @@ import IOKit.hid
 @MainActor
 final class DeviceTestModel: ObservableObject {
     enum Stage: Int, Comparable {
-        case intro, permission, identify, battery, dpi, polling, lighting, buttons, review
+        case intro, permission, bluetooth, identify, battery, dpi, polling, lighting, buttons, review
         static func < (a: Stage, b: Stage) -> Bool { a.rawValue < b.rawValue }
     }
 
@@ -68,7 +68,11 @@ final class DeviceTestModel: ObservableObject {
         if running { idleWaiters.append(body) } else { body() }
     }
     @Published private(set) var report: DeviceReport?
-    @Published private(set) var blocker: Blocker?
+    @Published private(set) var blocker: Blocker? {
+        // Only on the intro, the one screen that offers it: Start clears the blocker on its way
+        // out, and that shouldn't cost two device listings.
+        didSet { if stage == .intro, blocker != oldValue { refreshBluetoothOffer() } }
+    }
     @Published private(set) var needsRelaunch = false
     @Published var connection: DeviceReport.Connection? {
         didSet { report?.device.connection = connection }
@@ -80,7 +84,23 @@ final class DeviceTestModel: ObservableObject {
     /// Whether the button step could open the mouse to listen. False means it can't hear
     /// presses (no Input Monitoring, or the mouse went away), and the step says so.
     @Published private(set) var listening = false
+    /// The button step's opt-in: also record ordinary key presses, for side buttons set on
+    /// the mouse (or by software) to send keys. It hears the keyboard too, so it starts off
+    /// on every run, and turning it off clears what it recorded.
+    @Published var recordKeys = false {
+        didSet { if recordKeys != oldValue { updateKeyCapture() } }
+    }
+    @Published private(set) var keysSeen: [DeviceReport.KeyPress] = []
+    /// Why recording keys couldn't start, for the step to show.
+    @Published private(set) var keyCaptureProblem: String?
+    /// Razer's software and other button-grabbing apps, as the button step or Review last saw.
+    @Published private(set) var software = DeviceReport.SoftwareData()
+    /// The run is the Bluetooth test, whose steps are its own screen, then the button step.
+    @Published private(set) var bluetoothRun = false
     @Published var comment = ""
+    /// Which mouse sits on the dock or mat under test. Its PID is the dock's, so the report
+    /// can't tell otherwise. Sent as the first line of the comment.
+    @Published var dockMouse = ""
     @Published var credit = ""
     @Published var replyEmail = ""
     @Published private(set) var copied = false
@@ -98,54 +118,236 @@ final class DeviceTestModel: ObservableObject {
     let controller: MouseController
     private let permissions: PermissionsModel
     private var capture: ButtonCapture?
+    private var keyCapture: KeystrokeCapture?
+    private var keyLog = KeystrokeLog()
     private var standardId: UInt8 = 0x1F
     private var matrixId: UInt8 = 0x1F
     /// A known model's per-command ids, used as the app's own traffic would.
     private var overrides: [UInt16: UInt8] = [:]
     private var lightSweep: [DeviceProbe.LEDAnswer]?
     private var sessionOpen = false
+    /// The Bluetooth test is reading, which `endSession` waits for.
+    private var bluetoothRunning = false
 
-    init(controller: MouseController, permissions: PermissionsModel) {
+    /// Where Send goes, or nil in a build without the Worker, which hides Send and the reply
+    /// address that only Send would carry. Copy and the GitHub issue work either way.
+    let reportEndpoint: URL?
+
+    init(controller: MouseController, permissions: PermissionsModel,
+         reportEndpoint: URL? = WorkerEndpoint.deviceReports) {
         self.controller = controller
         self.permissions = permissions
+        self.reportEndpoint = reportEndpoint
     }
+
+    var canSend: Bool { reportEndpoint != nil }
 
     static var inputMonitoringGranted: Bool {
         IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) == kIOHIDAccessTypeGranted
     }
 
-    /// Whether the connected model is already on the verified list. Decides the intro's wording
-    /// and, at the end, whether a clean run is a confirmation or a new mouse.
-    var isKnownSupported: Bool {
-        previewKnown ?? controller.deviceID.map { RazerDevices.fullySupported(pid: $0) } ?? false
+    /// How far the registry already supports the connected link. Decides which intro shows.
+    typealias Support = RazerDevices.LinkSupport
+
+    var support: Support {
+        pinned?.support ?? testedPID.map { RazerDevices.support(pid: $0) } ?? .unknown
     }
-    /// Set only by `loadPreview`, to render both intros without a device.
-    private var previewKnown: Bool?
+
+    /// What this link still needs that only a test on another link can confirm
+    /// (`RazerDevices.LinkAsk.elsewhere`): over Bluetooth, the settings it would have to set.
+    /// From the pinned run when there is one, like `support` and `linksToTest`.
+    var onlyOtherLinksConfirm: [RazerFeature] {
+        pinned?.elsewhere ?? testedPID.map { RazerDevices.ask(pid: $0).elsewhere } ?? []
+    }
+
+    /// Whether the connected model is already on the verified list. Decides the window title.
+    var isKnownSupported: Bool { support == .full }
+    /// The connected mouse's other links still worth a report, for the intro.
+    var linksToTest: [RazerDevices.LinkToTest] {
+        pinned?.links ?? testedPID.map { RazerDevices.linksToTest(besides: $0) } ?? []
+    }
+    /// What no report has shown working on this link yet: everything for a model not on record.
+    var missingFeatures: [RazerFeature] {
+        if let pinned { return pinned.missing }
+        guard let pid = testedPID, let unverified = RazerDevices.unverified(pid: pid) else { return RazerFeature.allCases }
+        return unverified
+    }
+    /// Skipping this step leaves out data the registry still lacks, so Skip asks first.
+    var skipNeedsConfirming: Bool { DeviceTestFlow.skipNeedsConfirming(stage, missing: missingFeatures) }
+    /// What the registry said when this run began. The online support list can land mid-run
+    /// (`SupportList`), and the title, the intro and what Skip asks shouldn't change under it.
+    /// Nil at the intro, which follows the registry as it stands.
+    private var pinned: Pinned?
+    private struct Pinned {
+        let support: Support
+        let links: [RazerDevices.LinkToTest]
+        let missing: [RazerFeature]
+        let elsewhere: [RazerFeature]
+    }
+
+    private func pin() {
+        pinned = nil
+        pinned = Pinned(support: support, links: linksToTest, missing: missingFeatures,
+                        elsewhere: onlyOtherLinksConfirm)
+    }
+
+    #if DEBUG
+    /// `pin()`, which `begin()` calls, for the test that a run keeps what it started with.
+    func pinForTesting() { pin() }
+    #endif
+
+    /// Set only by `loadPreview`, to render each intro without a device.
+    private var previewPID: Int?
+    /// The mouse the registry is asked about: the preview's, else the connected one.
+    private var testedPID: Int? { previewPID ?? controller.deviceID }
+    /// The steps this run is limited to, or nil for the full test. Set by "Test what's missing".
+    @Published private(set) var focus: [RazerFeature]?
+    /// The screens a focused run passes over.
+    var skippedStages: Set<Stage> { DeviceTestFlow.skipped(focus: focus) }
+    /// The stages the progress bar and the step count show for this run.
+    var visibleSteps: [Stage] {
+        bluetoothRun ? [.bluetooth, .buttons, .review] : Self.steps.filter { !skippedStages.contains($0) }
+    }
+    /// What a step left out of a focused run records, so the report doesn't read as if the
+    /// person skipped it.
+    static let alreadyVerified = "Already verified on this mouse, so this run left it out."
+    /// What a step records for something the mouse doesn't have (`RazerDeviceInfo.notOnMouse`).
+    nonisolated static func notOnMouseNote(_ feature: RazerFeature) -> String {
+        feature == .battery ? "This mouse has no battery, so the test left it out."
+            : "This mouse has no lights, so the test left it out."
+    }
+
+    /// What the identified mouse doesn't have, for this run: the registry's `notOnMouse`, less
+    /// anything the mouse itself contradicts. Set once identify is done.
+    @Published private(set) var lacking: Set<RazerFeature> = []
+
+    /// The feature behind `stage`, when the identified mouse doesn't have it. That step then
+    /// says so and offers Next instead of running.
+    func notOnMouse(_ stage: Stage) -> RazerFeature? {
+        lacking.first { DeviceTestFlow.stage(for: $0) == stage }
+    }
+
+    /// The registry's `notOnMouse` for `pid`, less what the identify sweep contradicts: an LED
+    /// group that answered brightness means the mouse has lights after all, so the lighting
+    /// step runs and its report is what corrects the row.
+    nonisolated static func lacking(pid: Int, sweep: [DeviceProbe.LEDAnswer]?) -> Set<RazerFeature> {
+        var lacking = RazerDevices.notOnMouse(pid: pid)
+        if sweep?.contains(where: { (try? $0.result.get()) != nil }) == true { lacking.remove(.lighting) }
+        return lacking
+    }
     var deviceName: String { report?.device.name ?? controller.deviceName ?? "your mouse" }
+
+    // MARK: - Other devices
+
+    /// Every device plugged in that could be the mouse, when there's more than one. The intro
+    /// asks to unplug all but one: the test runs on whichever selection opens, and with a dock
+    /// next to its own dongle that may not be the one meant. Empty with one or none.
+    @Published private(set) var devices: [HIDDeviceSelection.Candidate] = []
+
+    /// Lists the devices again: when the intro shows, and on a plug event.
+    func refreshDevices() {
+        let found = HIDDevice.mouseCandidates()
+        let shown = found.count > 1 ? found : []
+        // Not `index`: it points into an IOHID set whose order changes between listings.
+        func same(_ a: [HIDDeviceSelection.Candidate], _ b: [HIDDeviceSelection.Candidate]) -> Bool {
+            a.map(\.key) == b.map(\.key) && a.map(\.name) == b.map(\.name)
+        }
+        if !same(shown, devices) { devices = shown }
+    }
+
+    /// A Razer device was plugged in or unplugged. Lists them again if the intro is showing.
+    func devicesMayHaveChanged() {
+        if stage == .intro { refreshDevices() }
+    }
+
+    /// The devices as the hint names them: each by its name, with the link the registry knows
+    /// it by when two share a name, and a number when that doesn't tell them apart either.
+    nonisolated static func deviceLabels(_ devices: [HIDDeviceSelection.Candidate]) -> [String] {
+        func repeated(_ names: [String]) -> Set<String> {
+            Set(Dictionary(grouping: names, by: { $0 }).filter { $0.value.count > 1 }.keys)
+        }
+        let sameName = repeated(devices.map(\.name))
+        let linked = devices.map { device -> String in
+            guard sameName.contains(device.name),
+                  let link = RazerDevices.connection(pid: device.key.pid) else { return device.name }
+            return "\(RazerDevices.modelName(device.name)) (\(link.label))"
+        }
+        let stillSame = repeated(linked)
+        var seen: [String: Int] = [:]
+        return linked.map { label in
+            guard stillSame.contains(label) else { return label }
+            seen[label, default: 0] += 1
+            return "\(label) \(seen[label]!)"
+        }
+    }
+
+    /// The intro's hint with more than one device plugged in. `testing` is the device the app
+    /// has open, which the test runs on.
+    nonisolated static func unplugHint(_ devices: [HIDDeviceSelection.Candidate], testing: String?) -> String {
+        let names = deviceLabels(devices)
+        let list = names.count == 2 ? "\(names[0]) and \(names[1])"
+            : names.dropLast().joined(separator: ", ") + ", and " + (names.last ?? "")
+        var hint = "More than one Razer device that could be a mouse is plugged in: \(list). For an accurate test, unplug all but the one you want to test."
+        if let testing { hint += " The test will run on \(testing)." }
+        return hint
+    }
+
+    /// A dock or charging mat that passes commands to the mouse on it. Its product ID is the
+    /// dock's whatever mouse is on it, so the review asks which one.
+    nonisolated static func isDock(name: String) -> Bool {
+        let lower = name.lowercased()
+        return lower.contains("dock") || lower.contains("hyperflux")
+    }
+    var testsDock: Bool { report.map { Self.isDock(name: $0.device.name) } ?? false }
+
+    /// How long the dock field may be.
+    nonisolated static let maxDockMouse = 64
+
+    /// How long the comment may be: the report's cap, less the dock line that goes ahead of it.
+    var commentLimit: Int { Self.commentLimit(dockMouse: testsDock ? dockMouse : nil) }
+    nonisolated static func commentLimit(dockMouse: String?) -> Int {
+        guard let line = dockLine(dockMouse) else { return DeviceReportOutput.maxComment }
+        return DeviceReportOutput.maxComment - line.count - 2
+    }
+
+    /// "Mouse on the dock: …", or nil with nothing filled in.
+    nonisolated static func dockLine(_ dockMouse: String?) -> String? {
+        DeviceReportOutput.cleaned(dockMouse ?? "", max: maxDockMouse, units: maxDockMouse * 4, singleLine: true)
+            .map { "Mouse on the dock: \($0)" }
+    }
+
+    /// The comment as the report carries it, cleaned and capped: the dock's mouse first, then
+    /// the comment, cut to what's left of both caps so the dock line is never what's dropped.
+    nonisolated static func reportComment(_ comment: String, dockMouse: String?) -> String? {
+        guard let line = dockLine(dockMouse) else {
+            return DeviceReportOutput.cleaned(comment, max: DeviceReportOutput.maxComment,
+                                              units: DeviceReportOutput.maxCommentUnits, singleLine: false)
+        }
+        let rest = DeviceReportOutput.cleaned(comment, max: DeviceReportOutput.maxComment - line.count - 2,
+                                              units: DeviceReportOutput.maxCommentUnits - line.utf16.count - 2,
+                                              singleLine: false)
+        return rest.map { line + "\n\n" + $0 } ?? line
+    }
     var emailProblem: String? { DeviceReportOutput.emailProblem(replyEmail) }
 
     // MARK: - Starting
 
-    /// A Razer device with a mouse interface is plugged in by cable or dongle. Listing devices
-    /// needs no permission, so this works before Input Monitoring. A mouse interface, not just
-    /// the vendor id: with only a Razer keyboard attached, the test would otherwise run on it.
-    static var razerMousePresent: Bool {
-        !HIDDevice.devices(matching: [
-            kIOHIDVendorIDKey as String: Razer.vendorId,
-            kIOHIDDeviceUsagePageKey as String: kHIDPage_GenericDesktop,
-            kIOHIDDeviceUsageKey as String: kHIDUsage_GD_Mouse,
-        ]).isEmpty
-    }
+    /// A Razer mouse is plugged in by cable or dongle. A mouse, not just the vendor id: with
+    /// only a Razer keyboard attached, the test would otherwise run on it. See `razerMice`.
+    static var razerMousePresent: Bool { !HIDDevice.razerMice().isEmpty }
 
     /// Why there's no mouse for the test: on Bluetooth, or not connected at all.
     private static func unavailable() -> Blocker {
         HIDDevice.bluetoothRazerMouse().map { .bluetoothOnly($0.name) } ?? .noMouse
     }
 
-    func start() {
+    /// `missingOnly` limits the run to what the registry hasn't seen working on this link.
+    func start(missingOnly: Bool = false) {
         // A window closed mid-step and reopened: that step is still finishing on the device.
         guard !running else { return }
         blocker = nil
+        bluetoothRun = false
+        if missingOnly, case .partly(_, let missing) = support { focus = missing } else { focus = nil }
         // A mouse on Bluetooth with the dongle still plugged in gets this far. Identify finds
         // that out on the device queue, which knows the link for certain.
         guard Self.razerMousePresent else {
@@ -167,6 +369,7 @@ final class DeviceTestModel: ObservableObject {
     /// Called when the window comes back to the front: the person may have just granted it in
     /// System Settings.
     func recheckAccess() {
+        if stage == .intro { refreshBluetoothOffer(); refreshDevices() }
         if stage == .permission, !needsRelaunch, Self.inputMonitoringGranted { begin() }
     }
 
@@ -183,13 +386,19 @@ final class DeviceTestModel: ObservableObject {
     func continueWithoutAccess() {
         // Nothing more will touch the mouse, so the app's own reads can resume now.
         endSession()
+        // Nothing ran, so no step was left out as already verified.
+        focus = nil
         let (interfaces, control) = HIDDevice.interfaceSummaries(vendorId: Razer.vendorId)
         let product = control.map { interfaces[$0] } ?? interfaces.first
         let pid = product?.productID ?? 0
         report = Self.emptyReport(pid: pid, name: product?.product ?? "Razer mouse",
                                   interfaces: interfaces, control: control,
                                   identify: .init(outcome: .skipped, error: "Input Monitoring wasn't granted."))
+        // Known without reading anything, so it holds here too.
+        lacking = Self.lacking(pid: pid, sweep: nil)
+        if var marked = report { Self.markNotOnMouse(&marked, lacking: lacking); report = marked }
         stage = .review
+        noteSoftware()
     }
 
     private func begin() {
@@ -198,8 +407,63 @@ final class DeviceTestModel: ObservableObject {
             controller.beginDeviceTest()
             sessionOpen = true
         }
+        pin()
         stage = .identify
         Task { await runIdentify() }
+    }
+
+    /// Whether to offer the Bluetooth test: the full test found the mouse on Bluetooth, or
+    /// there's no mouse on a cable or dongle and there is one on Bluetooth. Stored, not
+    /// computed: working it out lists devices twice, and the footer reads it on every redraw.
+    @Published private(set) var offersBluetoothTest = false
+
+    /// Works `offersBluetoothTest` out again: when the blocker changes and each time the
+    /// window comes to the front, the moments the answer can have changed.
+    func refreshBluetoothOffer() {
+        let offers: Bool
+        if case .bluetoothOnly? = blocker {
+            offers = true
+        } else {
+            offers = blocker == nil && !Self.razerMousePresent && HIDDevice.bluetoothRazerMouse() != nil
+        }
+        if offers != offersBluetoothTest { offersBluetoothTest = offers }
+    }
+
+    /// The window was closed and opened again while a step it started is still running (the
+    /// Bluetooth test can take half a minute): Start waits for it, so the intro says so.
+    var finishingEarlierTest: Bool { stage == .intro && running }
+
+    /// The shorter, read-only test for a mouse on Bluetooth (`DeviceTestSteps.bluetoothTest`).
+    /// Needs no Input Monitoring: nothing goes through IOHID but the interface list.
+    func startBluetooth() {
+        guard !running else { return }
+        guard let mouse = HIDDevice.bluetoothRazerMouse() else {
+            blocker = Self.unavailable()
+            return
+        }
+        blocker = nil
+        if !sessionOpen {
+            // Pauses the app's own reads, Bluetooth ones included, while the test runs.
+            controller.beginDeviceTest()
+            sessionOpen = true
+        }
+        pin()
+        bluetoothRun = true
+        stage = .bluetooth
+        Task { await runBluetooth(name: mouse.name) }
+    }
+
+    private func runBluetooth(name: String) async {
+        running = true
+        bluetoothRunning = true
+        defer { running = false }
+        await controller.releaseBluetoothForDeviceTest()
+        let result = await Task.detached { DeviceTestSteps.bluetoothTest(name: name) }.value
+        bluetoothRunning = false
+        // Closed and reset while it ran: the result is for a window that has moved on.
+        if stage == .bluetooth { report = result }
+        // Nothing more will touch the mouse.
+        endSession()
     }
 
     // MARK: - Steps
@@ -209,6 +473,7 @@ final class DeviceTestModel: ObservableObject {
         let name: String
         let record: DeviceReport.StepRecord<DeviceReport.IdentifyData>
         let sweep: [DeviceProbe.LEDAnswer]?
+        let capabilities: DeviceReport.CapabilitiesData?
         let interfaces: [DeviceProbe.Interface]
         let control: Int?
     }
@@ -218,19 +483,29 @@ final class DeviceTestModel: ObservableObject {
         defer { running = false }
         do {
             let result = try await controller.runDeviceTestStep { device -> IdentifyResult in
-                let (record, sweep) = DeviceTestSteps.identify(device, registry: RazerDevices.info(pid: device.productID))
-                let (interfaces, control) = HIDDevice.interfaceSummaries(vendorId: Razer.vendorId)
+                let info = RazerDevices.info(pid: device.productID)
+                let (record, sweep) = DeviceTestSteps.identifyMouse(device, registry: info)
+                let capabilities = DeviceTestSteps.capabilities(device, identify: record, registry: info)
+                let (interfaces, control) = HIDDevice.interfaceSummaries(vendorId: Razer.vendorId, opened: device)
                 return IdentifyResult(pid: device.productID, name: device.productName, record: record,
-                                      sweep: sweep, interfaces: interfaces, control: control)
+                                      sweep: sweep, capabilities: capabilities, interfaces: interfaces, control: control)
             }
             let info = RazerDevices.info(pid: result.pid)
             report = Self.emptyReport(pid: result.pid, name: result.name, interfaces: result.interfaces,
                                       control: result.control, identify: result.record)
             report?.registry = info.map(DeviceReport.Registry.init)
-            standardId = result.record.data?.standardId ?? info?.transactionId ?? 0x1F
-            matrixId = result.record.data?.lightingId ?? standardId
+            report?.capabilities = result.capabilities
+            (standardId, matrixId) = DeviceTestSteps.chosenIds(result.record, registry: info)
             overrides = info?.transactionOverrides ?? [:]
             lightSweep = result.sweep
+            if let focus {
+                for feature in RazerFeature.allCases where !focus.contains(feature) {
+                    leaveOut(feature)
+                }
+            }
+            // After the focus: what the mouse lacks is "not on this mouse", not "already verified".
+            lacking = Self.lacking(pid: result.pid, sweep: result.sweep)
+            if var marked = report { Self.markNotOnMouse(&marked, lacking: lacking); report = marked }
             // Known models say how they connect; only an unknown one needs asking.
             switch info?.connection {
             case .wired?: connection = .cable
@@ -254,8 +529,8 @@ final class DeviceTestModel: ObservableObject {
         }
     }
 
-    private static func emptyReport(pid: Int, name: String, interfaces: [DeviceProbe.Interface], control: Int?,
-                                    identify: DeviceReport.StepRecord<DeviceReport.IdentifyData>) -> DeviceReport {
+    nonisolated static func emptyReport(pid: Int, name: String, interfaces: [DeviceProbe.Interface], control: Int?,
+                            identify: DeviceReport.StepRecord<DeviceReport.IdentifyData>) -> DeviceReport {
         DeviceReport(appVersion: AppInfo.displayVersion, macOSVersion: DeviceReport.currentMacOSVersion,
                      device: .init(vendorID: Razer.vendorId, productID: pid, name: name, connection: nil,
                                    interfaces: interfaces, controlInterface: control),
@@ -281,12 +556,36 @@ final class DeviceTestModel: ObservableObject {
         await run(\.battery) { DeviceTestSteps.battery($0, expectsBattery: expects) }
     }
 
+    /// The battery read on a mouse the registry says has none. Read-only, so it still runs,
+    /// out of sight: a level means the row is wrong, and the step then shows it as usual so
+    /// the report corrects the row. Anything else keeps the note, with what was exchanged.
+    private func checkBatteryQuietly() async {
+        await runBattery()
+        guard var record = report?.battery else { return }
+        if Self.batteryContradicts(record) {
+            lacking.remove(.battery)
+        } else {
+            record.outcome = .notSupported
+            // The read's own error stays after the note, for whoever reads the report.
+            record.error = [Self.notOnMouseNote(.battery), record.error].compactMap { $0 }.joined(separator: " ")
+            report?.battery = record
+        }
+    }
+
+    /// Whether a battery read shows a battery: it passed, or it says the mouse is charging.
+    nonisolated static func batteryContradicts(_ record: DeviceReport.StepRecord<DeviceReport.BatteryData>) -> Bool {
+        record.outcome == .passed || record.data?.charging == true
+    }
+
     func runDPI() async {
         let probe = maxProbe
         await run(\.dpi) { DeviceTestSteps.dpi($0, maxProbe: probe) }
     }
 
-    func runPolling() async { await run(\.polling) { DeviceTestSteps.polling($0) } }
+    func runPolling() async {
+        let rate2 = testedPID.map(RazerDevices.usesPollingRate2(pid:)) ?? false
+        await run(\.polling) { DeviceTestSteps.polling($0, usesPollingRate2: rate2) }
+    }
 
     func runLighting() async {
         let sweep = lightSweep
@@ -313,13 +612,97 @@ final class DeviceTestModel: ObservableObject {
 
     // MARK: - Buttons
 
+    /// The steps in `verdict` that a focused run left out because they were already verified,
+    /// as opposed to ones the person chose to skip.
+    func leftOut(_ verdict: DeviceTestVerdict) -> [String] {
+        guard let focus else { return [] }
+        let labels = RazerFeature.allCases.filter { !focus.contains($0) }.map(\.label)
+        return verdict.skipped.filter(labels.contains)
+    }
+
+    /// Records each step for something the mouse doesn't have, without touching the mouse.
+    nonisolated static func markNotOnMouse(_ report: inout DeviceReport, lacking: Set<RazerFeature>) {
+        for feature in lacking {
+            let note = notOnMouseNote(feature)
+            switch feature {
+            case .battery: report.battery = .init(outcome: .notSupported, error: note)
+            case .dpi: report.dpi = .init(outcome: .notSupported, error: note)
+            case .polling: report.polling = .init(outcome: .notSupported, error: note)
+            case .lighting: report.lighting = .init(outcome: .notSupported, error: note)
+            }
+        }
+    }
+
+    /// Records a step a focused run doesn't visit.
+    private func leaveOut(_ feature: RazerFeature) {
+        switch feature {
+        case .battery: report?.battery = .init(outcome: .skipped, error: Self.alreadyVerified)
+        case .dpi: report?.dpi = .init(outcome: .skipped, error: Self.alreadyVerified)
+        case .polling: report?.polling = .init(outcome: .skipped, error: Self.alreadyVerified)
+        case .lighting: report?.lighting = .init(outcome: .skipped, error: Self.alreadyVerified)
+        }
+    }
+
     private func startListening() {
         buttonsSeen = []
+        keyLog = KeystrokeLog()
+        keysSeen = []
+        noteSoftware()
         let capture = ButtonCapture { [weak self] label in
             Task { @MainActor in self?.saw(label) }
         }
         self.capture = capture
-        listening = capture.start(vendorID: Razer.vendorId, productID: report?.device.productID ?? 0)
+        // The report's own vendor: a mouse on Bluetooth enumerates under BLEProtocol's.
+        listening = capture.start(vendorID: report?.device.vendorID ?? Razer.vendorId,
+                                  productID: report?.device.productID ?? 0)
+        updateKeyCapture()
+    }
+
+    /// Starts or stops the key tap to match `recordKeys` and the screen: it runs only while
+    /// the button step shows with recording on.
+    private func updateKeyCapture() {
+        if !recordKeys {
+            keyCapture?.stop()
+            keyCapture = nil
+            keyLog = KeystrokeLog()
+            keysSeen = []
+            keyCaptureProblem = nil
+            return
+        }
+        guard stage == .buttons, keyCapture == nil else { return }
+        let capture = KeystrokeCapture { [weak self] event in
+            MainActor.assumeIsolated { self?.heard(event) }
+        }
+        switch capture.start() {
+        case .started:
+            keyCapture = capture
+            keyCaptureProblem = nil
+        case .denied, .failed:
+            // Off first: turning it off clears the problem along with the keys.
+            recordKeys = false
+            keyCaptureProblem = Self.keyCaptureRefused
+        }
+    }
+
+    static let keyCaptureRefused = "MacRazer needs Input Monitoring to hear keys. Allow it in System Settings, then reopen MacRazer and this test."
+
+    private func heard(_ event: KeystrokeCapture.Event) {
+        guard recordKeys, stage == .buttons else { return }
+        switch event {
+        case .keyDown(let keyCode, let flags, let autorepeat, let postedBy):
+            keyLog.keyDown(keyCode: keyCode, flags: flags, autorepeat: autorepeat, postedBy: postedBy)
+        case .flagsChanged(let keyCode, let flags, let postedBy):
+            keyLog.flagsChanged(keyCode: keyCode, flags: flags, postedBy: postedBy)
+        }
+        let sorted = keyLog.sorted
+        if sorted != keysSeen { keysSeen = sorted }
+    }
+
+    /// Looks again for software that can take the buttons, and puts what it found in the
+    /// report. On arriving at the button step and Review: the person may have quit it since.
+    private func noteSoftware() {
+        software = RemapSoftware.scan()
+        report?.software = software
     }
 
     private func saw(_ label: String) {
@@ -330,19 +713,35 @@ final class DeviceTestModel: ObservableObject {
         capture?.stop()
         capture = nil
         listening = false
-        report?.buttons = .init(outcome: buttonsSeen.isEmpty ? .skipped : .passed,
-                                data: .init(seen: buttonsSeen))
+        keyCapture?.stop()
+        keyCapture = nil
+        report?.buttons = Self.buttonsRecord(seen: buttonsSeen, keys: recordKeys ? keysSeen : nil)
     }
+
+    /// The button step's record. Only the mouse's own buttons pass it. Keys alone may be the
+    /// keyboard, bumped while recording, so they stay in the report but leave the step
+    /// unconfirmed (`skipped`). A side button that types a key on the mouse itself shows up
+    /// in `seen` as a keyboard usage, so that case still passes.
+    nonisolated static func buttonsRecord(seen: [String], keys: [DeviceReport.KeyPress]?)
+        -> DeviceReport.StepRecord<DeviceReport.ButtonsData> {
+        let keysOnly = seen.isEmpty && !(keys ?? []).isEmpty
+        return .init(outcome: seen.isEmpty ? .skipped : .passed, data: .init(seen: seen, keys: keys),
+                     error: keysOnly ? keysOnlyNote : nil)
+    }
+
+    nonisolated static let keysOnlyNote = "Only keys were heard, no mouse buttons. They may be from the keyboard."
 
     // MARK: - Moving between screens
 
     func next() {
-        guard !running, let target = DeviceTestFlow.next(from: stage) else { return }
+        guard !running, let target = DeviceTestFlow.next(from: stage, skipping: skippedStages) else { return }
         move(to: target)
     }
 
     func back() {
-        guard !running, let target = DeviceTestFlow.back(from: stage, identifyRan: report?.identify.data != nil)
+        guard !running, let target = DeviceTestFlow.back(from: stage, identifyRan: report?.identify.data != nil,
+                                                                 bluetooth: bluetoothRun,
+                                                                 skipping: skippedStages)
         else { return }
         move(to: target)
     }
@@ -353,8 +752,10 @@ final class DeviceTestModel: ObservableObject {
         if stage == .buttons { stopListening() }
         stage = target
         switch target {
-        case .battery where report?.battery.data == nil: Task { await runBattery() }
+        case .battery where report?.battery.data == nil:
+            if notOnMouse(.battery) == nil { Task { await runBattery() } } else { Task { await checkBatteryQuietly() } }
         case .buttons: startListening()
+        case .review: noteSoftware()
         default: break
         }
     }
@@ -364,40 +765,28 @@ final class DeviceTestModel: ObservableObject {
     /// The report as it would leave the window now: answers folded in, fields cleaned, and
     /// the verdict worked out.
     func finalReport() -> DeviceReport? {
-        guard var report else { return nil }
-        report.comment = DeviceReportOutput.cleaned(comment, max: DeviceReportOutput.maxComment,
-                                                    units: DeviceReportOutput.maxCommentUnits, singleLine: false)
-        report.credit = DeviceReportOutput.cleaned(credit, max: DeviceReportOutput.maxCredit,
-                                                   units: DeviceReportOutput.maxCreditUnits, singleLine: true)
-        report.replyEmail = emailProblem == nil
-            ? DeviceReportOutput.cleaned(replyEmail, max: DeviceReportOutput.maxEmail,
-                                         units: DeviceReportOutput.maxEmail, singleLine: true) : nil
-        report.verdict = report.currentVerdict()
-        // Every way out carries the same report, so the one sized for Send. Fitting encodes it
-        // to measure it, and the review screen asks on every keystroke, so the last fit is kept.
-        if let lastFit, lastFit.input == report { return lastFit.output }
-        let fitted = DeviceReportOutput.fitted(report)
-        lastFit = (report, fitted)
-        return fitted
+        guard let report else { return nil }
+        // Every way out carries the same report, so the one sized for Send.
+        return fit.fitted(DeviceReportOutput.prepared(
+            report, comment: Self.reportComment(comment, dockMouse: testsDock ? dockMouse : nil),
+            credit: credit, replyEmail: replyEmail))
     }
-    private var lastFit: (input: DeviceReport, output: DeviceReport)?
+    private var fit = DeviceReportOutput.FitCache()
 
-    /// Copies the report without the reply email: a clipboard tends to end up pasted somewhere
-    /// public, and the address is only for the maintainer.
     func copyReport() {
         guard let report = finalReport() else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(DeviceReportOutput.json(report, forPublic: true), forType: .string)
+        ReportShare.copy(report)
         copied = true
     }
 
     /// Emails the report, with the reply address, to the maintainer through the Worker.
     func send() {
-        guard sendState != .sending, sendState != .sent, emailProblem == nil, let report = finalReport() else { return }
+        guard let endpoint = reportEndpoint, sendState != .sending, sendState != .sent, emailProblem == nil,
+              let report = finalReport() else { return }
         sendState = .sending
         let started = generation
         Task {
-            let outcome = await DeviceReportSender.send(report)
+            let outcome = await DeviceReportSender.send(report, to: endpoint)
             guard generation == started else { return }
             sendState = outcome == .sent ? .sent : .failed(outcome)
         }
@@ -405,10 +794,8 @@ final class DeviceTestModel: ObservableObject {
 
     func openGitHubIssue() {
         guard let report = finalReport() else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(DeviceReportOutput.issueClipboard(report), forType: .string)
+        ReportShare.openIssue(report)
         issueOpened = true
-        NSWorkspace.shared.open(DeviceReportOutput.githubIssue(report))
     }
 
     // MARK: - Ending
@@ -419,16 +806,57 @@ final class DeviceTestModel: ObservableObject {
         capture?.stop()
         capture = nil
         listening = false
+        keyCapture?.stop()
+        keyCapture = nil
+        // The Bluetooth test is still reading over its own connection: resuming the app's reads
+        // now would reopen the app's, and the rest would go unanswered. It ends the session
+        // itself when it's done.
+        guard !bluetoothRunning else { return }
         if sessionOpen {
             controller.endDeviceTest()
             sessionOpen = false
         }
     }
 
+    /// The link worth testing next, or nil. A mouse is a different product id on its cable and
+    /// its dongle, so each link needs its own report. A known model asks the registry, which
+    /// the intro and the support prompt ask too (`RazerDevices.linksToTest`). For an unknown
+    /// one, a mouse on a cable with no battery is wired only; otherwise the other USB link.
+    var otherLink: DeviceReport.Connection? {
+        guard let report, let connection = report.device.connection, connection != .bluetooth else { return nil }
+        let pid = report.device.productID
+        if RazerDevices.info(pid: pid) != nil {
+            let next = RazerDevices.linksToTest(besides: pid).lazy.compactMap { link -> DeviceReport.Connection? in
+                switch link.connection {
+                case .wired: return .cable
+                case .wirelessDongle: return .dongle
+                case .bluetooth: return nil
+                }
+            }.first
+            if let next { return next }
+            // A battery this run read means a dongle, even when the row says no battery: that
+            // report is what corrects the row.
+            if connection == .cable, report.battery.outcome == .passed,
+               !RazerDevices.fullySupported(modelOf: pid, on: .wirelessDongle) { return .dongle }
+            return nil
+        }
+        if connection == .cable, report.battery.outcome != .passed { return nil }
+        return connection == .cable ? .dongle : .cable
+    }
+
+    /// From the start again, for the other link once the person has switched to it.
+    func testAgain() {
+        reset()
+        start()
+    }
+
     /// Back to the start, for the next time the window opens.
     func reset() {
         endSession()
         stage = .intro
+        lacking = []
+        pinned = nil
+        focus = nil
         report = nil
         blocker = nil
         needsRelaunch = false
@@ -437,7 +865,13 @@ final class DeviceTestModel: ObservableObject {
         dimmed = nil
         turnedRed = nil
         buttonsSeen = []
+        recordKeys = false
+        keysSeen = []
+        keyCaptureProblem = nil
+        software = .init()
+        bluetoothRun = false
         comment = ""
+        dockMouse = ""
         credit = ""
         replyEmail = ""
         copied = false
@@ -455,15 +889,23 @@ extension DeviceTestModel {
         replyEmail = state == .sent ? "you@example.com" : replyEmail
     }
 
-    func loadPreview(_ stage: Stage, known: Bool, ranSteps: Bool) {
-        previewKnown = known
+    /// The intro's hint as it shows with `devices` plugged in.
+    func loadPreviewDevices(_ devices: [HIDDeviceSelection.Candidate]) {
+        self.devices = devices
+    }
+
+    /// `pid` picks the intro: a fully supported model, a partly supported one, or one the
+    /// registry doesn't know.
+    func loadPreview(_ stage: Stage, pid: Int, ranSteps: Bool) {
+        previewPID = pid
         func attempts(_ answered: [UInt8]) -> [DeviceReport.TransactionResult] {
             DeviceProbe.knownTransactionIds.map { .init(id: $0, answered: answered.contains($0),
                                                         groups: nil, error: answered.contains($0) ? nil : "timed out") }
         }
+        let name = RazerDevices.info(pid: pid).map { RazerDevices.modelName($0.name) } ?? "Razer Mouse"
         var report = Self.emptyReport(
-            pid: 0x00DB, name: "Razer Cobra HyperSpeed",
-            interfaces: Array(repeating: DeviceProbe.Interface(productID: 0x00DB, product: "Razer Cobra HyperSpeed",
+            pid: pid, name: name,
+            interfaces: Array(repeating: DeviceProbe.Interface(productID: pid, product: name,
                                                                usagePage: 1, usage: 2, maxFeatureReportSize: 90,
                                                                maxInputReportSize: 8, transport: "USB"), count: 5),
             control: 2,
@@ -485,7 +927,9 @@ extension DeviceTestModel {
         listening = true
         connection = .dongle
         // A known model's verdict comes from its registry entry, as in a real run.
-        if known { report.registry = RazerDevices.info(pid: 0x00DB).map(DeviceReport.Registry.init) }
+        report.registry = RazerDevices.info(pid: pid).map(DeviceReport.Registry.init)
+        lacking = Self.lacking(pid: pid, sweep: nil)
+        Self.markNotOnMouse(&report, lacking: lacking)
         self.report = report
         self.report?.device.connection = .dongle
         self.stage = stage
@@ -510,22 +954,88 @@ enum DeviceTestFlow {
         case .dpi: return .polling
         case .polling: return .lighting
         case .lighting: return .buttons
+        // The Bluetooth test has a button step too: side buttons that go unheard over
+        // Bluetooth are what it most needs to show.
+        case .bluetooth: return .buttons
         case .buttons: return .review
         case .intro, .permission, .review: return nil
         }
     }
 
     /// `identifyRan` is false when the test went straight to Review without Input Monitoring:
-    /// there are no steps behind it to go back to.
-    static func back(from stage: DeviceTestModel.Stage, identifyRan: Bool) -> DeviceTestModel.Stage? {
+    /// there are no steps behind it to go back to. `bluetooth` is the Bluetooth test, whose
+    /// button step follows its own screen.
+    static func back(from stage: DeviceTestModel.Stage, identifyRan: Bool,
+                     bluetooth: Bool = false) -> DeviceTestModel.Stage? {
         switch stage {
         case .battery: return .identify
         case .dpi: return .battery
         case .polling: return .dpi
         case .lighting: return .polling
-        case .buttons: return .lighting
-        case .review: return identifyRan ? .buttons : nil
-        case .intro, .permission, .identify: return nil
+        case .buttons: return bluetooth ? .bluetooth : .lighting
+        case .review: return identifyRan || bluetooth ? .buttons : nil
+        case .intro, .permission, .bluetooth, .identify: return nil
         }
+    }
+
+    /// `next`, passing over the screens in `skipping`.
+    static func next(from stage: DeviceTestModel.Stage, skipping: Set<DeviceTestModel.Stage>) -> DeviceTestModel.Stage? {
+        var target = next(from: stage)
+        while let t = target, skipping.contains(t) { target = next(from: t) }
+        return target
+    }
+
+    /// `back`, passing over the screens in `skipping`. Identify is never skipped, so there is
+    /// always somewhere to land.
+    static func back(from stage: DeviceTestModel.Stage, identifyRan: Bool, bluetooth: Bool = false,
+                     skipping: Set<DeviceTestModel.Stage>) -> DeviceTestModel.Stage? {
+        var target = back(from: stage, identifyRan: identifyRan, bluetooth: bluetooth)
+        while let t = target, skipping.contains(t) { target = back(from: t, identifyRan: identifyRan, bluetooth: bluetooth) }
+        return target
+    }
+
+    /// The feature a step tests, or nil for a step that tests none (identify, buttons, review).
+    static func feature(for stage: DeviceTestModel.Stage) -> RazerFeature? {
+        RazerFeature.allCases.first { self.stage(for: $0) == stage }
+    }
+
+    static func stage(for feature: RazerFeature) -> DeviceTestModel.Stage {
+        switch feature {
+        case .battery: return .battery
+        case .dpi: return .dpi
+        case .polling: return .polling
+        case .lighting: return .lighting
+        }
+    }
+
+    /// Whether Skip on `stage` asks first: the step tests something in `missing`. A step
+    /// already verified on this link skips straight away.
+    static func skipNeedsConfirming(_ stage: DeviceTestModel.Stage, missing: [RazerFeature]) -> Bool {
+        missing.contains { self.stage(for: $0) == stage }
+    }
+
+    /// The screens a run limited to `focus` passes over: every other feature's, and the
+    /// button step, which a report on a model already on record doesn't need. None for nil.
+    static func skipped(focus: [RazerFeature]?) -> Set<DeviceTestModel.Stage> {
+        guard let focus else { return [] }
+        return Set(RazerFeature.allCases.filter { !focus.contains($0) }.map(stage(for:))).union([.buttons])
+    }
+}
+
+/// Copy and Open GitHub issue, shared by the mouse and accessory test windows.
+@MainActor
+enum ReportShare {
+    /// Without the reply email: a clipboard tends to end up pasted somewhere public, and the
+    /// address is only for the maintainer.
+    static func copy(_ report: DeviceReport) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(DeviceReportOutput.json(report, forPublic: true), forType: .string)
+    }
+
+    /// Puts the full report on the clipboard and opens a new issue that asks for it.
+    static func openIssue(_ report: DeviceReport) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(DeviceReportOutput.issueClipboard(report), forType: .string)
+        NSWorkspace.shared.open(DeviceReportOutput.githubIssue(report))
     }
 }

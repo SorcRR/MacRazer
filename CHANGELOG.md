@@ -6,6 +6,311 @@ expect rough edges until 1.0.
 
 ## [Unreleased]
 
+### Added
+- **Basilisk V4 Pro: its own settings, profiles and remaps.** From fn-milans's work in
+  #55, tested on the mouse. Thanks!
+  - **Bluetooth:** a new row. Battery, DPI and stages, brightness and the sleep timer work.
+  - **Mouse settings:** the sleep timer and low-battery level on every link, and the wheel
+    mode, Smart-Reel and its sensitivity and scroll acceleration on the cable and dongle.
+  - **Lighting per zone:** the logo, wheel and underglow each get their own effect, colour
+    and brightness, with Reactive added to the effects.
+  - **DPI modes:** Single or Stages, kept in the mouse.
+  - **Profiles are the mouse's onboard slots.** Up to 5, each with its DPI, lighting, wheel
+    settings and remaps, so they work with MacRazer closed. Add, switch, rename, reset or
+    delete them from the Profiles menu. A switch made on the mouse is followed.
+  - **Remaps saved in the mouse, like Synapse does it.** Configure Buttons writes each remap
+    into the mouse and reads it back. They work with MacRazer closed, on any link and on other
+    computers. The HyperShift layer is saved there too. MacRazer only changes buttons it
+    remapped itself, and clearing a remap puts the factory function back.
+- **Reset side buttons saved in the mouse.** If Razer Synapse saved other functions to a
+  Cobra HyperSpeed's side buttons (a keyboard shortcut, say), they never reach Configure
+  Buttons as buttons. On Bluetooth the page now says what they send and offers Reset Side
+  Buttons, which puts Back and Forward back in the mouse itself. No Windows needed.
+- **Polling rate on the HyperPolling mice.** The Basilisk V4 Pro and V4 HyperSpeed, Viper
+  V4 Pro, Viper 8KHz, DeathAdder V3 and both Mouse Docks refuse the classic polling command.
+  They now get the newer one, so the polling picker shows on them. The 8000 Hz models offer
+  2K, 4K and 8K too. Each change is read back, and the device test checks polling there as
+  well, so a report can confirm it. The command comes from fn-milans's Basilisk V4 Pro work.
+- **More mice from test reports.**
+  - **Fully supported now:** the Basilisk V3 Pro on its cable and its dongle, the Viper V3
+    Pro over its dongle, the DeathAdder V2 X HyperSpeed and the DeathAdder V2.
+  - **Mouse Dock V2 Pro:** the mouse on it gets battery, DPI and lighting, as with the first
+    Mouse Dock Pro. Thanks to cparedes.
+  - **Pro Click V2 Vertical Edition over its dongle**, and the **Pro Click V2 on its cable**.
+    Thanks to tekumara for the Vertical's cable tests. The Vertical's light takes effects but
+    has no brightness, so a test of it no longer fails Identify.
+  - **DeathAdder V3:** DPI works.
+  - **Basilisk V3 Pro 35K over its dongle:** battery, DPI and polling work. **DeathAdder
+    Elite:** DPI and polling work. Lighting waits on a test on both.
+  - **Naga X** and **Mamba Tournament Edition:** DPI and polling work. Their lighting
+    doesn't work yet.
+- **Tested keyboards and mousepads.** The Ornata V3, Ornata V3 X, Goliathus Chroma and
+  Goliathus Chroma Extended lost their UNTESTED tag after passing the lighting test.
+- **The device test looks for what can take your side buttons.** The button step and Review
+  say when Razer Synapse or another Razer helper is running, or another app watches mouse
+  buttons. The report names them too, and nothing else about your apps. A GitHub issue
+  names only Razer's apps and counts the rest.
+- **Record keyboard keys in the button step.** An opt-in checkbox also records ordinary key
+  presses. It catches side buttons set to type a shortcut, like Ctrl+C. It hears your
+  keyboard as well, so press only the mouse's buttons while it's on. It keeps each key and its
+  modifiers, only while the step is open, and turning it off clears them. Keys alone don't
+  pass the step, since they may come from the keyboard.
+- **The Bluetooth test has a button step now.** Side buttons that go unheard over Bluetooth
+  show up in its report.
+
+### Fixed
+- **Brightness on the Goliathus Chroma Extended.** It answers brightness on a different light
+  than MacRazer used, so the slider did nothing.
+- **250 Hz polling is read correctly.** A mouse left at 250 Hz showed no rate, and the device
+  test couldn't put it back.
+- **No brightness slider on the Pro Click V2 Vertical Edition.** Its light takes effects but
+  has no brightness, so the slider only ever failed.
+- **No cable test for the Mouse Docks.** The dock's cable is the mouse's own link, so the test
+  stopped asking for it.
+
+## [0.9.0] — 2026-11-08
+
+### Added
+- **Report an Issue.** A new item in the menu bar menu opens a short form: what went wrong,
+  and optionally your name and an email for a reply. The app and mouse details go with it,
+  and you see them before you send. Send emails it to the maintainer. Open GitHub issue is the
+  public way, and leaves your name and email out (#123).
+- **Crash reports.** If MacRazer quits unexpectedly, it offers to send the crash report next
+  time it opens, and shows what's in it first. Nothing goes unless you press Send, and
+  Settings › Helping out can turn the question off (#126).
+- **Test the lighting on an untested keyboard or mousepad.** Its card in the popover now has a
+  Test it button. The lights go dark, then red, then back to how they were, and you say what you
+  saw. The result goes to us the same way a mouse test does, so the UNTESTED tag can come off.
+- **Razer Basilisk Mobile, over its 2.4 GHz dongle.** Battery, DPI and its stages, polling rate
+  and a static color with brightness all passed the device test. Its lighting has a color and off but no
+  effects, so the popover offers just those two. The cable is recognised too, but nothing has been tested on
+  it yet, so the app asks for a device test there. Thanks to @oss3 (#83).
+- **Razer Pro Click V2 Vertical Edition, on its cable.** Battery and a static color work; DPI,
+  polling, brightness and the other effects come from OpenRazer and haven't been confirmed on
+  this mouse yet, so the app asks for a device test. Its HyperSpeed dongle isn't supported yet.
+  Thanks to @k6n7frbrtc-hub (#35).
+- **Six more mice from test reports.**
+  - **Basilisk V2:** DPI, stages, polling and lighting all work.
+  - **DeathAdder V3 Pro on its cable:** everything works. Its first dongle already did.
+  - **Naga Hex V2:** DPI and polling work. Its lights use older commands MacRazer doesn't
+    send yet, so they stay hidden. Thanks to foivos92.
+  - **Basilisk Ultimate over its dongle** and **DeathAdder V2 Pro on its cable:** battery, DPI
+    and polling work. Lighting didn't, so it stays hidden until a test shows it does.
+  - **Basilisk V4 HyperSpeed over Bluetooth:** battery works. DPI and lighting haven't been
+    tried there yet.
+
+### Fixed
+- **A "+" in a mouse's name or the version reached the server as a space.**
+
+### Changed
+- **Bigger buttons.** The polling rate, lighting effect, DPI stage and sleep timer choices are
+  taller chips that are easier to hit (#124).
+- **No more test prompts that can't be answered.** The Basilisk V4 HyperSpeed, Basilisk V4 Pro,
+  Viper V4 Pro and Viper 8KHz refuse the polling command the test sends, so a test could only
+  record the same refusal. Owners were still asked to run it, on each link. Now polling doesn't
+  count as something a test could confirm there, so those mice stop asking. Their polling stays
+  unverified until MacRazer learns the newer command.
+- **HyperFlux V2 fully supported.** A second test report confirmed the lighting, the last
+  thing it was missing, and showed charging on the mat working.
+- **Closing the usage stats question isn't a no any more.** Before, closing the window (or the
+  Updated window's card) without answering counted as no and it never asked again. Now
+  nothing is sent, and it asks once more a week later, at the next quiet moment (or in the
+  Updated window if an update comes first). Close it a second time and that's taken as no for
+  good.
+  Settings › Privacy can still turn sharing on whenever you like.
+- **The anonymous count names every Razer mouse plugged in.** Before, only the mouse MacRazer
+  was controlling went with it. Now a second mouse, or one whose dongle is plugged in while it
+  sleeps, is counted too (up to four). One mouse on its cable with its dongle in still counts
+  once. Usage stats, if you share them, name them the same way.
+- **The anonymous count is sent again until the server says it has it.** A busy server used to
+  answer the update check without recording the count, and the app took that as done.
+- **Builds between releases say so.** A build made with `Scripts/build-app.sh` reports its
+  version with `-dev` on the end, so the counts don't take it for someone on the release.
+  Release builds come from `Scripts/release.sh` and are unchanged, and switching between the
+  two doesn't open the Updated window.
+- **The anonymous count waits for your answer.** While the question is about to show (up to an
+  hour) or has just appeared (up to ten minutes), the day's count leaves out "not asked yet", so
+  an app that answers a moment later isn't counted both ways.
+
+## [0.8.0] — 2026-11-07
+
+### Added
+- **Edit DPI stages over the dongle or cable.** Click **Edit** on the DPI card, then
+  click a stage to change it on the mouse itself, as you already could over Bluetooth.
+  Right-clicking a stage still works too. The field takes numbers only, and each stage has to
+  stay above the one before it and below the one after it. Before, the
+  slider only set the current DPI, so a custom value showed up on the last chip and the stage
+  you meant never changed. Clicking a stage chip now also makes it the mouse's active stage,
+  so its DPI button carries on from there. It's offered on mice whose DPI is verified. Every
+  change is read back, and the popover says so if the mouse didn't keep it.
+- **Test prompts end sooner.** MacRazer now fetches the latest support list from
+  reports.macrazer.com. When a test report confirms a feature after a release, you stop being
+  asked to test it without waiting for the next update. The list can only drop a request,
+  never add one, and it never changes how the app talks to your mouse. Nothing about you or your
+  mice is sent with the request. Offline, the app uses its own list.
+- **The test asks you to unplug extra devices.** With more than one Razer device that could
+  be the mouse plugged in, like a charging dock next to its own dongle, the device test now
+  names them, asks you to unplug all but the one you want to test, and says which one it will
+  run on. Before, it quietly took whichever sat on the lower USB port, so a dock could get
+  tested in place of the mouse. Keyboards and mousepads don't count.
+- **The cable wins over the dongle.** With a mouse on its cable and its dongle still plugged
+  in, MacRazer now uses the cable. It moves over once the cable answers, which can take a few
+  seconds after you plug it in. Until then it stays on the dongle. Before, whichever sat on
+  the lower USB port won.
+- **The test asks which mouse is on a dock.** A dock or charging mat answers under its own
+  name, whatever mouse is on it. On the Mouse Dock Pro, the HyperFlux V2 and other docks, the
+  review now asks which mouse it is, and the report puts that first in the comment.
+- **More mice from test reports.** The Pro Click on its cable and dongle, the Viper, the
+  DeathAdder V3 Pro over either of its dongles, the Viper V3 Pro SE and the Naga V2
+  HyperSpeed passed every check and are fully supported. The Viper 8KHz and the Basilisk V4
+  Pro on its cable work for everything but the polling rate.
+- **Orochi V2 on its dongle.** A test report passed battery, DPI, stages and polling, so it's
+  fully supported. It runs on an AA or AAA cell, so it never asks for a cable test.
+- **Basilisk V3 Pro 35K over Bluetooth.** MacRazer now knows it there and shows its battery
+  and DPI stages. Nobody has changed DPI or lighting over Bluetooth on it yet, so the stages
+  only show, and the mouse's DPI button still switches them. For everything else, use its
+  cable. The test prompt asks for a cable test, since the Bluetooth test only reads.
+- **Naga Pro on its cable.** A test report passed battery, DPI, stages, polling and lighting,
+  so it's fully supported on both the cable and the dongle, and it stops asking for a cable
+  test.
+- **A tip button after the test.** Once your report is sent, the thank-you screen has a
+  "Leave a tip" button next to Done. It opens MacRazer's Ko-fi page. Nothing changes if you
+  don't use it.
+
+### Changed
+- **A roomier popover.** It's 380 pt wide now, or 760 pt in two columns. The lighting
+  effect tabs, the DPI stage chips and the notes under them have more space, and so do the
+  keyboard and mousepad cards. The colour wheel is bigger too.
+- **Bigger buttons in the device test.** The buttons along the bottom of every test screen
+  are taller and easier to hit.
+- **The device test knows what your mouse doesn't have.** On a wired-only mouse the
+  battery step now says it has no battery, and on a mouse without lights the lighting step
+  says so. Click Next to go on. Nothing is sent to the mouse for those steps, and the report
+  lists them as not on this mouse.
+- **The mouse model count now catches every Mac.** It used to go with the update check, which
+  runs at launch before the app has found the mouse, and then only every few hours. So about
+  half the mice in use were never counted. Now the app sends the connected model as soon as it
+  finds the mouse, once a day per model, and tries again every 15 minutes if that fails. It
+  stays anonymous, with nothing that identifies your Mac, and it's always on now: the "Count
+  my mouse model" switch in Settings › Privacy is gone.
+- **The anonymous count now includes your usage stats answer.** Once a day it says whether
+  you share usage stats, said no, or haven't been asked. When the answer changes it also says
+  how: yes or no when asked, turned off (Delete My Data included), or turned back on. It goes
+  with the mouse count, with nothing that identifies your Mac, so I can see how many people
+  turn sharing off and how many come back.
+- **Four more mice are fully verified.** Test reports confirmed what was still missing on the
+  Basilisk X HyperSpeed, DeathAdder V2 Pro and DeathAdder V3 HyperSpeed (over the dongle) and
+  the Viper Ultimate on its cable. MacRazer stops asking about what was confirmed. The
+  DeathAdder V2 Pro still asks once for a test on its cable, which nobody has reported yet.
+- **DeathAdder V3 HyperSpeed on its cable.** Two test reports passed battery, DPI, stages and
+  polling, so it's fully supported on both the cable and the dongle, and it stops asking for
+  a cable test.
+- **HyperFlux V2.** The charging mat passes commands to the mouse on it, and a test report
+  passed battery, DPI, stages and polling through it. Lighting answered but wasn't confirmed,
+  so the test still asks about that.
+
+## [0.7.0] — 2026-11-03
+
+### Added
+- **Sliders follow the scroll wheel.** Scroll over any slider in the popover (DPI, brightness,
+  wave speed, sleep timer) to move it: up raises the value, whatever your natural-scrolling
+  setting. Each wheel notch moves 1% of the slider (250 for DPI, 15 seconds for the sleep
+  timer), and the change goes to the mouse or keyboard once you stop scrolling.
+- **Wave speed.** Picking Wave shows a speed slider, from slow to fast, for the mouse, a
+  keyboard and a mousepad alike. The speed is kept for the next time you pick Wave, saved in
+  profiles, and carried over when an accessory follows the mouse.
+- **Lighting for Razer keyboards and mousepads next to the mouse.** Each one plugged in gets
+  its own card in the popover, grouped in an "Other Razer devices" panel. A card is one line with its colour
+  and effect. Click it to open its colour, effect and brightness. Turn on "Follow mouse" in a
+  card to keep that device the same as the mouse. While Razer Synapse runs, Synapse keeps each
+  device's colours unless you turn on "Use MacRazer" in its card. The colour page names the
+  device it's setting. Tested on the Cynosa Chroma keyboard and the Firefly V2 mousepad
+  (static colour and brightness; its other effects are untested and the card says so). The
+  Cynosa Chroma Pro, Cynosa Lite, Ornata V3 family, Firefly V2 Pro and Goliathus Chroma pads
+  use the same commands but are untested. Lighting only: no keys, macros or per-key colour.
+- **MacRazer asks for help when it meets a mouse it doesn't fully support.** A small window
+  offers the short device test, which shows us what the mouse can do so a later release can
+  support it. It asks once, reminds you once a week later, and stops for good after a report
+  or "Don't ask for this mouse". A card in the popover offers the same test until then. Turn it
+  off in Settings › General › Ask me to help test my mouse. A partly verified mouse is asked
+  about just what's missing, and one verified on its dongle but not on its cable or Bluetooth
+  (or the other way round) gets a note saying which connection still needs a test.
+- **A device test for a mouse on Bluetooth.** The full test needs the dongle or a cable. A
+  mouse on Bluetooth now gets a shorter test that only reads: which Bluetooth services it
+  has, its battery, and which of Razer's commands it answers there. Start it with **Bluetooth
+  test** in the test window. The full test also asks, read-only, which other features the
+  mouse has (scroll wheel settings, onboard profiles, its button table, every lighting zone),
+  so a new mouse can be added from one report.
+- **The device test knows what's already verified.** On a fully supported mouse it says no
+  test is needed. On a partly supported one it lists what works and offers to test only
+  what's missing. Both name the mouse's other connections that still need a report.
+  Skipping a step we still need data for asks first, in case you can run it after all. If
+  the mouse doesn't have that feature, running the step records that too.
+- **Sixteen more mice from your reports.** DeathAdder Essential, Naga Trinity, Naga V2 Pro
+  and Naga V3 Pro on their cables, Pro Click V2 and Viper V3 HyperSpeed are fully
+  supported. Basilisk V3 Pro 35K, Basilisk V4 HyperSpeed on its cable, Basilisk V4 Pro,
+  DeathAdder V2 Pro, DeathAdder V3 HyperSpeed, Mouse Dock Pro, Naga Chroma, Taipan and
+  Viper V4 Pro (cable and dongle) are partly supported. The DeathAdder Essential's light is green only,
+  so its Lighting card shows just the brightness slider.
+- **The Basilisk V3 is verified.** It was listed from a user saying it works. Now a full test
+  confirms DPI, DPI stages, polling, lighting and brightness, and the brightness slider dims
+  the scroll wheel along with the logo.
+- **Configure Buttons names apps that take button clicks.** Mouse apps like Mac Mouse Fix,
+  SteerMouse or BetterMouse can catch a side button's clicks before MacRazer sees them, and
+  then the button never shows up for remapping. Until a side button gets through, the page
+  now names any such app that's running, so you know which one to quit.
+- **Breathing lighting.** The Lighting card has a new Breathing effect. The lights fade in
+  and out in the colour you pick from the swatches or the colour wheel. It works over USB and
+  the 2.4 GHz dongle. A Razer keyboard gets it too, but that is untested. Over Bluetooth only
+  a static colour is available, as before. From the command line, `rgb breathing` also takes two colours, or none
+  for random ones.
+
+### Changed
+- **A two-column popover.** With a keyboard or mousepad connected, the popover switches to two
+  columns: battery and DPI on the left, the mouse's settings on the right, and the other
+  devices under the left column. It is about half as tall, so it fits under the menu bar on a
+  13-inch screen. With only the mouse it stays one column, unless you turn on Settings ›
+  Appearance › Two-column popover.
+- **Settings has a new layout.** A wider window with a sidebar for General, Privacy,
+  Appearance and Updates, so it no longer runs off the bottom of a small screen. Each setting
+  has an icon, and the version and update status sit at the bottom of the sidebar.
+- **The glass effect is off by default.** The popover and windows start with a solid
+  background, which is easier to read. Turn it back on in Settings › Appearance › Glass effect.
+  If you never changed the switch, you'll see the solid look after updating.
+
+### Fixed
+- **No polling picker that can't work.** The Basilisk V4 models, the Mouse Dock Pro and the
+  Viper V4 Pro refuse the usual polling rate command, so the picker always failed on them. It
+  is hidden there until the newer command is added. Their profiles also apply again, instead
+  of failing on the polling rate.
+- **A Razer keyboard or mousepad is no longer taken for a mouse.** With no mouse plugged in,
+  the app could open a Razer keyboard or a Firefly mousepad and show it as the mouse. It now
+  skips keyboards, keypads, mousepads and other products that are never mice. The same now
+  goes for a Razer keyboard on Bluetooth.
+- **An unplugged keyboard or mousepad leaves the popover.** Its card could stay behind after
+  you unplugged it, because the app looked again before macOS had finished removing it.
+- **Bluetooth test reports are more accurate.** When Bluetooth was off or not allowed, a
+  report said the mouse had no Razer service at all. It now says the test couldn't connect.
+  The Bluetooth step shows the same battery level the report sends, and a mouse that drops
+  off during the test says so straight away.
+- **Less background work.** The app's timers now let macOS group their wakeups with other
+  apps', which saves a little battery, and the device test window no longer scans for
+  devices every time it redraws.
+- **Plugging in your mouse now switches to it.** If the app had opened some other Razer device
+  first, it kept that one until you relaunched or unplugged it. Now a mouse it knows takes over
+  as soon as it is plugged in.
+- **Device test reports name the device that was tested.** A report could list another
+  plugged-in device's interface as the one in use.
+
+## [0.6.1] — 2026-10-29
+
+### Changed
+- **The update check now says which mouse model is connected.** Nothing in it identifies
+  your Mac, and it lets me see which mice people use without asking everyone to share stats. Turn it off in Settings › Privacy › Count my mouse model.
+  The detailed usage stats still only go if you say yes.
+
+## [0.6.0] — 2026-10-29
+
 ### Changed
 - **The popover follows your Mac's light or dark mode.** It used to be dark all the time. On a
   light Mac it is now light glass, with a darker green for text so it stays readable. Settings,
@@ -41,6 +346,15 @@ expect rough edges until 1.0.
  yet, it asks again the moment a connection appears, instead of waiting for the next
  round. Opening the popover also asks, if a check is due.
 
+- **Update checks and downloads are counted.** The update check now goes through my server
+ first, which passes on GitHub's answer and counts how many copies are in use each day, by app
+ version. Downloads from the website's buttons and the app's updater pass through it too on
+ their way to GitHub, counted per day and country. Only the app version is sent. The server
+ keeps a scrambled form of the IP address that changes every day (every month for the monthly
+ count), so no Mac can be named or followed over time. If the server doesn't answer, the app
+ asks GitHub directly, so this can never stop an update. Builds made from the source without
+ the server's address ask GitHub only, as before.
+
 - **The CLI probes run on shared code.** `battery`, `dpi`, `stages`, `poll`, `brightness` and
  `rgb` now go through `DeviceProbe`, which the coming in-app device test will use too, so what
  a contributor pastes from a terminal and what the app reports can't describe different
@@ -50,39 +364,6 @@ expect rough edges until 1.0.
  it reads the answers, using a fake mouse instead of hardware.
 
 ### Added
-- **Razer Basilisk V4 Pro, on the cable, the HyperSpeed dongle and Bluetooth.** Battery,
-  charging, DPI up to 50000, DPI stages with Single and Stages modes, polling up to 8000 Hz,
-  lighting per zone (logo, wheel, underglow) with static, breathing, spectrum and reactive,
-  brightness, the sleep timer, the low-battery level, and the wheel mode, Smart-Reel and its sensitivity, and scroll acceleration. Over
-  Bluetooth everything but polling and the wheel settings.
-
-- **Basilisk V4 Pro profiles are the mouse's own onboard slots.** The mouse keeps up to 5,
-  each with its DPI, DPI stages, lighting, wheel settings and button remaps, so they work with
-  MacRazer closed. One is always active, and whatever you change goes into it, with no saving
-  step. The Profiles dropdown lists the slots the mouse has, by name, and is where you add one
-  (it starts as the mouse came from the factory), switch to one, rename one, reset one to
-  factory, or delete one (slot 1 always stays). The button beside the left click cycles
-  through them, as from the factory, and Configure Buttons can put Cycle Up Profile or Cycle
-  Down Profile on any button. MacRazer follows a switch made on the mouse, remaps included.
-
-- **Basilisk V4 Pro remaps are saved in the mouse, like Synapse does it.** Configure Buttons
-  writes each remap into the mouse and reads it back to check it. Remaps keep working with
-  MacRazer closed, over the dongle, the cable or Bluetooth, and on other computers. When the
-  mouse connects, MacRazer reads its remaps back, so another Mac shows the same ones. That
-  covers key combos, mouse buttons and media keys, on Right Click, Scroll Click, Scroll Up,
-  Scroll Down, Scroll Left, Scroll Right, DPI, Scroll Mode, Left Index, the side buttons and
-  the side trigger. The HyperShift layer is saved in the mouse too, for every one of those
-  buttons: hold the side trigger (or any button set to HyperShift) to use it. The menu follows
-  Synapse's: Keyboard (a recorded keybind, or a Turbo Keybind at 5, 10 or 20 a second), Mouse
-  (every click, Double Click, Scroll Up/Down/Left/Right, Repeat Scroll Up/Down, Turbo Left or
-  Right Click), Sensitivity (Stage Up, Stage Down, and a Clutch at any DPI while held),
-  Multimedia, Profile, Cycle Scroll Mode, HyperShift and Disable. The mouse does all of them
-  itself, on any button and either layer. Scroll Up and Down offer keys, mouse actions,
-  multimedia and Disable, as in Synapse. MacRazer only changes buttons it remapped itself, and
-  clearing a remap puts back the button's factory function. Until remapped, Scroll Mode cycles
-  the wheel's modes and the side trigger is the mouse's HyperShift key, as Synapse sets them.
-  The buttons are listed in the order they sit on the mouse.
-
 - **Runs on Intel Macs.** The app is now a universal build, native on both Apple Silicon and
  Intel. It still needs macOS 14 or later.
 
@@ -140,10 +421,9 @@ expect rough edges until 1.0.
  test asks for it first. A mouse the app doesn't know yet also gets a "Help test it" link in
  the popover.
 
-- **A small Cloudflare Worker receives sent reports** (`worker/`). It checks each report
- against the app's exact format, emails it, and keeps nothing but daily counters. It caps
- reports at 3 a minute and 10 a day per sender, and 200 a day in total. The address reports
- go to lives in a local config file that git ignores, so it never reaches the public repo.
+- **DPI stages have their own colours.** Each stage chip gets a hue (red, green, blue, cyan,
+  yellow, then round again), so stages are easier to tell apart at a glance. The active stage is
+  a solid fill, the others an outline. Thanks @ungrav.
 
 - **Two new CLI commands for contributors.** `discover` shows which transaction ids a mouse
  answers to, and `devicetest` runs the whole test without the window and prints the report.

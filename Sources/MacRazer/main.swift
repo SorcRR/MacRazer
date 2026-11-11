@@ -205,6 +205,20 @@ case "render-ui":
     if args.contains("downloading") { updateChecker.loadPreviewState(phase: .downloading(0.42)) }
     let launchAtLogin = LaunchAtLogin()
     launchAtLogin.loadPreviewState()
+    // Accessories under "Other Razer devices": `keyboard` (Cynosa Chroma), `pad` (Firefly V2),
+    // `three` (both plus an untested Ornata V3), `untested` (the Ornata V3 alone, open). Then `follow` (the keyboard follows the
+    // mouse), `wave`, `synapse` (Synapse running; `macrazer` gives the pad back to MacRazer).
+    var accessoryPIDs: [Int] = []
+    if args.contains("keyboard") || args.contains("three") { accessoryPIDs.append(0x022A) }
+    if args.contains("pad") || args.contains("three") { accessoryPIDs.append(0x0C04) }
+    if args.contains("three") { accessoryPIDs.append(0x02A1) }
+    if args.contains("untested") { accessoryPIDs.append(0x028F) }
+    if !accessoryPIDs.isEmpty {
+        Accessories.shared.loadPreviewState(pids: accessoryPIDs,
+                                            followsMouse: args.contains("follow") ? [0x022A] : [],
+                                            synapse: args.contains("synapse"), wave: args.contains("wave"),
+                                            useMacRazer: args.contains("macrazer") ? [0x0C04] : [])
+    }
     // The notes page is its own render: it is a scroll view, so it needs the hosted path,
     // and it is sized to the height the main page renders at — the whole point of checking
     // it is whether the notes fit there.
@@ -225,21 +239,33 @@ case "render-ui":
                                                         : updateChecker.latestNotes,
                                     canInstallInPlace: updateChecker.canInstallInPlace,
                                     onBack: {}, onUpdate: installed ? nil : {}),
-                       size: CGSize(width: 320, height: 748), to: path)
+                       size: CGSize(width: PopoverLayout.oneColumnWidth, height: 748), to: path)
         break
     }
+    // `twocolumns`: the two-column layout with only the mouse. Scratch defaults, so a render
+    // never changes the setting.
+    let renderAppearance = AppearanceSettings(defaults: UserDefaults(suiteName: "MacRazer.render-ui") ?? .standard)
+    renderAppearance.twoColumns = args.contains("twocolumns")
     let rootView: AnyView = args.contains("color")
-        ? AnyView(ColorPickerPage(color: .constant(.blue), onBack: {}, onApply: { _ in }))
+        ? AnyView(ColorPickerPage(color: .constant(.blue),
+                                  device: accessoryPIDs.isEmpty ? nil
+                                      : .init(symbol: AccessoryKind.mousepad.symbol, name: "Razer Firefly V2", kind: "Mousepad"),
+                                  onBack: {}, wide: args.contains("twocolumns"), onApply: { _ in })
+                    .frame(width: args.contains("twocolumns") ? PopoverLayout.twoColumnWidth : PopoverLayout.oneColumnWidth))
         : args.contains("usage")
         ? AnyView(UsageGraphView(controller: controller, onBack: {}))
         : args.contains("profiles")
-        ? AnyView(ProfilesView(controller: controller, remapper: ButtonRemapper(), onBack: {}))
+        ? AnyView(ProfilesView(controller: controller, remapper: ButtonRemapper(), onBack: {},
+                                width: PopoverLayout.oneColumnWidth))
         : AnyView(PopoverView(controller: controller, remapper: ButtonRemapper(), updateChecker: updateChecker,
-                              launchAtLogin: launchAtLogin, appearance: AppearanceSettings.shared,
+                              launchAtLogin: launchAtLogin, appearance: renderAppearance,
                               onOpenSettings: {},
-                              onOpenDeviceTest: {})) // no windows in a render
-    // Segmented controls only draw when hosted in a view hierarchy.
-    if args.contains("zones") || args.contains("dpi-stages") || args.contains("dpi-single") { writeHostedPNG(rootView, to: path) } else { writeViewPNG(rootView, to: path) }
+                              onOpenDeviceTest: {}, onTestAccessory: { _ in })) // no windows in a render
+    // `hosted` draws native controls (segmented pickers, switches) instead of placeholders.
+    // Segmented controls only draw when hosted, so the zone and DPI previews always are.
+    if args.contains("hosted") || args.contains("zones") || args.contains("dpi-stages") || args.contains("dpi-single") {
+        writeHostedPNG(rootView, to: path)
+    } else { writeViewPNG(rootView, to: path) }
 
 case "render-settings":
     _ = NSApplication.shared
@@ -252,9 +278,13 @@ case "render-settings":
     // `update` shows the Updates section in its available state, which is the only way to see
     // the Install Now button without waiting for a real release.
     if args.contains("update") { su.loadPreviewState() }
-    writeViewPNG(SettingsView(controller: sc, launchAtLogin: sl, updateChecker: su, onDone: {},
-                              usageStats: .preview(consent: args.contains("notsharing") ? .declined : .granted)),
-                 to: settingsPath)
+    // A page name (`privacy`, `appearance`, `updates`) opens that page instead of General.
+    let settingsPane = SettingsPane.allCases.first { args.contains($0.rawValue) } ?? .general
+    // Hosted rather than `ImageRenderer`: each page is a scroll view.
+    writeHostedPNG(SettingsView(controller: sc, launchAtLogin: sl, updateChecker: su, onDone: {},
+                                usageStats: .preview(consent: args.contains("notsharing") ? .declined : .granted),
+                                pane: settingsPane),
+                   size: SettingsView.size, to: settingsPath)
 
 case "render-updated":
     // The window shown on the first launch after an update. `nonotes` shows the fallback
@@ -281,6 +311,19 @@ case "render-usage-consent":
     writeHostedPNG(UsageStatsConsentView(stats: .preview(consent: .undecided), onDone: {}),
                    to: outputPath(args.dropFirst(), default: "usage-consent-preview.png"))
 
+case "render-support-prompt":
+    // The window asking to test a mouse. `noaccess` shows the Input Monitoring version, with a
+    // made-up mouse. `partly` shows a partly verified one (the Basilisk V4 Pro), and `links` one
+    // verified on its dongle whose cable still needs a test (the Naga Pro).
+    _ = NSApplication.shared
+    let mouse = args.contains("partly")
+        ? UnsupportedMouse(pid: 0x00E3, name: "Razer Basilisk V4 Pro", canControl: true)
+        : args.contains("links")
+        ? UnsupportedMouse(pid: 0x0090, name: "Razer Naga Pro", canControl: true)
+        : UnsupportedMouse(pid: 0xFFFE, name: "Razer DeathAdder V3 Pro", canControl: !args.contains("noaccess"))
+    writeHostedPNG(SupportPromptView(mouse: mouse, onRunTest: {}, onNotNow: {}, onDontAsk: {}),
+                   to: outputPath(args.dropFirst(), default: "support-prompt-preview.png"))
+
 case "render-about":
     _ = NSApplication.shared
     let aboutPath = outputPath(args.dropFirst(), default: "about-preview.png")
@@ -299,7 +342,7 @@ case "render-about":
 
 case "render-device-test":
     // One screen of the device test, for checking layout and wording without a mouse:
-    // `render-device-test <stage> [unknown] [ran] [sent|failed] [path.png]`, stage one of
+    // `render-device-test <stage> [unknown|partly|unlit|wiredonly|dock] [several] [ran] [sent|failed] [path.png]`, stage one of
     // intro, permission, identify, battery, dpi, polling, lighting, buttons, review.
     _ = NSApplication.shared
     let path = outputPath(args.dropFirst(), default: "device-test-preview.png")
@@ -310,19 +353,63 @@ case "render-device-test":
     let stage = args.dropFirst().compactMap { stages[$0] }.first ?? .intro
     let controller = MouseController()
     controller.loadPreviewState()
-    let model = DeviceTestModel(controller: controller, permissions: PermissionsModel())
-    model.loadPreview(stage, known: !args.contains("unknown"), ranSteps: args.contains("ran"))
+    // `noworker` shows the review as a build without the Worker has it: no Send, no reply email.
+    let model = DeviceTestModel(controller: controller, permissions: PermissionsModel(),
+                                reportEndpoint: args.contains("noworker") ? nil : URL(string: "https://reports.example/"))
+    // `unknown` and `partly` pick the intro: a model off the registry, and the Basilisk V4 Pro,
+    // whose polling rate is still unverified. `unlit` and `wiredonly` show the steps for what a
+    // mouse doesn't have: the Viper V3 HyperSpeed's lights and the Naga Trinity's battery.
+    let pid = args.contains("dock") ? 0x00A4 : args.contains("unknown") ? 0x9999 : args.contains("partly") ? 0x00E3
+        : args.contains("unlit") ? 0x00B8 : args.contains("wiredonly") ? 0x0067 : 0x00DB
+    model.loadPreview(stage, pid: pid, ranSteps: args.contains("ran"))
+    // `several` shows the intro's hint with two devices plugged in: a Mouse Dock and its dongle.
+    if args.contains("several") {
+        model.loadPreviewDevices([
+            .init(key: .init(pid: 0x007E, locationID: 0x1100000), name: "Razer Mouse Dock", index: 0),
+            .init(key: .init(pid: 0x0088, locationID: 0x1200000), name: "Razer Basilisk Ultimate Dongle", index: 1),
+        ])
+    }
     if args.contains("sent") { model.previewSendState(.sent) }
     if args.contains("failed") { model.previewSendState(.failed(.tooMany)) }
     writeViewPNG(DeviceTestView(model: model, onClose: {}), to: path)
 
+case "render-accessory-test":
+    // The lighting test for a keyboard or mousepad, without one plugged in:
+    // `render-accessory-test [intro|lighting|review] [pad] [sent] [path.png]`.
+    _ = NSApplication.shared
+    let accessoryPath = outputPath(args.dropFirst(), default: "accessory-test-preview.png")
+    let accessoryStage: AccessoryTestModel.Stage = args.contains("review") ? .review
+        : args.contains("lighting") ? .lighting : .intro
+    let accessoryInfo = RazerAccessories.info(pid: args.contains("pad") ? 0x0C08 : 0x028F)!
+    let previewAccessory = AccessoryController(id: .init(pid: accessoryInfo.pid, locationID: 0), info: accessoryInfo)
+    previewAccessory.loadPreviewState()
+    let accessoryModel = AccessoryTestModel(reportEndpoint: URL(string: "https://reports.example/"))
+    accessoryModel.loadPreview(accessoryStage, accessory: previewAccessory, sent: args.contains("sent"))
+    writeHostedPNG(AccessoryTestView(model: accessoryModel, onClose: {}), to: accessoryPath)
+
 case "render-crash-report":
-    // The window shown on the launch after a crash. `sent` shows the thank-you.
+    // The window shown on the launch after a crash. `sent` shows the thank-you, `failed` a
+    // send that didn't go.
     _ = NSApplication.shared
     let crashPath = outputPath(args.dropFirst(), default: "crash-report-preview.png")
     let crashModel = CrashReportModel.preview()
     if args.contains("sent") { crashModel.loadPreviewSent() }
+    if args.contains("failed") {
+        crashModel.loadPreviewFailed(args.contains("cap") ? .tooMany : args.contains("refused") ? .refused : .unavailable)
+    }
     writeHostedPNG(CrashReportView(model: crashModel, onDone: {}, onDontAskAgain: {}), to: crashPath)
+
+case "render-issue-report":
+    // "Report an Issue…". `sent` shows the thank-you, `failed` a send that didn't go.
+    _ = NSApplication.shared
+    let issuePath = outputPath(args.dropFirst(), default: "issue-report-preview.png")
+    let issueModel = IssueReportModel.preview()
+    if args.contains("sent") { issueModel.loadPreviewSent(replyEmail: "sam@example.com") }
+    if args.contains("failed") {
+        issueModel.description = "The battery reads 0% after waking from sleep, until I unplug the dongle."
+        issueModel.loadPreviewFailed(args.contains("cap") ? .tooMany : .unavailable)
+    }
+    writeHostedPNG(IssueReportView(model: issueModel, onClose: {}), to: issuePath)
 
 case "render-remap":
     _ = NSApplication.shared
@@ -330,7 +417,20 @@ case "render-remap":
     let r = ButtonRemapper()
     // `--v4pro` previews the Basilisk V4 Pro's list, saved in the mouse.
     r.loadPreviewState(pid: args.contains("--v4pro") ? 0x00E3 : nil)
-    writeViewPNG(RemapView(remapper: r), to: path)
+    // `wide`: the popover's two-column Buttons page, with the DPI button section.
+    // `side-buttons`: the window with the notice for side buttons saved to other functions.
+    if args.contains("side-buttons") {
+        let mouse = MouseController()
+        mouse.loadPreviewState()
+        mouse.setPreviewSideButtonsRemapped()
+        writeViewPNG(RemapView(remapper: r, controller: mouse), to: path)
+    } else if args.contains("wide") {
+        let mouse = MouseController()
+        mouse.loadPreviewState()
+        writeViewPNG(RemapView(remapper: r, controller: mouse, onBack: {}, width: PopoverLayout.twoColumnWidth, twoColumns: true), to: path)
+    } else {
+        writeViewPNG(RemapView(remapper: r), to: path)
+    }
 
 case "render-permissions":
     _ = NSApplication.shared
@@ -491,20 +591,25 @@ case "poll":
     guard let dev = openDevice() else { exit(1) }
     defer { dev.close() }
     do {
-        let before = try DeviceProbe.readPollingRate(dev).value
+        let rate2 = RazerDevices.usesPollingRate2(pid: dev.productID)
+        // 250 Hz too on the classic command: not in OpenRazer's table, but the byte is 1000
+        // over the rate.
+        let rates = rate2 ? RazerDevices.pollingRates(pid: dev.productID)
+                          : (RazerCommands.supportedPollingRates + [250]).sorted()
+        let before = try DeviceProbe.readPollingRate(dev, usesPollingRate2: rate2).value
         print("Current polling rate: \(before)Hz")
         if let arg = args.dropFirst().first, let hz = Int(arg) {
-            guard RazerCommands.supportedPollingRates.contains(hz) else {
-                print("Unsupported rate. Choose one of: \(RazerCommands.supportedPollingRates.map { "\($0)" }.joined(separator: ", "))Hz")
+            guard rates.contains(hz) else {
+                print("Unsupported rate. Choose one of: \(rates.map { "\($0)" }.joined(separator: ", "))Hz")
                 exit(64)
             }
             print("Setting polling rate to \(hz)Hz …")
-            let check = try DeviceProbe.writePollingRate(dev, hz: hz)
+            let check = try DeviceProbe.writePollingRate(dev, hz: hz, usesPollingRate2: rate2)
             print("  set status = 0x\(String(check.setResponse.status, radix: 16))")
             print("Read-back: \(check.readBack.value)Hz")
             print(check.confirmed ? "✓ Polling rate write confirmed" : "⚠︎ Read-back doesn't match.")
         } else {
-            print("(pass a value to set: \(RazerCommands.supportedPollingRates.map { "\($0)" }.joined(separator: "/"))Hz, e.g. `poll 1000`)")
+            print("(pass a value to set: \(rates.map { "\($0)" }.joined(separator: "/"))Hz, e.g. `poll 1000`)")
         }
     } catch {
         print("Poll-rate command failed: \(error)")
@@ -559,7 +664,7 @@ case "discover":
     defer { dev.close() }
     // The device test's own Identify step, so this can't choose differently from it.
     let registry = RazerDevices.info(pid: dev.productID)
-    let (identify, _) = DeviceTestSteps.identify(dev, registry: registry)
+    let (identify, _) = DeviceTestSteps.identifyMouse(dev, registry: registry)
     guard let found = identify.data else { exit(2) }
     func hex(_ id: UInt8?) -> String { id.map { String(format: "0x%02x", $0) } ?? "none" }
     func show(_ results: [DeviceReport.TransactionResult]) {
@@ -575,6 +680,10 @@ case "discover":
         print("No id answered the firmware read, so again with a DPI read:")
         show(dpi)
     }
+    for other in found.otherInterfaces ?? [] {
+        print(String(format: "Nothing answered, so again on interface usagePage=0x%02x usage=0x%02x:", other.usagePage, other.usage))
+        show(other.attempts)
+    }
     print("Lighting (brightness sweep). Registry says \(registry.map { hex($0.matrixTransactionId) } ?? "nothing"):")
     show(found.lightingAttempts)
     print("Firmware: \(found.firmware ?? "unknown")")
@@ -587,9 +696,8 @@ case "devicetest":
     guard let dev = openDevice() else { exit(1) }
     defer { dev.close() }
     let info = RazerDevices.info(pid: dev.productID)
-    let (identify, lightSweep) = DeviceTestSteps.identify(dev, registry: info)
-    let standardId = identify.data?.standardId ?? info?.transactionId ?? 0x1F
-    let matrixId = identify.data?.lightingId ?? standardId
+    let (identify, lightSweep) = DeviceTestSteps.identifyMouse(dev, registry: info)
+    let (standardId, matrixId) = DeviceTestSteps.chosenIds(identify, registry: info)
     func step<T>(_ body: (DeviceProbeChannel) -> DeviceReport.StepRecord<T>) -> DeviceReport.StepRecord<T> {
         DeviceTestSteps.recorded(dev, standard: standardId, matrix: matrixId,
                                  overrides: info?.transactionOverrides ?? [:], body)
@@ -605,11 +713,42 @@ case "devicetest":
         identify: identify,
         battery: step { DeviceTestSteps.battery($0, expectsBattery: info?.hasBattery) },
         dpi: step { DeviceTestSteps.dpi($0, maxProbe: false) },
-        polling: step { DeviceTestSteps.polling($0) },
+        polling: step { DeviceTestSteps.polling($0, usesPollingRate2: RazerDevices.usesPollingRate2(pid: dev.productID)) },
         lighting: step { DeviceTestSteps.lighting($0, sweep: lightSweep, restoreEffect: nil, seconds: 2) },
-        buttons: .init())
+        buttons: .init(),
+        capabilities: DeviceTestSteps.capabilities(dev, identify: identify, registry: info))
     report.verdict = report.currentVerdict()
     // Encoded as the app encodes it, so a pasted CLI report reads like an in-app one.
+    let json = DeviceReportOutput.json(report, forPublic: true)
+    guard !json.isEmpty else {
+        status("✗ The report couldn't be encoded.")
+        exit(2)
+    }
+    print(json)
+
+case "bluetoothtest":
+    // The in-app Bluetooth test: read-only, for a mouse macOS has connected over Bluetooth.
+    guard let mouse = HIDDevice.bluetoothRazerMouse() else {
+        status("✗ No Razer mouse is connected over Bluetooth.")
+        exit(1)
+    }
+    // macOS ends a process that touches Bluetooth without saying why in its Info.plist, which
+    // only the app bundle has. Built with `swift build`, the binary has none.
+    guard Bundle.main.object(forInfoDictionaryKey: "NSBluetoothAlwaysUsageDescription") != nil else {
+        status("✗ Bluetooth needs the app's Info.plist. Run it from the app: MacRazer.app/Contents/MacOS/MacRazer bluetoothtest")
+        exit(1)
+    }
+    // The running app's own connection to the mouse leaves every read here unanswered, and
+    // only the app can let go of it (the in-app test does).
+    let me = ProcessInfo.processInfo.processIdentifier
+    guard let bundleID = Bundle.main.bundleIdentifier,
+          !NSRunningApplication.runningApplications(withBundleIdentifier: bundleID)
+            .contains(where: { $0.processIdentifier != me }) else {
+        status("✗ Quit MacRazer first: its own Bluetooth connection keeps the mouse from answering. Or run the test from its menu.")
+        exit(1)
+    }
+    status("Reading \(mouse.name) over Bluetooth. macOS may ask to allow Bluetooth first.")
+    let report = DeviceTestSteps.bluetoothTest(name: mouse.name)
     let json = DeviceReportOutput.json(report, forPublic: true)
     guard !json.isEmpty else {
         status("✗ The report couldn't be encoded.")
@@ -636,14 +775,36 @@ case "rgb":
             }
             print("Setting static \(hex) …")
             report = RazerCommands.setStatic(rgb: rgb)
+        case "breathing":
+            // No colour: random. One: single. Two: dual.
+            let hexes = Array(args.dropFirst(2).prefix(2))
+            let colors = hexes.compactMap(parseHex)
+            guard colors.count == hexes.count else {
+                print("Usage: rgb breathing [rrggbb [rrggbb]]   e.g. `rgb breathing ff0000`")
+                exit(64)
+            }
+            switch colors.count {
+            case 0: print("Setting breathing, random colours …"); report = RazerCommands.setBreathingRandom()
+            case 1: print("Setting breathing \(hexes[0]) …"); report = RazerCommands.setBreathingSingle(rgb: colors[0])
+            default:
+                print("Setting breathing \(hexes[0]) / \(hexes[1]) …")
+                report = RazerCommands.setBreathingDual(rgb1: colors[0], rgb2: colors[1])
+            }
         case "spectrum":
             print("Setting spectrum cycle …"); report = RazerCommands.setSpectrum()
         case "wave":
-            print("Setting wave …"); report = RazerCommands.setWave()
+            // Optional speed byte in hex, lower is faster (`WaveSpeed`): `rgb wave c8` is the
+            // slider's slowest, `rgb wave 08` its fastest.
+            let speedArg = args.dropFirst(2).first
+            guard let speed = speedArg.map({ UInt8($0, radix: 16) }) ?? WaveSpeed.standard else {
+                print("Usage: rgb wave [speed]   speed is a hex byte, lower is faster, e.g. `rgb wave c8` (slow)")
+                exit(64)
+            }
+            print(String(format: "Setting wave at speed 0x%02x …", speed)); report = RazerCommands.setWave(speed: speed)
         case "off":
             print("Turning lighting off …"); report = RazerCommands.setNone()
         default:
-            print("Usage: rgb <static rrggbb | spectrum | wave | off>")
+            print("Usage: rgb <static rrggbb | breathing [rrggbb [rrggbb]] | spectrum | wave [speed] | off>")
             exit(64)
         }
         let resp = try DeviceProbe.applyLighting(dev, report)
@@ -657,6 +818,6 @@ case "rgb":
 
 default:
     print("Unknown command: \(command)")
-    print("Available: info, discover, devicetest, battery, dpi [x] [y], poll [hz], stages [d1,d2,…] [active], rgb <static rrggbb|spectrum|wave|off>, brightness [pct], login-item [on|off]")
+    print("Available: info, discover, devicetest, bluetoothtest, battery, dpi [x] [y], poll [hz], stages [d1,d2,…] [active], rgb <static rrggbb|breathing [rrggbb [rrggbb]]|spectrum|wave [speed]|off>, brightness [pct], login-item [on|off]")
     exit(64)
 }

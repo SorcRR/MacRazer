@@ -51,6 +51,10 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     @Published private(set) var charging = false
     @Published private(set) var dpi: Int = 0
     @Published private(set) var pollRate: Int = 0
+    /// The mouse was read at 250 Hz since it connected, so the picker keeps a 250 chip to go
+    /// back to after another rate is chosen. OpenRazer doesn't list 250, so it isn't offered
+    /// on a mouse never seen at it.
+    @Published private(set) var offersQuarterPollRate = false
     @Published private(set) var brightness: Int = 100 // percent
     /// Lighting state is controller-owned like DPI/brightness: published on successful
     /// device writes only. There's no lighting readback command, so this is the app's
@@ -58,6 +62,11 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// and profile snapshots all read it (a UI-local copy used to snapshot "phantom"
     /// lighting the mouse never took).
     @Published private(set) var effect: LightingEffect = .staticColor
+    /// An effect sent that the mouse hasn't answered yet. Main thread.
+    @Published private var pendingEffect = PendingRequest<LightingEffect>()
+    /// The effect the mouse will run once its queued writes land: what the next lighting
+    /// change builds on.
+    var intendedEffect: LightingEffect { supported(pendingEffect.value ?? effect) }
     @Published private(set) var lightingColor = RGB(r: 0x44, g: 0xD6, b: 0x2C) // razer green
     /// Each zone's lighting as read from the mouse, on mice whose zones are set one by one
     /// (`ZonedLighting`); empty on every other mouse. `effect`, `lightingColor` and
@@ -65,6 +74,18 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     @Published private(set) var zoneLighting: [LightingZone: ZoneLighting] = [:]
     /// The zone the lighting controls change; nil changes them all.
     @Published private(set) var selectedLightingZone: LightingZone?
+    /// The wave's speed byte (`WaveSpeed`). Like the effect it can't be read back, so the last
+    /// one set is kept across launches.
+    @Published private(set) var waveSpeed: UInt8 =
+        (UserDefaults.standard.object(forKey: MouseController.waveSpeedKey) as? Int).map { UInt8(clamping: $0) }
+        ?? WaveSpeed.standard {
+        didSet { UserDefaults.standard.set(Int(waveSpeed), forKey: Self.waveSpeedKey) }
+    }
+    static let waveSpeedKey = "mouseWaveSpeed"
+    /// Counts lighting the app has set on the mouse: an effect, a colour, a brightness or a
+    /// profile. Not reads: "Also light the keyboard" follows what the person sets, and the
+    /// brightness read after launch would otherwise push the unread default effect along.
+    @Published private(set) var lightingChanges = 0
     @Published private(set) var dpiStages: [Int] = [] // the mouse's configured DPI presets
     @Published private(set) var activeDpiStage: Int?
     @Published private(set) var dpiStagesError: String?
@@ -127,8 +148,18 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     @Published private(set) var dpiCycleButtonBinding: BLEProtocol.DPIButtonBinding?
     @Published private(set) var dpiCycleButtonError: String?
     @Published private(set) var isUpdatingDpiCycleButton = false
+    /// Side buttons the mouse's own table sends something else for (`SideButtonReset`), read
+    /// over Bluetooth by `checkSideButtons`. Empty until read, and on other mice.
+    @Published private(set) var remappedSideButtons: [SideButtonReset.Remap] = []
+    @Published private(set) var isResettingSideButtons = false
+    @Published private(set) var sideButtonResetError: String?
+    /// The line a reset that went through leaves on the page (`SideButtonReset.doneText`).
+    @Published private(set) var sideButtonResetDone: String?
     /// A Razer mouse seen on Bluetooth while we aren't controlling one, and why.
     @Published private(set) var bluetoothMouse: BluetoothMouseStatus?
+    /// No mouse is known at all: never seen this session, or unplugged (which forgets its
+    /// name). Not a sleeping or out-of-range one, which keeps its name.
+    var noMouseKnown: Bool { !connected && deviceName == nil && bluetoothMouse == nil }
     @Published private(set) var bluetoothRecoveryState: BluetoothRecoveryState = .idle
     @Published private(set) var wakeRecoveryCounter = 0
 
@@ -137,16 +168,45 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     // (`BLEProtocol`). A profile sets all of those, so applying one there would half-fail,
     // except on a mouse with onboard slots: its profile lives in the mouse, and switching to
     // its slot brings back what Bluetooth can't set.
+    // The HyperPolling models take the newer polling command (`usesPollingRate2`).
     var supportsPollRate: Bool { !deviceIsBluetooth }
-    var supportsLightingEffects: Bool { !deviceIsBluetooth || !lightingZones.isEmpty }
+    var supportsLightingEffects: Bool { (!deviceIsBluetooth || !lightingZones.isEmpty) && !lightHasFixedColor }
     /// The connected mouse's lighting zones (`ZonedLighting`); empty when it is lit as one.
     var lightingZones: [LightingZone] { ZonedLighting.zones(pid: deviceID) }
-    var lightingEffects: [LightingEffect] { lightingZones.isEmpty ? LightingEffect.classic : ZonedLighting.effects }
+    /// The effects this mouse's firmware has (`RazerDeviceInfo.effects`, or `ZonedLighting.effects`
+    /// on a mouse lit zone by zone): what the picker offers. The classic ones while no mouse is known.
+    var availableEffects: [LightingEffect] {
+        guard lightingZones.isEmpty else { return ZonedLighting.effects }
+        return deviceID.map(RazerDevices.effects(pid:)) ?? LightingEffect.classic
+    }
+    /// The effect a colour pick sets: breathing stays breathing where the mouse has it, anything
+    /// else becomes the static colour. The colour page goes by this too, so it agrees with the
+    /// write.
+    var colorPickEffect: LightingEffect {
+        supported(intendedEffect.afterColorPick(effectsSupported: supportsLightingEffects))
+    }
+    /// The light has one colour of its own (`RazerDeviceInfo.fixedColor`): brightness only.
+    var lightHasFixedColor: Bool { deviceID.map(RazerDevices.fixedColor(pid:)) ?? false }
+    /// False where the light takes effects but has no brightness (`RazerDeviceInfo.hasBrightness`).
+    var lightHasBrightness: Bool { deviceID.map(RazerDevices.hasBrightness(pid:)) ?? true }
     var supportsFreeDPI: Bool { !deviceIsBluetooth }
+    /// False over Bluetooth on a model whose DPI nobody has set there (`writesDPI`): the
+    /// stage chips show the mouse's stages but don't switch them.
+    var supportsDPIWrites: Bool { deviceID.map(RazerDevices.writesDPI(pid:)) ?? true }
+    /// One stage's DPI can be changed from the popover: the Bluetooth stage table on models
+    /// that have it, or the USB one on a model with verified DPI.
+    var supportsDpiStageEditing: Bool {
+        guard let pid = deviceID else { return false }
+        // Over USB the table must have been read: without it the popover shows made-up chips.
+        return deviceIsBluetooth ? RazerDevices.supportsStageEditing(pid: pid)
+                                 : RazerDevices.supportsUSBStageEditing(pid: pid) && !dpiStages.isEmpty
+    }
     /// Single and Stages DPI modes, the same on every link (`setDPITable`).
     var supportsDpiModes: Bool { deviceID.map(RazerDevices.supportsDpiModes(pid:)) ?? false }
     var supportsProfiles: Bool { !deviceIsBluetooth || activeOnboardSlot != nil }
     private var ioHasBattery = true // io-queue mirror of deviceHasBattery
+    /// False on an AA-cell mouse: it can't charge, so the poll skips the charging read.
+    private var ioCanCharge = true
 
     /// Saved DPI/poll/lighting/button-remap presets for the connected mouse, and which one (if
     /// any) currently matches the live config. Loaded/swapped alongside `deviceKey` in
@@ -289,6 +349,10 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// returned. Retry a bounded number of times, serially, and bypass the slow-open
     /// cooldown for these attempts. This never sends traffic merely to keep the mouse awake.
     private func beginWakeRecovery(discardBluetoothSession: Bool = false) {
+        // A device test holds the mouse, and the Bluetooth test has let go of the app's own
+        // connection on purpose: reopening it now would leave the test's reads unanswered.
+        // `endDeviceTest` reads everything again, which does the recovery's job.
+        guard !deviceTestActive else { return }
         let generation = beginWakeRecoveryGeneration()
         if !connected { update(\.bluetoothRecoveryState, .reconnecting) }
         io.async { [weak self] in
@@ -428,6 +492,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         let t = Timer(timeInterval: interval, repeats: false) { [weak self] _ in
             self?.pollTick()
         }
+        // A tenth of the wait, so macOS can fold the poll's wakeup in with others' for
+        // battery life. No cadence here depends on being exact.
+        t.tolerance = interval / 10
         RunLoop.main.add(t, forMode: .common)
         pollTimer = t
     }
@@ -539,6 +606,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         let t = Timer(timeInterval: 2.0, repeats: true) { [weak self] _ in
             self?.checkLive()
         }
+        t.tolerance = 0.2
         RunLoop.main.add(t, forMode: .common)
         settingsTimer = t
     }
@@ -547,10 +615,70 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// `immediateOffline` so the disconnect shows at once (bypassing the timeout debounce,
     /// since a USB termination is definitive). Also realigns the poll cadence.
     func forceCheck(immediateOffline: Bool) {
-        // A plug event is the only way a different unit can turn up on an interface we
-        // already know, so the cached serial is no longer evidence of which mouse it is.
-        io.async { [weak self] in self?.knownSerial = nil }
+        io.async { [weak self] in
+            guard let self else { return }
+            // A plug event is the only way a different unit can turn up on an interface we
+            // already know, so the cached serial is no longer evidence of which mouse it is.
+            self.knownSerial = nil
+            // A cable plugged in may take a few seconds to answer (`scheduleCableRecheck`).
+            self.cableRechecksLeft = Self.cableRechecks
+            // Not mid-test: the steps must all talk to the device the test started on. Read
+            // here on `io`, not when the event came in, so a test that began in between counts.
+            if !self.deviceTestActiveForIO { self.releaseDeviceIfOutranked() }
+        }
         checkNow(immediateOffline: immediateOffline)
+    }
+
+    /// Must be called on `io`. Selection only ranks devices when it opens one, so a mouse
+    /// plugged in after the app opened something else (a keypad, a pad, a device it doesn't
+    /// know) never took over until relaunch (#75). On a plug event, let go of an open device
+    /// the registry doesn't know when selection now picks a known mouse; the check that
+    /// follows opens it. A known mouse is dropped this way only for its own cable, and only
+    /// once the cable answers: until then the dongle, which works, is left alone and the
+    /// cable is tried again soon (`scheduleCableRecheck`).
+    private func releaseDeviceIfOutranked() {
+        guard let current = device, !current.isBluetooth else { return }
+        let best = try? HIDDevice.controlInterface(vendorId: Razer.vendorId)
+        guard Self.isOutranked(currentPID: current.productID, currentLocation: current.locationID,
+                               best: best.map { (HIDDevice.productID(of: $0), HIDDevice.locationID(of: $0)) })
+        else { return }
+        if let best, RazerDevices.isCable(HIDDevice.productID(of: best), ofDongle: current.productID),
+           !HIDDevice.cableAnswers(best) {
+            scheduleCableRecheck()
+            return
+        }
+        current.close()
+        device = nil
+    }
+
+    /// How many more times to try the cable after a fall back to its dongle. Reset on each
+    /// plug event, so a cable that never answers costs a few reopens, not one every poll.
+    private var cableRechecksLeft = 0
+    private static let cableRechecks = 5
+    private static let cableRecheckDelay: TimeInterval = 2
+
+    /// Must be called on `io`. The cable didn't answer, often a mouse still switching over,
+    /// so the app stayed on (or went back to) the dongle. A plug event checks only once, and
+    /// a dongle that keeps answering never errors into a reopen, so try the cable again soon.
+    /// A recheck that lands mid-test is skipped; `endDeviceTest` starts them over.
+    private func scheduleCableRecheck() {
+        guard cableRechecksLeft > 0 else { return }
+        cableRechecksLeft -= 1
+        io.asyncAfter(deadline: .now() + Self.cableRecheckDelay) { [weak self] in
+            guard let self, !self.deviceTestActiveForIO else { return }
+            self.releaseDeviceIfOutranked()
+            if self.device == nil { self.checkNow(immediateOffline: false) }
+        }
+    }
+
+    /// Whether the open device should give way to `best`, selection's pick right now: an
+    /// unknown device to a mouse the registry knows, or a dongle to its own mouse's cable.
+    /// Not when selection finds nothing: an unplugged device fails its own reads.
+    static func isOutranked(currentPID: Int, currentLocation: Int, best: (pid: Int, location: Int)?) -> Bool {
+        guard let best, best.pid != currentPID || best.location != currentLocation else { return false }
+        // The cable plugged into a mouse on its dongle: the same mouse, moved to the better link.
+        if RazerDevices.isCable(best.pid, ofDongle: currentPID) { return true }
+        return RazerDevices.info(pid: currentPID) == nil && RazerDevices.info(pid: best.pid) != nil
     }
 
     /// Main-thread only. A check is already on its way; don't queue another behind it.
@@ -582,6 +710,12 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             let next = self.pollState.nextPollInterval(pointerActive: Self.pointerIsInUse())
             self.publish { self.scheduleNextPoll(after: next) }
         }
+    }
+
+    /// The online support list changed what the connected mouse still needs (`SupportList`).
+    /// Main thread, like every publish.
+    func supportListChanged() {
+        update(\.deviceSupported, deviceID.map(RazerDevices.fullySupported(pid:)) ?? true)
     }
 
     /// Full refresh (battery + settings) with the spinner — used by the refresh button.
@@ -645,8 +779,14 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 // state machine's decision here.)
                 // raw == 0 is the grace tick (device refused the level read): no charging
                 // query is issued, so the state is genuinely unknown rather than false.
-                let chargeReply = raw == 0 ? nil : try? dev.sendWithRetry(RazerCommands.getChargingStatus())
-                observedCharging = raw == 0 ? nil : chargeReply.map { $0.arguments[1] != 0 }
+                // An AA-cell mouse refuses the charging read every time (0x05), so it isn't
+                // sent: one command per tick, and the mouse is known not to be charging.
+                if raw != 0 && !ioCanCharge {
+                    observedCharging = false
+                } else {
+                    let chargeReply = raw == 0 ? nil : try? dev.sendWithRetry(RazerCommands.getChargingStatus())
+                    observedCharging = raw == 0 ? nil : chargeReply.map { $0.arguments[1] != 0 }
+                }
                 let charging = observedCharging ?? false
                 outcome = .battery(raw: raw, charging: charging)
             }
@@ -744,6 +884,10 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 // what it holds when it comes back (firmware can reset it). Forget it, so the F20
                 // bridge stays unconfirmed until it's read again.
                 self.update(\.dpiCycleButtonBinding, nil)
+                self.update(\.remappedSideButtons, [])
+                self.update(\.sideButtonResetError, nil)
+                self.update(\.sideButtonResetDone, nil)
+                self.update(\.offersQuarterPollRate, false)
                 // Same for the sleep timeout: the controls wait for a fresh read.
                 self.update(\.sleepTimeout, nil)
                 self.update(\.lowBatteryThreshold, nil)
@@ -839,19 +983,22 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 let active = RazerCommands.parseActiveDPIStage(r, countFromOne: RazerDevices.dpiStagesCountFromOne(pid: dev.productID))
                 return stages.indices.contains(active) ? active : nil
             }
-            : nil
+            // Over USB the active byte is one of the table's own stage numbers. Only read on
+            // models whose stages can be edited, where a chip click also sets it.
+            : RazerDevices.supportsUSBStageEditing(pid: dev.productID)
+                ? stagesReport.flatMap { RazerCommands.parseDPIStageTable($0)?.activeIndex }
+                : nil
         let d: Int? = dev.isBluetooth
             ? activeDpiStage.map { stages[$0] }
             : read(RazerCommands.getDPI()) { Int(RazerCommands.parseDPI($0).x) }
         // What the 2-second check compares against (`checkLiveSync`); only a complete read.
         let signature = tableDriven ? (stagesReport == nil ? nil : [activeDpiStage ?? -1] + stages) : d.map { [$0] }
         if !linkDead { dpiSignature = signature }
-        // Over Bluetooth the transport maps the classic command; over USB the mouse decides.
-        let pollRead = dev.isBluetooth
-            ? (report: RazerCommands.getPollingRate(), parse: RazerCommands.parsePollingRate)
-            : RazerCommands.pollingRateRead(pid: dev.productID)
+        let pollRead = RazerCommands.pollingRateRead(usesPollingRate2: RazerDevices.usesPollingRate2(pid: dev.productID))
         let p = read(pollRead.report, pollRead.parse)
-        let b = read(RazerCommands.getBrightness(led: RazerDevices.brightnessLed(pid: dev.productID))) { RazerCommands.brightnessPercent(fromRaw: $0.arguments[2]) }
+        let b = RazerDevices.hasBrightness(pid: dev.productID)
+            ? read(RazerCommands.getBrightness(led: RazerDevices.brightnessLed(pid: dev.productID))) { RazerCommands.brightnessPercent(fromRaw: $0.arguments[2]) }
+            : nil
         let sleep: Int? = {
             if !dev.isBluetooth, RazerDevices.supportsSleepTimeout(pid: dev.productID) {
                 return read(RazerCommands.getIdleTime(), RazerCommands.parseIdleTime) ?? nil
@@ -912,7 +1059,10 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 self.update(\.scrollAccelerationLevel, nil)
             }
             if let d { self.update(\.dpi, d) }
-            if let p { self.update(\.pollRate, p) }
+            if let p {
+                self.update(\.pollRate, p)
+                if p == 250 { self.update(\.offersQuarterPollRate, true) }
+            }
             if let b, self.zoneLighting.isEmpty { self.update(\.brightness, b) }
             if !stages.isEmpty { self.update(\.dpiStages, stages) }
             self.update(\.activeDpiStage, activeDpiStage)
@@ -941,13 +1091,31 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// anyway; this keeps the poll and the popover's settings reads from adding traffic and
     /// noise to the session, or publishing a half-way state between steps.
     private(set) var deviceTestActive = false
+    /// `deviceTestActive` as `io` sees it, set in queue order with the test's own steps.
+    private var deviceTestActiveForIO = false
 
     func beginDeviceTest() {
         deviceTestActive = true
+        io.async { [weak self] in self?.deviceTestActiveForIO = true }
         pollTimer?.invalidate()
         pollTimer = nil
         settingsTimer?.invalidate()
         settingsTimer = nil
+    }
+
+    /// Closes the app's own Bluetooth connection, for the Bluetooth test: while it stays open,
+    /// every read the test sends over its own connection goes unanswered (seen on the Cobra
+    /// HyperSpeed). The polls are paused for the test, and `endDeviceTest`'s refresh reopens it.
+    func releaseBluetoothForDeviceTest() async {
+        await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+            userCommand { [weak self] in
+                if let self, let bluetooth = self.device?.unwrapped as? BluetoothDevice {
+                    bluetooth.closeAndWait()
+                    self.device = nil
+                }
+                done.resume()
+            }
+        }
     }
 
     /// Reads everything again rather than trusting what was published before the test: steps
@@ -956,6 +1124,13 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     func endDeviceTest() {
         guard deviceTestActive else { return }
         deviceTestActive = false
+        io.async { [weak self] in
+            guard let self else { return }
+            self.deviceTestActiveForIO = false
+            // Rechecks that came due mid-test were skipped: the cable may answer by now.
+            self.cableRechecksLeft = Self.cableRechecks
+            self.releaseDeviceIfOutranked()
+        }
         refreshAll()
         scheduleNextPoll(after: BatteryPollStateMachine.Cadence.settling)
         // A popover opened during the test didn't start its live reads; start them now.
@@ -1016,7 +1191,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// The command for the lighting the app last set, for the test to return to after showing
     /// red. Main thread. The protocol has no lighting read-back, so this is the app's own idea
     /// of what the mouse shows, the same one its controls work from.
-    func lightingRestoreReport() -> RazerReport { report(for: effect, color: lightingColor) }
+    func lightingRestoreReport() -> RazerReport {
+        Self.lightingCommand(effect, color: lightingColor, waveSpeed: waveSpeed, effects: availableEffects).report
+    }
 
     // MARK: - Onboard buttons (remaps saved in the mouse)
 
@@ -1478,6 +1655,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     // mouse keeps its old config, and the next settings poll corrects it confusingly.
 
     func setDPI(_ value: Int) {
+        guard supportsDPIWrites else { return }
         let v = UInt16(max(100, min(value, RazerCommands.dpiCeiling)))
         userCommand { [weak self] in
             guard let self else { return }
@@ -1535,8 +1713,18 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// copy can be up to one settings refresh old, and writing it back would undo a press of
     /// the mouse's DPI button made in the meantime.
     func setDPIStageValue(_ value: Int, at index: Int) {
-        guard deviceIsBluetooth, deviceID.map(RazerDevices.supportsStageEditing(pid:)) == true else { return }
+        guard supportsDpiStageEditing else { return }
         let dpiValue = max(100, min(value, deviceMaxDPI))
+        guard deviceIsBluetooth else {
+            // Over USB the current DPI is separate from the table. When the edited stage is
+            // the mouse's active one in the fresh read, the current DPI follows it, as it does
+            // on Bluetooth.
+            editUSBStages(followingDPI: { $0.activeIndex == index ? dpiValue : nil }) { table in
+                guard table.values.indices.contains(index) else { throw HIDDevice.HIDError.badResponse }
+                table.values[index] = dpiValue
+            }
+            return
+        }
         isUpdatingDpiStages = true
         dpiStagesError = nil
         userCommand { [weak self] in
@@ -1572,6 +1760,94 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     var supportsSleepTimeout: Bool {
         guard let pid = deviceID else { return false }
         return RazerDevices.supportsSleepTimeout(pid: pid)
+    }
+
+    /// A stage chip was clicked. Where the USB table can be edited, that stage becomes the
+    /// mouse's active one too, so its DPI button carries on from there. Otherwise, and on
+    /// Bluetooth, it only sets the current DPI, as before.
+    func selectDPIStage(_ index: Int, value: Int) {
+        guard !deviceIsBluetooth, supportsDpiStageEditing else { return setDPI(value) }
+        editUSBStages(selecting: value) { table in
+            guard table.ids.indices.contains(index) else { throw HIDDevice.HIDError.badResponse }
+            table.activeID = table.ids[index]
+        }
+    }
+
+    /// Reads the USB stage table fresh, changes it, writes it and checks the read-back.
+    /// Reading first keeps a DPI-button press made since the last refresh, like the Bluetooth
+    /// path. An edit sets the current DPI `followingDPI` picks from the fresh table, once the
+    /// write landed. A chip click (`selecting`) sets its DPI first, so the click is as quick as
+    /// before, and keeps it when the table write fails, without a note: the DPI the person
+    /// asked for is what they get.
+    private func editUSBStages(selecting selectionDPI: Int? = nil,
+                               followingDPI: (@Sendable (RazerCommands.DPIStageTable) -> Int?)? = nil,
+                               _ change: @escaping @Sendable (inout RazerCommands.DPIStageTable) throws -> Void) {
+        let isSelection = selectionDPI != nil
+        if !isSelection { isUpdatingDpiStages = true }
+        dpiStagesError = nil
+        userCommand { [weak self] in
+            guard let self else { return }
+            var v: UInt16?
+            var found: RazerCommands.DPIStageTable?
+            var failure: Error?
+            var dpiSent = true
+            do {
+                let device = try self.ensureDevice()
+                guard !device.isBluetooth else { throw HIDDevice.HIDError.notSupported }
+                func sendDPI(_ dpi: Int?) {
+                    guard let dpi else { return }
+                    let clamped = UInt16(max(100, min(dpi, RazerCommands.dpiCeiling)))
+                    v = clamped
+                    dpiSent = (try? device.sendWithRetry(RazerCommands.setDPI(x: clamped, y: clamped))) != nil
+                }
+                sendDPI(selectionDPI)
+                var picked: Int?
+                do {
+                    found = try Self.writeUSBStages(send: device.sendWithRetry) { table in
+                        picked = followingDPI?(table)
+                        try change(&table)
+                    }
+                } catch { failure = error }
+                if !isSelection, found != nil { sendDPI(picked) }
+            } catch {
+                failure = error
+                dpiSent = !isSelection
+            }
+            let v2 = v
+            let (written, stageError, dpiOK) = (found, failure.map { "\($0.localizedDescription)" }, dpiSent)
+            self.publish {
+                if !isSelection { self.isUpdatingDpiStages = false }
+                if let written {
+                    self.dpiStages = written.values
+                    self.activeDpiStage = written.activeIndex
+                }
+                if let v2, dpiOK { self.dpi = Int(v2) }
+                if let stageError, !isSelection {
+                    self.dpiStagesError = "DPI stages could not be verified: \(stageError)"
+                }
+                if (stageError != nil && !isSelection) || !dpiOK { self.lastWriteFailure = Date() }
+                if written != nil || (v2 != nil && dpiOK) { self.clearActiveProfileIfNeeded() }
+            }
+        }
+    }
+
+    /// The USB table round trip, apart from the device so tests can drive it. A read-back that
+    /// differs from what was written throws: the stage write isn't verified by the device test.
+    /// Within 50 counts as kept, for firmware that rounds a stage to its own step.
+    static func writeUSBStages(send: (RazerReport) throws -> RazerReport,
+                               _ change: (inout RazerCommands.DPIStageTable) throws -> Void) throws -> RazerCommands.DPIStageTable {
+        guard var table = RazerCommands.parseDPIStageTable(try send(RazerCommands.getDPIStages())) else {
+            throw HIDDevice.HIDError.badResponse
+        }
+        try change(&table)
+        table.values = table.values.map { max(100, min($0, RazerCommands.dpiCeiling)) }
+        _ = try send(RazerCommands.setDPIStages(table))
+        guard let back = RazerCommands.parseDPIStageTable(try send(RazerCommands.getDPIStages())),
+              back.activeID == table.activeID, back.values.count == table.values.count,
+              zip(back.values, table.values).allSatisfy({ abs($0 - $1) < 50 }) else {
+            throw HIDDevice.HIDError.badResponse
+        }
+        return back
     }
 
     func setSleepTimeout(_ seconds: Int) {
@@ -1665,30 +1941,116 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         }
     }
 
+    /// The connected mouse is one whose side buttons `checkSideButtons` reads: on Bluetooth and
+    /// with `detectsOnboardSideButtonRemaps`. Main thread.
+    var checksSideButtons: Bool {
+        connected && deviceIsBluetooth && deviceID.map(RazerDevices.detectsOnboardSideButtonRemaps(pid:)) == true
+    }
+
+    /// `checkSideButtons` when `checksSideButtons`. For the Configure Buttons page opening, so
+    /// other mice queue nothing.
+    func checkSideButtonsIfSupported() {
+        guard checksSideButtons else { return }
+        checkSideButtons()
+    }
+
+    /// Reads the side buttons' entries on a mouse with `detectsOnboardSideButtonRemaps`. A read
+    /// only: a failure leaves the list as it was and says nothing, as the page works without it.
+    func checkSideButtons() {
+        userCommand { [weak self] in
+            guard let self,
+                  let bluetooth = (try? self.ensureDevice())?.unwrapped as? BluetoothDevice,
+                  RazerDevices.detectsOnboardSideButtonRemaps(pid: bluetooth.productID) else { return }
+            var remaps: [SideButtonReset.Remap] = []
+            for id in SideButtonReset.ids {
+                guard let payload = try? bluetooth.readButtonFunctionPayload(id) else { return }
+                if let remap = SideButtonReset.remap(id: id, payload: payload) { remaps.append(remap) }
+            }
+            let found = remaps
+            // A read that ends after the mouse went away says nothing about it now.
+            self.publish {
+                guard self.connected, self.deviceIsBluetooth else { return }
+                self.update(\.remappedSideButtons, found)
+            }
+        }
+    }
+
+    /// Writes each remapped side button's factory block back to every profile slot that holds
+    /// it (`BluetoothDevice.resetButtonFunction`).
+    /// Each button leaves the list as soon as its write is confirmed, so a reset that stops
+    /// halfway still shows only what is left.
+    func resetSideButtons() {
+        let remaps = remappedSideButtons
+        guard !remaps.isEmpty else { return }
+        publish {
+            self.isResettingSideButtons = true
+            self.sideButtonResetError = nil
+            self.sideButtonResetDone = nil
+        }
+        userCommand { [weak self] in
+            guard let self else { return }
+            do {
+                guard let bluetooth = try self.ensureDevice().unwrapped as? BluetoothDevice,
+                      RazerDevices.detectsOnboardSideButtonRemaps(pid: bluetooth.productID) else {
+                    throw HIDDevice.HIDError.notSupported
+                }
+                var written = Set<UInt8>()
+                for remap in remaps {
+                    written.formUnion(try bluetooth.resetButtonFunction(remap))
+                    self.publish { self.update(\.remappedSideButtons, self.remappedSideButtons.filter { $0.id != remap.id }) }
+                }
+                let done = SideButtonReset.doneText(profiles: written.count)
+                self.publish {
+                    self.isResettingSideButtons = false
+                    self.sideButtonResetDone = done
+                }
+            } catch {
+                let text = SideButtonReset.failureText(error)
+                self.publish {
+                    self.isResettingSideButtons = false
+                    self.sideButtonResetError = text
+                    self.lastWriteFailure = Date()
+                }
+            }
+            // Read again either way, so the notice shows what the mouse holds now.
+            self.checkSideButtons()
+        }
+    }
+
+    /// Always sent, the current rate too: the app's idea of it can be stale (not read yet, or
+    /// another change still queued), and dropping a click on it would lose the user's last
+    /// choice. Only an actual change un-marks the active profile.
     func setPollRate(_ hz: Int) {
         userCommand { [weak self] in
             guard let self else { return }
             let ok = (try? self.ensureDevice()).map { Self.sendPollingRate(hz, to: $0) } ?? false
             self.publish {
                 guard ok else { self.lastWriteFailure = Date(); return }
-                self.pollRate = hz; self.clearActiveProfileIfNeeded()
+                // 0 is a rate not read yet, which the popover shows as the default 1000.
+                let changed = (self.pollRate == 0 ? 1000 : self.pollRate) != hz
+                self.pollRate = hz
+                if changed { self.clearActiveProfileIfNeeded() }
             }
         }
     }
 
-    /// io-queue only. Sets the polling rate with the command this mouse takes
-    /// (`RazerCommands.setPollingRateReports`). A polling_rate2 mouse is read back, and that
-    /// read decides: through the dongle the second report addresses the dongle itself, and
-    /// what counts is the rate the mouse ends up at, not each report's status.
+    /// io-queue only. Sets the rate with the command this mouse takes. A polling_rate2 mouse
+    /// goes through `DeviceProbe.writePollingRate`, the device test's own write: both of
+    /// OpenRazer's writes, then a read-back, and the read decides (from fn-milans's Basilisk
+    /// V4 Pro work, #55). Polling_rate2 is USB only, so that mouse is always an `HIDDevice`.
     private static func sendPollingRate(_ hz: Int, to dev: any RazerTransport) -> Bool {
-        guard !dev.isBluetooth, RazerDevices.usesPollingRate2(pid: dev.productID) else {
+        guard let hid = dev.unwrapped as? HIDDevice, RazerDevices.usesPollingRate2(pid: hid.productID) else {
             return (try? dev.sendWithRetry(RazerCommands.setPollingRate(hz))) != nil
         }
-        for report in RazerCommands.setPollingRateReports(hz, pid: dev.productID) {
-            _ = try? dev.sendWithRetry(report)
+        return (try? DeviceProbe.writePollingRate(hid, hz: hz, usesPollingRate2: true))?.confirmed ?? false
+    }
+
+    /// Sets brightness on every lit zone the model has (`RazerDevices.brightnessLeds`).
+    /// Throws on the first zone that refuses, so a half-dimmed mouse counts as a failed write.
+    static func writeBrightness(_ raw: UInt8, to dev: any RazerTransport) throws {
+        for led in RazerDevices.brightnessLeds(pid: dev.productID) {
+            _ = try dev.sendWithRetry(RazerCommands.setBrightness(raw, led: led))
         }
-        let read = RazerCommands.pollingRateRead(pid: dev.productID)
-        return (try? dev.sendWithRetry(read.report)).map(read.parse) == hz
     }
 
     func setBrightness(_ percent: Int) {
@@ -1703,7 +2065,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 let dev = try self.ensureDevice()
                 let led = RazerDevices.brightnessLed(pid: dev.productID)
                 let raw = RazerCommands.brightnessRaw(fromPercent: pct)
-                _ = try dev.sendWithRetry(RazerCommands.setBrightness(raw, led: led))
+                try Self.writeBrightness(raw, to: dev)
                 if RazerDevices.verifiesBrightnessWrite(pid: dev.productID) {
                     let readback = try dev.sendWithRetry(RazerCommands.getBrightness(led: led)).arguments[2]
                     guard readback == raw else { throw HIDDevice.HIDError.commandFailed }
@@ -1713,66 +2075,104 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             self.publish {
                 guard ok else { self.lastWriteFailure = Date(); return }
                 self.brightness = pct; self.clearActiveProfileIfNeeded()
+                self.lightingChanges &+= 1
             }
         }
     }
 
-    /// Sets the lighting effect (using the current `lightingColor` for `.staticColor`).
+    /// Sets the lighting effect (using the current `lightingColor` for static and breathing).
     /// Like the other setters: the device write happens on `io`, and `effect` is published
     /// only on success — the picker never claims lighting the mouse didn't take.
     func setEffect(_ newEffect: LightingEffect) {
-        // NSSegmentedControl can fire its action on a click of the already-selected
-        // segment; a no-change "set" must not resend the command or un-mark the active
-        // profile (the config didn't change).
+        // A click on the chosen effect (the picker passes every click on), or any caller
+        // re-sending the current one: a no-change "set" must not resend the command or
+        // un-mark the active profile (the config didn't change).
+        // What's published must be what's sent: an effect this mouse lacks is the static colour.
+        // A mouse lit zone by zone sets the selected zone, or every zone (`setZones`).
         if !zoneLighting.isEmpty {
             setZones { var z = $0; z.effect = newEffect.rawValue; return z }
             return
         }
-        guard newEffect != effect else { return }
-        sendLighting(report(for: newEffect, color: lightingColor)) {
-            self.effect = newEffect
-        }
+        let newEffect = supported(newEffect)
+        guard newEffect != intendedEffect else { return }
+        sendLighting(newEffect, color: lightingColor) { _ in }
     }
 
-    /// Sets a static colour (switching the effect to `.staticColor` if needed).
-    func setStaticColor(_ rgb: RGB) {
+    /// Sets the lighting colour. Breathing keeps breathing in the new colour; any other effect
+    /// switches to static. Bluetooth always gets static, the only effect it has a command for,
+    /// whatever effect is left over from USB.
+    func setColor(_ rgb: RGB) {
         // A zone keeps an effect that has a colour of its own, and takes the new colour.
         if !zoneLighting.isEmpty {
             setZones { var z = $0; z.color = rgb; if !z.lightingEffect.usesColor { z.effect = LightingEffect.staticColor.rawValue }; return z }
             return
         }
-        guard !(effect == .staticColor && lightingColor == rgb) else { return } // no-change re-click
-        sendLighting(RazerCommands.setStatic(rgb: rgb)) {
-            self.effect = .staticColor
-            self.lightingColor = rgb
-        }
+        let target = colorPickEffect
+        // No-change re-click. Not while a write is queued: what it lands on isn't known yet.
+        guard !(pendingEffect.value == nil && effect == target && lightingColor == rgb) else { return }
+        sendLighting(target, color: rgb) { _ in self.lightingColor = rgb }
     }
 
-    private func report(for effect: LightingEffect, color: RGB) -> RazerReport {
-        switch effect {
-        case .staticColor: return RazerCommands.setStatic(rgb: color)
-        case .spectrum: return RazerCommands.setSpectrum()
-        case .wave: return RazerCommands.setWave()
-        // Offered only on mice with lighting zones, which don't come here (`setZones`).
-        case .breathing, .reactive: return RazerCommands.setStatic(rgb: color)
-        case .off: return RazerCommands.setNone()
+    /// The one place a lighting command is built: the effect the mouse with these effects
+    /// runs for the one asked for, and the command for it.
+    nonisolated static func lightingCommand(_ effect: LightingEffect, color: RGB, waveSpeed: UInt8,
+                                            effects: [LightingEffect]) -> (effect: LightingEffect, report: RazerReport) {
+        let landed = supported(effect, in: effects)
+        return (landed, RazerCommands.effect(landed, color: color, waveSpeed: waveSpeed))
+    }
+
+    /// An effect this mouse has: on a static-only one, breathing, spectrum or wave (from a
+    /// profile, or any caller) lands as the static colour (or the first effect it has, for a
+    /// mouse without one). Writes apply it again on `io`, for the mouse they actually reach
+    /// (`sendLighting`, `applyProfile`), so a switch of mouse mid-write can't slip one through.
+    func supported(_ effect: LightingEffect) -> LightingEffect {
+        Self.supported(effect, in: availableEffects)
+    }
+
+    nonisolated static func supported(_ effect: LightingEffect, in effects: [LightingEffect]) -> LightingEffect {
+        if effects.contains(effect) { return effect }
+        return effects.contains(.staticColor) ? .staticColor : effects.first ?? .staticColor
+    }
+
+    /// Sets the wave's speed. Sent to the mouse straight away while it runs Wave; otherwise
+    /// kept for the next time Wave is picked.
+    func setWaveSpeed(_ speed: UInt8) {
+        guard speed != waveSpeed else { return }
+        // intendedEffect is always one this mouse has, so Wave here means the mouse has it.
+        guard intendedEffect == .wave else {
+            waveSpeed = speed
+            return
         }
+        // Kept even if the mouse changed under the write and got its static colour instead,
+        // as the speed is kept whenever Wave isn't running.
+        sendLighting(.wave, color: lightingColor, waveSpeed: speed) { _ in self.waveSpeed = speed }
     }
 
     /// Every lighting change the user makes goes through here, so it is the one place the
     /// effect and colour controls need to preempt a background read.
-    private func sendLighting(_ report: RazerReport, onSuccess: @escaping @Sendable () -> Void) {
+    /// The command is built on `io` for the mouse the write reaches, which may not be the one
+    /// it was asked for: an effect that mouse lacks lands as one it has, and that's what's
+    /// published (and handed to `onSuccess`).
+    private func sendLighting(_ effect: LightingEffect, color: RGB, waveSpeed: UInt8? = nil,
+                              onSuccess: @escaping @Sendable (LightingEffect) -> Void) {
+        let token = pendingEffect.begin(effect)
+        let speed = waveSpeed ?? self.waveSpeed
         userCommand { [weak self] in
             guard let self else { return }
-            let ok = (try? {
+            let landed = try? { () throws -> LightingEffect in
                 let device = try self.ensureDevice()
+                let (landed, report) = Self.lightingCommand(effect, color: color, waveSpeed: speed,
+                                                            effects: RazerDevices.effects(pid: device.productID))
                 _ = try device.sendWithRetry(report)
-                return true
-            }()) != nil
+                return landed
+            }()
             self.publish {
-                guard ok else { self.lastWriteFailure = Date(); return }
-                onSuccess()
+                self.pendingEffect.finish(token)
+                guard let landed else { self.lastWriteFailure = Date(); return }
+                self.effect = landed
+                onSuccess(landed)
                 self.clearActiveProfileIfNeeded()
+                self.lightingChanges &+= 1
             }
         }
     }
@@ -1807,11 +2207,12 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                                     brightness: brightness,
                                     // No LEDs → no effect captured (the picker isn't even
                                     // shown); an empty string keeps the summary honest.
-                                    effect: deviceHasLighting ? effect.rawValue : "",
+                                    effect: deviceHasLighting ? supported(effect).rawValue : "",
                                     color: lightingColor,
                                     buttonMappings: remapper.mappings,
                                     // The stage table the DPI button cycles is config too.
-                                    dpiStages: dpiStages.isEmpty ? nil : dpiStages)
+                                    dpiStages: dpiStages.isEmpty ? nil : dpiStages,
+                                    waveSpeed: deviceHasLighting && supported(effect) == .wave ? waveSpeed : nil)
         // It is what the active slot holds now, so it is kept there unless another profile is.
         if supportsOnboardSlots, let slot = activeOnboardSlot, !profiles.contains(where: { $0.onboardSlot == slot }) {
             profile.onboardSlot = slot
@@ -1844,10 +2245,11 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         profileApplyFailed = false
 
         let dpi = UInt16(max(100, min(profile.dpi, RazerCommands.dpiCeiling)))
-        let hz = profile.pollRate == 0 ? 1000 : profile.pollRate
+        let savedHz = profile.pollRate == 0 ? 1000 : profile.pollRate
         let brightnessPct = max(0, min(profile.brightness, 100))
-        let effect = profile.lightingEffect
-        let lighting = report(for: effect, color: profile.color)
+        let effect = supported(profile.lightingEffect)
+        // A profile saved before the speed existed keeps whatever speed the slider has.
+        let speed = profile.waveSpeed ?? waveSpeed
         let color = profile.color
         let mappings = profile.buttonMappings
         // Restore the onboard stage table (what the DPI button cycles) when the profile
@@ -1872,11 +2274,16 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             (zone, profile.zones?[zone.storageKey]
                 ?? ZoneLighting(effect: effect, color: color, brightness: brightnessPct))
         })
+        // A colour picked while the profile is still applying builds on the profile's effect.
+        let token = deviceHasLighting ? pendingEffect.begin(effect) : nil
 
         userCommand { [weak self] in
             guard let self else { return }
             guard let dev = try? self.ensureDevice() else {
-                self.publish { self.lastWriteFailure = Date(); self.profileApplyFailed = true }
+                self.publish {
+                    if let token { self.pendingEffect.finish(token) }
+                    self.lastWriteFailure = Date(); self.profileApplyFailed = true
+                }
                 return
             }
             if let slot, let slotted = dev as? OnboardSlotTransport {
@@ -1896,6 +2303,10 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             // Over Bluetooth only a profile kept in a slot gets here, and its slot already
             // holds the polling rate Bluetooth has no command for.
             let slotKeepsRest = dev.isBluetooth && slot != nil
+            // A profile saved on an 8000 Hz mouse asks no more of this one than it can do.
+            // Capped for the mouse this reaches, which may not be the one the profile was
+            // applied on if they changed in between.
+            let hz = min(savedHz, RazerDevices.maxPollingRate(pid: dev.productID))
             let pollOK = slotKeepsRest || Self.sendPollingRate(hz, to: dev)
             // Lighting commands only count on models that have lighting — the Atheris
             // (correctly) refuses them, and that must not block its profiles from applying.
@@ -1909,10 +2320,12 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             }
             let zonesOK = zonesWritten
             if !zoneTargets.isEmpty { self.zonesReadFor = nil }
-            let brightOK = !hasLighting || !zoneTargets.isEmpty
-                || (try? dev.sendWithRetry(RazerCommands.setBrightness(
-                        RazerCommands.brightnessRaw(fromPercent: brightnessPct),
-                        led: RazerDevices.brightnessLed(pid: dev.productID)))) != nil
+            let brightOK = !hasLighting || !zoneTargets.isEmpty || !RazerDevices.hasBrightness(pid: dev.productID)
+                || (try? Self.writeBrightness(RazerCommands.brightnessRaw(fromPercent: brightnessPct), to: dev)) != nil
+            // Built for the mouse it reaches: if that changed since the profile was read, an
+            // effect it lacks lands as one it has.
+            let (landed, lighting) = Self.lightingCommand(effect, color: color, waveSpeed: speed,
+                                                          effects: RazerDevices.effects(pid: dev.productID))
             let lightOK = !hasLighting || (zoneTargets.isEmpty
                 ? slotKeepsRest || (try? dev.sendWithRetry(lighting)) != nil
                 : zonesOK)
@@ -1920,6 +2333,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             let anyOK = dpiOK || pollOK || (hasLighting && (brightOK || lightOK))
                 || (stagesReport != nil && stagesOK)
             self.publish {
+                if let token { self.pendingEffect.finish(token) }
                 if stagesOK, !stages.isEmpty {
                     self.dpiStages = stages
                     self.activeDpiStage = stages.firstIndex(of: Int(dpi)) ?? 0
@@ -1933,8 +2347,10 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 if allOK, self.profiles.contains(where: { $0.id == profile.id }) {
                     remapper.setMappings(mappings)
                     if hasLighting, zoneTargets.isEmpty {
-                        self.effect = effect
+                        self.effect = landed
                         self.lightingColor = color
+                        if landed == .wave { self.waveSpeed = speed }
+                        self.lightingChanges &+= 1
                     }
                     self.activeProfileID = profile.id
                     ProfileStore.setActiveProfileID(profile.id, forDevice: key)
@@ -2169,6 +2585,16 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         dpi = 3200
     }
 
+    /// For the `render-remap side-buttons` preview: the Cobra over Bluetooth with its side
+    /// buttons saved to Ctrl+V and Ctrl+C, as the report that led to `SideButtonReset` had them.
+    func setPreviewSideButtonsRemapped() {
+        setPreviewBluetoothConnected()
+        remappedSideButtons = [
+            .init(id: 4, current: [0x02, 0x02, 0x01, 0x19, 0, 0, 0], factory: SideButtonReset.mouseBlock(4)),
+            .init(id: 5, current: [0x02, 0x02, 0x01, 0x06, 0, 0, 0], factory: SideButtonReset.mouseBlock(5)),
+        ]
+    }
+
     /// For the `render-ui bluetooth` preview: a Razer mouse is on Bluetooth, so no USB control
     /// (dongle present, name known, but no live battery/DPI readings).
     func setPreviewBluetooth() {
@@ -2304,11 +2730,12 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         var usbError: Error?
         do {
             // Decided before opening, so an idle dongle isn't opened and closed on every poll.
-            let usb = try HIDDevice.controlInterface(vendorId: Razer.vendorId) // any Razer mouse
-            let connection = RazerDevices.connection(pid: HIDDevice.productID(of: usb))
+            let usb = try HIDDevice.controlInterfaceAndDongle(vendorId: Razer.vendorId) // any Razer mouse
+            let connection = RazerDevices.connection(pid: HIDDevice.productID(of: usb.pick))
             if !Self.prefersBluetooth(over: connection, bluetoothControllable: bt != nil) {
-                let hid = try HIDDevice.open(usb)
-                return RazerDevices.hasOnboardSlots(pid: hid.productID) ? OnboardSlotTransport(hid) : hid
+                let opened = try HIDDevice.openCableOrItsDongle(usb.pick, dongle: usb.dongle)
+                if opened.onDongle { scheduleCableRecheck() }
+                return RazerDevices.hasOnboardSlots(pid: opened.device.productID) ? OnboardSlotTransport(opened.device) : opened.device
             }
         } catch {
             // Whatever stopped USB (nothing there, or Input Monitoring not granted, which
@@ -2463,6 +2890,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         ioHasBattery = battery
         slotsReadOn = nil
         let slot = readOnboardSlotsSync(d)
+        ioCanCharge = RazerDevices.canCharge(pid: pid)
         publish {
             self.update(\.activeOnboardSlot, slot.map(Int.init))
             if let slot { self.followActiveSlot(Int(slot)) }
@@ -2474,6 +2902,10 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             self.update(\.deviceHasBattery, battery)
             self.update(\.deviceHasLighting, RazerDevices.hasLighting(pid: pid))
             self.update(\.deviceMaxDPI, RazerDevices.maxDPI(pid: pid))
+            // An effect left from another mouse that this one doesn't have (a static-only
+            // mouse after one on Wave) starts as the static colour, so the picker, the wave
+            // slider, a saved profile and the next colour pick all agree with what it shows.
+            self.update(\.effect, self.supported(self.effect))
         }
         return d
     }

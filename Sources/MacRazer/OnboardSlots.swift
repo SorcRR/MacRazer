@@ -187,3 +187,9 @@ extension RazerTransport {
         (self as? BluetoothDevice) ?? ((self as? OnboardSlotTransport)?.base as? BluetoothDevice)
     }
 }
+
+extension RazerTransport {
+    /// The link under an `OnboardSlotTransport`, for code that needs the concrete transport
+    /// (a polling_rate2 write, the Bluetooth-only commands). Itself for any other transport.
+    var unwrapped: any RazerTransport { (self as? OnboardSlotTransport)?.base ?? self }
+}

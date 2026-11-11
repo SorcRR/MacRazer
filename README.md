@@ -6,6 +6,8 @@ is short and doesn't include the Cobra HyperSpeed or Atheris — this fills that
 to the mouse directly over USB HID (no kernel extension, no driver install), using a protocol
 ported from [OpenRazer](https://github.com/openrazer/openrazer).
 
+Website, with the download and setup help: [macrazer.com](https://macrazer.com/?utm_source=github&utm_campaign=readme)
+
 Works best with the **Razer Cobra HyperSpeed** and the **Razer Atheris**, the two devices this
 has actually been tested on. It detects any Razer mouse by name and should work with other
 Razer mice that use the same HID protocol family, but those are untested, so treat support as
@@ -13,9 +15,9 @@ Razer mice that use the same HID protocol family, but those are untested, so tre
 
 > Unofficial. Not affiliated with, authorized by, or endorsed by Razer Inc. See [NOTICE.md](NOTICE.md).
 > 
-> <img width="324" height="624" alt="image" src="https://github.com/user-attachments/assets/a7632668-2d12-4d2f-aa84-7b234bad31dc" />
-> <img width="323" height="290" alt="image" src="https://github.com/user-attachments/assets/c1cf4013-9c1e-40df-ac09-c3e36756df69" />
-> <img width="323" height="520" alt="image" src="docs/assets/battery-usage.png" />
+> <img width="324" height="713" alt="MacRazer popover: battery, DPI stages, polling rate, lighting, buttons and profiles" src=".github/screenshots/popover.png" />
+> <img width="326" height="718" alt="Configure Buttons: Back and Forward mapped to Copy and Paste" src=".github/screenshots/buttons.png" />
+> <img width="325" height="711" alt="Battery Usage: discharge curve, rate, time left and past charges" src=".github/screenshots/battery-usage.png" />
 
 
 ## Features
@@ -28,13 +30,32 @@ Razer mice that use the same HID protocol family, but those are untested, so tre
 - **DPI** with a slider (capped at each model's real maximum), the mouse's own preset stages
   read from the device, and a recallable custom value (per device).
 - **Polling rate**: 125 / 500 / 1000 Hz.
-- **RGB lighting**: static colour via an inline hue/saturation wheel, plus spectrum, wave, off,
-  and a brightness slider.
+- **RGB lighting**: static colour via an inline hue/saturation wheel, plus breathing,
+  spectrum, wave (with a speed slider), off, and a brightness slider.
+- **Sliders follow the scroll wheel**: scroll over any slider in the popover to move it.
+- **Low battery alert**: a notification when the battery drops below 15%, once per charge.
+- **Profiles**: save DPI, polling rate, lighting and button remaps under a name, and switch
+  between them from the popover. Saved per device.
+- **Themes**: System, Dark, Light or Razer Green, with an optional glass effect, in
+  Settings › Appearance. A two-column popover is there too. It's always used while a keyboard
+  or mousepad is connected.
+- **Connection sounds** when the mouse connects or disconnects (can be turned off).
 - **Button remapping** for the side Back/Forward buttons (software, via a CGEvent tap):
   keyboard shortcuts (presets or a custom recorder), mouse clicks, and media keys. Saved per
-  device.
+  device. If another mouse app (Mac Mouse Fix, SteerMouse, BetterMouse) takes the side
+  buttons' clicks first, the page names it so you know which one to quit.
 - **Any Razer mouse is detected and named.** Controls a model lacks are hidden automatically
-  (no lighting on the Atheris, no battery UI on wired-only mice).
+  (no lighting on the Atheris, no battery UI on wired-only mice). A Razer keyboard or other
+  product that is never a mouse is not taken for one.
+- **Keyboard and mousepad lighting.** Each Razer keyboard or mousepad next to the mouse gets
+  its own card in the popover, with its own colour, effect and brightness. Each can also
+  follow the mouse's lighting. Tested on the Cynosa Chroma, Ornata V3 and Ornata V3 X
+  keyboards and the Firefly V2, Goliathus Chroma and Goliathus Chroma Extended mousepads. The
+  Cynosa Chroma Pro, Cynosa Lite, the Ornata V3's other versions, the Firefly V2 Pro and the
+  Goliathus Chroma 3XL use the same commands but are untested. An untested one's card has a
+  Test it button.
+- **Asks for help with a new mouse.** When a mouse MacRazer doesn't fully support connects, a
+  small window offers the device test (see below). It can be turned off in Settings.
 - Settings are written to the mouse's **onboard memory** where supported, so they persist when
   the app is not running.
 - **Starts at login** (on by default, switchable in the popover and in System Settings ›
@@ -59,13 +80,56 @@ says so.
 | Razer Cobra HyperSpeed (wired + wireless) | Everything, continuously — the development mouse | maintainer |
 | Razer Atheris | Battery, DPI, polling | maintainer |
 | Razer Basilisk V3 X HyperSpeed | Battery, DPI, DPI stages, polling, lighting, brightness | [@joelday](https://github.com/joelday) |
-| Razer Basilisk V4 Pro (wired, wireless + Bluetooth) | Battery, DPI, DPI stages, polling up to 8000 Hz, lighting per zone, brightness, sleep timer, low-battery level, wheel mode, Smart-Reel and its sensitivity, scroll acceleration, onboard profiles and button remaps. Over Bluetooth everything but polling and the wheel settings | contributor |
+| Razer Basilisk V4 Pro (wired, wireless + Bluetooth) | Battery, DPI, DPI stages, lighting per zone, brightness, sleep timer, low-battery level, wheel mode, Smart-Reel and its sensitivity, scroll acceleration, onboard profiles and button remaps. Over Bluetooth everything but polling and the wheel settings. Polling up to 8000 Hz still waits on a test report | [@fn-milans](https://github.com/fn-milans) |
+| Razer Basilisk Mobile (Wireless) | Battery, DPI, DPI stages, polling, static color, brightness | [@oss3](https://github.com/oss3) |
 | Razer Viper Ultimate (Wireless) | Battery, DPI, polling, brightness | [@raphaelchenouard](https://github.com/raphaelchenouard) |
+| Razer Naga Pro (Wireless) | Battery, DPI, DPI stages, polling, lighting, brightness | [@sidneylopes](https://github.com/sidneylopes) |
+| Razer Naga Pro (Wired) | Battery, DPI, DPI stages, polling, lighting, brightness | anonymous report |
+| Razer Naga V3 Pro (Wireless) | Battery, DPI, DPI stages, polling, lighting, brightness | [@chris-agnew](https://github.com/chris-agnew) |
+| Razer Naga V3 Pro (Wired) | Battery, DPI, DPI stages, polling, lighting, brightness | [@chris-agnew](https://github.com/chris-agnew) |
+| Razer Naga Trinity | DPI, DPI stages, polling, lighting, brightness | anonymous report |
+| Razer Viper V3 HyperSpeed | Battery, DPI, DPI stages, polling | anonymous report |
+| Razer Basilisk V3 | DPI, DPI stages, polling, lighting, brightness | SuperSpacer54376 |
+| Razer Basilisk V3 Pro (wired + wireless) | Battery, DPI, DPI stages, polling, lighting, brightness | anonymous reports |
+| Razer Viper V3 Pro (Wireless) | Battery, DPI, DPI stages, polling (it has no lighting) | anonymous report |
+| Razer DeathAdder V2 | DPI, DPI stages, polling, lighting, brightness (wired only) | anonymous reports |
+| Razer DeathAdder V2 X HyperSpeed | Battery, DPI, DPI stages, polling (it has no lighting) | anonymous report |
+| Razer Basilisk V2 | DPI, DPI stages, polling, lighting, brightness | anonymous report |
+| Razer DeathAdder Essential | DPI, DPI stages, polling, brightness (its one light is green only) | anonymous report |
+| Razer Naga V2 Pro (Wired) | Battery, DPI, DPI stages, polling, lighting, brightness | anonymous report |
+| Razer Pro Click V2 (wired + wireless) | Battery, DPI, DPI stages, polling | anonymous reports |
+| Razer Pro Click (wired + wireless) | Battery, DPI, DPI stages, polling (it has no lighting) | anonymous reports |
+| Razer Viper | DPI, DPI stages, polling, lighting, brightness (wired only) | anonymous report |
+| Razer DeathAdder V3 Pro (Wireless, both dongles, and the first one's cable) | Battery, DPI, DPI stages, polling (it has no lighting) | anonymous reports |
+| Razer Viper V3 Pro SE (Wireless) | Battery, DPI, DPI stages, polling (it has no lighting) | anonymous report |
+| Razer Naga V2 HyperSpeed | Battery, DPI, DPI stages, polling (it has no lighting) | anonymous reports |
+| Razer Basilisk X HyperSpeed | Battery, DPI, DPI stages, polling (it has no lighting) | MagnetTileMan |
+| Razer Orochi V2 (Wireless) | Battery, DPI, DPI stages, polling (it has no lighting) | anonymous report |
+| Razer DeathAdder V3 HyperSpeed (wired + wireless) | Battery, DPI, DPI stages, polling (it has no lighting) | fxaxg and anonymous reports |
+| Razer DeathAdder V2 Pro (Wireless) | Battery, DPI, polling, lighting | anonymous reports |
+| Razer DeathAdder V2 Pro (Wired) | Battery, DPI, DPI stages, polling; lighting not working yet | anonymous report |
+| Razer Viper Ultimate (Wired) | Battery, DPI, polling, lighting | anonymous report |
+| Razer Taipan | DPI, polling; lighting not working yet | anonymous report |
+| Razer Basilisk V4 HyperSpeed (wired + wireless) | Battery, DPI, DPI stages; polling not confirmed yet | anonymous reports |
+| Razer Viper V4 Pro (wired + wireless) | Battery, DPI, DPI stages; polling not confirmed yet | Robotxm and an anonymous report |
+| Razer Viper 8KHz | DPI, DPI stages, lighting, brightness (wired only); polling not confirmed yet | anonymous report |
+| Razer Mouse Dock Pro (with a Naga V3 Pro) | Battery, DPI, lighting, brightness; polling not confirmed yet | anonymous report |
+| Razer Mouse Dock V2 Pro (with a Basilisk V4 Pro) | Battery, DPI, DPI stages, lighting, brightness; polling not confirmed yet | cparedes |
+| Razer DeathAdder V3 | DPI, DPI stages; polling not confirmed yet (it has no battery or lighting) | anonymous reports |
+| Razer HyperFlux V2 (with the mouse on it) | Battery, DPI, DPI stages, polling; lighting not confirmed yet | anonymous report |
+| Razer Naga Chroma | DPI, polling; lighting not working yet | anonymous report |
+| Razer Naga Hex V2 | DPI, polling; lighting not working yet | foivos92 |
+| Razer Mamba Tournament Edition | DPI, polling; lighting not working yet | anonymous report |
+| Razer Naga X | DPI, DPI stages, polling; lighting not working yet | anonymous report |
+| Razer Basilisk Ultimate (Wireless) | Battery, DPI, DPI stages, polling; lighting not confirmed yet | anonymous reports |
+| Razer Basilisk V3 Pro 35K (wired + wireless) | Battery, DPI, DPI stages, polling; lighting not confirmed yet | anonymous reports |
+| Razer DeathAdder Elite | DPI, polling; lighting not tried yet | anonymous report |
+| Razer Basilisk V3 Pro 35K (Bluetooth) | Battery; DPI and lighting not tried yet | anonymous reports |
+| Razer Basilisk V4 HyperSpeed (Bluetooth) | Battery; DPI and lighting not tried yet | anonymous report |
+| Razer Pro Click V2 Vertical Edition (wired + wireless) | Battery, DPI, DPI stages, a static color, effects; polling on the cable not confirmed yet (it has no brightness) | [@k6n7frbrtc-hub](https://github.com/k6n7frbrtc-hub), tekumara and an anonymous report |
 | Razer Orochi 2013 | DPI only | [@raphaelchenouard](https://github.com/raphaelchenouard) |
-| Razer Basilisk V3 | Nothing; reported working by a user | — |
+| Razer DeathAdder Essential (2018, White Edition) | Nothing; values from OpenRazer | — |
 | Razer Cobra, Cobra Pro (wired + wireless) | Nothing; same protocol family, values from OpenRazer | — |
-| Razer Basilisk X HyperSpeed | Nothing; values from OpenRazer | — |
-| Razer Viper Ultimate (Wired) | Nothing; its wireless sibling is verified | — |
 | Any other Razer mouse | Nothing; detected and named, controls attempted | — |
 
 An unverified mouse is not a broken one. Detection and naming work for any Razer mouse, and
@@ -75,9 +139,21 @@ column is about who has actually seen it happen.
 **Have a mouse that isn't verified?** The quickest way to help is in the app. Right-click the
 menu bar icon and choose **Help Support This Mouse…**. It runs the same probes as the
 commands below, puts every setting back, and builds the report for you. **Send** emails it to
-the maintainer, or you can copy it or open a GitHub issue with it. On a verified mouse the item
-reads **Test This Mouse…**, and a report confirms it still works on your firmware. The test
-needs the dongle or a cable, even on a mouse that also works over Bluetooth.
+the maintainer, or you can copy it or open a GitHub issue with it. If part of your mouse is
+already verified, the test lists what works and offers to check only what's missing. It also
+says which of the mouse's other connections (cable, dongle, Bluetooth) still need a report. On
+a verified mouse the item reads **Test This Mouse…**. The window says no test is needed, but you
+can still run one to confirm it works on your firmware. The full
+test needs the dongle or a cable. A mouse on Bluetooth gets a shorter test that only reads.
+
+You don't have to find the menu item. When an unverified mouse connects by cable or dongle,
+MacRazer asks once, when no other window is open. A partly verified mouse is asked about just
+what's missing. A mouse verified on one connection but not another (say, the dongle but not
+the cable or Bluetooth) gets a note telling you which and how to switch. If you say Not Now, it reminds you once a
+week later and then stops. A card at the top of the popover offers the same test until you send
+a report or hide it. "Don't ask for this mouse" stops both for that model. If the mouse is
+plugged in before Input Monitoring is allowed, the window starts with that permission. To turn
+all of this off, use Settings › General › **Ask me to help test my mouse**.
 
 ### What a device report contains
 
@@ -88,6 +164,15 @@ You can read the whole report on the last screen before it goes anywhere.
 - What each step found: which transaction ids the mouse answered to, the battery level, the
   DPI and polling rate it read and wrote back, and the lighting brightness. Every command the
   test sent is listed, with the first 8 bytes of each answer.
+- Whether the mouse answers about 30 more read-only commands: newer polling rates, the sleep
+  timer, scroll wheel settings, profiles stored in the mouse, saved button functions and each
+  lighting zone. These only read, so nothing on the mouse changes. They show which features
+  are worth adding for it.
+- If the mouse keeps a button function table, every entry in it. With the buttons you press,
+  that is most of what's needed to remap them.
+- If no transaction id answers, whether the mouse's other interfaces do.
+- From the Bluetooth test: the Bluetooth services the mouse has, its standard battery level,
+  and which of Razer's Bluetooth commands it answers, button table included.
 - Which extra buttons you pressed during the button step, not when.
 - The app and macOS versions.
 - Only if you fill them in: a comment, a name to credit, and an email address for a reply.
@@ -96,8 +181,9 @@ Never in it: the mouse's serial number, or anything else about your Mac.
 
 Where it goes depends on the button. **Copy** puts it on your clipboard. **Open GitHub issue**
 makes it public, so it leaves out your email address. **Send** emails it to the maintainer
-through a small Cloudflare Worker ([worker/](worker/)), which keeps nothing but a count of
-reports per day.
+through a small Cloudflare Worker, which keeps nothing but a count of reports per day. Its code
+is in a private repository, and builds from this repository don't have Send: they offer Copy
+and the GitHub issue instead.
 
 Adding a model is a small change to a registry plus on-hardware verification. See
 [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -139,9 +225,10 @@ a serial).
 macOS 14 or later, on Apple Silicon or Intel.
 
 **Connect over the 2.4 GHz dongle or a USB-C cable.** That's where Razer exposes its full
-control protocol. The **Cobra HyperSpeed also works over Bluetooth**: battery, DPI stages,
-brightness and a static lighting colour. Polling rate, other lighting effects, custom DPI
-values and profiles still need the dongle or a cable. MacRazer asks for Bluetooth access the
+control protocol. The **Cobra HyperSpeed and Basilisk V3 X HyperSpeed also work over
+Bluetooth**: battery, DPI stages, brightness and a static lighting colour. Polling rate, other
+lighting effects, custom DPI values and profiles still need the dongle or a cable. On the
+Basilisk V3 Pro 35K and Basilisk V4 HyperSpeed, only the battery is confirmed over Bluetooth so far. MacRazer asks for Bluetooth access the
 first time it finds the mouse there.
 
 Other models are a plain pointer over Bluetooth, so MacRazer can't read or change anything.
@@ -150,19 +237,25 @@ mouse on Bluetooth.
 
 ## Install
 
-Download `MacRazer.dmg` from the [latest release](../../releases/latest), open it, and drag
+Download [`MacRazer.dmg`](https://reports.macrazer.com/v1/download?via=site&page=readme)
+(release notes on the [latest release](../../releases/latest) page), open it, and drag
 **MacRazer** into Applications.
 
-This build is unsigned (no paid Apple Developer ID), so on first launch Gatekeeper will say
-the app "cannot be opened because it is from an unidentified developer" or "is damaged and
-can't be opened". Both are the standard unsigned-app warning, not an actual problem. To open
-it anyway, do **one** of:
+This build is unsigned (no paid Apple Developer ID), so the first time you open it macOS
+blocks it. You'll see "MacRazer Not Opened" with only a **Done** button, or on older macOS
+"cannot be opened because it is from an unidentified developer" or "is damaged and can't be
+opened". It's the standard warning for any app without a paid Apple Developer ID, not a real
+problem. To open it anyway, do **one** of:
 
-- Right-click (or Control-click) **MacRazer.app** in Finder, choose **Open**, then confirm
-  **Open** in the dialog. (Only needed once.)
-- Or, in System Settings > Privacy & Security, scroll to the bottom and click **Open Anyway**
-  next to the MacRazer warning.
+- Click **Done**, then go to System Settings > Privacy & Security, scroll to the bottom and
+  click **Open Anyway** next to the MacRazer message. Confirm with your password or Touch ID.
 - Or, from Terminal: `xattr -cr /Applications/MacRazer.app`, then open it normally.
+- On macOS 14 and earlier you can also right-click (or Control-click) **MacRazer.app** in
+  Finder, choose **Open**, then **Open** again. macOS 15 removed this shortcut.
+
+You only need to do this once. Getting rid of this step for good needs a paid Apple Developer
+ID ($99 a year). If you'd like to help with that, tips go to
+[ko-fi.com/sorcrr](https://ko-fi.com/sorcrr).
 
 After that it launches like any other app. It will then ask for **Input Monitoring**
 permission (and **Accessibility** if you use button remapping); see [Permissions](#permissions)
@@ -178,7 +271,7 @@ swift run MacRazer
 
 # Or build a standalone .app:
 ./Scripts/setup-signing.sh      # one-time: a stable self-signed identity (see Permissions)
-./Scripts/build-app.sh          # produces "MacRazer.app"
+./Scripts/build-app.sh          # produces "MacRazer.app", versioned "<version>-dev"
 open "MacRazer.app"
 ```
 
@@ -209,10 +302,12 @@ swift run MacRazer info                 # list the mouse's HID interfaces
 swift run MacRazer battery              # read battery %
 swift run MacRazer dpi [x] [y]          # read or set DPI
 swift run MacRazer poll [125|500|1000]  # read or set polling rate
-swift run MacRazer rgb static ff0000    # static colour (or: spectrum | wave | off)
+swift run MacRazer rgb static ff0000    # static colour (or: spectrum | wave [speed] | off)
+swift run MacRazer rgb breathing ff0000 # breathing (two colours for dual, none for random)
 swift run MacRazer brightness [0-100]   # read or set LED brightness
 swift run MacRazer discover             # which transaction ids the mouse answers to
 swift run MacRazer devicetest           # the in-app device test, printed as JSON
+MacRazer.app/Contents/MacOS/MacRazer bluetoothtest  # the read-only Bluetooth test (quit the app first)
 ```
 
 ## How it works
@@ -223,7 +318,7 @@ Manager. No kernel extension is needed because Razer mice respond to standard US
 reports that any userspace process can send.
 
 Full details, including the protocol, the per-device hardware quirks, and a file-by-file map,
-are in [docs/DOCUMENTATION.md](docs/DOCUMENTATION.md). The complete feature history is in
+are in [Documentation/DOCUMENTATION.md](Documentation/DOCUMENTATION.md). The complete feature history is in
 [CHANGELOG.md](CHANGELOG.md).
 
 ## Built with
@@ -244,4 +339,5 @@ derived from OpenRazer. Full attribution and the trademark notice are in [NOTICE
 ## Support
 
 This is a free, unpaid community project. If it is useful to you, you can leave a tip:
-[ko-fi.com/sorcrr](https://ko-fi.com/sorcrr).
+[ko-fi.com/sorcrr](https://ko-fi.com/sorcrr). The first goal is an Apple Developer ID ($99 a
+year), so MacRazer can be signed and opens without the security warning.

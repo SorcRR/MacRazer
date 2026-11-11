@@ -94,12 +94,15 @@ struct RazerProminentButtonStyle: ButtonStyle {
 
         var body: some View {
             let small = controlSize == .small || controlSize == .mini
-            let shape = RoundedRectangle(cornerRadius: small ? 5 : 6, style: .continuous)
+            // Large matches the system's large bordered button, 28 pt tall, so a footer of
+            // both kinds lines up. Not extraLarge: a bordered button measures like regular there.
+            let large = controlSize == .large
+            let shape = RoundedRectangle(cornerRadius: small ? 5 : large ? 7 : 6, style: .continuous)
             configuration.label
                 .font(font ?? .system(size: small ? 11 : 13))
                 .foregroundStyle(Color.onRazerGreen)
-                .padding(.horizontal, small ? 8 : 10)
-                .padding(.vertical, small ? 2 : 3)
+                .padding(.horizontal, small ? 8 : large ? 14 : 10)
+                .padding(.vertical, small ? 2 : large ? 6 : 3)
                 .background(Color.razerGreen, in: shape)
                 .overlay(shape.fill(Color.black.opacity(configuration.isPressed ? 0.18 : 0)))
                 .hoverHighlight(shape)
@@ -211,5 +214,55 @@ struct FlowLayout: Layout {
             rows.append(current)
         }
         return rows
+    }
+}
+
+/// The height the popover's chip rows share: polling rate, effect, DPI stages and sleep timer.
+enum ChipMetrics {
+    static let height: CGFloat = 26
+}
+
+/// A row of chips picking one value, the chosen one filled deep green. Bigger targets than a
+/// small segmented control (18 pt). Every click reaches `onSelect`, the chosen chip's too:
+/// the shown value can be a placeholder (a polling rate not read yet), so the caller decides
+/// what a no-change click means.
+struct ChipPicker<Value: Hashable>: View {
+    /// What the row sets, for VoiceOver ("Polling rate").
+    let label: String
+    let values: [Value]
+    /// Nil when no chip matches (a sleep timer set between presets).
+    let selection: Value?
+    let title: (Value) -> String
+    /// What VoiceOver says for a chip; the title by default.
+    var spokenTitle: ((Value) -> String)? = nil
+    let onSelect: (Value) -> Void
+    @Environment(\.isEnabled) private var isEnabled
+
+    var body: some View {
+        HStack(spacing: 5) {
+            ForEach(values, id: \.self) { value in
+                let chosen = value == selection
+                let shape = RoundedRectangle(cornerRadius: 7)
+                Button { onSelect(value) } label: {
+                    Text(verbatim: title(value))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 11, weight: chosen ? .semibold : .regular).monospacedDigit())
+                .foregroundStyle(chosen ? Color.white : Color.primary)
+                .frame(maxWidth: .infinity).frame(height: ChipMetrics.height)
+                .background(chosen ? Color.razerGreenDeep : Color.primary.opacity(0.08), in: shape)
+                .hoverHighlight(shape)
+                .accessibilityLabel(spokenTitle?(value) ?? title(value))
+                .accessibilityAddTraits(chosen ? .isSelected : [])
+            }
+        }
+        // Dimmed like a disabled system control (a disconnected mouse).
+        .opacity(isEnabled ? 1 : 0.45)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(label)
     }
 }

@@ -20,8 +20,9 @@ final class CrashReportModel: ObservableObject {
     @Published var replyEmail = ""
     @Published private(set) var state = State.editing
 
-    /// Delivers the finished report. Nil until the Worker exists; see `CrashReporting`.
-    var deliver: ((CrashReport) async throws -> Void)?
+    /// Delivers the finished report and says how it went. Nil in a build without the Worker;
+    /// see `CrashReporting`.
+    var deliver: CrashReporting.Deliver?
 
     init(report: CrashReport, count: Int = 1) {
         self.report = report
@@ -49,12 +50,22 @@ final class CrashReportModel: ObservableObject {
     func send() async {
         guard canSend, let deliver else { return }
         state = .sending
-        do {
-            try await deliver(finalReport())
-            state = .sent
-        } catch {
-            state = .failed("Couldn't send the report. Check your connection and try again.")
-        }
+        let outcome = await deliver(finalReport())
+        state = outcome == .sent ? .sent : .failed(Self.sendFailure(outcome))
+    }
+
+    /// What the window says when Send fails, as the other report windows say it. This one
+    /// has no GitHub button, so it doesn't point to one.
+    static func sendFailure(_ outcome: DeviceReportSender.Outcome) -> String {
+        DeviceTestView.sendFailure(outcome, emailHint: "email it to us at \(ProjectLinks.contactEmail)",
+                                   offersGitHub: false)
+    }
+    /// An email with the report in it, for when Send fails: what they wrote, then the report
+    /// shown in the window. `ProjectLinks.mail` cuts it short if the link would be too long.
+    var mailInstead: URL {
+        let report = finalReport()
+        let body = (report.comment.map { $0 + "\n\n" } ?? "") + CrashReportOutput.json(report)
+        return ProjectLinks.mail(subject: "MacRazer crash report: \(report.appVersion)", body: body)
     }
 
     // MARK: Summary
@@ -88,10 +99,14 @@ final class CrashReportModel: ObservableObject {
             exceptionFrames: nil, framesDropped: nil,
             incident: "5E0C7B1A-8F43-4C2B-9D7E-1A2B3C4D5E6F", comment: nil, replyEmail: nil),
             count: 2)
-        model.deliver = { _ in }
+        model.deliver = { _ in .sent }
         return model
     }
 
     /// The thank-you screen, for `render-crash-report sent`.
     func loadPreviewSent() { state = .sent }
+    /// A send that didn't go, for `render-crash-report failed`.
+    func loadPreviewFailed(_ outcome: DeviceReportSender.Outcome = .unavailable) {
+        state = .failed(Self.sendFailure(outcome))
+    }
 }

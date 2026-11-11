@@ -26,12 +26,21 @@ extension Color {
     /// Text and icons drawn on a `razerGreen` fill. Dark in every theme: white on #44D62C is
     /// only about 1.9:1 contrast.
     static let onRazerGreen = Color(nsColor: NSColor(hex: 0x0D2B07))
+    /// A deep green for a chosen chip (`ChipPicker`), with white text on it. The same in light
+    /// and dark.
+    static let razerGreenDeep = Color(nsColor: NSColor(hex: 0x155C10))
     /// The logo's green: brighter than the brand green so it pops on dark, and the darker
     /// text green on light, where a bright green washes out.
     static let razerGreenBright = adaptive(light: NSColor(hex: 0x23891A), dark: NSColor(hex: 0x6BFF40))
     /// The Bluetooth chip's colour. System blue is too dark to read on a dark background,
     /// and this lighter blue too pale on a light one.
     static let bluetoothBlue = adaptive(light: NSColor(hex: 0x0A64D6), dark: NSColor(hex: 0x78B8FF))
+    // Lighting swatch hues, shared with the DPI stage chips. A true red: SwiftUI `.red` is
+    // a warm orange-red.
+    static let swatchRed = Color(red: 1.0, green: 0.0, blue: 0.0)
+    static let swatchYellow = Color(red: 1.0, green: 0.85, blue: 0.0)
+    static let swatchCyan = Color(red: 0.0, green: 0.8, blue: 1.0)
+    static let swatchBlue = Color(red: 0.15, green: 0.35, blue: 1.0)
     // Battery *state* uses Apple system colors (meaning), never the brand green.
     static let batteryFull = Color(red: 0x34 / 255, green: 0xC7 / 255, blue: 0x59 / 255)
     static let batteryMid = Color(red: 0xFF / 255, green: 0x9F / 255, blue: 0x0A / 255)
@@ -46,15 +55,23 @@ struct PopoverView: View {
     /// Settings › Appearance; only the Razer Green glass edge is drawn here. The rest is the
     /// popover's appearance and backdrop, which the app delegate sets.
     @ObservedObject var appearance: AppearanceSettings
+    /// Whether to show the card asking for a device test; see `SupportPromptPolicy`.
+    @ObservedObject var supportPrompt: SupportPrompt = .shared
+    /// Razer keyboards and mousepads plugged in next to the mouse, a card each.
+    @ObservedObject var accessories: Accessories = .shared
     @Environment(\.colorScheme) private var colorScheme
     /// Opening a window is the owner's job — the popover doesn't know about window controllers.
     /// Deliberately not defaulted: a no-op default would let a future call site forget the
     /// handler and ship a gear button that depresses and does nothing, with no compiler error.
     /// The preview passes an explicit `{}`.
     var onOpenSettings: () -> Void
-    /// Opens the device test, from the "Help test it" link on a mouse with limited support.
+    /// Opens the device test, from the support card or the "Help test it" link on a mouse with
+    /// limited support.
     /// Not defaulted, for the same reason as `onOpenSettings`.
     var onOpenDeviceTest: () -> Void
+    /// Opens the lighting test for an untested keyboard or mousepad, from its card.
+    /// Not defaulted, for the same reason as `onOpenSettings`.
+    var onTestAccessory: (AccessoryController) -> Void
 
     enum Page { case main, color, buttons, usage, profiles, whatsNew }
     @State private var page: Page = .main
@@ -69,46 +86,79 @@ struct PopoverView: View {
     /// `Binding<Color>`. The controller's published value is the source of truth (lighting
     /// state is device-confirmed there); this follows it via `onChange`.
     @State private var color: Color = .razerGreen
+    /// Which device the colour page sets: the mouse, or one accessory's own colour.
+    @State private var colorTarget: ColorTarget = .mouse
+    enum ColorTarget: Equatable {
+        case mouse
+        case accessory(AccessoryController.ID)
+    }
+    /// The colour page's colour while it sets an accessory. Seeded from the accessory when
+    /// the page opens.
+    @State private var accessoryColor: Color = .razerGreen
+    /// Wave speed slider, 0 (slowest) to 1 (fastest); see `WaveSpeed`.
+    @State private var waveSpeedValue = 0.5
     /// Recallable custom DPI — persisted per-mouse, and never above the mouse's max.
     @State private var customDPI: Int = 8000
     @State private var editingDpiStage: Int?
     @State private var editingDpiValue = false
+    /// The DPI card's Edit mode: clicking a stage chip opens its editor instead of selecting it.
+    /// Read through `inStageEditMode`, which drops it when the mouse can't be edited any more.
+    @State private var editingDpiStages = false
+    private var inStageEditMode: Bool { editingDpiStages && controller.supportsDpiStageEditing }
     @State private var dpiStageDraft = ""
+    /// The open stage's value when its editor opened, to tell an untouched field from an edit.
+    @State private var dpiStageOriginal = ""
+    /// A stage clicked while the open one was being saved: its editor opens once the save ends.
+    @State private var pendingDpiStageEdit: Int?
     @State private var dpiStageError: String?
     @FocusState private var dpiStageFieldFocused: Bool
     @State private var versionHovered = false
     @State private var gearHovered = false
+    @State private var tipHovered = false
 
+    /// The mouse's rates (`RazerDevices.pollingRates`): the classic three, or up to 8000 Hz on
+    /// a polling_rate2 mouse. On a classic mouse 250 Hz joins once the mouse was read at it
+    /// (`offersQuarterPollRate`), so the chip stays to go back to.
     private var pollRates: [Int] {
-        controller.deviceIsBluetooth ? RazerCommands.supportedPollingRates
-            : RazerCommands.supportedPollingRates(pid: controller.deviceID)
+        Self.pollRates(pid: controller.deviceID,
+                       showsQuarter: controller.offersQuarterPollRate || controller.pollRate == 250)
+    }
+
+    /// `pollRates` without the view, for tests.
+    nonisolated static func pollRates(pid: Int?, showsQuarter: Bool) -> [Int] {
+        let rates = RazerDevices.pollingRates(pid: pid)
+        guard showsQuarter, !rates.contains(250) else { return rates }
+        return (rates + [250]).sorted()
     }
     private let defaultStages = [400, 800, 1600, 3200, 6400]
     /// The connected mouse's actual configured DPI stages, or sensible defaults.
     private var displayedStages: [Int] {
         controller.dpiStages.isEmpty ? defaultStages : controller.dpiStages
     }
-    // Distinct hues with a true red (SwiftUI .red is a warm orange-red; .green duplicated razerGreen).
-    // Each carries its spoken/tooltip name.
-    private let swatches: [(name: String, color: Color)] = [
-        ("Red", Color(red: 1.0, green: 0.0, blue: 0.0)),
-        ("Orange", Color(red: 1.0, green: 0.5, blue: 0.0)),
-        ("Yellow", Color(red: 1.0, green: 0.85, blue: 0.0)),
-        ("Green", .razerGreen),
-        ("Cyan", Color(red: 0.0, green: 0.8, blue: 1.0)),
-        ("Blue", Color(red: 0.15, green: 0.35, blue: 1.0)),
-        ("Purple", Color(red: 0.6, green: 0.2, blue: 1.0)),
-        ("Pink", Color(red: 1.0, green: 0.2, blue: 0.65)),
-    ]
-
     /// Popover sizes to the MAIN page content (no empty space); sub-pages match that height
     /// (but never less than `subPageMinHeight`). Buttons page scrolls if taller; colour page
     /// is centred.
-    private let popoverWidth: CGFloat = 320
+    /// One column, or two (`PopoverLayout`): the mouse's status on the left, its settings on
+    /// the right, and accessories under whichever column has room. Wide rather than tall, so
+    /// it fits under the menu bar on a 13-inch screen with more than the mouse plugged in.
+    private var twoColumns: Bool {
+        PopoverLayout.usesTwoColumns(preferred: appearance.twoColumns, hasMouse: !noMouse,
+                                     accessories: accessories.available.count)
+    }
+    private var popoverWidth: CGFloat { twoColumns ? PopoverLayout.twoColumnWidth : PopoverLayout.oneColumnWidth }
+    /// The page's 12 pt inset and the 10 pt gap between the columns.
+    private var columnWidth: CGFloat { (popoverWidth - 24 - 10) / 2 }
+    /// Sub-pages are one column of text and controls. In two columns they get the Buttons
+    /// and Profiles windows' width, centred.
+    private var subPageWidth: CGFloat { twoColumns ? 440 : PopoverLayout.oneColumnWidth }
     /// With its sections collapsed the main page can be short, and sub-pages that scroll (the
     /// usage charts, the button list) would be squeezed into it. Below this they grow instead.
     /// Not the colour page: it's a fixed-size picker, centred, and would only gain empty space.
     private let subPageMinHeight: CGFloat = 560
+    /// The colour page only needs room for the picker itself: about 345 pt in one column with
+    /// a device line (the tallest it gets). A main page with no mouse and one collapsed
+    /// accessory can be shorter, so the page grows to this instead of clipping the slider.
+    private let colorPageMinHeight: CGFloat = 360
     @State private var mainHeight: CGFloat = 0
     /// The corner radius NSPopover gives its body, so the green edge sits on the outline.
     /// Measured from a capture on macOS 26; the content view is exactly the body.
@@ -126,7 +176,7 @@ struct PopoverView: View {
             }
         }
         .frame(width: popoverWidth)
-        .frame(height: page == .main ? nil : (mainHeight > 0 ? max(mainHeight, page == .color ? 0 : subPageMinHeight) : nil))
+        .frame(height: page == .main ? nil : (mainHeight > 0 ? max(mainHeight, page == .color ? colorPageMinHeight : subPageMinHeight) : nil))
         // While a sub-page is showing, the main page is unmounted and the preference reverts
         // to its 0 default — keep the last real measurement so sub-pages stay locked to the
         // main page's height instead of resizing once the transition finishes.
@@ -144,18 +194,56 @@ struct PopoverView: View {
         // Closing the popover resets navigation: reopening onto a stale sub-page (whose
         // gating card may have been disabled in the meantime — e.g. Profiles after a
         // disconnect) is disorienting.
+        // The accessory the colour page sets was unplugged or couldn't be opened again: there's
+        // nothing left to set.
+        .onChange(of: accessories.available.map(\.id)) { _, ids in
+            if page == .color, case .accessory(let id) = colorTarget, !ids.contains(id) { page = .main }
+        }
+        // Like the mouse's colour on the main page: the wheel shows what the accessory runs,
+        // after a failed write or a Follow mouse change too.
+        .onChange(of: colorTargetAccessory?.lighting.color) { _, new in
+            if let new { accessoryColor = new.swiftUIColor }
+        }
         .onAppear { isShown = true }
         .onDisappear { page = .main; isShown = false }
     }
 
     // MARK: Sub-pages
 
+    /// The accessory the colour page sets, while it sets one that's still plugged in.
+    private var colorTargetAccessory: AccessoryController? {
+        guard case .accessory(let id) = colorTarget else { return nil }
+        return accessories.accessory(id)
+    }
+
+    /// The effect a pick on the colour page lands on, mouse or accessory: the same rule the
+    /// controllers send by, so the wheel goes live exactly when the write won't be Breathing.
+    private var colorTargetEffect: LightingEffect {
+        if let accessory = colorTargetAccessory {
+            return (accessory.latestLighting.effect ?? .staticColor).afterColorPick()
+        }
+        return controller.colorPickEffect
+    }
+
+    /// Which device the page sets, named once there's more than the mouse to choose from.
+    private var colorPageDevice: ColorPickerPage.Device? {
+        if let accessory = colorTargetAccessory {
+            return .init(symbol: accessory.info.kind.symbol, name: accessory.info.name, kind: accessory.info.kind.label)
+        }
+        guard !accessories.available.isEmpty else { return nil }
+        return .init(symbol: "computermouse", name: controller.deviceName ?? "Mouse", kind: "Mouse")
+    }
+
     private var colorPage: some View {
         VStack(spacing: 0) {
             Spacer(minLength: 0)
-            ColorPickerPage(color: $color, onBack: { page = .main }) { rgb in
-                controller.setStaticColor(rgb)
+            ColorPickerPage(color: colorTargetAccessory == nil ? $color : $accessoryColor, device: colorPageDevice,
+                            onBack: { page = .main }, live: colorTargetEffect != .breathing,
+                            wide: twoColumns) { rgb in
+                if let accessory = colorTargetAccessory { accessory.setColor(rgb) } else { controller.setColor(rgb) }
             }
+            // One column: the picker's own width. Two: the wheel and the rest side by side.
+            .frame(width: twoColumns ? popoverWidth : PopoverLayout.oneColumnWidth)
             .frame(maxWidth: .infinity)
             Spacer(minLength: 0)
         }
@@ -167,21 +255,27 @@ struct PopoverView: View {
         // a re-render dismisses an open SwiftUI Menu, collapsing the shortcut picker while
         // the user is still choosing. This page only depends on the remapper, whose own
         // publishes (detected buttons, mappings) still update it normally.
-        ButtonsPage(controller: controller, remapper: remapper, onBack: { page = .main }).equatable()
+        // In two columns the page spreads over the whole popover, in two columns of its own.
+        ButtonsPage(controller: controller, remapper: remapper, width: popoverWidth, twoColumns: twoColumns,
+                    onBack: { page = .main }).equatable()
     }
 
     private struct ButtonsPage: View, Equatable {
         let controller: MouseController
         let remapper: ButtonRemapper
+        let width: CGFloat
+        let twoColumns: Bool
         let onBack: () -> Void
 
         /// The closure is deliberately excluded: it's recreated on every parent render and
         /// always does the same thing (navigate back).
-        nonisolated static func == (a: Self, b: Self) -> Bool { a.remapper === b.remapper }
+        nonisolated static func == (a: Self, b: Self) -> Bool {
+            a.remapper === b.remapper && a.width == b.width && a.twoColumns == b.twoColumns
+        }
 
         var body: some View {
             ScrollView {
-                RemapView(remapper: remapper, controller: controller, onBack: onBack)
+                RemapView(remapper: remapper, controller: controller, onBack: onBack, width: width, twoColumns: twoColumns)
                     .frame(maxWidth: .infinity)
             }
         }
@@ -190,13 +284,14 @@ struct PopoverView: View {
     private var usagePage: some View {
         ScrollView {
             UsageGraphView(controller: controller, onBack: { page = .main })
+                .frame(width: subPageWidth)
                 .frame(maxWidth: .infinity)
         }
     }
 
     private var profilesPage: some View {
         ScrollView {
-            ProfilesView(controller: controller, remapper: remapper, onBack: { page = .main })
+            ProfilesView(controller: controller, remapper: remapper, onBack: { page = .main }, width: subPageWidth)
                 .frame(maxWidth: .infinity)
         }
     }
@@ -216,6 +311,7 @@ struct PopoverView: View {
     private var mainPage: some View {
         VStack(alignment: .leading, spacing: 10) {
             headerCard
+            if let card = supportCard { supportCardView(card) }
             if let version = updateChecker.latestVersion { updateCard(version) }
             // Never both: an update waiting to be installed is the more useful thing to say
             // than one that already was.
@@ -223,26 +319,25 @@ struct PopoverView: View {
             // A Razer mouse on Bluetooth can't be controlled (no control protocol over BT) —
             // explain it instead of just showing "offline".
             if controller.bluetoothMouse != nil && !controller.connected { bluetoothNotice }
-            if noMouse {
-                // A last reading is still worth showing (the snapshot is persisted, so most
-                // returning users have one); the empty-state card still says what to do.
-                if controller.lastBatterySnapshot != nil { batteryCard.opacity(0.55) }
-                noMouseCard
-            } else {
-                // Battery stays readable (last-known) but dims when offline; its refresh button
-                // stays active so you can retry.
-                if controller.deviceHasBattery {
-                    batteryCard.opacity(controller.connected ? 1 : 0.55)
+            // Nothing to put beside the no-mouse card: it says what to do, across the page.
+            if twoColumns && !(noMouse && accessories.available.isEmpty) {
+                // Status on the left, settings on the right. Accessories go under the status,
+                // where there's room, or on the right when there's no mouse to fill it.
+                HStack(alignment: .top, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        statusCards
+                        if !noMouse { accessoriesSection }
+                    }
+                    .frame(width: columnWidth, alignment: .top)
+                    VStack(alignment: .leading, spacing: 10) {
+                        if noMouse { accessoriesSection } else { mouseSettings }
+                    }
+                    .frame(width: columnWidth, alignment: .top)
                 }
-                // Live mouse-config sections: dim AND disable while disconnected.
-                dpiCard
-                    .disabled(!controller.connected)
-                    .opacity(controller.connected ? 1 : 0.45)
-                // Dims with DPI, but its rows still open and close offline so the last-known
-                // settings stay readable; the controls inside them (and the Buttons page,
-                // which needs the mouse) are what's disabled.
-                settingsGroup
-                    .opacity(controller.connected ? 1 : 0.45)
+            } else {
+                statusCards
+                mouseSettings
+                accessoriesSection
             }
             footer
         }
@@ -257,8 +352,10 @@ struct PopoverView: View {
             if let threshold = controller.lowBatteryThreshold { lowBatteryValue = Double(threshold) }
             loadCustomDPI()
             color = controller.lightingColor.swiftUIColor
+            waveSpeedValue = WaveSpeed.fraction(fromByte: controller.waveSpeed)
         }
         .onChange(of: controller.lightingColor) { _, new in color = new.swiftUIColor }
+        .onChange(of: controller.waveSpeed) { _, new in waveSpeedValue = WaveSpeed.fraction(fromByte: new) }
         .onChange(of: controller.dpi) { _, new in if new != 0 { dpiValue = Double(new) } }
         .onChange(of: controller.brightness) { _, new in brightnessValue = Double(new) }
         // A failed device write leaves the controller's values unchanged, so no value-driven
@@ -268,6 +365,7 @@ struct PopoverView: View {
             brightnessValue = Double(controller.brightness)
             if let timeout = controller.sleepTimeout { sleepTimeoutValue = Double(timeout) }
             if let threshold = controller.lowBatteryThreshold { lowBatteryValue = Double(threshold) }
+            waveSpeedValue = WaveSpeed.fraction(fromByte: controller.waveSpeed)
         }
         // A half-typed profile name shouldn't survive its row closing and reappear later.
         .onChange(of: expandedSections.contains(.profiles)) { _, open in
@@ -283,15 +381,43 @@ struct PopoverView: View {
         .onChange(of: controller.lowBatteryThreshold) { _, new in if let new { lowBatteryValue = Double(new) } }
     }
 
+    /// The battery and DPI, or with no mouse, the card that says what to do.
+    @ViewBuilder private var statusCards: some View {
+        if noMouse {
+            // A last reading is still worth showing (the snapshot is persisted, so most
+            // returning users have one); the empty-state card still says what to do.
+            if controller.lastBatterySnapshot != nil { batteryCard.opacity(0.55) }
+            noMouseCard
+        } else {
+            // Battery stays readable (last-known) but dims when offline; its refresh button
+            // stays active so you can retry.
+            if controller.deviceHasBattery {
+                batteryCard.opacity(controller.connected ? 1 : 0.55)
+            }
+            // Live mouse-config sections: dim AND disable while disconnected.
+            dpiCard
+                .disabled(!controller.connected)
+                .opacity(controller.connected ? 1 : 0.45)
+        }
+    }
+
+    /// The mouse's settings rows. Dims with DPI, but its rows still open and close offline so
+    /// the last-known settings stay readable; the controls inside them (and the Buttons page,
+    /// which needs the mouse) are what's disabled.
+    @ViewBuilder private var mouseSettings: some View {
+        if !noMouse {
+            settingsGroup
+                .opacity(controller.connected ? 1 : 0.45)
+        }
+    }
+
     /// No mouse is known at all: never seen this session, or unplugged (which forgets its
     /// name). Not a sleeping or out-of-range one, which keeps its name and its dimmed
     /// controls. With no model to describe, those controls would be placeholders for a mouse
     /// that isn't there — every card disabled, the DPI chips showing defaults — so the page
     /// shows one card that says what to do, the way Control Center's Bluetooth module does
     /// with nothing paired.
-    private var noMouse: Bool {
-        !controller.connected && controller.deviceName == nil && controller.bluetoothMouse == nil
-    }
+    private var noMouse: Bool { controller.noMouseKnown }
 
     private var noMouseCard: some View {
         card {
@@ -346,6 +472,13 @@ struct PopoverView: View {
         controller.deviceKey.map { "customDPI-\($0)" }
     }
 
+    /// The DPI slider's value goes to the mouse: at the end of a drag, or once scrolling stops.
+    private func commitDPI(_ value: Double) {
+        let v = Int(value)
+        controller.setDPI(v)
+        if !displayedStages.contains(v) { saveCustomDPI(v) } // remember the manual value
+    }
+
     private func loadCustomDPI() {
         let stored = customDPIKey.flatMap { UserDefaults.standard.object(forKey: $0) as? Int }
             ?? min(8000, controller.deviceMaxDPI)
@@ -386,7 +519,9 @@ struct PopoverView: View {
                     }
                     // Only where it helps: an unverified mouse. A verified one reaches the same
                     // test from the right-click menu, without the popover asking every time.
-                    if controller.connected && !controller.deviceSupported {
+                    // The support card below says the same thing louder; once it's hidden or
+                    // a report went out, this stays as the quiet way back.
+                    if controller.connected && !controller.deviceSupported && supportCard == nil {
                         Button(action: onOpenDeviceTest) {
                             HStack(spacing: 3) {
                                 Text("Help test it")
@@ -405,6 +540,55 @@ struct PopoverView: View {
                     .accessibilityLabel(controller.connected ? "Connected" : "Not connected")
             }
         }
+    }
+
+    /// The mouse the support card is for, or nil when there's no card to show. Over Bluetooth
+    /// only the card pointing at another link: the device test runs over the cable or dongle.
+    private var supportCard: SupportPromptView.Card? {
+        guard controller.connected, let pid = controller.deviceID, supportPrompt.showsCard(pid: pid) else { return nil }
+        let card = SupportPromptView.card(pid: pid)
+        return !controller.deviceIsBluetooth || card.otherLinksOnly ? card : nil
+    }
+
+    private func supportCardView(_ card: SupportPromptView.Card) -> some View {
+        let pid = card.pid
+        return
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "checklist")
+                    .foregroundStyle(Color.razerGreenText)
+                    .font(.system(size: 14, weight: .semibold))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(card.title).font(.system(size: 12, weight: .semibold))
+                    Text(card.detail)
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
+            HStack(spacing: 8) {
+                Spacer(minLength: 0)
+                if card.otherLinksOnly {
+                    // Nothing to run on this link: the card only points at another one.
+                    Button("Got It") { supportPrompt.markDeclined(pid: pid) }
+                        .buttonStyle(RazerProminentButtonStyle())
+                        .controlSize(.small)
+                } else {
+                    Button("Hide") { supportPrompt.markDeclined(pid: pid) }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .help("Hide this card. \"Help test it\" stays under the mouse name.")
+                    Button("Run the Test", action: onOpenDeviceTest)
+                        .buttonStyle(RazerProminentButtonStyle())
+                        .controlSize(.small)
+                }
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.razerGreenText.opacity(0.10), in: RoundedRectangle(cornerRadius: 13))
+        .overlay(RoundedRectangle(cornerRadius: 13).strokeBorder(Color.razerGreenText.opacity(0.28)))
     }
 
     private var headerSubtitle: String {
@@ -431,19 +615,19 @@ struct PopoverView: View {
             // Blue, the colour macOS and the mouse itself use for Bluetooth, so the link
             // reads at a glance as different from the green USB ones. A stronger fill than
             // theirs, or the blue is hard to read on the dark background.
-            return ConnectionChip(symbol: "dot.radiowaves.left.and.right", label: "Bluetooth",
+            return ConnectionChip(symbol: "dot.radiowaves.left.and.right", label: RazerConnection.bluetooth.label,
                                   tint: .bluetoothBlue, fillOpacity: 0.3)
         case .wired:
-            return ConnectionChip(symbol: "cable.connector", label: "Wired")
+            return ConnectionChip(symbol: "cable.connector", label: RazerConnection.wired.label)
         case .wirelessDongle:
             // `charging` implies a USB-C cable is attached, even though control still
             // flows through the dongle's PID.
             return controller.charging
-                ? ConnectionChip(symbol: "cable.connector", label: "Wired")
-                : ConnectionChip(symbol: "antenna.radiowaves.left.and.right", label: "2.4 GHz")
+                ? ConnectionChip(symbol: "cable.connector", label: RazerConnection.wired.label)
+                : ConnectionChip(symbol: "antenna.radiowaves.left.and.right",
+                                 label: RazerConnection.wirelessDongle.label)
         case nil:
-            // Unknown model: "USB" is true for both a cable and a dongle.
-            return ConnectionChip(symbol: "cable.connector", label: "USB")
+            return ConnectionChip(symbol: "cable.connector", label: RazerConnection.unknownLabel)
         }
     }
 
@@ -609,8 +793,8 @@ struct PopoverView: View {
         HStack(spacing: 6) {
             TextField("Profile name", text: $newProfileName, onCommit: saveNewProfile)
                 .textFieldStyle(.plain)
-                .font(.system(size: 11.5))
-                .padding(.horizontal, 8).padding(.vertical, 4)
+                .font(.system(size: 12.5))
+                .padding(.horizontal, 8).padding(.vertical, 6)
                 .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
             Button("Save", action: saveNewProfile)
                 .buttonStyle(RazerProminentButtonStyle())
@@ -742,6 +926,8 @@ struct PopoverView: View {
                                 page = .main
                                 Task { await updateChecker.downloadAndInstall() }
                             })
+            .frame(width: subPageWidth)
+            .frame(maxWidth: .infinity)
     }
 
     /// Shown after the version changes, until dismissed.
@@ -1185,38 +1371,114 @@ struct PopoverView: View {
             HStack {
                 sectionLabel("DPI", "scope")
                 Spacer()
+                if controller.supportsDpiStageEditing { editStagesButton }
                 Text(verbatim: "\(Int(dpiValue))")
                     .font(.system(size: 12, weight: .medium)).monospacedDigit()
             }
             if controller.supportsFreeDPI {
-                Slider(value: snapped($dpiValue, to: 50, from: 100), in: 100...Double(controller.deviceMaxDPI)) { editing in
-                    if !editing {
-                        let v = Int(dpiValue)
-                        controller.setDPI(v)
-                        if !displayedStages.contains(v) { saveCustomDPI(v) } // remember the manual value
-                    }
+                Slider(value: $dpiValue, in: 100...Double(controller.deviceMaxDPI), step: 50) { editing in
+                    if !editing { commitDPI(dpiValue) }
                 }
                 .tint(.razerGreen)
                 .controlSize(.small)
+                .scrollAdjusts($dpiValue, in: 100...Double(controller.deviceMaxDPI), snap: 50, onCommit: commitDPI)
             }
             HStack(spacing: 6) {
                 ForEach(Array(displayedStages.enumerated()), id: \.offset) { index, value in
                     dpiChip(value, index: index)
                 }
-                if controller.supportsFreeDPI { customChip }
+                if controller.supportsFreeDPI && !inStageEditMode { customChip }
             }
-            if let dpiStageError {
+            // Edit mode frames the stage row in green, so it's clear the chips edit now.
+            .padding(inStageEditMode ? 5 : 0)
+            .background {
+                if inStageEditMode {
+                    RoundedRectangle(cornerRadius: 9)
+                        .fill(Color.razerGreen.opacity(0.08))
+                        .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Color.razerGreen, lineWidth: 1.5))
+                }
+            }
+            // Errors first: a write the mouse didn't keep must show even in Edit mode.
+            if !controller.supportsDPIWrites {
+                // A disabled chip shows no tooltip, so the reason is spelled out here.
+                Text("Switch stages with the mouse's DPI button. Changing them over Bluetooth isn't tested on this mouse yet.")
+                    .font(.system(size: 10.5)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if let dpiStageError {
                 Text(dpiStageError).font(.system(size: 10.5)).foregroundStyle(Color.batteryLow)
             } else if let error = controller.dpiStagesError {
                 Text(error).font(.system(size: 10.5)).foregroundStyle(Color.batteryLow)
+            } else if inStageEditMode || editingDpiStage != nil {
+                Text(editingDpiStage.map { stageRangeHint(index: $0) }
+                     ?? "Click a stage to change its DPI. Press Return to save it.")
+                    .font(.system(size: 10.5)).foregroundStyle(.secondary)
             }
+        }
+        // Esc can close the popover before the field sees it: leave nothing half-edited for
+        // the next time it opens.
+        .onDisappear { cancelDpiStageEdit(); editingDpiStages = false }
+        .onChange(of: controller.isUpdatingDpiStages) { _, updating in
+            if !updating { openPendingDpiStageEdit() }
         }
         }
     }
 
+    /// Turns the DPI card's Edit mode on and off. Shown only where stages can be written.
+    private var editStagesButton: some View {
+        Button {
+            guard editingDpiStages else { return editingDpiStages = true }
+            // Done keeps a changed field: save it, and stay in Edit mode if it's out of range.
+            if let open = editingDpiStage, dpiStageDraft != dpiStageOriginal {
+                commitDpiStage(index: open)
+                guard editingDpiStage == nil else { return }
+            }
+            cancelDpiStageEdit()
+            editingDpiStages = false
+        } label: {
+            Label(editingDpiStages ? "Done" : "Edit", systemImage: editingDpiStages ? "checkmark" : "pencil")
+                .font(.system(size: 10.5, weight: .medium))
+        }
+        .buttonStyle(.borderless)
+        .foregroundStyle(Color.razerGreenText)
+        .help(editingDpiStages ? "Stop editing the DPI stages" : "Change the DPI of each stage on the mouse")
+        .disabled(controller.isUpdatingDpiStages)
+    }
+
+    /// The values a stage may take: above the stage before it and below the stage after it,
+    /// 50 apart like the slider, within the mouse's range. A stage hemmed in by neighbours
+    /// closer than that can only keep the value it has.
+    nonisolated static func stageRange(stages: [Int], index: Int, maxDPI: Int) -> ClosedRange<Int> {
+        guard stages.indices.contains(index) else { return 100...maxDPI }
+        let value = stages[index]
+        // A neighbour only bounds the stage when the table is in order around it: a table set
+        // elsewhere in another order would otherwise lock the stage to its own value.
+        let before = index > 0 ? stages[index - 1] : nil
+        let after = index < stages.count - 1 ? stages[index + 1] : nil
+        let low = before.flatMap { $0 < value ? $0 + 50 : nil } ?? 100
+        let high = after.flatMap { $0 > value ? $0 - 50 : nil } ?? maxDPI
+        return low <= high ? low...high : value...value
+    }
+
+    /// Keeps a typed stage value to digits, at most as many as the mouse's max DPI has.
+    nonisolated static func digitsOnly(_ text: String, maxDPI: Int) -> String {
+        String(text.filter(\.isASCII).filter(\.isNumber).prefix(String(maxDPI).count))
+    }
+
+    private func stageRangeHint(index: Int) -> String {
+        let range = Self.stageRange(stages: controller.dpiStages, index: index, maxDPI: controller.deviceMaxDPI)
+        guard range.lowerBound < range.upperBound else {
+            return "The stages next to stage \(index + 1) leave it no room. Change one of them first."
+        }
+        return "Stage \(index + 1) can be \(range.lowerBound) to \(range.upperBound). Return saves, Esc cancels."
+    }
+
     /// A fixed-preset DPI chip.
     private func dpiChip(_ value: Int, index: Int) -> some View {
-        let active = Int(dpiValue) == value
+        let activeStageIndex = controller.activeDpiStage.flatMap { stage in
+            displayedStages.indices.contains(stage) && displayedStages[stage] == Int(dpiValue) ? stage : nil
+        }
+        let active = activeStageIndex.map { $0 == index } ?? (Int(dpiValue) == value)
+        let accent = DPIStageAccent.forStage(at: index)
         let editing = editingDpiStage == index
         return Group {
             if editing {
@@ -1225,12 +1487,19 @@ struct PopoverView: View {
                     .multilineTextAlignment(.center)
                     .monospacedDigit()
                     .focused($dpiStageFieldFocused)
+                    .onChange(of: dpiStageDraft) { _, text in
+                        let digits = Self.digitsOnly(text, maxDPI: controller.deviceMaxDPI)
+                        if digits != text { dpiStageDraft = digits }
+                        dpiStageError = nil
+                    }
                     .onSubmit { commitDpiStage(index: index) }
+                    .onExitCommand { cancelDpiStageEdit() }
                     .onAppear { dpiStageFieldFocused = true }
             } else {
                 Button {
+                    if inStageEditMode { return beginDpiStageEdit(index: index, value: value) }
                     dpiValue = Double(value)
-                    controller.setDPI(value)
+                    controller.selectDPIStage(index, value: value)
                 } label: {
                     // Fill the chip so the whole hover-highlighted area is clickable.
                     Text(verbatim: "\(value)")
@@ -1242,40 +1511,81 @@ struct PopoverView: View {
         }
         .buttonStyle(.plain)
         .font(.system(size: 10.5, weight: active ? .semibold : .regular).monospacedDigit())
-        .foregroundStyle(active ? Color.onRazerGreen : Color.secondary)
+        // The active stage is a solid fill like every other selected chip; the rest keep the
+        // neutral chip and readable secondary text, with the stage hue only as an outline.
+        .foregroundStyle(active ? accent.onColor : Color.secondary)
         .frame(maxWidth: .infinity)
-        .frame(height: 24)
-        .background(active ? Color.razerGreen : Color.primary.opacity(0.08),
+        .frame(height: ChipMetrics.height)
+        .background(active ? accent.color : Color.primary.opacity(0.08),
                     in: RoundedRectangle(cornerRadius: 6))
+        .overlay {
+            if inStageEditMode {
+                // Edit mode: a dashed outline on every chip says each one opens an editor.
+                RoundedRectangle(cornerRadius: 6)
+                    .strokeBorder(editing ? Color.razerGreen : accent.color,
+                                  style: StrokeStyle(lineWidth: editing ? 2 : 1.5, dash: editing ? [] : [4, 2]))
+            } else if !active {
+                RoundedRectangle(cornerRadius: 6).strokeBorder(accent.color.opacity(0.7), lineWidth: 1)
+            }
+        }
         .hoverHighlight(RoundedRectangle(cornerRadius: 6))
         .contextMenu {
-            if supportsBasiliskBluetooth {
+            if controller.supportsDpiStageEditing {
                 Button("Edit DPI") { beginDpiStageEdit(index: index, value: value) }
             }
         }
-        // The stage editor lives in a context menu, which nothing on the chip hints at.
-        .help(supportsBasiliskBluetooth ? "Stage \(index + 1) · Right-click to edit" : "Stage \(index + 1)")
-        .accessibilityLabel(editing ? "Stage \(index + 1) DPI" : "\(value) DPI, stage \(index + 1)")
+        .help(inStageEditMode ? "Stage \(index + 1) · Click to change its DPI"
+              : controller.supportsDpiStageEditing ? "Stage \(index + 1) · Right-click or use Edit to change it"
+              : "Stage \(index + 1)")
+        .accessibilityLabel(editing ? "Stage \(index + 1) DPI" : DPIStageAccent.accessibilityLabel(
+            value: value, stageIndex: index))
         .accessibilityAddTraits(active ? .isSelected : [])
-        .disabled(controller.isUpdatingDpiStages || (editingDpiStage != nil && !editing))
+        // In Edit mode another chip stays clickable while a field is open: it moves the editor.
+        .disabled(controller.isUpdatingDpiStages || !controller.supportsDPIWrites
+                  || (editingDpiStage != nil && !editing && !inStageEditMode))
     }
 
     private func beginDpiStageEdit(index: Int, value: Int) {
-        guard supportsBasiliskBluetooth, !controller.isUpdatingDpiStages else { return }
+        guard controller.supportsDpiStageEditing, !controller.isUpdatingDpiStages else { return }
+        if let open = editingDpiStage, open != index, dpiStageDraft != dpiStageOriginal {
+            // The open field was changed: save it first, then open this one when that's done.
+            commitDpiStage(index: open)
+            guard editingDpiStage == nil else { return } // out of range: stay on it
+            if controller.isUpdatingDpiStages { pendingDpiStageEdit = index; return }
+        }
         dpiStageError = nil
         dpiStageDraft = String(value)
+        dpiStageOriginal = dpiStageDraft
         editingDpiStage = index
         dpiStageFieldFocused = true
     }
 
+    /// Opens the editor a click asked for while the previous stage was saving.
+    private func openPendingDpiStageEdit() {
+        guard let index = pendingDpiStageEdit, !controller.isUpdatingDpiStages else { return }
+        pendingDpiStageEdit = nil
+        guard inStageEditMode, displayedStages.indices.contains(index) else { return }
+        beginDpiStageEdit(index: index, value: displayedStages[index])
+    }
+
+    private func cancelDpiStageEdit() {
+        pendingDpiStageEdit = nil
+        editingDpiStage = nil
+        dpiStageFieldFocused = false
+        dpiStageError = nil
+    }
+
     private func commitDpiStage(index: Int) {
         guard editingDpiStage == index else { return }
-        defer { editingDpiStage = nil; dpiStageFieldFocused = false }
-        guard let value = Int(dpiStageDraft.trimmingCharacters(in: .whitespaces)),
-              (100...controller.deviceMaxDPI).contains(value) else {
-            dpiStageError = "DPI must be between 100 and \(controller.deviceMaxDPI)."
+        let range = Self.stageRange(stages: controller.dpiStages, index: index, maxDPI: controller.deviceMaxDPI)
+        guard let value = Int(dpiStageDraft), range.contains(value) else {
+            // Keep the field open so the number can be fixed, with the range that fits.
+            dpiStageError = range.lowerBound < range.upperBound
+                ? "Stage \(index + 1) must be between \(range.lowerBound) and \(range.upperBound)."
+                : "The stages next to stage \(index + 1) leave it no room. Change one of them first."
             return
         }
+        defer { editingDpiStage = nil; dpiStageFieldFocused = false }
         guard controller.dpiStages.indices.contains(index), controller.dpiStages[index] != value else { return }
         dpiStageError = nil
         controller.setDPIStageValue(value, at: index)
@@ -1344,26 +1654,17 @@ struct PopoverView: View {
                 }
                 .tint(.razerGreen)
                 .controlSize(.small)
+                .scrollAdjusts($sleepTimeoutValue, in: 60...900, snap: 15) { controller.setSleepTimeout(Int($0)) }
             }
             .disabled(controller.sleepTimeout == nil)
-            HStack(spacing: 5) {
-                ForEach([60, 120, 300, 600, 900], id: \.self) { value in
-                    Button {
-                        sleepTimeoutValue = Double(value)
-                        controller.setSleepTimeout(value)
-                    } label: {
-                        Text(formatSleepTimeout(value, compact: true))
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 9.5, weight: Int(sleepTimeoutValue) == value ? .semibold : .regular).monospacedDigit())
-                    .foregroundStyle(Int(sleepTimeoutValue) == value ? Color.onRazerGreen : Color.secondary)
-                    .frame(maxWidth: .infinity).frame(height: 23)
-                    .background(Int(sleepTimeoutValue) == value ? Color.razerGreen : Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
-                    .hoverHighlight(RoundedRectangle(cornerRadius: 6))
-                    .accessibilityLabel("Sleep after \(formatSleepTimeout(value))")
-                }
+            ChipPicker(label: "Sleep after", values: [60, 120, 300, 600, 900],
+                       // The slider's value, so the row agrees with itself; nothing before the
+                       // mouse has reported one.
+                       selection: controller.sleepTimeout == nil ? nil : Int(sleepTimeoutValue),
+                       title: { formatSleepTimeout($0, compact: true) },
+                       spokenTitle: { "Sleep after \(formatSleepTimeout($0))" }) { value in
+                sleepTimeoutValue = Double(value)
+                controller.setSleepTimeout(value)
             }
             .disabled(controller.sleepTimeout == nil)
             if let error = controller.sleepTimeoutError {
@@ -1406,7 +1707,7 @@ struct PopoverView: View {
         .font(.system(size: 10.5, weight: active ? .semibold : .regular).monospacedDigit())
         .foregroundStyle(active ? Color.onRazerGreen : Color.razerGreenText)
         .frame(maxWidth: .infinity)
-        .frame(height: 24)
+        .frame(height: ChipMetrics.height)
         .background(active ? Color.razerGreen : Color.razerGreen.opacity(0.12),
                     in: RoundedRectangle(cornerRadius: 6))
         .overlay(RoundedRectangle(cornerRadius: 6)
@@ -1420,16 +1721,8 @@ struct PopoverView: View {
     /// The Polling rate row's expanded content; the row itself shows the current rate.
     private var pollContent: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Picker("", selection: Binding(
-                get: { displayedPollRate },
-                set: { controller.setPollRate($0) }
-            )) {
-                ForEach(pollRates, id: \.self) { Text(verbatim: "\($0)").tag($0) }
-            }
-            .pickerStyle(.segmented)
-            .controlSize(.small)
-            .labelsHidden()
-            .frame(maxWidth: .infinity)
+            ChipPicker(label: "Polling rate", values: pollRates, selection: displayedPollRate,
+                       title: Self.pollChipTitle, spokenTitle: { "\($0) Hz" }) { controller.setPollRate($0) }
 
             if let tip = pollRateTip(displayedPollRate) {
                 Text(tip)
@@ -1452,6 +1745,11 @@ struct PopoverView: View {
     /// firmware default, and so does everything that reads it here.
     private var displayedPollRate: Int { controller.pollRate == 0 ? 1000 : controller.pollRate }
 
+    /// A chip's text: "8K" for 8000 Hz and up from 2000, so seven chips still fit the row.
+    nonisolated static func pollChipTitle(_ hz: Int) -> String {
+        hz >= 2000 && hz % 1000 == 0 ? "\(hz / 1000)K" : "\(hz)"
+    }
+
     /// What the selected rate is good for. The battery trade-off is only mentioned for a
     /// mouse that has one: on a wired mouse it's a promise about nothing.
     private func pollRateTip(_ hz: Int) -> String? {
@@ -1459,11 +1757,11 @@ struct PopoverView: View {
         switch hz {
         case 2000, 4000, 8000:
             return battery ? "HyperPolling: the quickest response, best on a high refresh rate display. "
-                             + "Uses the battery much faster and more CPU."
+                             + "Uses the battery much faster, and more CPU."
                            : "HyperPolling: the quickest response, best on a high refresh rate display. Uses more CPU."
         case 1000: return "Smoothest and quickest to respond. Best for gaming."
-        case 250: return battery ? "Easy on the battery, still smooth for everyday work."
-                                 : "Smooth enough for everyday work."
+        case 250: return battery ? "Easy on the battery, and smoother than 125 Hz."
+                                 : "Smoother than 125 Hz, but less than 500 Hz."
         case 500: return battery ? "Smooth for everyday work, and easier on the battery."
                                  : "Smooth for everyday work."
         case 125: return battery ? "Lasts longest on a charge. The pointer can feel less smooth, "
@@ -1495,35 +1793,38 @@ struct PopoverView: View {
                 .controlSize(.small)
                 .labelsHidden()
             }
-            // Brightness.
-            HStack(spacing: 6) {
-                Image(systemName: "sun.min.fill").font(.system(size: 10)).foregroundStyle(.secondary)
-                Slider(value: snapped($brightnessValue, to: 1), in: 0...100) { editing in
-                    if !editing { controller.setBrightness(Int(brightnessValue)) }
-                }
-                .tint(.razerGreen)
-                .controlSize(.small)
-                Image(systemName: "sun.max.fill").font(.system(size: 11)).foregroundStyle(.secondary)
+            if controller.lightHasBrightness {
+                BrightnessSlider(value: $brightnessValue) { controller.setBrightness($0) }
             }
             // Bound straight to the controller: setEffect publishes only on a successful
             // device write, so a failed change snaps the picker back by itself — no local
             // state, no suppression flags.
             if controller.supportsLightingEffects {
-                Picker("", selection: Binding(get: { controller.effect },
-                                              set: { controller.setEffect($0) })) {
-                    ForEach(controller.lightingEffects) { Text($0.rawValue).tag($0) }
+                ChipPicker(label: "Lighting effect", values: controller.availableEffects,
+                           selection: controller.effect, title: { $0.rawValue }) { controller.setEffect($0) }
+                if controller.effect == .wave {
+                    WaveSpeedSlider(value: $waveSpeedValue) { controller.setWaveSpeed(WaveSpeed.byte(fromFraction: $0)) }
+                        .transition(.opacity)
                 }
-                .pickerStyle(.segmented)
-                .controlSize(.small)
-                .labelsHidden()
             }
 
-            if controller.effect.usesColor || !controller.supportsLightingEffects {
+            if controller.lightHasFixedColor {
+                Text("This mouse's light has one colour of its own, so only its brightness changes.")
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if controller.effect.usesColor || !controller.supportsLightingEffects {
                 HStack(spacing: 7) {
-                    ForEach(swatches.indices, id: \.self) { i in
-                        swatch(swatches[i].color, name: swatches[i].name)
+                    ForEach(lightingSwatches.indices, id: \.self) { i in
+                        let sw = lightingSwatches[i]
+                        SwatchButton(color: sw.color, name: sw.name, selected: sw.color.rgb == color.rgb) {
+                            controller.setColor(sw.color.rgb)
+                        }
                     }
-                    customColorWell
+                    CustomColorWell {
+                        colorTarget = .mouse
+                        page = .color
+                    }
                     Spacer(minLength: 0)
                 }
                 .transition(.opacity)
@@ -1549,6 +1850,7 @@ struct PopoverView: View {
         // All zones selected but lit differently: no one effect describes them.
         if controller.selectedLightingZone == nil, !controller.zonesMatch { return "Per zone" }
         if controller.effect == .off { return "Off" }
+        if !controller.lightHasBrightness { return controller.effect.rawValue }
         return "\(controller.effect.rawValue) · \(Int(brightnessValue))%"
     }
 
@@ -1559,54 +1861,63 @@ struct PopoverView: View {
     private var showsLightingBatteryHint: Bool {
         // Bluetooth can't set or read an effect, only a colour, so `effect` there is left
         // over from USB and says nothing about whether the lights are on.
-        controller.deviceHasBattery && !controller.charging
+        controller.deviceHasBattery && !controller.charging && controller.lightHasBrightness
             && (controller.effect != .off || !controller.supportsLightingEffects)
             && Int(brightnessValue) > Battery.lightingHintBrightnessPercent
     }
 
-    /// A real button rather than a tap gesture on a circle, so it reaches VoiceOver and
-    /// keyboard navigation, and greys out with the rest of the card while disconnected.
-    private func swatch(_ sw: Color, name: String) -> some View {
-        Button { controller.setStaticColor(sw.rgb) } label: {
-            Circle()
-                .fill(sw)
-                .frame(width: 18, height: 18)
-                .overlay(Circle().strokeBorder(Color.primary.opacity(0.15), lineWidth: 0.5))
-                .overlay(Circle().inset(by: -2.5).stroke(Color.primary, lineWidth: isSelected(sw) ? 1.5 : 0))
-                .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
-        .help(name)
-        .accessibilityLabel(name)
-        .accessibilityAddTraits(isSelected(sw) ? .isSelected : [])
-    }
+    // MARK: Accessories
 
-    /// Circular "custom colour" well — a rainbow ring that opens the system colour panel.
-    /// Uses a real button + NSColorPanel bridge (the hidden-ColorPicker trick didn't register
-    /// clicks).
-    private var customColorWell: some View {
-        Button {
-            page = .color
-        } label: {
-            ZStack {
-                Circle().fill(AngularGradient(
-                    gradient: Gradient(colors: [.red, .yellow, .green, .cyan, .blue, .purple, .red]),
-                    center: .center))
-                Image(systemName: "eyedropper").font(.system(size: 8, weight: .bold))
-                    .foregroundStyle(.white)
-                    .shadow(radius: 1)
+    /// Razer keyboards and mousepads plugged in next to the mouse, a card each. Not tied to
+    /// the mouse: they show, and work, with the mouse asleep or unplugged.
+    ///
+    /// The cards sit in a recessed tray, a shade darker than the popover with a hairline
+    /// edge, so they read as a group of their own rather than more of the mouse's cards.
+    @ViewBuilder private var accessoriesSection: some View {
+        let devices = accessories.available
+        if !devices.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 6) {
+                    Text("Other Razer devices")
+                        .font(.system(size: 10.5, weight: .semibold))
+                        .textCase(.uppercase)
+                        .foregroundStyle(.secondary)
+                    Text("\(devices.count)")
+                        .font(.system(size: 10, weight: .semibold)).monospacedDigit()
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 6)
+                        .background(Color.primary.opacity(0.10), in: Capsule())
+                        .accessibilityHidden(true)
+                }
+                .padding(.horizontal, 4)
+                .padding(.top, 2)
+                .accessibilityElement(children: .combine)
+                ForEach(devices) { accessory in
+                    // Not a one-colour light: there'd be a colour to follow that nobody can set.
+                    AccessoryCard(accessory: accessory, hasMouse: !noMouse && !controller.lightHasFixedColor,
+                                  mouseGlow: mouseGlow,
+                                  // A lone accessory starts open: there's nothing else to see.
+                                  startsOpen: devices.count == 1,
+                                  onTest: { onTestAccessory(accessory) }) {
+                        colorTarget = .accessory(accessory.id)
+                        accessoryColor = accessory.lighting.color.swiftUIColor
+                        page = .color
+                    }
+                }
             }
-            .frame(width: 18, height: 18)
-            .overlay(Circle().strokeBorder(Color.primary.opacity(0.15), lineWidth: 0.5))
+            .padding(8)
+            .background(Color.black.opacity(colorScheme == .dark ? 0.28 : 0.06),
+                        in: RoundedRectangle(cornerRadius: 15))
+            .overlay(RoundedRectangle(cornerRadius: 15).strokeBorder(Color.primary.opacity(0.10), lineWidth: 1))
         }
-        .buttonStyle(.plain)
-        .help("Pick any colour")
-        .accessibilityLabel("Custom colour")
     }
 
-    private func isSelected(_ sw: Color) -> Bool {
-        let a = sw.rgb, b = color.rgb
-        return a.r == b.r && a.g == b.g && a.b == b.b
+    /// What the mouse's light shows, for an accessory following it. Over Bluetooth the
+    /// effect can't be set, so it's the colour.
+    private var mouseGlow: AccessoryIcon.Glow {
+        if Int(brightnessValue) == 0 { return .unlit }
+        if !controller.supportsLightingEffects { return .color(controller.lightingColor.swiftUIColor) }
+        return AccessoryIcon.Glow(effect: controller.effect, color: controller.lightingColor.swiftUIColor)
     }
 
     // MARK: Grouped settings
@@ -1791,6 +2102,19 @@ struct PopoverView: View {
             .help("Open the MacRazer website")
             Text(verbatim: "· unofficial").font(.system(size: 11)).foregroundStyle(.tertiary)
             Spacer()
+            // One quiet icon, never a banner: the popover is where people spend their time,
+            // and anything louder here would read as nagging.
+            Link(destination: ProjectLinks.tip) {
+                Image(systemName: tipHovered ? "heart.fill" : "heart")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(tipHovered ? AnyShapeStyle(Color.razerGreenText) : AnyShapeStyle(.secondary))
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .onHover { tipHovered = $0 }
+            .help("Leave a tip: MacRazer is free and built in spare time")
+            .accessibilityLabel("Leave a tip")
+            .padding(.trailing, 8)
             Button(action: onOpenSettings) {
                 Image(systemName: "gearshape")
                     .font(.system(size: 12.5))

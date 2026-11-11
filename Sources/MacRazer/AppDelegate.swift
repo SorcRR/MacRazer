@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     private var statusItem: NSStatusItem!
     private let popover = NSPopover()
     private let controller = MouseController()
+    private let accessories = Accessories.shared
     private var cancellables = Set<AnyCancellable>()
     private var monitor: HIDMonitor?
     private var bluetoothMonitor: HIDMonitor?
@@ -23,6 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     private lazy var permissionsWindow = PermissionsWindowController(model: permissions, controller: controller)
     private lazy var deviceTestWindow = DeviceTestWindowController(
         model: DeviceTestModel(controller: controller, permissions: permissions))
+    private lazy var accessoryTestWindow = AccessoryTestWindowController(model: AccessoryTestModel())
     private let updateChecker = UpdateChecker()
     private let launchAtLogin = LaunchAtLogin()
     private let appearance = AppearanceSettings.shared
@@ -35,16 +37,57 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     /// the popover next opened and closed.
     private lazy var updatedWindow = UpdatedWindowController(
         updateChecker: updateChecker, usageStats: usageStats,
-        onClosed: { [weak self] in self?.autoInstallIfEnabled() })
+        onClosed: { [weak self] in self?.autoInstallIfEnabled(); self?.questionClosed() })
     /// Closing it re-asks the auto-install gate, for the same reason as `updatedWindow`.
     private lazy var crashReportWindow = CrashReportWindowController(
         onClosed: { [weak self] in self?.autoInstallIfEnabled() })
     private let usageStats = UsageStats.shared
+    /// The details it offers are the mice the usage stats see, which they know whether or
+    /// not stats are on.
+    private lazy var issueReportWindow = IssueReportWindowController(model: IssueReportModel(details: {
+        IssueReport.Details(appVersion: AppInfo.displayVersion, macOS: DeviceReport.currentMacOSVersion,
+                            mice: UsageStats.shared.connectedMice.map {
+                                .init(name: $0.name, productID: $0.pid, link: $0.link, supported: $0.supported)
+                            })
+    }))
+    /// The connected mouse models and the usage stats answer for the reports page, anonymous
+    /// and in the background.
+    private let countReporter = AnonymousCountReporter()
+    private let supportList = SupportListUpdater()
+    private var supportListObserver: NSObjectProtocol?
     /// Closing it re-asks the auto-install gate, for the same reason as `updatedWindow`.
     private lazy var usageStatsWindow = UsageStatsWindowController(
-        stats: usageStats, onClosed: { [weak self] in self?.autoInstallIfEnabled() })
+        stats: usageStats, onClosed: { [weak self] in self?.autoInstallIfEnabled(); self?.questionClosed() })
     /// Waits for a clear moment to ask about usage stats; see `askAboutUsageStats`.
     private var usageStatsAskTimer: Timer?
+    /// When the wait for a clear moment to ask began, for how long the count holds back
+    /// "unasked"; see `isAboutToAskOrAsking`.
+    private var usageStatsAskArmedAt: Date?
+    /// How long the daily count holds "unasked" back: while the question waits for a clear
+    /// moment, and once it's on screen.
+    private static let holdWhileWaiting: TimeInterval = 3600
+    private static let holdWhileShowing: TimeInterval = 600
+    private let supportPrompt = SupportPrompt.shared
+    private var supportPromptTimer: Timer?
+    /// What the last support tick saw; see `askForDeviceTestIfClear`.
+    private var lastUnsupportedMouse: UnsupportedMouse?
+    /// Razer mice on USB, listed again only when a Razer device comes or goes, so the support
+    /// tick never enumerates devices itself.
+    private var razerMiceOnUSB: [HIDDevice.USBMouse] = []
+    /// Every Razer mouse plugged in by cable or dongle, for the counts: not only the one the
+    /// controller opened. Listed at launch and again on each plug, like `razerMiceOnUSB`, but
+    /// whatever the support prompt's setting.
+    private let pluggedRazerMice = CurrentValueSubject<[HIDDevice.USBMouse], Never>([])
+    private var relistRazerMiceWork: DispatchWorkItem?
+    private var rescanAccessoriesWork: DispatchWorkItem?
+    /// Closing it re-asks the auto-install gate, for the same reason as `updatedWindow`.
+    private lazy var supportPromptWindow = SupportPromptWindowController(
+        prompt: supportPrompt,
+        onRunTest: { [weak self] in
+            guard let self else { return }
+            self.present(self.deviceTestWindow)
+        },
+        onClosed: { [weak self] in self?.autoInstallIfEnabled() })
     private lazy var settingsWindow = SettingsWindowController(
         controller: controller, launchAtLogin: launchAtLogin, updateChecker: updateChecker,
         onAutoInstallChanged: { [weak self] in self?.autoInstallSettingChanged() })
@@ -78,6 +121,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         // Button remapping additionally needs Accessibility (optional; surfaced in the same window).
         // A mouse MacRazer controls over Bluetooth needs neither, so it doesn't trigger the window.
         permissions.recheck()
+        // Before any mouse is read, so the first prompt decision already has the kept list.
+        startSupportList()
         // Explicit, not a side effect of constructing the model — see the doc comment there.
         launchAtLogin.applyDefaultOnFirstRun()
         LowBatteryNotifier.configureNotifications(delegate: self)
@@ -106,8 +151,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         statusItem.button?.title = " …"
         statusItem.button?.target = self
         statusItem.button?.action = #selector(statusItemClicked)
-        // Receive both clicks so we can branch: left → popover, right → app menu.
-        statusItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        // Receive both clicks so we can branch: left → popover, right → app menu. The menu opens
+        // on the right button's press, as macOS's own menu bar items do: the popover closes on
+        // that press too, and a menu opened only on the release raced its focus hand-back.
+        statusItem.button?.sendAction(on: [.leftMouseUp, .rightMouseDown])
 
         popover.behavior = .transient
         popover.delegate = self
@@ -142,6 +189,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
                 guard let self else { return }
                 self.popover.performClose(nil)
                 self.present(self.deviceTestWindow)
+            },
+            onTestAccessory: { [weak self] accessory in
+                guard let self else { return }
+                self.popover.performClose(nil)
+                self.windowRequested = true
+                self.accessoryTestWindow.show(accessory)
             }))
         hosting.sizingOptions = [.preferredContentSize] // popover auto-fits the SwiftUI content
         popover.contentViewController = hosting
@@ -195,8 +248,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
             vendorId: Razer.vendorId,
             // Small settle delay on appear so the dongle has re-probed before the first read
             // (avoids a transient 0% right after reconnect).
-            onAppear: { _ in DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { ctrl.forceCheck(immediateOffline: false) } },
-            onRemove: { pids in
+            onAppear: { [weak self] _ in
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { ctrl.forceCheck(immediateOffline: false) }
+                MainActor.assumeIsolated {
+                    self?.relistRazerMice()
+                    self?.rescanAccessoriesAfterPlug()
+                }
+            },
+            onRemove: { [weak self] pids in
+                MainActor.assumeIsolated {
+                    self?.relistRazerMice()
+                    self?.rescanAccessoriesAfterPlug()
+                }
                 // Only the connected device's removal is definitive. Matching is vendor-wide,
                 // so unplugging a Razer keyboard (or a different-model mouse) fires this too —
                 // that must not bypass the offline debounce, or a coincidental wireless
@@ -225,6 +288,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
                 DispatchQueue.main.async { ctrl.beginBluetoothWakeRecovery(discardBluetoothSession: true) }
             }
         )
+
+        // "Follow mouse" follows lighting the person sets on the mouse, never the values read
+        // from it: the mouse's effect can't be read back, so at launch it is only the default,
+        // and following that would repaint every accessory on each start. Turning the switch
+        // on matches an accessory straight away (`AccessoryController.followsMouse`).
+        let ctrl2 = controller
+        // Nothing to follow on a one-colour light, or with no mouse at all: each accessory
+        // keeps its own lighting then, as its card shows.
+        accessories.mouseLighting = { [weak ctrl2] in
+            ctrl2.flatMap { $0.lightHasFixedColor || $0.noMouseKnown ? nil : $0 }
+                .map { AccessoryLighting(effect: $0.effect, color: $0.lightingColor, brightness: $0.brightness,
+                                         waveSpeed: $0.waveSpeed) }
+        }
+        accessories.start()
+        let acc = accessories
+        // After `receive(on:)` because @Published emits before the property is set.
+        controller.$lightingChanges
+            .dropFirst()
+            .receive(on: RunLoop.main)
+            .sink { _ in acc.followMouse() }
+            .store(in: &cancellables)
 
         remapper.start()
         remapper.observeDpiCycle(controller: controller)
@@ -295,6 +379,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
             updatedWindow.show(activating: !updateChecker.autoInstallEnabled)
         }
         startUsageStats()
+        startSupportPrompt()
         // A crash since the last launch, offered once. Looked for again a little later
         // because the crash most likely to be waiting is the one in the instance that just
         // handed over to this one, during a relaunch: macOS writes its report a few seconds
@@ -309,6 +394,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         startUpdateTriggers()
     }
 
+    /// What's been confirmed on each mouse since this build, from the Worker. The kept list
+    /// first, then a fetch on the update check's triggers; see `SupportListUpdater`.
+    private func startSupportList() {
+        supportListObserver = NotificationCenter.default.addObserver(
+            forName: RazerDevices.supportChanged, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.controller.supportListChanged() }
+        }
+        supportList.applyCached()
+        Task { await supportList.refreshIfDue() }
+    }
+
+    /// The update check and the support list, each behind its own throttle, and a mouse count
+    /// or answer that hasn't gone out today.
+    private func checkOnlineIfDue() {
+        Task { await updateChecker.checkForUpdatesIfDue() }
+        Task { await supportList.refreshIfDue() }
+        Task { await countReporter.reportIfNeeded() }
+    }
+
     /// Everything that asks "is a check due?" after launch. Each only asks: the throttle in
     /// `UpdateChecker` decides, and a check already running is shared rather than repeated.
     private func startUpdateTriggers() {
@@ -317,7 +422,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         // finished a little after it started, and so waited a whole extra period each time.
         // A timer also stops counting while the Mac sleeps.
         let timer = Timer(timeInterval: 15 * 60, repeats: true) { [weak self] _ in
-            Task { await self?.updateChecker.checkForUpdatesIfDue() }
+            MainActor.assumeIsolated {
+                self?.checkOnlineIfDue()
+                // MacRazer runs for weeks: a question closed a week ago comes back without a relaunch.
+                self?.askAboutUsageStatsIfDue()
+            }
         }
         timer.tolerance = 60
         RunLoop.main.add(timer, forMode: .common)
@@ -329,8 +438,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
             forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
         ) { [weak self] _ in
             MainActor.assumeIsolated {
-                guard let self else { return }
-                Task { await self.updateChecker.checkForUpdatesIfDue() }
+                self?.checkOnlineIfDue()
             }
         }
 
@@ -344,7 +452,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
                 guard let self else { return }
                 defer { self.wasOnline = online }
                 guard self.wasOnline == false, online else { return }
-                Task { await self.updateChecker.checkForUpdatesIfDue() }
+                self.checkOnlineIfDue()
             }
         }
         pathMonitor.start(queue: .main)
@@ -379,9 +487,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
 
     @objc private func statusItemClicked() {
         let event = NSApp.currentEvent
-        let isRightClick = event?.type == .rightMouseUp
-            || event?.modifierFlags.contains(.control) == true
-        if isRightClick {
+        if StatusItemClick.opensMenu(eventType: event?.type,
+                                     pressedButtons: NSEvent.pressedMouseButtons,
+                                     control: event?.modifierFlags.contains(.control) == true
+                                         || NSEvent.modifierFlags.contains(.control)) {
             showAppMenu()
         } else {
             togglePopover()
@@ -417,7 +526,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
             controller.refreshAll()
             // Someone looking at the popover is the person an update card is for. Throttled,
             // so opening it often costs nothing.
-            Task { await updateChecker.checkForUpdatesIfDue() }
+            checkOnlineIfDue()
         }
     }
 
@@ -482,7 +591,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         update.target = self
         menu.addItem(update)
 
+        // Always there: a problem worth reporting is often that no mouse shows up.
+        let report = NSMenuItem(title: "Report an Issue…", action: #selector(openIssueReport), keyEquivalent: "")
+        report.target = self
+        menu.addItem(report)
+
         menu.addItem(.separator())
+
+        let tip = NSMenuItem(title: "Leave a Tip…", action: #selector(openTip), keyEquivalent: "")
+        tip.target = self
+        tip.image = NSImage(systemSymbolName: "heart", accessibilityDescription: nil)
+        menu.addItem(tip)
 
         let quit = NSMenuItem(title: "Quit MacRazer", action: #selector(quit), keyEquivalent: "q")
         quit.target = self
@@ -537,41 +656,89 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         // The device test in particular: an install ends in a relaunch, and that must never
         // happen while a step has a test value on someone's mouse.
         let windows: [AppWindowPresenter] = [remapWindow, permissionsWindow, aboutWindow, settingsWindow,
-                                             updatedWindow, deviceTestWindow, crashReportWindow,
-                                             usageStatsWindow]
+                                             updatedWindow, deviceTestWindow, accessoryTestWindow, crashReportWindow,
+                                             usageStatsWindow, supportPromptWindow, issueReportWindow]
         return windows.contains { $0.isVisible }
     }
 
     // MARK: - Usage stats
 
-    /// Feeds the connected mouse to `UsageStats`, sends whatever is due, and asks once if
-    /// nobody has been asked yet. Nothing goes anywhere without a yes; see `UsageStats`.
+    /// Feeds the connected mouse to `UsageStats`, sends whatever is due, and asks if nobody
+    /// has answered (again a week after the question was closed unanswered). Nothing goes anywhere without a yes; see `UsageStats`.
     private func startUsageStats() {
+        countReporter.connectedMice = { [weak self] in self?.usageStats.connectedMice ?? [] }
+        countReporter.answer = { [weak self] in
+            guard let self, self.usageStats.isAvailable else { return nil }
+            // Not "unasked" while the question is about to be asked or on screen: the answer
+            // follows in a moment, and the day would count the app under both.
+            if self.usageStats.consent == .undecided, self.isAboutToAskOrAsking(now: Date()) { return nil }
+            return self.usageStats.consent
+        }
+        countReporter.pendingChanges = { [weak self] in self?.usageStats.pendingConsentChanges ?? [] }
+        countReporter.changesSent = { [weak self] in self?.usageStats.consentChangesSent($0) }
+        // A changed answer goes out now. In a task: @Published tells before it sets the value.
+        usageStats.$consent.dropFirst().removeDuplicates()
+            .sink { [weak self] _ in Task { await self?.countReporter.reportIfNeeded() } }
+            .store(in: &cancellables)
         // Debounced: the controller publishes a new mouse's fields one at a time, and the
         // ping should see them all.
+        listRazerMice()
         Publishers.CombineLatest4(controller.$connected, controller.$deviceID,
                                   controller.$deviceName, controller.$deviceIsBluetooth)
-            .combineLatest(controller.$deviceSupported)
+            .combineLatest(controller.$deviceSupported, pluggedRazerMice.removeDuplicates())
             .debounce(for: .seconds(2), scheduler: RunLoop.main)
-            .sink { [weak self] device, supported in
+            .sink { [weak self] device, supported, plugged in
                 let (connected, pid, name, bluetooth) = device
-                let mice = connected ? pid.map {
-                    [UsageStatsPolicy.mouse(pid: $0, productName: name, isBluetooth: bluetooth, supported: supported)]
-                } ?? [] : []
+                let opened = connected ? pid.map {
+                    UsageStatsPolicy.mouse(pid: $0, productName: name, isBluetooth: bluetooth, supported: supported)
+                } : nil
+                let mice = UsageStatsPolicy.connectedMice(opened: opened, plugged: plugged)
                 self?.usageStats.setConnectedMice(mice)
+                // A mouse just found goes out now, not at the next update check. No mouse waits
+                // for the count below, so a launch doesn't send once without the mouse and
+                // again with it a moment later.
+                if !mice.isEmpty { Task { await self?.countReporter.reportIfNeeded() } }
             }
             .store(in: &cancellables)
         // A mouse usually connects within a few seconds of launch and goes with the first
-        // ping. Without one, the ping goes anyway after this, and the mouse follows later.
+        // ping. Without one, the ping and the anonymous count go anyway after this, and the
+        // mouse follows later.
         DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak self] in
             guard let self else { return }
             Task { await self.usageStats.sendIfDue() }
+            Task { await self.countReporter.reportIfNeeded() }
         }
         // Someone who just updated is asked in the Updated window instead. A `swift run`
-        // build has no version and would never send, so it doesn't ask either.
-        if usageStats.consent == .undecided, updateChecker.justUpdatedTo == nil, AppInfo.version != nil {
-            askAboutUsageStats()
+        // build has no version and a build without the Worker has nowhere to send, so
+        // neither of them asks.
+        if updateChecker.justUpdatedTo == nil { askAboutUsageStatsIfDue() }
+    }
+
+    /// Starts waiting for a clear moment to ask, if the question is due and nothing is already
+    /// waiting or asking. A `swift run` build has no version, so it never asks.
+    private func askAboutUsageStatsIfDue() {
+        guard usageStats.shouldAsk(), usageStatsAskTimer == nil, !usageStats.isAsking, AppInfo.version != nil else { return }
+        askAboutUsageStats()
+    }
+
+    /// The usage stats question is waiting for a clear moment (for up to an hour after
+    /// launch), or has been on screen for under ten minutes: in its own window, or as the card
+    /// in the Updated window. A window left open behind others for days mustn't keep the
+    /// answer out of every day's count.
+    private func isAboutToAskOrAsking(now: Date) -> Bool {
+        if usageStatsAskTimer != nil, let armed = usageStatsAskArmedAt, usageStats.shouldAsk(now: now) {
+            return now.timeIntervalSince(armed) < Self.holdWhileWaiting
         }
+        guard usageStats.isAsking, let since = usageStats.askingSince else { return false }
+        return now.timeIntervalSince(since) < Self.holdWhileShowing
+    }
+
+    /// A window that asked was closed. Answered, the answer has gone out already; closed
+    /// without one, the day's count still says where this app stands ("unasked").
+    private func questionClosed() {
+        // Only for a close without an answer: an answer went out with the change already.
+        guard usageStats.consent == .undecided, usageStats.isAvailable else { return }
+        Task { await countReporter.reportIfNeeded() }
     }
 
     /// The consent window, once nothing else is in the way: not over the setup window, the
@@ -583,12 +750,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         }
         // Not straight away even when clear: the menu bar item has only just appeared.
         timer.fireDate = Date().addingTimeInterval(5)
+        // Slack lets macOS fold its wakeups in with others': nothing here is to the second.
+        timer.tolerance = 0.3
         RunLoop.main.add(timer, forMode: .common)
         usageStatsAskTimer = timer
+        usageStatsAskArmedAt = Date()
     }
 
     private func askAboutUsageStatsIfClear() {
-        guard usageStats.consent == .undecided else { return stopAskingAboutUsageStats() }
+        guard usageStats.shouldAsk() else { return stopAskingAboutUsageStats() }
         guard !isShowingAWindow, !popover.isShown, !appMenuOpen else { return }
         stopAskingAboutUsageStats()
         usageStatsWindow.show(activating: false)
@@ -599,12 +769,116 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         usageStatsAskTimer = nil
     }
 
+    // MARK: - Support prompt
+
+    /// Asks someone with an unverified mouse to run the device test, at a clear moment; see
+    /// `SupportPromptPolicy` for how often. Also notes when a report goes out, from wherever
+    /// the test was opened, so nothing asks about that model again.
+    private func startSupportPrompt() {
+        supportPrompt.trackReports(from: deviceTestWindow.model).store(in: &cancellables)
+        // Listed already by startUsageStats, which runs first (listRazerMice).
+        // The list is kept empty while the setting is off, so turning it on lists what is
+        // already plugged in instead of waiting for the next plug event.
+        supportPrompt.$isEnabled.dropFirst().removeDuplicates()
+            .sink { [weak self] _ in self?.relistRazerMice() }
+            .store(in: &cancellables)
+        // A timer for the moment, not the mouse: "clear" (no window, popover or menu) changes
+        // without any event this could hang off. Each tick is a few property reads; the
+        // device list it needs is kept current by the plug monitor instead.
+        let timer = Timer(timeInterval: 5, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.askForDeviceTestIfClear() }
+        }
+        // Not straight away: the mouse is still being opened and the setup window may be next.
+        timer.fireDate = Date().addingTimeInterval(10)
+        timer.tolerance = 0.5
+        RunLoop.main.add(timer, forMode: .common)
+        supportPromptTimer = timer
+    }
+
+    /// After a plug event settles: a dongle's interfaces arrive one by one, and a removed
+    /// device can still be listed for a moment while it is torn down. Every interface fires
+    /// its own event, so a burst is folded into one listing.
+    private func relistRazerMice() {
+        relistRazerMiceWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.listRazerMice()
+            // The test's intro names every device that could be the mouse; a plug changes that.
+            if self.deviceTestWindow.isVisible { self.deviceTestWindow.model.devicesMayHaveChanged() }
+        }
+        relistRazerMiceWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1, execute: work)
+    }
+
+    /// `accessories.rescan`, settled the same way as `relistRazerMice`: a keyboard unplugged
+    /// can still be listed when its removal fires, and one plugged in may not have its control
+    /// interface yet, which would leave a dead card or the wrong interface open.
+    private func rescanAccessoriesAfterPlug() {
+        rescanAccessoriesWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.accessories.rescan() }
+        rescanAccessoriesWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1, execute: work)
+    }
+
+    /// The Razer mice plugged in, listed once for both who need them: the counts (in a build
+    /// with the Worker) and the support prompt (while it can use them).
+    /// Off the main thread: an IOKit listing on every plug and dongle wake mustn't hold up the
+    /// menu bar. The results land back on the main thread.
+    private func listRazerMice() {
+        let counts = usageStats.isAvailable, prompt = needsRazerMiceList
+        guard counts || prompt else {
+            razerMiceOnUSB = []
+            return
+        }
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let all = HIDDevice.razerMice()
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.razerMiceOnUSB = prompt ? all : []
+                self.pluggedRazerMice.send(counts ? all : [])
+            }
+        }
+    }
+
+    /// Whether the support prompt can use the list of Razer mice: only while it's on and Input
+    /// Monitoring is missing. The counts list them on every Razer plug anyway, in a build with
+    /// the Worker (`relistRazerMice`).
+    private var needsRazerMiceList: Bool { supportPrompt.isEnabled && !DeviceTestModel.inputMonitoringGranted }
+
+    private func askForDeviceTestIfClear() {
+        guard supportPrompt.isEnabled else { return }
+        // The same mouse on two ticks in a row. The controller publishes a new mouse's fields
+        // one at a time, and a tick between them could pair its id with the last one's name
+        // or link, and spend the ask on that. Read on every tick, clear or not, so the last
+        // reading is never one from before a window was open.
+        let mouse = unsupportedMouse
+        defer { lastUnsupportedMouse = mouse }
+        guard let mouse, mouse == lastUnsupportedMouse,
+              !isShowingAWindow, !popover.isShown, !appMenuOpen,
+              supportPrompt.shouldAsk(pid: mouse.pid) else { return }
+        supportPromptWindow.show(for: mouse)
+    }
+
+    /// The connected mouse if a report would still help, else one plugged in that the app can't
+    /// open. On Bluetooth `needsReport` only counts what the read-only test can confirm, so a
+    /// mouse there is asked about only for that or for its other links.
+    private var unsupportedMouse: UnsupportedMouse? {
+        if controller.connected, let pid = controller.deviceID {
+            guard RazerDevices.needsReport(pid: pid) else { return nil }
+            return UnsupportedMouse(pid: pid, name: controller.deviceName ?? "Razer Mouse", canControl: true)
+        }
+        return SupportPrompt.mouseWithoutAccess(among: razerMiceOnUSB,
+                                                accessGranted: DeviceTestModel.inputMonitoringGranted)
+    }
+
     /// Turning the setting on with an update already found is the one moment a user is
     /// watching for it to act, and neither of the other triggers fires then: `latestVersion`
     /// hasn't changed (so the deduplicated sink stays quiet) and the popover was never open.
     private func autoInstallSettingChanged() { autoInstallIfEnabled() }
     @objc private func openPermissions() { present(permissionsWindow) }
     @objc private func openDeviceTest() { present(deviceTestWindow) }
+    @objc private func openIssueReport() { present(issueReportWindow) }
+    @objc private func openTip() { NSWorkspace.shared.open(ProjectLinks.tip) }
     @objc private func quit() { NSApplication.shared.terminate(nil) }
 
     // MARK: - Appearance
@@ -630,7 +904,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
 
     // MARK: - NSPopoverDelegate
 
-    func popoverDidShow(_ notification: Notification) { controller.setPopoverVisible(true) }
+    func popoverDidShow(_ notification: Notification) {
+        controller.setPopoverVisible(true)
+        // Re-reads each accessory's brightness: a keyboard's own keys change it behind the app's back.
+        accessories.rescan()
+    }
     func popoverDidClose(_ notification: Notification) {
         controller.setPopoverVisible(false)
         // An update found while the popover was open was deliberately left alone; now that
@@ -663,11 +941,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         }
         let verdict = PopoverFocusReturn.verdict(.init(
             appMenuOpen: appMenuOpen,
+            menuClickHeld: PopoverFocusReturn.menuClickHeld(pressedButtons: NSEvent.pressedMouseButtons,
+                                                            control: NSEvent.modifierFlags.contains(.control)),
             popoverShown: popover.isShown,
             windowOpened: windowRequested || somethingNewOnScreen,
             appIsActive: NSApp.isActive,
             hasPreviousApp: previous != nil))
         switch verdict {
+        case .wait where !appMenuOpen && !popover.isShown:
+            // Only a held click is keeping it: a menu may open when it lets go, or nothing may,
+            // when it's released off the icon. Look again shortly rather than leave focus here.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in self?.returnFocusAfterPopover() }
         case .wait:
             return
         case .stay:
@@ -738,10 +1022,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     /// A device test step may have the mouse dark, red, or at a test DPI, and puts it back when
     /// it finishes, a few seconds at most. Quitting first would leave it that way: the history
     /// flush below only waits two seconds for the device queue, less than the lighting step.
+    /// A keyboard or mousepad's lighting test is the same.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        let model = deviceTestWindow.model
-        guard model.running else { return .terminateNow }
-        model.whenIdle { NSApp.reply(toApplicationShouldTerminate: true) }
+        let mouse = deviceTestWindow.model, accessory = accessoryTestWindow.model
+        guard mouse.running || accessory.running else { return .terminateNow }
+        mouse.whenIdle { accessory.whenIdle { NSApp.reply(toApplicationShouldTerminate: true) } }
         return .terminateLater
     }
 

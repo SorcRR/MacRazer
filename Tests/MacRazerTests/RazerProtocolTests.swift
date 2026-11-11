@@ -72,7 +72,7 @@ final class RazerCommandsTests: XCTestCase {
 
     func testSetDPIClampsRange() {
         XCTAssertEqual(RazerCommands.parseDPI(RazerCommands.setDPI(x: 50, y: 50)).x, 100)
-        XCTAssertEqual(RazerCommands.parseDPI(RazerCommands.setDPI(x: 51000, y: 51000)).x, 50000)
+        XCTAssertEqual(RazerCommands.parseDPI(RazerCommands.setDPI(x: 51000, y: 51000)).x, 45000)
     }
 
     func testParseDPIStages() {
@@ -137,9 +137,64 @@ final class RazerCommandsTests: XCTestCase {
     func testSetDPIStagesClampsAndRoundTrips() {
         // Set layout matches the get-response layout, so parseDPIStages round-trips it.
         let r = RazerCommands.setDPIStages([50, 800, 51000, 1600, 3200, 6400, 9999], activeStage: 9)
-        XCTAssertEqual(RazerCommands.parseDPIStages(r), [100, 800, 50000, 1600, 3200],
+        XCTAssertEqual(RazerCommands.parseDPIStages(r), [100, 800, 45000, 1600, 3200],
                        "values clamp to the protocol range; the table caps at 5 stages")
         XCTAssertEqual(RazerCommands.parseActiveDPIStage(r), 4, "active index clamps to the last stage")
+    }
+
+    func testBreathingWireLayouts() {
+        // razerchromacommon.c, razer_chroma_extended_matrix_effect_breathing_*: the byte
+        // strings in its comment, VARSTORE and the LED group in front.
+        let red = RGB(r: 0xFF, g: 0x00, b: 0x00), green = RGB(r: 0x00, g: 0xFF, b: 0x00)
+
+        let single = RazerCommands.setBreathingSingle(rgb: green)
+        XCTAssertEqual(single.commandClass, 0x0F)
+        XCTAssertEqual(single.commandId, 0x02)
+        XCTAssertEqual(single.dataSize, 0x09)
+        XCTAssertEqual(Array(single.arguments[0...8]), [0x01, 0x00, 0x02, 0x01, 0x00, 0x01, 0x00, 0xFF, 0x00])
+        XCTAssertEqual(single.arguments[9], 0x00)
+
+        let dual = RazerCommands.setBreathingDual(rgb1: green, rgb2: red)
+        XCTAssertEqual(dual.dataSize, 0x0C)
+        XCTAssertEqual(Array(dual.arguments[0...11]),
+                       [0x01, 0x00, 0x02, 0x02, 0x00, 0x02, 0x00, 0xFF, 0x00, 0xFF, 0x00, 0x00])
+
+        let random = RazerCommands.setBreathingRandom()
+        XCTAssertEqual(random.dataSize, 0x06)
+        XCTAssertEqual(Array(random.arguments[0...5]), [0x01, 0x00, 0x02, 0x00, 0x00, 0x00])
+
+        XCTAssertEqual(RazerCommands.setBreathingSingle(led: 0x04, rgb: red).arguments[1], 0x04)
+    }
+
+    func testColourPickKeepsBreathingOnlyWhereEffectsWork() {
+        XCTAssertEqual(LightingEffect.breathing.afterColorPick(effectsSupported: true), .breathing)
+        XCTAssertEqual(LightingEffect.breathing.afterColorPick(effectsSupported: false), .staticColor,
+                       "Bluetooth has no breathing command")
+        for other in [LightingEffect.staticColor, .spectrum, .wave, .off] {
+            XCTAssertEqual(other.afterColorPick(effectsSupported: true), .staticColor)
+        }
+    }
+
+    func testPendingRequestKeepsTheLatestUntilItAnswers() {
+        var pending = PendingRequest<LightingEffect>()
+        XCTAssertNil(pending.value)
+        let breathing = pending.begin(.breathing)
+        let wave = pending.begin(.wave)
+        XCTAssertEqual(pending.value, .wave)
+        pending.finish(breathing)
+        XCTAssertEqual(pending.value, .wave, "an older write answering must not hide a newer one still queued")
+        pending.finish(wave)
+        XCTAssertNil(pending.value)
+    }
+
+    func testBreathingProfileRoundTrips() throws {
+        let profile = MouseProfile(name: "Calm", dpi: 800, pollRate: 500, brightness: 60,
+                                   effect: LightingEffect.breathing.rawValue,
+                                   color: RGB(r: 0x12, g: 0x34, b: 0x56), buttonMappings: [:])
+        let decoded = try JSONDecoder().decode(MouseProfile.self, from: JSONEncoder().encode(profile))
+        XCTAssertEqual(decoded, profile)
+        XCTAssertEqual(decoded.lightingEffect, .breathing)
+        XCTAssertEqual(decoded.color, RGB(r: 0x12, g: 0x34, b: 0x56))
     }
 
     func testProfileDecodesWithoutDPIStagesField() {
@@ -175,6 +230,45 @@ final class RazerCommandsTests: XCTestCase {
         var junk = RazerReport(commandClass: 0x00, commandId: 0x85, dataSize: 0x01)
         junk.arguments[0] = 0x77
         XCTAssertEqual(RazerCommands.parsePollingRate(junk), 0)
+    }
+
+    /// polling_rate2 matches OpenRazer's razer_chroma_misc_{get,set}_polling_rate2.
+    func testPollingRate2MatchesOpenRazer() {
+        let get = RazerCommands.getPollingRate2()
+        XCTAssertEqual([get.commandClass, get.commandId, get.dataSize], [0x00, 0xC0, 0x01])
+        let set = RazerCommands.setPollingRate2(8000, argument: 0x01)
+        XCTAssertEqual([set.commandClass, set.commandId, set.dataSize], [0x00, 0x40, 0x02])
+        XCTAssertEqual(Array(set.arguments.prefix(2)), [0x01, 0x01])
+        for (hz, code) in [(8000, UInt8(0x01)), (4000, 0x02), (2000, 0x04), (1000, 0x08), (500, 0x10), (250, 0x20), (125, 0x40)] {
+            XCTAssertEqual(RazerCommands.setPollingRate2(hz, argument: 0).arguments[1], code, "\(hz)")
+        }
+        XCTAssertEqual(RazerCommands.setPollingRate2(777, argument: 0).arguments[1], 0x08, "unknown falls back to 1000")
+    }
+
+    /// The answers test reports got: `00 08` from the Basilisk V4 Pro, V4 HyperSpeed, Mouse Dock
+    /// V2 Pro and DeathAdder V3, and `00 01` from a Viper V4 Pro on its cable.
+    func testPollingRate2AnswersFromReports() {
+        func answer(_ bytes: [UInt8]) -> Int {
+            var r = RazerReport(commandClass: 0x00, commandId: 0xC0, dataSize: 0x01)
+            for (i, b) in bytes.enumerated() { r.arguments[i] = b }
+            return RazerCommands.parsePollingRate2(r)
+        }
+        XCTAssertEqual(answer([0x00, 0x08]), 1000)
+        XCTAssertEqual(answer([0x00, 0x01]), 8000)
+        XCTAssertEqual(answer([0x00, 0x03]), 0, "not one code")
+    }
+
+    /// Every polling_rate2 mouse gets both of OpenRazer's writes, 0x00 then 0x01; the rest get
+    /// the classic one.
+    func testPollingRateReports() {
+        let rate2 = RazerCommands.setPollingRateReports(4000, usesPollingRate2: true)
+        XCTAssertEqual(rate2.map(\.commandId), [0x40, 0x40])
+        XCTAssertEqual(rate2.map { $0.arguments[0] }, [0x00, 0x01])
+        XCTAssertEqual(rate2.map { $0.arguments[1] }, [0x02, 0x02])
+        let classic = RazerCommands.setPollingRateReports(500, usesPollingRate2: false)
+        XCTAssertEqual(classic.map(\.commandId), [0x05])
+        XCTAssertEqual(RazerCommands.pollingRateRead(usesPollingRate2: true).report.commandId, 0xC0)
+        XCTAssertEqual(RazerCommands.pollingRateRead(usesPollingRate2: false).report.commandId, 0x85)
     }
 
     func testBrightnessConversions() {

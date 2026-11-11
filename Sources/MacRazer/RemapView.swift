@@ -18,6 +18,10 @@ struct RemapView: View {
     @ObservedObject var remapper: ButtonRemapper
     var controller: MouseController?
     var onBack: (() -> Void)?
+    /// The popover's sub-page width; the window's is 440.
+    var width: CGFloat = 440
+    /// The two-column popover: the buttons on the left, the DPI button and notes on the right.
+    var twoColumns = false
     @State private var recordingButton: Int?
     /// Set while recording a Turbo Keybind: its repeat interval.
     @State private var recordingTurboMs: Int?
@@ -48,37 +52,89 @@ struct RemapView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
-            if remapper.needsEventTap && !remapper.remappingPermissionsGranted {
-                accessibilityBanner
-                buttonList
-            } else {
-                if remapper.remappingPaused && remapper.needsEventTap { pausedNote }
-                // A mouse whose table is known lists and names every control already. Others
-                // only get a row once a press of it is seen.
-                if !remapper.mappingsLiveInMouse { detectionHint }
-                buttonList
-            }
-            if let error = controller?.onboardWriteError, remapper.mappingsLiveInMouse {
-                Text(error).font(.system(size: 11)).foregroundStyle(Color.batteryMid)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            if let controller {
-                DpiCycleBindingSection(controller: controller, remapper: remapper) {
-                    recorderError = nil
-                    recordingDpiCycleShortcut = true
+            if twoColumns {
+                // What to do and how remapping works on the left; the mappings on the right.
+                HStack(alignment: .top, spacing: 18) {
+                    VStack(alignment: .leading, spacing: 14) {
+                        notices
+                        footer
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    VStack(alignment: .leading, spacing: 14) {
+                        buttonList
+                        dpiAndModelNotes
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
+            } else {
+                notices
+                buttonList
+                dpiAndModelNotes
+                footer
             }
-            if let controller { MouseSwitchesSection(controller: controller) }
-            if remapper.isBasiliskV3XHyperSpeed { basiliskButtonLimits }
-            footer
         }
-        // 22 in its own window, like Settings and the other 440-wide windows; 18 inside the
-        // popover, like Profiles.
-        .padding(onBack == nil ? 22 : 18)
-        .frame(width: onBack == nil ? 440 : 320)
-        .onAppear { remapper.refreshAccessibility(prompt: false) }
+        .padding(18)
+        .frame(width: width)
+        .onAppear {
+            remapper.refreshAccessibility(prompt: false)
+        }
         .overlay { if recordingButton != nil || recordingDpiCycleShortcut { recorderOverlay } }
         .overlay { if clutchButton != nil { clutchOverlay } }
+        .background { if let controller { SideButtonCheckTrigger(controller: controller) } }
+    }
+
+    /// The permission banner, or the paused note and the "press a button" hint.
+    @ViewBuilder private var notices: some View {
+        if let controller { SideButtonResetNotice(controller: controller) }
+        // A mouse that keeps its remaps in its own table needs no event tap for them.
+        if remapper.needsEventTap && !remapper.remappingPermissionsGranted {
+            accessibilityBanner
+        } else {
+            if remapper.remappingPaused && remapper.needsEventTap { pausedNote }
+            // Remaps kept in the mouse never pass through an event tap, so no app can take them.
+            if remapper.showsCompetingApps && !remapper.mappingsLiveInMouse { competingAppsNote }
+            // A mouse whose table is known lists and names every control already. Others
+            // only get a row once a press of it is seen.
+            if !remapper.mappingsLiveInMouse { detectionHint }
+        }
+        if let error = controller?.onboardWriteError, remapper.mappingsLiveInMouse {
+            Text(error).font(.system(size: 11)).foregroundStyle(Color.batteryMid)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// Another app can take a button's clicks before MacRazer sees them, and then the button
+    /// never shows up here. Naming the app saves a support email.
+    private var competingAppsNote: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "exclamationmark.triangle").foregroundStyle(Color.batteryMid)
+            Text(Self.competingAppsText(remapper.competingTapApps))
+                .font(.system(size: 11)).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.batteryMid.opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    nonisolated static func competingAppsText(_ apps: [String]) -> String {
+        let list = ListFormatter.localizedString(byJoining: apps)
+        let pronoun = apps.count == 1 ? "it" : "them"
+        return "If a side button doesn't show up here when you press it, \(list) may be taking "
+            + "its clicks. Quit \(pronoun) and try again."
+    }
+
+    /// The DPI button's binding and model notes.
+    @ViewBuilder private var dpiAndModelNotes: some View {
+        if let controller {
+            DpiCycleBindingSection(controller: controller, remapper: remapper) {
+                recorderError = nil
+                recordingDpiCycleShortcut = true
+            }
+        }
+        if let controller { MouseSwitchesSection(controller: controller) }
+        if remapper.isBasiliskV3XHyperSpeed { basiliskButtonLimits }
     }
 
     /// The typed DPI, when it is one the mouse takes.
@@ -591,6 +647,63 @@ private struct LevelSlider: View {
     }
 }
 
+/// Reads the side buttons when the page opens and again whenever the mouse comes back, as a
+/// disconnect clears what was read. A background view: the notice is empty until something
+/// was found, and an empty view never appears.
+private struct SideButtonCheckTrigger: View {
+    @ObservedObject var controller: MouseController
+
+    var body: some View {
+        Color.clear
+            .onAppear { controller.checkSideButtonsIfSupported() }
+            .onChange(of: controller.checksSideButtons) { _, now in if now { controller.checkSideButtonsIfSupported() } }
+    }
+}
+
+/// Side buttons saved in the mouse to send something else (by Synapse, say), which the
+/// remapper can't see as buttons, and a reset that puts them back (`SideButtonReset`).
+private struct SideButtonResetNotice: View {
+    @ObservedObject var controller: MouseController
+
+    var body: some View {
+        if controller.checksSideButtons && controller.remappedSideButtons.isEmpty,
+           let done = controller.sideButtonResetDone {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "checkmark.circle").foregroundStyle(.secondary)
+                Text(done).font(.system(size: 11)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else if controller.checksSideButtons && !controller.remappedSideButtons.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle").foregroundStyle(Color.batteryMid)
+                    Text(SideButtonReset.noticeText(controller.remappedSideButtons))
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                }
+                HStack(spacing: 8) {
+                    Button(controller.isResettingSideButtons ? "Resetting…" : "Reset Side Buttons") {
+                        controller.resetSideButtons()
+                    }
+                    .disabled(controller.isResettingSideButtons)
+                    if let error = controller.sideButtonResetError {
+                        Text(error).font(.system(size: 10)).foregroundStyle(Color.batteryMid)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .font(.system(size: 11))
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.batteryMid.opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
+        }
+    }
+}
+
 private struct DpiCycleBindingSection: View {
     @ObservedObject var controller: MouseController
     @ObservedObject var remapper: ButtonRemapper
@@ -727,7 +840,7 @@ final class RecorderNSView: NSView {
     }
 
     /// The Mac's virtual key codes for the modifier keys, left and right apart.
-    static let modifierKeys: [UInt16: (flag: NSEvent.ModifierFlags, name: String)] = [
+    nonisolated static let modifierKeys: [UInt16: (flag: NSEvent.ModifierFlags, name: String)] = [
         59: (.control, "Left ⌃"), 62: (.control, "Right ⌃"),
         56: (.shift, "Left ⇧"), 60: (.shift, "Right ⇧"),
         58: (.option, "Left ⌥"), 61: (.option, "Right ⌥"),

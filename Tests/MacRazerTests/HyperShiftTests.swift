@@ -76,27 +76,4 @@ final class HyperShiftTests: XCTestCase {
         XCTAssertEqual(ButtonRemapper.label(for: HardwareButton.tiltLeft.rawValue), "Scroll Left")
         XCTAssertEqual(ButtonRemapper.label(for: HardwareButton.tiltRight.rawValue), "Scroll Right")
     }
-
-    // MARK: Polling rate 2
-
-    func testV4ProUsesPollingRate2() {
-        XCTAssertEqual(RazerCommands.supportedPollingRates(pid: 0x00E3), [125, 250, 500, 1000, 2000, 4000, 8000])
-        XCTAssertEqual(RazerCommands.supportedPollingRates(pid: 0x00B9), RazerCommands.supportedPollingRates)
-
-        let wired = RazerCommands.setPollingRateReports(8000, pid: 0x00E2)
-        XCTAssertEqual(wired.map { [$0.commandClass, $0.commandId, $0.dataSize, $0.arguments[0], $0.arguments[1]] },
-                       [[0x00, 0x40, 0x02, 0x00, 0x01]])
-        let dongle = RazerCommands.setPollingRateReports(1000, pid: 0x00E3)
-        XCTAssertEqual(dongle.map { [$0.arguments[0], $0.arguments[1]] }, [[0x00, 0x08], [0x01, 0x08]])
-    }
-
-    func testPollingRate2ReadDecodesTheProbedAnswer() {
-        var reply = RazerReport(commandClass: 0x00, commandId: 0xC0, dataSize: 0x01)
-        reply.arguments[1] = 0x08 // the V4 Pro's own answer: `00 08`
-        let read = RazerCommands.pollingRateRead(pid: 0x00E3)
-        XCTAssertEqual(read.report.commandId, 0xC0)
-        XCTAssertEqual(read.parse(reply), 1000)
-        reply.arguments[1] = 0x01
-        XCTAssertEqual(read.parse(reply), 8000)
-    }
 }

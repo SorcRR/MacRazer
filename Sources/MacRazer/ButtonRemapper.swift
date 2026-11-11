@@ -100,6 +100,17 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
     @Published private(set) var mappings: [Int: RemapAction] = [:] {
         didSet { refreshOnboardPlan() }
     }
+    /// Other apps with an event tap that can swallow extra-button clicks (Synapse, Mac Mouse
+    /// Fix, …). One that gets a click first leaves nothing for ours to see, so the page names
+    /// them. Refreshed with the Accessibility check.
+    @Published private(set) var competingTapApps: [String] = []
+    /// A button past the wheel click has reached our tap from this mouse. Then nothing is
+    /// taking its clicks, and naming apps that could would only be noise.
+    @Published private(set) var sideButtonDetected = false
+    /// Whether to show `competingTapApps`. A filtering tap may still pass every click on, so
+    /// the apps are named only while no side button has got through.
+    var showsCompetingApps: Bool { !competingTapApps.isEmpty && !sideButtonDetected }
+    private var workspaceObservers: [NSObjectProtocol] = []
 
     @Published private(set) var dpiCycleSoftwareAction: RemapAction?
     @Published private(set) var dpiBridgeBindingConfirmed = false
@@ -150,6 +161,7 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         seenButtons = [] // detected buttons are per-device
         hyperShiftHeld = false
         suppressedTapButtons = []
+        sideButtonDetected = false
         // Side buttons that are plain Back/Forward clicks, listed before the first press.
         suggestedButtons = isBasiliskV3XHyperSpeed || hasHardwareButtonLayout ? [3, 4] : []
         loadMappings()
@@ -185,6 +197,17 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         loadMappings()
         loadDpiSoftwareAction()
         refreshAccessibility(prompt: false)
+        // Keep the named apps current while the page is open: quitting one is what the note
+        // asks for. A launched app may create its tap a moment after it starts.
+        let center = NSWorkspace.shared.notificationCenter
+        workspaceObservers.append(center.addObserver(forName: NSWorkspace.didTerminateApplicationNotification,
+                                                     object: nil, queue: .main) { [weak self] _ in
+            self?.refreshCompetingTaps()
+        })
+        workspaceObservers.append(center.addObserver(forName: NSWorkspace.didLaunchApplicationNotification,
+                                                     object: nil, queue: .main) { [weak self] _ in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { self?.refreshCompetingTaps() }
+        })
     }
 
     /// Re-check the Accessibility grant (call when the window appears / returns to front).
@@ -200,6 +223,7 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         } else {
             removeTap()
         }
+        refreshCompetingTaps()
     }
 
     /// Tears down the event tap and its run-loop source — called when Accessibility is revoked
@@ -493,18 +517,87 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         return mask & required == required
     }
 
-    private func refreshKeyboardCaptureStatus() {
+    /// Every event tap on the session, or nil when macOS won't list them.
+    private static func eventTaps() -> [CGEventTapInformation]? {
         var count: UInt32 = 0
-        guard CGGetEventTapList(0, nil, &count) == .success else {
-            keyboardCaptureAvailable = false; return
-        }
+        guard CGGetEventTapList(0, nil, &count) == .success else { return nil }
         var entries = [CGEventTapInformation](repeating: CGEventTapInformation(), count: Int(count))
-        guard CGGetEventTapList(count, &entries, &count) == .success else {
-            keyboardCaptureAvailable = false; return
-        }
-        keyboardCaptureAvailable = entries.prefix(Int(count)).contains {
+        guard CGGetEventTapList(count, &entries, &count) == .success else { return nil }
+        return Array(entries.prefix(Int(count)))
+    }
+
+    private func refreshKeyboardCaptureStatus() {
+        keyboardCaptureAvailable = Self.eventTaps()?.contains {
             $0.tappingProcess == getpid() && $0.enabled && Self.includesKeyboardEvents($0.eventsOfInterest)
+        } ?? false
+    }
+
+    /// What `competingTapPIDs` needs from a `CGEventTapInformation`.
+    struct TapEntry: Equatable {
+        let pid: pid_t
+        /// 0 for a tap on the whole session; else the one app it filters, which can't take
+        /// clicks meant for anywhere else.
+        let tappedPID: pid_t
+        let enabled: Bool
+        let listenOnly: Bool
+        let eventsOfInterest: CGEventMask
+    }
+
+    /// The other processes whose taps can drop an extra-button click before ours sees it:
+    /// enabled, session-wide, filtering (a listen-only tap can't drop anything) and asking
+    /// for `otherMouseDown`. In list order, each once.
+    static func competingTapPIDs(_ taps: [TapEntry], ownPID: pid_t) -> [pid_t] {
+        let otherMouse = CGEventMask(1) << CGEventType.otherMouseDown.rawValue
+        var seen = Set<pid_t>()
+        return taps.compactMap { tap in
+            guard tap.pid != ownPID, tap.tappedPID == 0, tap.enabled, !tap.listenOnly,
+                  tap.eventsOfInterest & otherMouse != 0, seen.insert(tap.pid).inserted else { return nil }
+            return tap.pid
         }
+    }
+
+    private func refreshCompetingTaps() {
+        let names = Self.currentCompetingTapApps()
+        if names != competingTapApps { competingTapApps = names }
+    }
+
+    /// The apps whose taps compete with ours (`competingTapPIDs`), each once. Also what the
+    /// device test reports (`RemapSoftware`).
+    static func currentCompetingTapApps() -> [String] {
+        let taps = (eventTaps() ?? []).map {
+            TapEntry(pid: $0.tappingProcess, tappedPID: $0.processBeingTapped, enabled: $0.enabled,
+                     listenOnly: $0.options == .listenOnly, eventsOfInterest: $0.eventsOfInterest)
+        }
+        // Apps only: macOS's own daemons tap mouse events too, and passing clicks on is their job.
+        var names: [String] = []
+        for pid in competingTapPIDs(taps, ownPID: getpid()) {
+            guard let name = appName(pid: pid), !names.contains(name) else { continue }
+            names.append(name)
+        }
+        return names
+    }
+
+    /// The app a process belongs to, or nil for one of macOS's own. A helper launched by
+    /// launchd has no `NSRunningApplication`, so the `.app` around its executable names it.
+    static func appName(pid: pid_t) -> String? {
+        if let app = NSRunningApplication(processIdentifier: pid), let bundleID = app.bundleIdentifier {
+            return bundleID.hasPrefix("com.apple.") ? nil : app.localizedName ?? bundleID
+        }
+        var buffer = [CChar](repeating: 0, count: 4 * Int(MAXPATHLEN))
+        guard proc_pidpath(pid, &buffer, UInt32(buffer.count)) > 0 else { return nil }
+        return appName(executablePath: String(cString: buffer))
+    }
+
+    /// The outermost `.app` in the path, without its extension; nil outside one, in macOS's
+    /// own folders, or inside one of Apple's apps (an Xcode helper is Apple's, not Xcode the
+    /// competitor).
+    static func appName(executablePath path: String) -> String? {
+        guard !path.hasPrefix("/System/"), !path.hasPrefix("/usr/") else { return nil }
+        let components = path.split(separator: "/")
+        guard let index = components.firstIndex(where: { $0.hasSuffix(".app") }) else { return nil }
+        let appPath = "/" + components[...index].joined(separator: "/")
+        if Bundle(path: appPath)?.bundleIdentifier?.hasPrefix("com.apple.") ?? false { return nil }
+        return String(components[index].dropLast(4))
     }
 
     private static let tapCallback: CGEventTapCallBack = { _, type, event, userInfo in
@@ -535,6 +628,7 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
             return handleDpiBridge(type: type, event: event)
         }
         let button = Int(event.getIntegerValueField(.mouseEventButtonNumber))
+        if type == .otherMouseDown, button >= 3, !sideButtonDetected { sideButtonDetected = true }
 
         // Only the extra buttons are remappable (the tap is scoped to otherMouse events,
         // but keep the guard as a defensive net).

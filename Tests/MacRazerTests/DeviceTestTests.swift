@@ -123,6 +123,13 @@ final class DeviceTestTests: XCTestCase {
         let notReady = FakeMouse()
         XCTAssertEqual(DeviceTestSteps.battery(notReady, expectsBattery: nil).outcome, .failed,
                        "raw 0 is the protocol's not-ready, not an empty battery")
+        XCTAssertEqual(DeviceTestSteps.battery(notReady, expectsBattery: false).outcome, .notSupported,
+                       "a wired-only model on record answering zeros has no battery")
+
+        let charging = FakeMouse()
+        charging.answers(RazerCommands.getChargingStatus()) { $0[1] = 1 }
+        XCTAssertEqual(DeviceTestSteps.battery(charging, expectsBattery: false).outcome, .failed,
+                       "a mouse that says it is charging has a battery, whatever the registry says")
 
         let wired = FakeMouse()
         wired.refuse = { $0.commandClass == 0x07 }
@@ -213,11 +220,26 @@ final class DeviceTestTests: XCTestCase {
         XCTAssertEqual(try pollNow(mouse), 1000)
     }
 
+    /// A mouse that refuses the classic pair, as the HyperPolling models do: the step uses
+    /// polling_rate2 there, and leaves the mouse at its rate.
+    func testPollingRate2PassesWhereTheClassicCommandIsRefused() throws {
+        let mouse = FakeMouse()
+        mouse.refuse = { $0.commandClass == 0x00 && [0x05, 0x85].contains($0.commandId) }
+        mouse.holds(RazerCommands.setPollingRate2(8000, argument: 0x00))
+        XCTAssertEqual(DeviceTestSteps.polling(mouse).outcome, .notSupported, "the classic command alone")
+        let record = DeviceTestSteps.polling(mouse, usesPollingRate2: true)
+        XCTAssertEqual(record.outcome, .passed)
+        XCTAssertEqual(record.data?.original, 8000)
+        XCTAssertEqual(record.data?.test, 500)
+        XCTAssertTrue(record.data?.restored ?? false)
+        XCTAssertEqual(try DeviceProbe.readPollingRate(mouse, usesPollingRate2: true).value, 8000)
+    }
+
     func testAnUnnamedPollingRateIsNeverWritten() {
         // There'd be no way to write it back, so the step doesn't change it at all.
         let mouse = FakeMouse()
         var odd = RazerCommands.setPollingRate(1000)
-        odd.arguments[0] = 0x04
+        odd.arguments[0] = 0x03
         mouse.holds(odd)
         let record = DeviceTestSteps.polling(mouse)
         XCTAssertEqual(record.outcome, .failed)
@@ -300,6 +322,177 @@ final class DeviceTestTests: XCTestCase {
         XCTAssertEqual(record.outcome, .failed)
     }
 
+    // MARK: Capabilities
+
+    /// The rule that lets this run on anyone's mouse: every extra command is a read.
+    func testEveryCapabilityReadIsAGet() {
+        for (name, report) in DeviceTestSteps.capabilityReads {
+            XCTAssertNotEqual(report.commandId & 0x80, 0, "\(name) is not a get")
+        }
+    }
+
+    func testCapabilitiesSortEachAnswer() {
+        /// Answers by command id: 0xC0 timeout, 0x83 not supported, 0x82 failed, the rest answer.
+        final class Scripted: DeviceProbeChannel {
+            func send(_ report: RazerReport) throws -> RazerReport { try sendWithRetry(report, attempts: 1) }
+            func sendWithRetry(_ report: RazerReport, attempts: Int) throws -> RazerReport {
+                switch report.commandId {
+                case 0xC0: throw HIDDevice.HIDError.timeout
+                case 0x83: throw HIDDevice.HIDError.notSupported
+                case 0x82 where report.commandClass == 0x07: throw HIDDevice.HIDError.commandFailed
+                default:
+                    var reply = report
+                    reply.arguments[2] = 0x2A
+                    return reply
+                }
+            }
+        }
+        let reads = DeviceTestSteps.readCapabilities(Scripted()).reads
+        XCTAssertEqual(reads.count, DeviceTestSteps.capabilityReads.count)
+        func answer(_ name: String) -> DeviceReport.CapabilityAnswer? { reads.first { $0.name == name }?.answer }
+        XCTAssertEqual(answer("pollingRate2"), .noAnswer)
+        XCTAssertEqual(answer("idleTime"), .notSupported)
+        XCTAssertEqual(answer("lowBatteryThreshold"), .failed)
+        XCTAssertEqual(answer("profileSlots"), .answered)
+        let underglow = try? XCTUnwrap(reads.first { $0.led == 0x0A })
+        XCTAssertEqual(underglow?.answer, .answered)
+        XCTAssertEqual(underglow?.response?.count, DeviceTestSteps.capabilityResponseBytes)
+        XCTAssertEqual(underglow?.response?[2], 0x2A)
+        XCTAssertNil(reads.first { $0.name == "idleTime" }?.response, "only an answer keeps bytes")
+    }
+
+    /// No id answered Identify: the reads are skipped rather than left to time out.
+    func testCapabilitiesNeedAnIdThatAnswered() {
+        let mouse = FakeMouse()
+        let none = DeviceReport.StepRecord<DeviceReport.IdentifyData>(outcome: .failed, data: .init(
+            standardAttempts: [], lightingAttempts: [], standardId: nil, lightingId: nil))
+        XCTAssertNil(DeviceTestSteps.capabilities(mouse, identify: none, registry: nil))
+        XCTAssertTrue(mouse.calls.isEmpty)
+        var found = none
+        found.data?.standardId = 0x1F
+        XCTAssertEqual(DeviceTestSteps.capabilities(mouse, identify: found, registry: nil)?.reads.count,
+                       DeviceTestSteps.capabilityReads.count)
+        XCTAssertTrue(mouse.calls.allSatisfy { if case .retried(_, _, attempts: 1) = $0 { return true }; return false },
+                      "one attempt per read")
+    }
+
+    /// Answers the button table reads from `table`, refuses the rest, and can replay the
+    /// previous reply or stop answering from some id on.
+    private final class ButtonTableMouse: DeviceProbeChannel {
+        var table: [UInt8: [UInt8]] = [:]
+        var staleIds: Set<UInt8> = []
+        var silentFrom: UInt8 = .max
+        private(set) var asked: [UInt8] = []
+        private var last: RazerReport?
+        func send(_ report: RazerReport) throws -> RazerReport { try sendWithRetry(report, attempts: 1) }
+        func sendWithRetry(_ report: RazerReport, attempts: Int) throws -> RazerReport {
+            let id = report.arguments[1]
+            asked.append(id)
+            if id >= silentFrom { throw HIDDevice.HIDError.timeout }
+            if staleIds.contains(id), let last { return last }
+            guard let block = table[id] else { throw HIDDevice.HIDError.commandFailed }
+            var reply = report
+            reply.arguments.replaceSubrange(3..<10, with: block)
+            last = reply
+            return reply
+        }
+    }
+
+    func testTheButtonTableKeepsTheEntriesThatAnswer() {
+        let mouse = ButtonTableMouse()
+        mouse.table = [0x02: [1, 1, 2, 0, 0, 0, 0], 0x60: [6, 1, 6, 0, 0, 0, 0], 0x80: [0, 1, 0, 0, 0, 0, 0],
+                       0x30: [0, 0, 0, 0, 0, 0, 0], 0x61: [1, 1, 5, 0, 0, 0, 0]]
+        mouse.staleIds = [0x61]
+        let entries = DeviceTestSteps.readButtonTable(mouse)
+        XCTAssertEqual(entries.map(\.id), [0x02, 0x60, 0x80],
+                       "0x30 is all zeros, and 0x61 got 0x60's reply back")
+        XCTAssertEqual(entries.last?.block, [0, 1, 0, 0, 0, 0, 0], "Disabled is still an entry")
+        XCTAssertEqual(mouse.asked, Array(DeviceTestSteps.buttonTableIds), "a refusal doesn't stop the sweep")
+    }
+
+    /// The probe reads' answers count, so their ids aren't asked twice.
+    func testTheButtonTableUsesTheProbeAnswers() {
+        let mouse = ButtonTableMouse()
+        mouse.table = [0x02: [1, 1, 2, 0, 0, 0, 0]]
+        var probe = DeviceTestSteps.buttonFunctionRead(0x04).arguments
+        probe.replaceSubrange(3..<10, with: [1, 1, 4, 0, 0, 0, 0])
+        let entries = DeviceTestSteps.readButtonTable(mouse, answered: [Array(probe.prefix(DeviceTestSteps.capabilityResponseBytes))])
+        XCTAssertEqual(entries.map(\.id), [0x02, 0x04])
+        XCTAssertFalse(mouse.asked.contains(0x04))
+    }
+
+    func testTheButtonTableStopsWhenTheMouseStopsAnswering() {
+        let mouse = ButtonTableMouse()
+        mouse.table = [0x02: [1, 1, 2, 0, 0, 0, 0]]
+        mouse.silentFrom = 0x10
+        XCTAssertEqual(DeviceTestSteps.readButtonTable(mouse).map(\.id), [0x02])
+        XCTAssertEqual(mouse.asked.last, 0x13, "four timeouts in a row, then no more")
+    }
+
+    /// The table is swept only on a mouse that answered one of the two probe reads.
+    func testTheButtonTableNeedsAButtonFunctionAnswer() {
+        let found = DeviceReport.StepRecord<DeviceReport.IdentifyData>(outcome: .passed, data: .init(
+            standardAttempts: [], lightingAttempts: [], standardId: 0x1F, lightingId: 0x1F))
+        let refusing = FakeMouse()
+        refusing.refuse = { $0.commandClass == 0x02 && $0.commandId == 0x8C }
+        XCTAssertNil(DeviceTestSteps.capabilities(refusing, identify: found, registry: nil)?.buttonTable)
+        let answering = FakeMouse()
+        answering.answers(DeviceTestSteps.buttonFunctionRead(0x04)) { $0[3] = 0x01; $0[4] = 0x01; $0[5] = 0x04 }
+        XCTAssertEqual(DeviceTestSteps.capabilities(answering, identify: found, registry: nil)?.buttonTable?.map(\.id), [0x04],
+                       "FakeMouse keys reads by command, so every id echoes 0x04's args and only 0x04 matches")
+    }
+
+    func testIdentifyTriesOtherInterfacesOnlyWhenNothingReplied() {
+        let silent = FakeMouse()
+        silent.acceptedIds = [0x00: [], 0x04: [], 0x0F: []]
+        let other = FakeMouse()
+        other.acceptedIds = [0x00: [0x1F]]
+        var asked = 0
+        let (record, _) = DeviceTestSteps.identify(silent, registry: nil, others: {
+            asked += 1
+            return DeviceTestSteps.tryInterfaces([(usagePage: 0x01, usage: 0x06, channel: other)], preferred: nil)
+        })
+        XCTAssertEqual(asked, 1)
+        XCTAssertEqual(record.data?.otherInterfaces?.first?.usage, 0x06)
+        XCTAssertEqual(record.data?.otherInterfaces?.first?.attempts.filter(\.answered).map(\.id), [0x1F])
+        XCTAssertNil(record.data?.standardId, "the steps still run on the interface MacRazer picked")
+
+        let answering = FakeMouse()
+        _ = DeviceTestSteps.identify(answering, registry: nil, others: { asked += 1; return [] })
+        XCTAssertEqual(asked, 1, "not asked when an id answered")
+    }
+
+    func testTheSummaryListsWhatElseTheMouseAnswers() {
+        var report = DeviceReportSenderTests.fullReport()
+        report.capabilities = .init(reads: [
+            .init(name: "pollingRate2", commandClass: 0x00, commandId: 0xC0, answer: .answered, response: [0, 8]),
+            .init(name: "buttonFunction", commandClass: 0x02, commandId: 0x8C, answer: .answered),
+            .init(name: "buttonFunction", commandClass: 0x02, commandId: 0x8C, answer: .answered),
+            .init(name: "idleTime", commandClass: 0x07, commandId: 0x83, answer: .notSupported),
+            .init(name: "zoneEffect", commandClass: 0x0F, commandId: 0x82, led: 0x04, answer: .answered),
+            .init(name: "zoneEffect", commandClass: 0x0F, commandId: 0x82, led: 0x05, answer: .failed),
+            .init(name: "zoneEffect", commandClass: 0x0F, commandId: 0x82, led: 0x0A, answer: .answered),
+        ])
+        XCTAssertTrue(DeviceReportOutput.summary(report).contains(
+            "Also answers: pollingRate2, buttonFunction, lighting zones 0x04 0x0A"))
+        report.capabilities?.buttonTable = [.init(id: 0x02, block: [1, 1, 2, 0, 0, 0, 0])]
+        XCTAssertTrue(DeviceReportOutput.summary(report).contains("lighting zones 0x04 0x0A, button table (1 entry)"))
+        report.capabilities = .init(reads: [])
+        XCTAssertTrue(DeviceReportOutput.summary(report).contains("Also answers: none of the extra reads"))
+        report.capabilities = nil
+        XCTAssertFalse(DeviceReportOutput.summary(report).contains("Also answers"))
+    }
+
+    /// The numbering is read as the mouse answers it, so 0-based and 1-based mice both show.
+    func testTheDPIStepRecordsTheStageNumbering() {
+        let mouse = FakeMouse()
+        mouse.holds(RazerCommands.setDPI(x: 1600, y: 1600))
+        mouse.holds(RazerCommands.setDPIStages([400, 800, 1600], activeStage: 2))
+        let data = DeviceTestSteps.dpi(mouse, maxProbe: false).data
+        XCTAssertEqual(data?.firstStageNumber, 0)
+        XCTAssertEqual(data?.activeStageByte, 2)
+    }
+
     // MARK: Report
 
     func testTheReportNeverCarriesASerialNumberAndStaysSmall() throws {
@@ -321,9 +514,17 @@ final class DeviceTestTests: XCTestCase {
             lighting: DeviceTestSteps.lighting(mouse, sweep: lightSweep, restoreEffect: RazerCommands.setNone(),
                                                seconds: 0, wait: { _ in }),
             buttons: .init(outcome: .passed, data: .init(seen: ["09:04", "09:05"])),
+            capabilities: DeviceTestSteps.readCapabilities(mouse),
             verdict: nil, comment: String(repeating: "x", count: 2000), credit: "someone", replyEmail: nil)
         let json = String(decoding: try JSONEncoder().encode(report), as: UTF8.self)
         XCTAssertFalse(json.lowercased().contains("serial"))
         XCTAssertLessThan(json.utf8.count, 16 * 1024, "the Worker's cap, with room to spare")
+    }
+
+    /// A mouse MacRazer can't control yet isn't saving anyone a trip to Windows.
+    @MainActor func testTheTipLineFitsWhatMacRazerCanDoForTheMouse() {
+        XCTAssertFalse(DeviceTestView.tipLine(.unknown).contains("Windows"))
+        XCTAssertTrue(DeviceTestView.tipLine(.full).contains("Windows"))
+        XCTAssertTrue(DeviceTestView.tipLine(.partly(works: [.battery], missing: [.lighting])).contains("Windows"))
     }
 }

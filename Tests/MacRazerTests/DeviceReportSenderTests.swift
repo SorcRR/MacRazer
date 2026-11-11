@@ -4,14 +4,16 @@
 import XCTest
 @testable import MacRazer
 
-/// Send, and the contract between the app's report and the Worker in `worker/` that takes it.
+/// Send, and the contract between the app's report and the Worker that takes it
+/// (SorcRR/macrazer-worker, private), through the fixtures in Fixtures/worker/.
 final class DeviceReportSenderTests: XCTestCase {
     private let endpoint = URL(string: "https://reports.example/v1/device-report")!
 
     // MARK: The full report, shared with the Worker's tests
 
-    /// Every field set, so the Worker's schema is checked against all of them. Add any new
-    /// field here too; `testTheWorkerGetsEveryField` then fails until the fixture and the
+    /// Every field set, so the Worker's schema is checked against all of them, except
+    /// `accessory`, which only a keyboard or mousepad report has (`AccessoryTestTests.accessoryReport`,
+    /// the Worker's accessory-report.json). Add any new field here too; `testTheWorkerGetsEveryField` then fails until the fixture and the
     /// Worker's `validate.ts` catch up.
     static func fullReport() -> DeviceReport {
         let exchange = RecordingChannel.Exchange(commandClass: 0x04, commandId: 0x85, transactionId: 0x1F, status: 0x02,
@@ -33,19 +35,41 @@ final class DeviceReportSenderTests: XCTestCase {
             registry: RazerDevices.info(pid: 0x00DB).map(DeviceReport.Registry.init),
             identify: .init(outcome: .passed,
                             data: .init(firmware: "v1.0", standardAttempts: attempts(0x1F), dpiAttempts: attempts(0x1F),
-                                        lightingAttempts: attempts(0x1F), standardId: 0x1F, lightingId: 0x1F),
+                                        lightingAttempts: attempts(0x1F), standardId: 0x1F, lightingId: 0x1F,
+                                        otherInterfaces: [.init(usagePage: 0x01, usage: 0x06, attempts: attempts(0x1F))]),
                             error: nil, exchanges: [exchange, failed]),
             battery: .init(outcome: .passed, data: .init(raw: 92, percent: 36, charging: false), exchanges: [exchange]),
             dpi: .init(outcome: .passed,
                        data: .init(original: 6400, test: 6350, readBack: 6350, restored: true,
-                                   stages: [400, 800, 1600, 3200, 6400], maxProbe: 26000),
+                                   stages: [400, 800, 1600, 3200, 6400], firstStageNumber: 1, activeStageByte: 4,
+                                   maxProbe: 26000),
                        exchanges: [exchange]),
             polling: .init(outcome: .passed, data: .init(original: 500, test: 1000, readBack: 1000, restored: true)),
             lighting: .init(outcome: .passed,
                             data: .init(groups: ["LOGO": 10], dimShown: true, redShown: true, dimmed: true,
                                         turnedRed: true, restored: true)),
             // 0c:223 is AC Home: consumer usages run past two hex digits.
-            buttons: .init(outcome: .passed, data: .init(seen: ["09:04", "09:05", "07:1e", "0c:223"]), error: "none"),
+            // The keys: a ⌃V from hardware, a ⌘C a remapper posted, and Shift pressed alone.
+            buttons: .init(outcome: .passed, data: .init(seen: ["09:04", "09:05", "07:1e", "0c:223"], keys: [
+                .init(keyCode: 9, modifiers: ["control"], postedBy: nil),
+                .init(keyCode: 8, modifiers: ["command"], postedBy: "Razer Synapse"),
+                .init(keyCode: 56, modifiers: ["shift"], postedBy: nil),
+            ]), error: "none"),
+            // Every read the app makes, so the Worker's schema sees every name and LED id,
+            // and every kind of answer.
+            capabilities: .init(reads: DeviceTestSteps.capabilityReads.enumerated().map { i, read in
+                let answers: [DeviceReport.CapabilityAnswer] = [.answered, .failed, .notSupported, .noAnswer]
+                let answer = answers[i % answers.count]
+                return .init(name: read.name, commandClass: read.report.commandClass, commandId: read.report.commandId,
+                             led: read.report.commandClass == 0x0F ? read.report.arguments[1] : nil, answer: answer,
+                             response: answer == .answered
+                                 ? Array(read.report.arguments.prefix(DeviceTestSteps.capabilityResponseBytes)) : nil)
+            }, buttonTable: [.init(id: 0x04, block: [0x01, 0x01, 0x04, 0, 0, 0, 0]),
+                             .init(id: 0x80, block: [0x00, 0x01, 0x00, 0, 0, 0, 0])]),
+            // A dongle report never has this; here so the Worker's schema sees every field.
+            bluetooth: .init(services: [BLEProtocol.serviceUUID, "180F"], razerService: true, pnpVendorID: 0x068E,
+                             pnpProductID: 0x00DC, pnpVersion: 0x0100, batteryLevel: 64, error: "an example error"),
+            software: .init(razer: ["Razer Synapse", "RzEngineMonService"], mouseTaps: ["BetterTouchTool"]),
             verdict: nil, comment: "Works on my Mac.\nSide buttons too.", credit: "@someone",
             replyEmail: "person@example.com", exchangesDropped: ["lighting"])
         report.polling.error = "an example error"
@@ -53,11 +77,7 @@ final class DeviceReportSenderTests: XCTestCase {
         return report
     }
 
-    private static var fixture: URL {
-        URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            .appendingPathComponent("worker/test/fixtures/full-report.json")
-    }
+    private static var fixture: URL { WorkerFixtures.url("full-report.json") }
 
     /// The Worker's tests check it accepts this file, and that it computes the same verdict.
     /// Run with UPDATE_WORKER_FIXTURE=1 to rewrite it after changing the report.
@@ -74,7 +94,7 @@ final class DeviceReportSenderTests: XCTestCase {
         let onDisk = try parsed(Data(contentsOf: Self.fixture))
         XCTAssertEqual(onDisk, try parsed(Data(json.utf8)), """
             The report's format changed. Rewrite the fixture with UPDATE_WORKER_FIXTURE=1 swift test \
-            --filter DeviceReportSenderTests, update worker/src/validate.ts to match, and run the Worker's tests.
+            --filter DeviceReportSenderTests, update src/validate.ts in SorcRR/macrazer-worker to match, and run its tests.
             """)
     }
 
@@ -123,9 +143,11 @@ final class DeviceReportSenderTests: XCTestCase {
 
     /// The real thing, end to end: this app's request, a real URLSession, and the Worker in
     /// Cloudflare's runtime. Skipped unless MACRAZER_WORKER_URL points at one, such as
-    /// `npx wrangler dev` in worker/ (http://127.0.0.1:8787/v1/device-report).
+    /// `npx wrangler dev` in the Worker's repository (http://127.0.0.1:8787). An origin, the
+    /// same as `WorkerEndpoint` takes it, so one variable serves both.
     func testSendReachesARunningWorker() async throws {
-        guard let url = ProcessInfo.processInfo.environment["MACRAZER_WORKER_URL"].flatMap(URL.init(string:)) else {
+        guard let url = WorkerEndpoint.parse(ProcessInfo.processInfo.environment[WorkerEndpoint.environmentKey])?
+            .appendingPathComponent("v1/device-report") else {
             throw XCTSkip("Set MACRAZER_WORKER_URL to a running Worker to run this.")
         }
         let outcome = await DeviceReportSender.send(Self.fullReport(), to: url)

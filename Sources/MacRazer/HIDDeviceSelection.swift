@@ -12,6 +12,8 @@ struct HIDInterfaceInfo: Equatable {
     let usagePage: Int
     let usage: Int
     let maxFeatureReportSize: Int
+    /// The USB product string, to tell a keyboard from a mouse the registry doesn't know.
+    var productName = ""
 }
 
 /// Picks which physical device — and which of its interfaces — to bind as the Razer control
@@ -25,6 +27,9 @@ enum HIDDeviceSelection {
     /// Index into `interfaces` of the control interface to open, or nil if no interface can
     /// carry the control report.
     ///
+    /// A device the registry doesn't know is skipped when its product string names a line that
+    /// is never a mouse (`couldBeMouse`): a Razer keyboard alone must not be taken for the mouse.
+    ///
     /// Devices (interfaces grouped by pid+location) are ranked:
     /// 1. a PID in the `RazerDevices` registry — a known mouse — always wins;
     /// 2. else a device exposing a Mouse usage interface (0x01/0x02) beats one that doesn't
@@ -33,9 +38,30 @@ enum HIDDeviceSelection {
     /// 3. ties break on lowest locationID, then lowest PID (reachable when devices don't
     ///    report a LocationID and default to 0) — so which of two identical mice wins is
     ///    stable across reconnects instead of following Set/Dictionary iteration order.
+    /// A known mouse's dongle is left out while the same model's cable is plugged in.
     /// Within the winning device, the interface with the best `controlScore` is chosen.
     static func controlInterfaceIndex(interfaces: [HIDInterfaceInfo]) -> Int? {
-        struct DeviceKey: Hashable { let pid: Int; let locationID: Int }
+        candidates(interfaces: interfaces).first?.index
+    }
+
+    /// One physical device: interfaces grouped by product and USB location.
+    struct DeviceKey: Hashable, Sendable {
+        let pid: Int
+        let locationID: Int
+    }
+
+    /// A device that could be the mouse, with the interface selection would open on it.
+    struct Candidate: Equatable {
+        let key: DeviceKey
+        let name: String
+        /// Index into the `interfaces` passed in.
+        let index: Int
+    }
+
+    /// Every device that could be the mouse, best first, in the order described above.
+    /// `cableFirst: false` keeps a dongle whose mouse is also on its cable, for when the
+    /// cable doesn't answer (`dongleIndex`).
+    static func candidates(interfaces: [HIDInterfaceInfo], cableFirst: Bool = true) -> [Candidate] {
         let groups = Dictionary(grouping: interfaces.indices) {
             DeviceKey(pid: interfaces[$0].pid, locationID: interfaces[$0].locationID)
         }
@@ -46,27 +72,66 @@ enum HIDDeviceSelection {
             return 0
         }
 
-        var best: (rank: Int, locationID: Int, score: Int, index: Int)?
+        var entries: [(rank: Int, score: Int, candidate: Candidate)] = []
         for (key, members) in groups {
+            let first = interfaces[members[0]]
+            if RazerDevices.info(pid: first.pid) == nil, !couldBeMouse(productName: first.productName) { continue }
+            // An accessory MacRazer lights is never the mouse, whatever its product string says.
+            if RazerAccessories.info(pid: first.pid) != nil { continue }
             let candidates = members.filter { interfaces[$0].maxFeatureReportSize >= controlReportSize }
             guard let top = candidates.max(by: { controlScore(interfaces[$0]) < controlScore(interfaces[$1]) })
             else { continue } // this device has no interface that can carry the control report
-            let entry = (rank: deviceRank(members), locationID: key.locationID,
-                         score: controlScore(interfaces[top]), index: top)
-            guard let current = best else { best = entry; continue }
-            if entry.rank != current.rank {
-                if entry.rank > current.rank { best = entry }
-            } else if entry.locationID != current.locationID {
-                if entry.locationID < current.locationID { best = entry }
-            } else if entry.score != current.score {
-                if entry.score > current.score { best = entry }
-            } else if interfaces[entry.index].pid < interfaces[current.index].pid {
-                // Total order even when everything else ties (two LocationID-less devices):
-                // Dictionary iteration order varies per process and must not pick the winner.
-                best = entry
-            }
+            entries.append((deviceRank(members), controlScore(interfaces[top]),
+                            Candidate(key: key, name: first.productName, index: top)))
         }
-        return best?.index
+        // A mouse on its cable with its dongle still plugged in is one mouse on two links: the
+        // cable is used and the dongle isn't offered. (Two units of one model, one on each, lose
+        // the dongle one too; picking a unit is rarer than plugging a cable into a dongle mouse.)
+        if cableFirst {
+            let pids = entries.map(\.candidate.key.pid)
+            entries.removeAll { entry in pids.contains { RazerDevices.isCable($0, ofDongle: entry.candidate.key.pid) } }
+        }
+        // Total order even when everything else ties (two LocationID-less devices):
+        // Dictionary iteration order varies per process and must not pick the winner.
+        return entries.sorted { a, b in
+            if a.rank != b.rank { return a.rank > b.rank }
+            if a.candidate.key.locationID != b.candidate.key.locationID {
+                return a.candidate.key.locationID < b.candidate.key.locationID
+            }
+            if a.score != b.score { return a.score > b.score }
+            return a.candidate.key.pid < b.candidate.key.pid
+        }.map(\.candidate)
+    }
+
+    /// The control interface of the dongle whose mouse is on the cable with product id
+    /// `cablePID`, when both are plugged in: what to fall back to if the cable doesn't answer.
+    static func dongleIndex(ofCable cablePID: Int, interfaces: [HIDInterfaceInfo]) -> Int? {
+        candidates(interfaces: interfaces, cableFirst: false)
+            .first { RazerDevices.isCable(cablePID, ofDongle: $0.key.pid) }?.index
+    }
+
+    /// Razer product lines that are not mice but may expose a pointer interface: keyboards,
+    /// keypads, laptops, and accessories. Lower case, matched as substrings of the product
+    /// string. Only families whose names no mouse shares: "Chroma", for one, is in mouse names
+    /// too (the DeathAdder Chroma). Not "mouse dock" either: a mouse charging on the Mouse Dock
+    /// Pro, which doubles as its dongle, might show up under the dock's name.
+    static let nonMouseProductLines = [
+        "keyboard", "keypad", "blackwidow", "huntsman", "ornata", "cynosa", "deathstalker",
+        "anansi", "lycosa", "tartarus", "orbweaver", "nostromo", "pro type", "blade",
+        "kraken", "seiren", "firefly", "goliathus", "base station",
+    ]
+
+    /// Which of `registryIDs` a report names as the control interface: the one open, found by
+    /// its registry ID, else `selected`, selection's pick, when nothing is open or it's gone.
+    static func reportedControlIndex(registryIDs: [UInt64], opened: UInt64?, selected: () -> Int?) -> Int? {
+        if let opened, let index = registryIDs.firstIndex(of: opened) { return index }
+        return selected()
+    }
+
+    /// False for a product string naming one of `nonMouseProductLines`.
+    static func couldBeMouse(productName: String) -> Bool {
+        let name = productName.lowercased()
+        return !nonMouseProductLines.contains { name.contains($0) }
     }
 
     /// Higher score = more likely to be this device's Razer control interface. (Which

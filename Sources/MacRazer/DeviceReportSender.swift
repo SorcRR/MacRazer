@@ -3,7 +3,7 @@
 
 import Foundation
 
-/// Send: posts a report to the Worker in `worker/`, which emails it to the maintainer and
+/// Send: posts a report to the Worker (SorcRR/macrazer-worker, private), which emails it to the maintainer and
 /// keeps nothing. The only network request the device test makes, and only when asked.
 enum DeviceReportSender {
     enum Outcome: Equatable {
@@ -29,21 +29,31 @@ enum DeviceReportSender {
     /// The report as the Worker takes it: compact JSON, cut to fit its 16 KB cap, and with
     /// the reply email, which goes to the maintainer alone.
     static func request(_ report: DeviceReport, to endpoint: URL) -> URLRequest {
+        let body = DeviceReportOutput.json(DeviceReportOutput.fitted(report), forPublic: false, pretty: false)
+        return request(body: Data(body.utf8), to: endpoint)
+    }
+
+    /// A JSON POST to the Worker. Shared with issue reports, which go the same way.
+    static func request(body: Data, to endpoint: URL) -> URLRequest {
         var request = URLRequest(url: endpoint, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 10)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("MacRazer/\(AppInfo.displayVersion)", forHTTPHeaderField: "User-Agent")
-        let body = DeviceReportOutput.json(DeviceReportOutput.fitted(report), forPublic: false, pretty: false)
-        request.httpBody = Data(body.utf8)
+        request.httpBody = body
         return request
     }
 
     typealias Transport = @Sendable (URLRequest) async throws -> (Data, URLResponse)
 
-    static func send(_ report: DeviceReport, to endpoint: URL = ProjectLinks.deviceReports,
+    static func send(_ report: DeviceReport, to endpoint: URL,
+                     transport: Transport = { try await WorkerSession.shared.data(for: $0) }) async -> Outcome {
+        await post(request(report, to: endpoint), transport: transport)
+    }
+
+    static func post(_ request: URLRequest,
                      transport: Transport = { try await WorkerSession.shared.data(for: $0) }) async -> Outcome {
         do {
-            let (_, response) = try await transport(request(report, to: endpoint))
+            let (_, response) = try await transport(request)
             return outcome(status: (response as? HTTPURLResponse)?.statusCode ?? 0)
         } catch {
             return .unavailable
@@ -51,7 +61,7 @@ enum DeviceReportSender {
     }
 }
 
-/// How the app talks to the Worker in `worker/`, for device reports and usage stats alike.
+/// How the app talks to the Worker, for device reports and usage stats alike.
 /// Ephemeral, so nothing leaves cookies or cache behind, and quick to give up: someone may be
 /// watching a spinner, and a ping that fails is simply due again later.
 enum WorkerSession {

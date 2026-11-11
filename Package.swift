@@ -18,7 +18,10 @@ let package = Package(
         .testTarget(
             name: "MacRazerTests",
             dependencies: ["MacRazer"],
-            path: "Tests/MacRazerTests"
+            path: "Tests/MacRazerTests",
+            // Read from disk by path, not bundled: they're the contract with the Worker, whose
+            // CI fetches them from this repository.
+            exclude: ["Fixtures"]
         ),
     ]
 )

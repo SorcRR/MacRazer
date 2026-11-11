@@ -52,9 +52,18 @@ final class DeviceProbeTests: XCTestCase {
     func testAnUnnamedPollingRateReadsAsZero() throws {
         let mouse = FakeMouse()
         var odd = RazerCommands.setPollingRate(1000)
-        odd.arguments[0] = 0x04 // not in the protocol table, as a faster model might answer
+        odd.arguments[0] = 0x03 // not in the protocol table, as a faster model might answer
         mouse.holds(odd)
         XCTAssertEqual(try DeviceProbe.readPollingRate(mouse).value, 0)
+    }
+
+    /// 0x04 is 250 Hz: the byte is 1000 over the rate, and a Pro Click V2 Vertical Edition
+    /// answered it. It writes back the same way, so a test can put it back.
+    func testTwoHundredFiftyHertzReadsAndWrites() throws {
+        XCTAssertEqual(RazerCommands.setPollingRate(250).arguments[0], 0x04)
+        let mouse = FakeMouse()
+        mouse.holds(RazerCommands.setPollingRate(250))
+        XCTAssertEqual(try DeviceProbe.readPollingRate(mouse).value, 250)
     }
 
     func testStageWriteReturnsTheTableReadBack() throws {

@@ -16,15 +16,44 @@ enum DeviceReportOutput {
     static let maxCreditUnits = 256
     static let maxEmail = 254
 
-    /// The report as JSON. `forPublic` drops the reply email: a GitHub issue is public, and
-    /// the address is only ever meant for the maintainer.
+    /// The report as JSON. `forPublic` gives `publicCopy`: a GitHub issue is public.
     static func json(_ report: DeviceReport, forPublic: Bool, pretty: Bool = true) -> String {
-        var copy = report
-        if forPublic { copy.replyEmail = nil }
+        let copy = forPublic ? publicCopy(report) : report
         let encoder = JSONEncoder()
         encoder.outputFormatting = pretty ? [.prettyPrinted, .sortedKeys] : [.sortedKeys]
         return String(decoding: (try? encoder.encode(copy)) ?? Data(), as: UTF8.self)
     }
+
+    /// The report as a GitHub issue may show it. No reply email: that is only for the
+    /// maintainer. Of the apps running on the person's Mac, only Razer's are named. Any other
+    /// app that watches mouse buttons, or sent a recorded key, becomes a count or "another app".
+    /// The report Send emails keeps every name.
+    static func publicCopy(_ report: DeviceReport) -> DeviceReport {
+        var copy = report
+        copy.replyEmail = nil
+        // Razer's by the scan, or by its name: a key Synapse posted still says so after the
+        // person quit it and Review scanned again.
+        let scanned = Set(report.software?.razer ?? [])
+        let razer = { (name: String) in scanned.contains(name) || name.lowercased().hasPrefix("razer") }
+        if var software = copy.software {
+            let others = software.mouseTaps.filter { !razer($0) }.count + (software.otherApps ?? 0)
+            software.mouseTaps = software.mouseTaps.filter(razer)
+            software.otherApps = others == 0 ? nil : others
+            copy.software = software
+        }
+        if var data = copy.buttons.data, let keys = data.keys {
+            var kept: [DeviceReport.KeyPress] = []
+            for var key in keys {
+                if let app = key.postedBy, !razer(app) { key.postedBy = anotherApp }
+                if !kept.contains(key) { kept.append(key) }
+            }
+            data.keys = kept
+            copy.buttons.data = data
+        }
+        return copy
+    }
+
+    static let anotherApp = "another app"
 
     /// The most a report may be, as compact JSON: the Worker refuses anything bigger.
     static let maxReportBytes = 16 * 1024
@@ -54,22 +83,82 @@ enum DeviceReportOutput {
         return r
     }
 
+    /// "mouse", or "keyboard" or "mousepad" for an accessory's lighting test.
+    static func noun(_ report: DeviceReport) -> String {
+        report.accessory?.kind.label.lowercased() ?? "mouse"
+    }
+
+    /// The report as it leaves a test window: `comment` already cleaned by the window (the
+    /// mouse test puts the dock line ahead of it), the credit and reply email cleaned here, a
+    /// bad email left out, and the verdict worked out. Not yet `fitted`: see `FitCache`.
+    static func prepared(_ report: DeviceReport, comment: String?, credit: String, replyEmail: String) -> DeviceReport {
+        var report = report
+        report.comment = comment
+        report.credit = cleaned(credit, max: maxCredit, units: maxCreditUnits, singleLine: true)
+        report.replyEmail = emailProblem(replyEmail) == nil
+            ? cleaned(replyEmail, max: maxEmail, units: maxEmail, singleLine: true) : nil
+        report.verdict = report.currentVerdict()
+        return report
+    }
+
+    /// `fitted`, remembered for the last report it was asked about. Fitting encodes the
+    /// report to measure it, and a review screen asks on every keystroke.
+    struct FitCache {
+        private var last: (input: DeviceReport, output: DeviceReport)?
+
+        mutating func fitted(_ report: DeviceReport) -> DeviceReport {
+            if let last, last.input == report { return last.output }
+            let output = DeviceReportOutput.fitted(report)
+            last = (report, output)
+            return output
+        }
+    }
+
     static func issueTitle(_ report: DeviceReport) -> String {
-        let prefix = report.verdict?.subjectPrefix ?? "Device report"
+        let prefix = report.verdict?.subjectPrefix(noun: noun(report)) ?? "Device report"
         return "\(prefix): \(report.device.name) (\(String(format: "0x%04X", report.device.productID)))"
     }
 
     /// A short readable summary for the top of an issue, above the full JSON. `withComment`
     /// false leaves the comment out, for a link that would be too long with it.
     static func summary(_ report: DeviceReport, withComment: Bool = true) -> String {
+        let report = publicCopy(report)
         var lines = ["**\(report.device.name)**, product ID \(String(format: "0x%04X", report.device.productID))"
                      + (report.identify.data?.firmware.map { ", firmware \($0)" } ?? "")
-                     + (report.device.connection.map { ", over the \($0.rawValue)" } ?? "")]
+                     + (report.device.connection.map { $0 == .bluetooth ? ", over Bluetooth" : ", over the \($0.rawValue)" } ?? "")]
         if let verdict = report.verdict {
             if !verdict.passed.isEmpty { lines.append("Passed: " + verdict.passed.joined(separator: ", ")) }
             if !verdict.failed.isEmpty { lines.append("Failed: " + verdict.failed.joined(separator: ", ")) }
-            if !verdict.notSupported.isEmpty { lines.append("Not on this mouse: " + verdict.notSupported.joined(separator: ", ")) }
+            if !verdict.notSupported.isEmpty {
+                lines.append("Not on this \(noun(report)): " + verdict.notSupported.joined(separator: ", "))
+            }
             if !verdict.skipped.isEmpty { lines.append("Skipped: " + verdict.skipped.joined(separator: ", ")) }
+        }
+        if let reads = report.capabilities?.reads {
+            var answered: [String] = []
+            for read in reads where read.answer == .answered && read.led == nil && !answered.contains(read.name) {
+                answered.append(read.name)
+            }
+            // Unique: over Bluetooth, brightness and the zone effect both name an LED.
+            var leds: [String] = []
+            for led in reads.filter({ $0.answer == .answered }).compactMap(\.led) {
+                let hex = String(format: "0x%02X", led)
+                if !leds.contains(hex) { leds.append(hex) }
+            }
+            if !leds.isEmpty { answered.append("lighting zones " + leds.joined(separator: " ")) }
+            if let table = report.capabilities?.buttonTable, !table.isEmpty {
+                answered.append("button table (\(table.count) \(table.count == 1 ? "entry" : "entries"))")
+            }
+            lines.append("Also answers: " + (answered.isEmpty ? "none of the extra reads" : answered.joined(separator: ", ")))
+        }
+        if let software = report.software, !software.isEmpty {
+            var names = software.razer + software.mouseTaps
+            if let others = software.otherApps { names.append("\(others) other \(others == 1 ? "app" : "apps")") }
+            lines.append("Running, can take the buttons: " + DeviceTestVerdict.names(names))
+        }
+        if let keys = report.buttons.data?.keys {
+            let label = report.buttons.outcome == .passed || keys.isEmpty ? "Keys recorded" : "Keys only, no mouse buttons"
+            lines.append(label + ": " + (keys.isEmpty ? "none" : keys.map(\.displayName).joined(separator: ", ")))
         }
         if withComment, let comment = report.comment, !comment.isEmpty {
             lines.append("\n> " + comment.replacingOccurrences(of: "\n", with: "\n> "))
@@ -101,9 +190,9 @@ enum DeviceReportOutput {
         "<details><summary>Full report</summary>\n\n```json\n" + json(report, forPublic: true) + "\n```\n</details>"
     }
 
-    private static func issueURL(title: String, body: String) -> URL? {
+    static func issueURL(title: String, body: String) -> URL? {
         var components = URLComponents(url: ProjectLinks.issues.appendingPathComponent("new"), resolvingAgainstBaseURL: false)
-        components?.queryItems = [URLQueryItem(name: "title", value: title), URLQueryItem(name: "body", value: body)]
+        components?.setEncodedQuery([URLQueryItem(name: "title", value: title), URLQueryItem(name: "body", value: body)])
         return components?.url
     }
 

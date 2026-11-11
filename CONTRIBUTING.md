@@ -3,7 +3,7 @@
 Thanks for helping! This is a community macOS control app for Razer mice. By contributing you
 agree your contributions are licensed under **GPL-2.0** (the project license).
 
-Start with **[docs/DOCUMENTATION.md](docs/DOCUMENTATION.md)**, it explains the architecture,
+Start with **[Documentation/DOCUMENTATION.md](Documentation/DOCUMENTATION.md)**, it explains the architecture,
 the HID protocol, and every feature.
 
 ## Build & run
@@ -72,8 +72,10 @@ real hardware so far; README's table says which, and what was run on each.
 
 ### 1. Run the probes and paste the output
 
-The easiest way is the app's own test. Right-click the menu bar icon, choose **Help Support
-This Mouse…**, and press **Send** or open a GitHub issue on its last screen. It runs
+The easiest way is the app's own test. MacRazer offers it on its own when an unverified mouse
+connects. Otherwise right-click the menu bar icon, choose **Help Support This Mouse…**, and
+press **Send** or open a GitHub issue on its last screen. (Send is only in
+the released app: a build from source has no report server, so it offers Copy and the issue.) It runs
 everything below, plus transaction id discovery, and puts every setting back. From source,
 `swift run MacRazer devicetest` prints the same report as JSON.
 
@@ -139,7 +141,7 @@ The model probably uses a different command dialect (transaction id, command var
 Check OpenRazer for that PID and open an issue or PR; we may need to parameterize
 `RazerCommands` further, as we did for `brightnessLed`. Per-model behaviour goes in a
 capability field on the registry row, never a PID check in the code; the fields there are
-listed in [DOCUMENTATION.md §8.1](docs/DOCUMENTATION.md#81-capability-fields).
+listed in [DOCUMENTATION.md §8.1](Documentation/DOCUMENTATION.md#81-capability-fields).
 
 Include the model, PID, and the probe output in your PR. Add a test to
 `RazerDevicesTests.swift` for anything model-specific you introduce.

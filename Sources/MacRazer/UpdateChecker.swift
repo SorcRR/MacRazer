@@ -138,6 +138,28 @@ final class UpdateChecker: ObservableObject {
 
     var currentVersion: String { AppInfo.comparableVersion }
 
+    typealias Fetch = (URL) async throws -> (Data, URLResponse)
+
+    /// The release list. A build with a Worker asks it first: the Worker answers with GitHub's
+    /// list and counts this Mac as active for the day, by a salted hash of its IP and nothing
+    /// else (the homepage's privacy section says so). Any failure there, from a timeout to a
+    /// bad answer, falls through to GitHub, so the Worker can never cost anyone an update.
+    static func fetchReleases(worker: URL?, github: URL,
+                              viaWorker: Fetch = { try await WorkerSession.shared.data(from: $0) },
+                              viaGitHub: Fetch = { try await URLSession.shared.data(from: $0) }) async throws -> [RemoteRelease] {
+        if let worker {
+            do { return try decodeReleases(await viaWorker(worker)) } catch {}
+        }
+        return try decodeReleases(await viaGitHub(github))
+    }
+
+    private static func decodeReleases(_ answer: (Data, URLResponse)) throws -> [RemoteRelease] {
+        if let http = answer.1 as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+            throw URLError(.badServerResponse)
+        }
+        return try JSONDecoder().decode([GitHubRelease].self, from: answer.0).map(\.remote)
+    }
+
     var isBusy: Bool { phase != .idle }
 
     /// Whether the one-click "Update & Restart" path is available, or the card should offer
@@ -234,8 +256,9 @@ final class UpdateChecker: ObservableObject {
         isChecking = true
         defer { isChecking = false }
         do {
-            let (data, _) = try await URLSession.shared.data(from: releaseAPIURL)
-            let releases = try JSONDecoder().decode([GitHubRelease].self, from: data).map(\.remote)
+            // The mice go separately, from `AnonymousCountReporter`, once the controller has found them.
+            let releases = try await Self.fetchReleases(worker: WorkerEndpoint.releases(appVersion: AppInfo.version),
+                                                        github: releaseAPIURL)
             // GitHub's `releases/latest` applied "no drafts, no prereleases" on its side. The
             // list does not, so the rule lives in `ReleaseSpan` now, with tests.
             let published = ReleaseSpan.publishable(releases)
@@ -320,7 +343,8 @@ final class UpdateChecker: ObservableObject {
             // nothing before it had been read. That includes an upgrade from a build too old to
             // have recorded `lastRun` at all (0.3.0 and earlier): the span has no start then,
             // and the notes fall back to the release running rather than to nothing.
-            if let lastRun, lastRun != current, defaults.string(forKey: Self.updatedFromKey) == nil {
+            if let lastRun, AppInfo.releaseVersion(lastRun) != AppInfo.releaseVersion(current),
+               defaults.string(forKey: Self.updatedFromKey) == nil {
                 defaults.set(lastRun, forKey: Self.updatedFromKey)
             }
         } else {
@@ -469,27 +493,42 @@ final class UpdateChecker: ObservableObject {
         let dir = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("MacRazerUpdate-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let downloader = ProgressDownload(
-            destination: dir.appendingPathComponent("MacRazer.dmg")
-        ) { [weak self] fraction in
-            Task { @MainActor in
-                // Only while still downloading: a late callback must not drag the card back
-                // out of "Installing…".
-                guard let self, case .downloading = self.phase else { return }
-                self.phase = .downloading(fraction)
-            }
+        let destination = dir.appendingPathComponent("MacRazer.dmg")
+        let download: (URL) async throws -> URL = { [weak self] url in
+            try await ProgressDownload(destination: destination) { fraction in
+                Task { @MainActor in
+                    // Only while still downloading: a late callback must not drag the card back
+                    // out of "Installing…".
+                    guard let self, case .downloading = self.phase else { return }
+                    self.phase = .downloading(fraction)
+                }
+            }.run(from: url)
         }
         do {
             // The release's own tag when the last check recorded one, so a release tagged
             // without the usual `v` still downloads.
             let tag = Self.cachedReleases(defaults).first { $0.version == version }?.tag
-            return try await downloader.run(from: ProjectLinks.dmg(forVersion: version, tag: tag))
+            return try await Self.fetchDMG(github: ProjectLinks.dmg(forVersion: version, tag: tag),
+                                           counted: WorkerEndpoint.download(tag: tag ?? "v\(version)"),
+                                           download: download)
         } catch {
             // Nobody else knows about this directory yet, so a failed download has to take it
             // with it — otherwise every offline retry leaves one behind.
             try? FileManager.default.removeItem(at: dir)
             throw error
         }
+    }
+
+    /// Through the Worker first, when the build has one, so the update is counted: it redirects
+    /// to the same file on GitHub. Any failure on that path, the Worker's or the download's,
+    /// tries GitHub's address directly, so counting can never cost anyone an update.
+    static func fetchDMG(github: URL, counted: URL?, download: (URL) async throws -> URL) async throws -> URL {
+        if let counted {
+            do { return try await download(counted) } catch let error as URLError where error.code == .notConnectedToInternet {
+                throw error // GitHub won't be any more reachable
+            } catch {}
+        }
+        return try await download(github)
     }
 
     /// The manual-DMG path can't delete its own download — the user still has to open it — so
