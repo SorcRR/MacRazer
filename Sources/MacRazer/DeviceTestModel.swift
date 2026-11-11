@@ -167,12 +167,10 @@ final class DeviceTestModel: ObservableObject {
         pinned?.links ?? testedPID.map { RazerDevices.linksToTest(besides: $0) } ?? []
     }
     /// What no report has shown working on this link yet: everything for a model not on record.
-    /// Polling is left out on a mouse whose row already says it refuses the classic command:
-    /// running it again only records the same refusal.
     var missingFeatures: [RazerFeature] {
         if let pinned { return pinned.missing }
         guard let pid = testedPID, let unverified = RazerDevices.unverified(pid: pid) else { return RazerFeature.allCases }
-        return RazerDevices.acceptsClassicPolling(pid: pid) ? unverified : unverified.filter { $0 != .polling }
+        return unverified
     }
     /// Skipping this step leaves out data the registry still lacks, so Skip asks first.
     var skipNeedsConfirming: Bool { DeviceTestFlow.skipNeedsConfirming(stage, missing: missingFeatures) }
@@ -584,7 +582,10 @@ final class DeviceTestModel: ObservableObject {
         await run(\.dpi) { DeviceTestSteps.dpi($0, maxProbe: probe) }
     }
 
-    func runPolling() async { await run(\.polling) { DeviceTestSteps.polling($0) } }
+    func runPolling() async {
+        let rate2 = testedPID.map(RazerDevices.usesPollingRate2(pid:)) ?? false
+        await run(\.polling) { DeviceTestSteps.polling($0, usesPollingRate2: rate2) }
+    }
 
     func runLighting() async {
         let sweep = lightSweep

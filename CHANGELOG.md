@@ -11,6 +11,11 @@ expect rough edges until 1.0.
   Cobra HyperSpeed's side buttons (a keyboard shortcut, say), they never reach Configure
   Buttons as buttons. On Bluetooth the page now says what they send and offers Reset Side
   Buttons, which puts Back and Forward back in the mouse itself. No Windows needed.
+- **Polling rate on the HyperPolling mice.** The Basilisk V4 Pro and V4 HyperSpeed, Viper
+  V4 Pro, Viper 8KHz, DeathAdder V3 and both Mouse Docks refuse the classic polling command.
+  They now get the newer one, so the polling picker shows on them. The 8000 Hz models offer
+  2K, 4K and 8K too. Each change is read back, and the device test checks polling there as
+  well, so a report can confirm it. The command comes from fn-milans's Basilisk V4 Pro work.
 - **More mice from test reports.**
   - **Fully supported now:** the Basilisk V3 Pro on its cable and its dongle, the Viper V3
     Pro over its dongle, the DeathAdder V2 X HyperSpeed and the DeathAdder V2.
@@ -19,7 +24,7 @@ expect rough edges until 1.0.
   - **Pro Click V2 Vertical Edition over its dongle**, and the **Pro Click V2 on its cable**.
     Thanks to tekumara for the Vertical's cable tests. The Vertical's light takes effects but
     has no brightness, so a test of it no longer fails Identify.
-  - **DeathAdder V3:** DPI works. Its polling rate needs a newer command.
+  - **DeathAdder V3:** DPI works.
   - **Basilisk V3 Pro 35K over its dongle:** battery, DPI and polling work. **DeathAdder
     Elite:** DPI and polling work. Lighting waits on a test on both.
   - **Naga X** and **Mamba Tournament Edition:** DPI and polling work. Their lighting

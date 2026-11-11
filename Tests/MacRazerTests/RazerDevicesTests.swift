@@ -221,7 +221,7 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertFalse(RazerDevices.needsReport(pid: 0x0090), "verified on both links")
         XCTAssertTrue(RazerDevices.needsReport(pid: 0x00C3), "verified, but its cable has no row yet")
         XCTAssertTrue(RazerDevices.needsReport(pid: 0x0039), "partly verified")
-        XCTAssertFalse(RazerDevices.needsReport(pid: 0x00E3), "only polling left, which the test can't confirm")
+        XCTAssertTrue(RazerDevices.needsReport(pid: 0x00E3), "polling left, which the test now checks with polling_rate2")
         XCTAssertTrue(RazerDevices.needsReport(pid: 0x9999), "unknown")
         XCTAssertEqual(RazerDevices.support(pid: 0x0090), .full)
         XCTAssertEqual(RazerDevices.support(pid: 0x006E), .unknown, "on record, nothing shown working")
@@ -233,8 +233,8 @@ final class RazerDevicesTests: XCTestCase {
         // A row for the other link that isn't fully supported: named, with what it needs.
         XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00CE),
                        [Link(connection: .wired, missing: [.lighting]), Link(connection: .wirelessDongle, missing: [.lighting])])
-        // Not when all that row lacks is polling its mouse refuses: no report could confirm it.
-        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00EA), [])
+        // Polling counts too on a polling_rate2 mouse: the test now checks it there.
+        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00EA), [Link(connection: .wired, missing: [.polling])])
         // Fully supported on every link it has a row for.
         XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00E8), [])
         XCTAssertEqual(RazerDevices.linksToTest(besides: 0x0090), [], "Naga Pro, both links verified")
@@ -306,7 +306,7 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00AA), [], "the dongle is tested too")
         XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00AB), [], "and so is the cable now")
         XCTAssertEqual(RazerDevices.unverified(pid: 0x00B2), [.polling])
-        XCTAssertFalse(RazerDevices.acceptsClassicPolling(pid: 0x00B2))
+        XCTAssertTrue(RazerDevices.usesPollingRate2(pid: 0x00B2))
         XCTAssertEqual(RazerDevices.notOnMouse(pid: 0x00B2), [.battery, .lighting])
         for pid in [0x00CD, 0x005C, 0x0096, 0x0046] {
             XCTAssertEqual(RazerDevices.unverified(pid: pid), [.lighting], String(format: "0x%04X", pid))
@@ -349,7 +349,7 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(RazerDevices.maxDPI(pid: 0x00DF), 35000)
         XCTAssertEqual(RazerDevices.notOnMouse(pid: 0x00DF), [.lighting])
         XCTAssertEqual(RazerDevices.unverified(pid: 0x0091), [.polling])
-        XCTAssertFalse(RazerDevices.acceptsClassicPolling(pid: 0x0091))
+        XCTAssertTrue(RazerDevices.usesPollingRate2(pid: 0x0091))
         XCTAssertFalse(RazerDevices.hasBattery(pid: 0x0091))
         XCTAssertEqual(RazerDevices.linksToTest(besides: 0x0091), [], "wired only")
     }
@@ -416,15 +416,14 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00E0), [], "no cable, and no Bluetooth row yet")
     }
 
-    /// A mouse that refuses the classic polling command isn't asked about polling: the test
-    /// only sends that command, so a report would record the same refusal.
-    func testPollingIsNotAskedWhereTheTestCannotConfirmIt() {
+    /// A polling_rate2 mouse is asked about polling like any other: the test sends the newer
+    /// command there, so a report can confirm it.
+    func testPollingRate2MiceAreAskedAboutPolling() {
         for pid in [0x00EA, 0x00EB, 0x00E3, 0x00E2, 0x0091] {
             let ask = RazerDevices.ask(pid: pid)
             XCTAssertEqual(RazerDevices.unverified(pid: pid), [.polling], String(pid, radix: 16))
-            XCTAssertEqual(ask.here, [], String(pid, radix: 16))
-            XCTAssertEqual(ask.elsewhere, [], "no other link can confirm it either")
-            XCTAssertFalse(ask.needsReport, String(pid, radix: 16))
+            XCTAssertEqual(ask.here, [.polling], String(pid, radix: 16))
+            XCTAssertTrue(ask.needsReport, String(pid, radix: 16))
             XCTAssertNotEqual(RazerDevices.support(pid: pid), .full, "still not counted as working")
         }
         // A mouse that takes the classic command is still asked.
@@ -491,10 +490,10 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(RazerDevices.maxDPI(pid: 0x00E6), 45000)
         XCTAssertEqual(RazerDevices.connection(pid: 0x00E6), .wirelessDongle)
         XCTAssertEqual(RazerDevices.connection(pid: 0x00EB), .wired)
-        // Polling is all either link lacks, and both refuse the classic command, so neither
-        // names the other: a report from it would only record the same refusal.
-        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00E6), [])
-        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00EA), [])
+        // Polling is all either link lacks, and the test checks it with polling_rate2, so
+        // each names the other.
+        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00E6), [.init(connection: .wired, missing: [.polling])])
+        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00EA), [.init(connection: .wired, missing: [.polling])])
 
         XCTAssertTrue(RazerDevices.fullySupported(pid: 0x00D1), "Pro Click V2")
         XCTAssertFalse(RazerDevices.hasLighting(pid: 0x00D1))
@@ -521,13 +520,29 @@ final class RazerDevicesTests: XCTestCase {
         }
     }
 
-    /// The models that answer the classic polling command with "not supported".
-    func testClassicPollingRefusals() {
-        for pid in [0x00A4, 0x00EA, 0x00EB, 0x00E3, 0x00E2, 0x00E5, 0x00E6, 0x0091] {
-            XCTAssertFalse(RazerDevices.acceptsClassicPolling(pid: pid), String(pid, radix: 16))
+    /// The models that answer the classic polling command with "not supported" take
+    /// polling_rate2.
+    func testPollingRate2Models() {
+        for pid in [0x00A4, 0x00F1, 0x00EA, 0x00EB, 0x00E3, 0x00E2, 0x00E5, 0x00E6, 0x0091, 0x00B2] {
+            XCTAssertTrue(RazerDevices.usesPollingRate2(pid: pid), String(pid, radix: 16))
         }
-        XCTAssertTrue(RazerDevices.acceptsClassicPolling(pid: 0x00DB))
-        XCTAssertTrue(RazerDevices.acceptsClassicPolling(pid: 0x9999), "unknown models still try it")
+        XCTAssertFalse(RazerDevices.usesPollingRate2(pid: 0x00DB))
+        XCTAssertFalse(RazerDevices.usesPollingRate2(pid: 0x9999), "unknown models still try it")
+    }
+
+    /// What the polling picker offers: the classic three, or polling_rate2 rates up to the
+    /// row's top rate.
+    func testPollingRates() {
+        XCTAssertEqual(RazerDevices.pollingRates(pid: 0x00DB), [125, 500, 1000], "Cobra HyperSpeed")
+        XCTAssertEqual(RazerDevices.pollingRates(pid: nil), [125, 500, 1000])
+        XCTAssertEqual(RazerDevices.pollingRates(pid: 0x00EA), [125, 250, 500, 1000], "Basilisk V4 HyperSpeed")
+        for pid in [0x00E2, 0x00E3, 0x00E5, 0x00E6, 0x0091, 0x00B2] {
+            XCTAssertEqual(RazerDevices.pollingRates(pid: pid), [125, 250, 500, 1000, 2000, 4000, 8000], String(pid, radix: 16))
+        }
+        XCTAssertEqual(RazerDevices.maxPollingRate(pid: 0x00DB), 1000)
+        XCTAssertEqual(RazerDevices.maxPollingRate(pid: 0x9999), 1000, "unknown")
+        XCTAssertFalse(RazerDevices.known.contains { !$0.usesPollingRate2 && $0.maxPollingRate != 1000 },
+                       "only a polling_rate2 mouse goes past 1000 Hz")
     }
 
     /// The Basilisk V3 verified on its cable, with both lit zones on the brightness slider.

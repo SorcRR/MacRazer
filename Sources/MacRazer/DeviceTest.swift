@@ -861,12 +861,13 @@ enum DeviceTestSteps {
         return record
     }
 
-    /// Writes another supported rate, reads it back, and restores.
-    static func polling(_ channel: DeviceProbeChannel) -> DeviceReport.StepRecord<DeviceReport.PollingData> {
+    /// Writes another supported rate, reads it back, and restores. `usesPollingRate2` picks the
+    /// newer command, for the mice that refuse the classic one.
+    static func polling(_ channel: DeviceProbeChannel, usesPollingRate2: Bool = false) -> DeviceReport.StepRecord<DeviceReport.PollingData> {
         var record = DeviceReport.StepRecord<DeviceReport.PollingData>()
         var data = DeviceReport.PollingData()
         do {
-            let original = try DeviceProbe.readPollingRate(channel).value
+            let original = try DeviceProbe.readPollingRate(channel, usesPollingRate2: usesPollingRate2).value
             data.original = original
             // A rate the table doesn't name (0) can't be written back, so don't change it.
             guard original != 0 else {
@@ -878,9 +879,14 @@ enum DeviceTestSteps {
             let test = original == 500 ? 1000 : 500
             data.test = test
             var wrote = false
-            defer { if wrote { data.restored = (try? DeviceProbe.writePollingRate(channel, hz: original).confirmed) ?? false } }
+            defer {
+                if wrote {
+                    data.restored = (try? DeviceProbe.writePollingRate(channel, hz: original,
+                                                                       usesPollingRate2: usesPollingRate2).confirmed) ?? false
+                }
+            }
             wrote = true
-            let check = try DeviceProbe.writePollingRate(channel, hz: test)
+            let check = try DeviceProbe.writePollingRate(channel, hz: test, usesPollingRate2: usesPollingRate2)
             data.readBack = check.readBack.value
             record.outcome = check.confirmed ? .passed : .failed
         } catch {

@@ -80,7 +80,7 @@ final class DeviceTestFlowTests: XCTestCase {
         }
         XCTAssertEqual(missing(0x00DB), [], "Cobra HyperSpeed")
         XCTAssertEqual(missing(0x0053), [.lighting], "Naga Chroma")
-        XCTAssertEqual(missing(0x00E3), [], "Basilisk V4 Pro: polling unverified, but it refuses the classic command")
+        XCTAssertEqual(missing(0x00E3), [.polling], "Basilisk V4 Pro: polling, which the test checks with polling_rate2")
         XCTAssertEqual(missing(0x7FFF), RazerFeature.allCases, "not on record")
         XCTAssertEqual(missing(nil), RazerFeature.allCases, "no mouse connected")
     }

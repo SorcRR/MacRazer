@@ -109,13 +109,13 @@ says so.
 | Razer DeathAdder V2 Pro (Wired) | Battery, DPI, DPI stages, polling; lighting not working yet | anonymous report |
 | Razer Viper Ultimate (Wired) | Battery, DPI, polling, lighting | anonymous report |
 | Razer Taipan | DPI, polling; lighting not working yet | anonymous report |
-| Razer Basilisk V4 HyperSpeed (wired + wireless) | Battery, DPI, DPI stages; polling not working yet | anonymous reports |
-| Razer Viper V4 Pro (wired + wireless) | Battery, DPI, DPI stages; polling not working yet | Robotxm and an anonymous report |
-| Razer Viper 8KHz | DPI, DPI stages, lighting, brightness (wired only); polling not working yet | anonymous report |
-| Razer Basilisk V4 Pro (wired + wireless) | Battery, DPI, DPI stages, lighting, brightness; polling not working yet | by_hlz and an anonymous report |
-| Razer Mouse Dock Pro (with a Naga V3 Pro) | Battery, DPI, lighting, brightness; polling not working yet | anonymous report |
-| Razer Mouse Dock V2 Pro (with a Basilisk V4 Pro) | Battery, DPI, DPI stages, lighting, brightness; polling not working yet | cparedes |
-| Razer DeathAdder V3 | DPI, DPI stages; polling not working yet (it has no battery or lighting) | anonymous reports |
+| Razer Basilisk V4 HyperSpeed (wired + wireless) | Battery, DPI, DPI stages; polling not confirmed yet | anonymous reports |
+| Razer Viper V4 Pro (wired + wireless) | Battery, DPI, DPI stages; polling not confirmed yet | Robotxm and an anonymous report |
+| Razer Viper 8KHz | DPI, DPI stages, lighting, brightness (wired only); polling not confirmed yet | anonymous report |
+| Razer Basilisk V4 Pro (wired + wireless) | Battery, DPI, DPI stages, lighting, brightness; polling not confirmed yet | by_hlz and an anonymous report |
+| Razer Mouse Dock Pro (with a Naga V3 Pro) | Battery, DPI, lighting, brightness; polling not confirmed yet | anonymous report |
+| Razer Mouse Dock V2 Pro (with a Basilisk V4 Pro) | Battery, DPI, DPI stages, lighting, brightness; polling not confirmed yet | cparedes |
+| Razer DeathAdder V3 | DPI, DPI stages; polling not confirmed yet (it has no battery or lighting) | anonymous reports |
 | Razer HyperFlux V2 (with the mouse on it) | Battery, DPI, DPI stages, polling; lighting not confirmed yet | anonymous report |
 | Razer Naga Chroma | DPI, polling; lighting not working yet | anonymous report |
 | Razer Naga Hex V2 | DPI, polling; lighting not working yet | foivos92 |

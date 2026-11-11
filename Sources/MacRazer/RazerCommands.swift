@@ -290,6 +290,55 @@ enum RazerCommands {
     /// Supported polling rates for this device (basic command set).
     static let supportedPollingRates = [125, 500, 1000]
 
+    // --- Polling rate, newer command (polling_rate2) ---
+    //
+    // The mice that answer the classic pair with "not supported" (0x05) take this one
+    // (`RazerDeviceInfo.usesPollingRate2`). Taken from fn-milans's Basilisk V4 Pro work
+    // (#55), where it was written and read back on the mouse, and checked against OpenRazer's
+    // razer_chroma_misc_{get,set}_polling_rate2.
+
+    /// razer_chroma_misc_get_polling_rate2() -> get_razer_report(0x00, 0xC0, 0x01).
+    /// Response arg[1] is the rate code (`pollingRate2Codes`). The Basilisk V4 Pro, V4
+    /// HyperSpeed, Mouse Dock V2 Pro and DeathAdder V3 answered `00 08` (1000 Hz) in test
+    /// reports, and a Viper V4 Pro on its cable `00 01` (8000 Hz).
+    static func getPollingRate2() -> RazerReport {
+        RazerReport(commandClass: 0x00, commandId: 0xC0, dataSize: 0x01)
+    }
+
+    /// razer_chroma_misc_set_polling_rate2(rate, argument) -> get_razer_report(0x00, 0x40, 0x02),
+    /// args [argument, code]. An unknown rate falls back to 1000 Hz.
+    static func setPollingRate2(_ hz: Int, argument: UInt8) -> RazerReport {
+        var r = RazerReport(commandClass: 0x00, commandId: 0x40, dataSize: 0x02)
+        r.arguments[0] = argument
+        r.arguments[1] = pollingRate2Codes.first { $0.hz == hz }?.code ?? 0x08
+        return r
+    }
+
+    /// Decode a polling_rate2 answer to Hz (0 if unrecognised).
+    static func parsePollingRate2(_ resp: RazerReport) -> Int {
+        pollingRate2Codes.first { $0.code == resp.arguments[1] }?.hz ?? 0
+    }
+
+    /// OpenRazer's polling_rate2 codes, one bit per rate.
+    static let pollingRate2Codes: [(hz: Int, code: UInt8)] = [
+        (8000, 0x01), (4000, 0x02), (2000, 0x04), (1000, 0x08), (500, 0x10), (250, 0x20), (125, 0x40),
+    ]
+
+    /// The reports that set the rate, in order. OpenRazer sends every polling_rate2 mouse the
+    /// write twice, with argument 0x00 and then 0x01 ("maybe varstore"), on the cable too. The
+    /// second one's status isn't what counts: the caller reads the rate back.
+    static func setPollingRateReports(_ hz: Int, usesPollingRate2: Bool) -> [RazerReport] {
+        usesPollingRate2
+            ? [setPollingRate2(hz, argument: 0x00), setPollingRate2(hz, argument: 0x01)]
+            : [setPollingRate(hz)]
+    }
+
+    /// The report that reads the rate, and how to decode its answer.
+    static func pollingRateRead(usesPollingRate2: Bool) -> (report: RazerReport, parse: (RazerReport) -> Int) {
+        if usesPollingRate2 { return (getPollingRate2(), parsePollingRate2) }
+        return (getPollingRate(), parsePollingRate)
+    }
+
     // --- Lighting (extended matrix effect command, class 0x0F / id 0x02) ---
     //
     // Cobra Pro / HyperSpeed drive ALL lighting as one group via led_id ZERO_LED (0x00).
