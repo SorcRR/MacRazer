@@ -52,14 +52,12 @@ final class SupportListDecodeTests: XCTestCase {
 
 final class SupportListOverlayTests: XCTestCase {
     /// A model whose two rows each still need something a report could confirm, so confirming
-    /// them all ends the ask. Polling a mouse refuses doesn't count: nothing asks for it. Found
-    /// in the table rather than named, so a report verifying it doesn't break the test. A
+    /// them all ends the ask. Found in the table rather than named, so a report verifying it
+    /// doesn't break the test. A
     /// Bluetooth row comes first: from there no unlisted cable or dongle is suggested, so
     /// confirming both rows leaves it nothing to ask.
     private func modelStillAsking() throws -> [RazerDeviceInfo] {
-        func confirmable(_ row: RazerDeviceInfo) -> Bool {
-            row.unverified.contains { $0 != .polling || row.acceptsClassicPolling }
-        }
+        func confirmable(_ row: RazerDeviceInfo) -> Bool { !row.unverified.isEmpty }
         let models = Dictionary(grouping: RazerDevices.known) { RazerDevices.modelName($0.name) }.values
         let rows = try XCTUnwrap(models.first { rows in
             rows.count == 2 && rows.allSatisfy(confirmable) && rows.contains { $0.connection == .wired }
@@ -144,7 +142,7 @@ final class SupportListOverlayTests: XCTestCase {
                          maxDPI: RazerDevices.maxDPI(pid: row.pid), leds: RazerDevices.brightnessLeds(pid: row.pid),
                          battery: RazerDevices.hasBattery(pid: row.pid), lighting: RazerDevices.hasLighting(pid: row.pid),
                          connection: RazerDevices.connection(pid: row.pid),
-                         polling: RazerDevices.acceptsClassicPolling(pid: row.pid))
+                         polling: RazerDevices.usesPollingRate2(pid: row.pid))
             }
         }
         let before = snapshot()

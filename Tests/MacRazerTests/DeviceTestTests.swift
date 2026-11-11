@@ -220,6 +220,21 @@ final class DeviceTestTests: XCTestCase {
         XCTAssertEqual(try pollNow(mouse), 1000)
     }
 
+    /// A mouse that refuses the classic pair, as the HyperPolling models do: the step uses
+    /// polling_rate2 there, and leaves the mouse at its rate.
+    func testPollingRate2PassesWhereTheClassicCommandIsRefused() throws {
+        let mouse = FakeMouse()
+        mouse.refuse = { $0.commandClass == 0x00 && [0x05, 0x85].contains($0.commandId) }
+        mouse.holds(RazerCommands.setPollingRate2(8000, argument: 0x00))
+        XCTAssertEqual(DeviceTestSteps.polling(mouse).outcome, .notSupported, "the classic command alone")
+        let record = DeviceTestSteps.polling(mouse, usesPollingRate2: true)
+        XCTAssertEqual(record.outcome, .passed)
+        XCTAssertEqual(record.data?.original, 8000)
+        XCTAssertEqual(record.data?.test, 500)
+        XCTAssertTrue(record.data?.restored ?? false)
+        XCTAssertEqual(try DeviceProbe.readPollingRate(mouse, usesPollingRate2: true).value, 8000)
+    }
+
     func testAnUnnamedPollingRateIsNeverWritten() {
         // There'd be no way to write it back, so the step doesn't change it at all.
         let mouse = FakeMouse()

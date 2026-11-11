@@ -115,11 +115,19 @@ struct PopoverView: View {
     @State private var gearHovered = false
     @State private var tipHovered = false
 
-    /// The three rates every mouse takes, and 250 Hz once the mouse was read at it
+    /// The mouse's rates (`RazerDevices.pollingRates`): the classic three, or up to 8000 Hz on
+    /// a polling_rate2 mouse. On a classic mouse 250 Hz joins once the mouse was read at it
     /// (`offersQuarterPollRate`), so the chip stays to go back to.
     private var pollRates: [Int] {
-        controller.offersQuarterPollRate || controller.pollRate == 250
-            ? [125, 250, 500, 1000] : RazerCommands.supportedPollingRates
+        Self.pollRates(pid: controller.deviceID,
+                       showsQuarter: controller.offersQuarterPollRate || controller.pollRate == 250)
+    }
+
+    /// `pollRates` without the view, for tests.
+    nonisolated static func pollRates(pid: Int?, showsQuarter: Bool) -> [Int] {
+        let rates = RazerDevices.pollingRates(pid: pid)
+        guard showsQuarter, !rates.contains(250) else { return rates }
+        return (rates + [250]).sorted()
     }
     private let defaultStages = [400, 800, 1600, 3200, 6400]
     /// The connected mouse's actual configured DPI stages, or sensible defaults.
@@ -1446,7 +1454,7 @@ struct PopoverView: View {
     private var pollContent: some View {
         VStack(alignment: .leading, spacing: 8) {
             ChipPicker(label: "Polling rate", values: pollRates, selection: displayedPollRate,
-                       title: { "\($0)" }, spokenTitle: { "\($0) Hz" }) { controller.setPollRate($0) }
+                       title: Self.pollChipTitle, spokenTitle: { "\($0) Hz" }) { controller.setPollRate($0) }
 
             if let tip = pollRateTip(displayedPollRate) {
                 Text(tip)
@@ -1469,11 +1477,20 @@ struct PopoverView: View {
     /// firmware default, and so does everything that reads it here.
     private var displayedPollRate: Int { controller.pollRate == 0 ? 1000 : controller.pollRate }
 
+    /// A chip's text: "8K" for 8000 Hz and up from 2000, so seven chips still fit the row.
+    nonisolated static func pollChipTitle(_ hz: Int) -> String {
+        hz >= 2000 && hz % 1000 == 0 ? "\(hz / 1000)K" : "\(hz)"
+    }
+
     /// What the selected rate is good for. The battery trade-off is only mentioned for a
     /// mouse that has one: on a wired mouse it's a promise about nothing.
     private func pollRateTip(_ hz: Int) -> String? {
         let battery = controller.deviceHasBattery
         switch hz {
+        case 2000, 4000, 8000:
+            return battery ? "HyperPolling: the quickest response, best on a high refresh rate display. "
+                             + "Uses the battery much faster, and more CPU."
+                           : "HyperPolling: the quickest response, best on a high refresh rate display. Uses more CPU."
         case 1000: return "Smoothest and quickest to respond. Best for gaming."
         case 250: return battery ? "Easy on the battery, and smoother than 125 Hz."
                                  : "Smoother than 125 Hz, but less than 500 Hz."
@@ -1491,7 +1508,7 @@ struct PopoverView: View {
     /// `controller.pollRate`, not `displayedPollRate`: 0 means the rate hasn't been read yet,
     /// and advising a switch to 500 Hz on a mouse that may already be there reads as broken.
     private var showsPollRateBatteryHint: Bool {
-        controller.deviceHasBattery && !controller.charging && controller.pollRate >= 1000
+        controller.deviceHasBattery && !controller.charging && controller.pollRate == 1000
     }
 
     /// The Lighting row's expanded content; the row itself shows the effect and brightness.

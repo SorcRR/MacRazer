@@ -580,21 +580,25 @@ case "poll":
     guard let dev = openDevice() else { exit(1) }
     defer { dev.close() }
     do {
-        let before = try DeviceProbe.readPollingRate(dev).value
+        let rate2 = RazerDevices.usesPollingRate2(pid: dev.productID)
+        // 250 Hz too on the classic command: not in OpenRazer's table, but the byte is 1000
+        // over the rate.
+        let rates = rate2 ? RazerDevices.pollingRates(pid: dev.productID)
+                          : (RazerCommands.supportedPollingRates + [250]).sorted()
+        let before = try DeviceProbe.readPollingRate(dev, usesPollingRate2: rate2).value
         print("Current polling rate: \(before)Hz")
         if let arg = args.dropFirst().first, let hz = Int(arg) {
-            // 250 Hz too: not in OpenRazer's table, but the byte is 1000 over the rate.
-            guard RazerCommands.supportedPollingRates.contains(hz) || hz == 250 else {
-                print("Unsupported rate. Choose one of: 125, 250, 500, 1000Hz")
+            guard rates.contains(hz) else {
+                print("Unsupported rate. Choose one of: \(rates.map { "\($0)" }.joined(separator: ", "))Hz")
                 exit(64)
             }
             print("Setting polling rate to \(hz)Hz …")
-            let check = try DeviceProbe.writePollingRate(dev, hz: hz)
+            let check = try DeviceProbe.writePollingRate(dev, hz: hz, usesPollingRate2: rate2)
             print("  set status = 0x\(String(check.setResponse.status, radix: 16))")
             print("Read-back: \(check.readBack.value)Hz")
             print(check.confirmed ? "✓ Polling rate write confirmed" : "⚠︎ Read-back doesn't match.")
         } else {
-            print("(pass a value to set: \(RazerCommands.supportedPollingRates.map { "\($0)" }.joined(separator: "/"))Hz, e.g. `poll 1000`)")
+            print("(pass a value to set: \(rates.map { "\($0)" }.joined(separator: "/"))Hz, e.g. `poll 1000`)")
         }
     } catch {
         print("Poll-rate command failed: \(error)")
@@ -698,7 +702,7 @@ case "devicetest":
         identify: identify,
         battery: step { DeviceTestSteps.battery($0, expectsBattery: info?.hasBattery) },
         dpi: step { DeviceTestSteps.dpi($0, maxProbe: false) },
-        polling: step { DeviceTestSteps.polling($0) },
+        polling: step { DeviceTestSteps.polling($0, usesPollingRate2: RazerDevices.usesPollingRate2(pid: dev.productID)) },
         lighting: step { DeviceTestSteps.lighting($0, sweep: lightSweep, restoreEffect: nil, seconds: 2) },
         buttons: .init(),
         capabilities: DeviceTestSteps.capabilities(dev, identify: identify, registry: info))
