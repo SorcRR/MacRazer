@@ -118,6 +118,15 @@ final class DeviceTestModel: ObservableObject {
     let controller: MouseController
     private let permissions: PermissionsModel
     private var capture: ButtonCapture?
+    /// The button step's answer to "Did every button you pressed show up?": 0 for yes, else
+    /// how many didn't. Nil until answered (`ButtonsData.unheard`).
+    @Published var unheard: Int?
+    /// The button step's timeline so far (`ButtonsData.events`), and when the step opened.
+    private var buttonEvents: [DeviceReport.ButtonEvent] = []
+    private var buttonStepOpened = Date()
+    /// Reads DPI and the active slot twice a second while the button step is open, on a
+    /// cable or dongle.
+    private var stateWatch: Task<Void, Never>?
     private var keyCapture: KeystrokeCapture?
     private var keyLog = KeystrokeLog()
     private var standardId: UInt8 = 0x1F
@@ -647,6 +656,10 @@ final class DeviceTestModel: ObservableObject {
         buttonsSeen = []
         keyLog = KeystrokeLog()
         keysSeen = []
+        unheard = nil
+        buttonEvents = []
+        buttonStepOpened = Date()
+        if !bluetoothRun { startStateWatch() }
         noteSoftware()
         let capture = ButtonCapture { [weak self] label in
             Task { @MainActor in self?.saw(label) }
@@ -707,6 +720,49 @@ final class DeviceTestModel: ObservableObject {
 
     private func saw(_ label: String) {
         if !buttonsSeen.contains(label) { buttonsSeen.append(label) }
+        logButtonEvent(.init(ms: buttonStepMs, input: label))
+    }
+
+    private var buttonStepMs: Int { Int(Date().timeIntervalSince(buttonStepOpened) * 1000) }
+
+    private func logButtonEvent(_ event: DeviceReport.ButtonEvent) {
+        guard buttonEvents.count < DeviceReport.maxButtonEvents else { return }
+        buttonEvents.append(event)
+    }
+
+    /// Reads the mouse's DPI and active slot twice a second until the step closes, and logs
+    /// each change. Reads only, through the same queue as the steps, so it never overlaps one.
+    private func startStateWatch() {
+        stateWatch?.cancel()
+        let standard = standardId, matrix = matrixId, overrides = overrides
+        stateWatch = Task { [weak self] in
+            var last: (dpi: Int?, slot: Int?)?
+            while !Task.isCancelled {
+                guard let controller = self?.controller else { return }
+                let state = try? await controller.runDeviceTestStep { device in
+                    DeviceTestSteps.mouseState(FixedTransactionChannel(base: device, standard: standard,
+                                                                       matrix: matrix, overrides: overrides))
+                }
+                guard !Task.isCancelled, let self else { return }
+                if let state {
+                    if let event = Self.stateEvent(ms: self.buttonStepMs, state: state, last: last) {
+                        self.logButtonEvent(event)
+                    }
+                    last = (state.dpi ?? last?.dpi, state.slot ?? last?.slot)
+                }
+                try? await Task.sleep(nanoseconds: 500_000_000)
+            }
+        }
+    }
+
+    /// The event for a state read: everything read the first time, then only what changed. A
+    /// read the mouse didn't answer is a gap, not a change.
+    nonisolated static func stateEvent(ms: Int, state: (dpi: Int?, slot: Int?),
+                                       last: (dpi: Int?, slot: Int?)?) -> DeviceReport.ButtonEvent? {
+        let dpi = state.dpi.flatMap { $0 == last?.dpi ? nil : $0 }
+        let slot = state.slot.flatMap { $0 == last?.slot ? nil : $0 }
+        guard dpi != nil || slot != nil else { return nil }
+        return .init(ms: ms, dpi: dpi, slot: slot)
     }
 
     private func stopListening() {
@@ -715,17 +771,22 @@ final class DeviceTestModel: ObservableObject {
         listening = false
         keyCapture?.stop()
         keyCapture = nil
-        report?.buttons = Self.buttonsRecord(seen: buttonsSeen, keys: recordKeys ? keysSeen : nil)
+        stateWatch?.cancel()
+        stateWatch = nil
+        report?.buttons = Self.buttonsRecord(seen: buttonsSeen, keys: recordKeys ? keysSeen : nil,
+                                             unheard: unheard, events: bluetoothRun ? nil : buttonEvents)
     }
 
     /// The button step's record. Only the mouse's own buttons pass it. Keys alone may be the
     /// keyboard, bumped while recording, so they stay in the report but leave the step
     /// unconfirmed (`skipped`). A side button that types a key on the mouse itself shows up
     /// in `seen` as a keyboard usage, so that case still passes.
-    nonisolated static func buttonsRecord(seen: [String], keys: [DeviceReport.KeyPress]?)
+    nonisolated static func buttonsRecord(seen: [String], keys: [DeviceReport.KeyPress]?,
+                                          unheard: Int? = nil, events: [DeviceReport.ButtonEvent]? = nil)
         -> DeviceReport.StepRecord<DeviceReport.ButtonsData> {
         let keysOnly = seen.isEmpty && !(keys ?? []).isEmpty
-        return .init(outcome: seen.isEmpty ? .skipped : .passed, data: .init(seen: seen, keys: keys),
+        return .init(outcome: seen.isEmpty ? .skipped : .passed,
+                     data: .init(seen: seen, keys: keys, unheard: unheard, events: events),
                      error: keysOnly ? keysOnlyNote : nil)
     }
 
@@ -805,6 +866,8 @@ final class DeviceTestModel: ObservableObject {
     func endSession() {
         capture?.stop()
         capture = nil
+        stateWatch?.cancel()
+        stateWatch = nil
         listening = false
         keyCapture?.stop()
         keyCapture = nil

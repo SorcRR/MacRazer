@@ -160,11 +160,36 @@ enum DeviceReportOutput {
             let label = report.buttons.outcome == .passed || keys.isEmpty ? "Keys recorded" : "Keys only, no mouse buttons"
             lines.append(label + ": " + (keys.isEmpty ? "none" : keys.map(\.displayName).joined(separator: ", ")))
         }
+        if let unheard = report.buttons.data?.unheard, unheard > 0 {
+            lines.append("Buttons not heard: \(unheard)")
+        }
+        let changes = buttonStepChanges(report.buttons.data?.events ?? [])
+        if !changes.isEmpty { lines.append("Changed during the button step: " + changes.joined(separator: ", ")) }
         if withComment, let comment = report.comment, !comment.isEmpty {
             lines.append("\n> " + comment.replacingOccurrences(of: "\n", with: "\n> "))
         }
         if let credit = report.credit, !credit.isEmpty { lines.append("Credit: \(credit)") }
         return lines.joined(separator: "\n")
+    }
+
+    /// Each DPI or profile change after the button step's first read, as "DPI 1600 → 3200".
+    /// One with no input from the mouse in the second before it gets "(no input)": a button
+    /// that did it inside the mouse. The Worker's report email words it the same way.
+    static func buttonStepChanges(_ events: [DeviceReport.ButtonEvent]) -> [String] {
+        var dpi: Int?, slot: Int?, out: [String] = []
+        for (i, event) in events.enumerated() {
+            let quiet = !events[..<i].contains { $0.input != nil && event.ms - $0.ms <= 1000 }
+            let note = quiet ? " (no input)" : ""
+            if let new = event.dpi {
+                if let old = dpi { out.append("DPI \(old) → \(new)" + note) }
+                dpi = new
+            }
+            if let new = event.slot {
+                if let old = slot { out.append("profile \(old) → \(new)" + note) }
+                slot = new
+            }
+        }
+        return out
     }
 
     /// Past this, an issue link is too long to rely on: GitHub and browsers cut long ones off.
