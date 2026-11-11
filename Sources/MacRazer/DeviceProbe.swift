@@ -149,11 +149,14 @@ enum DeviceProbe {
 
     /// Sends the rate's reports, then reads it back. With polling_rate2 that's two writes, and
     /// the first one's answer is the one kept: a refusal there throws, while the second (the
-    /// one OpenRazer adds) only has to leave the read-back right.
+    /// one OpenRazer adds) only has to leave the read-back right. That one goes once, without
+    /// retries: its answer is ignored anyway, and a mouse that times out on it would otherwise
+    /// cost every retry on each change. The popover writes through here too
+    /// (`MouseController.sendPollingRate`), so both paths stay one.
     static func writePollingRate(_ channel: DeviceProbeChannel, hz: Int, usesPollingRate2: Bool = false) throws -> WriteCheck<Int> {
         let reports = RazerCommands.setPollingRateReports(hz, usesPollingRate2: usesPollingRate2)
         let set = try channel.sendWithRetry(reports[0], attempts: attempts)
-        for report in reports.dropFirst() { _ = try? channel.sendWithRetry(report, attempts: attempts) }
+        for report in reports.dropFirst() { _ = try? channel.sendWithRetry(report, attempts: 1) }
         return WriteCheck(requested: hz, setResponse: set,
                           readBack: try readPollingRate(channel, usesPollingRate2: usesPollingRate2))
     }

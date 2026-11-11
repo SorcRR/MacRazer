@@ -119,8 +119,14 @@ struct PopoverView: View {
     /// a polling_rate2 mouse. On a classic mouse 250 Hz joins once the mouse was read at it
     /// (`offersQuarterPollRate`), so the chip stays to go back to.
     private var pollRates: [Int] {
-        let rates = RazerDevices.pollingRates(pid: controller.deviceID)
-        guard !rates.contains(250), controller.offersQuarterPollRate || controller.pollRate == 250 else { return rates }
+        Self.pollRates(pid: controller.deviceID,
+                       showsQuarter: controller.offersQuarterPollRate || controller.pollRate == 250)
+    }
+
+    /// `pollRates` without the view, for tests.
+    nonisolated static func pollRates(pid: Int?, showsQuarter: Bool) -> [Int] {
+        let rates = RazerDevices.pollingRates(pid: pid)
+        guard showsQuarter, !rates.contains(250) else { return rates }
         return (rates + [250]).sorted()
     }
     private let defaultStages = [400, 800, 1600, 3200, 6400]
@@ -1472,7 +1478,7 @@ struct PopoverView: View {
     private var displayedPollRate: Int { controller.pollRate == 0 ? 1000 : controller.pollRate }
 
     /// A chip's text: "8K" for 8000 Hz and up from 2000, so seven chips still fit the row.
-    static func pollChipTitle(_ hz: Int) -> String {
+    nonisolated static func pollChipTitle(_ hz: Int) -> String {
         hz >= 2000 && hz % 1000 == 0 ? "\(hz / 1000)K" : "\(hz)"
     }
 

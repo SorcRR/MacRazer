@@ -545,6 +545,16 @@ final class RazerDevicesTests: XCTestCase {
                        "only a polling_rate2 mouse goes past 1000 Hz")
     }
 
+    /// The popover's chips: 250 Hz joins a classic mouse read at it, a polling_rate2 mouse has
+    /// it already, and rates from 2000 up read as "2K" so seven chips fit.
+    func testPollingPickerChips() {
+        XCTAssertEqual(PopoverView.pollRates(pid: 0x00DB, showsQuarter: false), [125, 500, 1000])
+        XCTAssertEqual(PopoverView.pollRates(pid: 0x00DB, showsQuarter: true), [125, 250, 500, 1000])
+        XCTAssertEqual(PopoverView.pollRates(pid: 0x00EA, showsQuarter: true), [125, 250, 500, 1000], "no second 250")
+        XCTAssertEqual(PopoverView.pollRates(pid: 0x00E5, showsQuarter: false).map(PopoverView.pollChipTitle),
+                       ["125", "250", "500", "1000", "2K", "4K", "8K"])
+    }
+
     /// The Basilisk V3 verified on its cable, with both lit zones on the brightness slider.
     func testBasiliskV3Verified() {
         XCTAssertTrue(RazerDevices.fullySupported(pid: 0x0099))

@@ -1389,18 +1389,14 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     }
 
     /// io-queue only. Sets the rate with the command this mouse takes. A polling_rate2 mouse
-    /// gets both of OpenRazer's writes and is then read back, and the read decides: the
-    /// second write's status isn't what counts, the rate the mouse ends up at is (from
-    /// fn-milans's Basilisk V4 Pro work, #55).
+    /// goes through `DeviceProbe.writePollingRate`, the device test's own write: both of
+    /// OpenRazer's writes, then a read-back, and the read decides (from fn-milans's Basilisk
+    /// V4 Pro work, #55). Polling_rate2 is USB only, so that mouse is always an `HIDDevice`.
     private static func sendPollingRate(_ hz: Int, to dev: any RazerTransport) -> Bool {
-        guard !dev.isBluetooth, RazerDevices.usesPollingRate2(pid: dev.productID) else {
+        guard let hid = dev as? HIDDevice, RazerDevices.usesPollingRate2(pid: hid.productID) else {
             return (try? dev.sendWithRetry(RazerCommands.setPollingRate(hz))) != nil
         }
-        for report in RazerCommands.setPollingRateReports(hz, usesPollingRate2: true) {
-            _ = try? dev.sendWithRetry(report)
-        }
-        let read = RazerCommands.pollingRateRead(usesPollingRate2: true)
-        return (try? dev.sendWithRetry(read.report)).map(read.parse) == hz
+        return (try? DeviceProbe.writePollingRate(hid, hz: hz, usesPollingRate2: true))?.confirmed ?? false
     }
 
     /// Sets brightness on every lit zone the model has (`RazerDevices.brightnessLeds`).
@@ -1576,9 +1572,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         profileApplyFailed = false
 
         let dpi = UInt16(max(100, min(profile.dpi, 45000)))
-        // A profile saved on an 8000 Hz mouse asks no more of this one than it can do.
-        let hz = min(profile.pollRate == 0 ? 1000 : profile.pollRate,
-                     deviceID.map(RazerDevices.maxPollingRate(pid:)) ?? 1000)
+        let savedHz = profile.pollRate == 0 ? 1000 : profile.pollRate
         let brightnessPct = max(0, min(profile.brightness, 100))
         let effect = supported(profile.lightingEffect)
         // A profile saved before the speed existed keeps whatever speed the slider has.
@@ -1608,6 +1602,10 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             }
             let stagesOK = stagesReport.map { (try? dev.sendWithRetry($0)) != nil } ?? true
             let dpiOK = (try? dev.sendWithRetry(RazerCommands.setDPI(x: dpi, y: dpi))) != nil
+            // A profile saved on an 8000 Hz mouse asks no more of this one than it can do.
+            // Capped for the mouse this reaches, which may not be the one the profile was
+            // applied on if they changed in between.
+            let hz = min(savedHz, RazerDevices.maxPollingRate(pid: dev.productID))
             let pollOK = Self.sendPollingRate(hz, to: dev)
             // Lighting commands only count on models that have lighting — the Atheris
             // (correctly) refuses them, and that must not block its profiles from applying.
