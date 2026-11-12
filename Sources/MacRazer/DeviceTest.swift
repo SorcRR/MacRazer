@@ -878,7 +878,7 @@ enum DeviceTestSteps {
             data.readBack = Int(check.readBack.value.x)
             if maxProbe {
                 // nil, not 0, when the probe got no answer: 0 would read as a real ceiling.
-                data.maxProbe = (try? DeviceProbe.writeDPI(channel, .init(x: 45000, y: 45000))).map { Int($0.readBack.value.x) }
+                data.maxProbe = (try? DeviceProbe.writeDPI(channel, .init(x: UInt16(RazerCommands.dpiCeiling), y: UInt16(RazerCommands.dpiCeiling)))).map { Int($0.readBack.value.x) }
             }
             if let table = try? DeviceProbe.readStages(channel) {
                 data.stages = table.value.stages

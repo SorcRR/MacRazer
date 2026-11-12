@@ -140,6 +140,36 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(setLed(nil), Razer.logoLed)
     }
 
+    /// Basilisk V4 Pro, from the hardware probe on both links: 0x1f is the only id the dongle
+    /// answers, both PIDs report battery, and brightness answers on LOGO (and SCROLL).
+    func testBasiliskV4Pro() {
+        for pid in [0x00E2, 0x00E3] {
+            for cls: UInt8 in [0x00, 0x04, 0x07, 0x0F] {
+                XCTAssertEqual(RazerDevices.transactionId(pid: pid, commandClass: cls, commandId: 0x80), 0x1f)
+            }
+            XCTAssertTrue(RazerDevices.hasBattery(pid: pid))
+            XCTAssertTrue(RazerDevices.hasLighting(pid: pid))
+            XCTAssertEqual(RazerDevices.brightnessLed(pid: pid), Razer.logoLed)
+            XCTAssertEqual(RazerDevices.maxDPI(pid: pid), 50000, "Focus Pro 50K, and the mouse read 50000 back")
+            XCTAssertEqual(RazerDevices.unverified(pid: pid), [.polling], "polling_rate2 still waits on a report")
+        }
+        XCTAssertTrue(RazerDevices.fullySupported(pid: 0x00E4), "Bluetooth has no polling command")
+        XCTAssertEqual(RazerDevices.connection(pid: 0x00E2), .wired)
+        XCTAssertEqual(RazerDevices.connection(pid: 0x00E3), .wirelessDongle)
+    }
+
+    /// The threshold byte is on the battery's 0-255 scale: the factory 0x55 reads 33%, and
+    /// every whole percentage survives a write and read back.
+    func testLowBatteryThreshold() {
+        var r = RazerReport(commandClass: 0x07, commandId: 0x82, dataSize: 0x01)
+        r.arguments[0] = 0x55
+        XCTAssertEqual(RazerCommands.parseLowBatteryThreshold(r), 33)
+        for percent in 0...100 {
+            r.arguments[0] = RazerCommands.setLowBatteryThreshold(percent: percent).arguments[0]
+            XCTAssertEqual(RazerCommands.parseLowBatteryThreshold(r), percent)
+        }
+    }
+
     /// The Nagas light three zones and each takes its own brightness. Every other model
     /// writes just its one `brightnessLed`.
     func testBrightnessLedsCoverEveryZone() {
@@ -369,7 +399,7 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(MouseController.supported(.breathing, in: [.spectrum, .off]), .spectrum,
                        "a mouse without a static colour falls back to what it has")
         XCTAssertEqual(RazerDevices.effects(pid: 0x00D4), [.staticColor, .off], "OpenRazer: static and none only")
-        XCTAssertEqual(RazerDevices.effects(pid: 0x00A3), LightingEffect.allCases, "every effect by default")
+        XCTAssertEqual(RazerDevices.effects(pid: 0x00A3), LightingEffect.classic, "every effect but the zone-only Reactive by default")
         // Its cable (OpenRazer's 0x00D3) is the same model, untested on every step.
         XCTAssertEqual(RazerDevices.connection(pid: 0x00D3), .wired)
         XCTAssertEqual(RazerDevices.unverified(pid: 0x00D3), [.battery, .dpi, .polling, .lighting])
@@ -615,8 +645,9 @@ final class RazerDevicesTests: XCTestCase {
     /// The Bluetooth Cobra HyperSpeed is the same mouse as the dongle one: same LED for
     /// brightness (verified over BLE: LOGO answers, SCROLL refuses) and same discharge curve.
     func testBluetoothCobraHyperSpeed() {
-        XCTAssertEqual(RazerDevices.bluetoothPIDs, [0x00BA, 0x00CE, 0x00DC, 0x00EC])
-        XCTAssertEqual(RazerDevices.bluetoothModelNames, ["Razer Cobra HyperSpeed", "Razer Basilisk V3 X HyperSpeed"],
+        XCTAssertEqual(RazerDevices.bluetoothPIDs, [0x00BA, 0x00CE, 0x00DC, 0x00E4, 0x00EC])
+        XCTAssertEqual(RazerDevices.bluetoothModelNames,
+                       ["Razer Cobra HyperSpeed", "Razer Basilisk V3 X HyperSpeed", "Razer Basilisk V4 Pro"],
                        "user-facing text names the model, not the link")
         XCTAssertEqual(RazerDevices.brightnessLed(pid: 0x00DC), Razer.logoLed)
         XCTAssertEqual(RazerDevices.dischargeCurveModelKey(pid: 0x00DC),
@@ -639,6 +670,70 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertTrue(RazerDevices.verifiesBrightnessWrite(pid: 0x00BA))
         XCTAssertFalse(RazerDevices.verifiesBrightnessWrite(pid: 0x00DC),
                        "the Cobra's brightness isn't read back after writing")
+    }
+
+    func testBluetoothBasiliskV4Pro() {
+        XCTAssertEqual(RazerDevices.connection(pid: 0x00E4), .bluetooth)
+        XCTAssertEqual(RazerDevices.brightnessLed(pid: 0x00E4), Razer.logoLed)
+        XCTAssertEqual(RazerDevices.maxDPI(pid: 0x00E4), RazerDevices.maxDPI(pid: 0x00E3))
+        XCTAssertTrue(RazerDevices.supportsSleepTimeout(pid: 0x00E4))
+        XCTAssertTrue(RazerDevices.supportsStageEditing(pid: 0x00E4))
+        XCTAssertFalse(RazerDevices.supportsDpiButtonBinding(pid: 0x00E4))
+        XCTAssertEqual(HIDDevice.classifyBluetoothMouse(vendorID: 0x068E, productID: 0x00E4, name: "BSK V4 PRO"),
+                       .init(name: "BSK V4 PRO", controllablePID: 0x00E4))
+        XCTAssertEqual(HIDDevice.classifyBluetoothMouse(vendorID: nil, productID: nil, name: "BSK V4 PRO"),
+                       .init(name: "BSK V4 PRO", controllablePID: nil), "recognised by name for the hint")
+    }
+
+    /// The onboard capabilities are opt-in per row: every mouse that doesn't set them keeps
+    /// master's behaviour, including an unknown one.
+    func testOnboardCapabilitiesAreOffUnlessARowSetsThem() {
+        let v4Pro: Set<Int> = [0x00E2, 0x00E3, 0x00E4]
+        for row in RazerDevices.known where !v4Pro.contains(row.pid) {
+            XCTAssertFalse(row.hasWheelControls, row.name)
+            XCTAssertFalse(row.hasSmartReelSensitivity, row.name)
+            XCTAssertFalse(row.hasScrollAcceleration, row.name)
+            XCTAssertFalse(row.supportsLowBatteryThreshold, row.name)
+            XCTAssertFalse(row.hasOnboardSlots, row.name)
+            XCTAssertFalse(row.supportsDpiModes, row.name)
+            XCTAssertFalse(row.dpiStagesCountFromOne, row.name)
+            XCTAssertEqual(row.lightingZones, [], row.name)
+            XCTAssertNil(row.buttonTable, row.name)
+            XCTAssertNil(OnboardButtons.layout(pid: row.pid), row.name)
+            if row.connection != .bluetooth { XCTAssertFalse(row.supportsSleepTimeout, row.name) }
+        }
+        let unknown = 0x9999
+        XCTAssertFalse(RazerDevices.usesPollingRate2(pid: unknown))
+        XCTAssertFalse(RazerDevices.hasOnboardSlots(pid: unknown))
+        XCTAssertFalse(RazerDevices.supportsDpiModes(pid: unknown))
+        XCTAssertFalse(RazerDevices.dpiStagesCountFromOne(pid: unknown))
+        XCTAssertEqual(RazerDevices.lightingZones(pid: unknown), [])
+        XCTAssertEqual(RazerDevices.lightingZones(pid: nil), [])
+        XCTAssertNil(OnboardButtons.layout(pid: unknown))
+    }
+
+    func testBasiliskV4ProCapabilities() {
+        for pid in [0x00E2, 0x00E3] {
+            XCTAssertTrue(RazerDevices.usesPollingRate2(pid: pid))
+            XCTAssertTrue(RazerDevices.hasWheelControls(pid: pid))
+            XCTAssertTrue(RazerDevices.hasSmartReelSensitivity(pid: pid))
+            XCTAssertTrue(RazerDevices.hasScrollAcceleration(pid: pid))
+            XCTAssertTrue(RazerDevices.supportsSleepTimeout(pid: pid), "0x07/0x83 over USB")
+            XCTAssertTrue(RazerDevices.dpiStagesCountFromOne(pid: pid))
+        }
+        // Bluetooth: no polling or wheel command there, and BLEProtocol converts the stage table.
+        XCTAssertFalse(RazerDevices.usesPollingRate2(pid: 0x00E4))
+        XCTAssertFalse(RazerDevices.hasWheelControls(pid: 0x00E4))
+        XCTAssertFalse(RazerDevices.hasSmartReelSensitivity(pid: 0x00E4))
+        XCTAssertFalse(RazerDevices.hasScrollAcceleration(pid: 0x00E4))
+        XCTAssertFalse(RazerDevices.dpiStagesCountFromOne(pid: 0x00E4))
+        for pid in [0x00E2, 0x00E3, 0x00E4] {
+            XCTAssertTrue(RazerDevices.supportsLowBatteryThreshold(pid: pid))
+            XCTAssertTrue(RazerDevices.hasOnboardSlots(pid: pid))
+            XCTAssertTrue(RazerDevices.supportsDpiModes(pid: pid))
+            XCTAssertEqual(RazerDevices.lightingZones(pid: pid), [.logo, .scrollWheel, .underglow])
+            XCTAssertEqual(RazerDevices.buttonTable(pid: pid), .basiliskV4Pro)
+        }
     }
 
     func testCapabilityDefaultsForUnknownModels() {

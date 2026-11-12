@@ -11,6 +11,21 @@ expect rough edges until 1.0.
   and tilt scrolling on Razer mice while trackpads and other mice keep their directions.
   Off by default, saved once for the app, and active while MacRazer is running with
   Accessibility permission. The macOS Natural scrolling preference stays as set.
+- **Basilisk V4 Pro: its own settings, profiles and remaps.** From fn-milans's work in
+  #55, tested on the mouse. Thanks!
+  - **Bluetooth:** a new row. Battery, DPI and stages, brightness and the sleep timer work.
+  - **Mouse settings:** the sleep timer and low-battery level on every link, and the wheel
+    mode, Smart-Reel and its sensitivity and scroll acceleration on the cable and dongle.
+  - **Lighting per zone:** the logo, wheel and underglow each get their own effect, colour
+    and brightness, with Reactive added to the effects.
+  - **DPI up to 50,000**, its sensor's top, with Single or Stages modes kept in the mouse.
+  - **Profiles are the mouse's onboard slots.** Up to 5, each with its DPI, lighting, wheel
+    settings and remaps, so they work with MacRazer closed. Add, switch, rename, reset or
+    delete them from the Profiles menu. A switch made on the mouse is followed.
+  - **Remaps saved in the mouse, like Synapse does it.** Configure Buttons writes each remap
+    into the mouse and reads it back. They work with MacRazer closed, on any link and on other
+    computers. The HyperShift layer is saved there too. MacRazer only changes buttons it
+    remapped itself, and clearing a remap puts the factory function back.
 - **Reset side buttons saved in the mouse.** If Razer Synapse saved other functions to a
   Cobra HyperSpeed's side buttons (a keyboard shortcut, say), they never reach Configure
   Buttons as buttons. On Bluetooth the page now says what they send and offers Reset Side
@@ -54,6 +69,8 @@ expect rough edges until 1.0.
   show up in its report.
 
 ### Fixed
+- **The Basilisk V4 HyperSpeed goes up to 33,000 DPI**, its sensor's top. The slider
+  stopped at 26,000.
 - **Brightness on the Goliathus Chroma Extended.** It answers brightness on a different light
   than MacRazer used, so the slider did nothing.
 - **250 Hz polling is read correctly.** A mouse left at 250 Hz showed no rate, and the device

@@ -44,7 +44,7 @@ struct RazerAccessoryInfo: Equatable, Sendable {
     /// The LED brightness is read and set on. Not always the effects' one: see the Firefly V2.
     let brightnessLed: UInt8
     /// The effects it has, in the picker's order. OpenRazer gives some pads no wave.
-    var effects: [LightingEffect] = LightingEffect.allCases
+    var effects: [LightingEffect] = LightingEffect.classic
     /// Effects a `verified` model hasn't been seen running yet. The card says so while one
     /// of these is picked.
     var untestedEffects: Set<LightingEffect> = []
@@ -97,14 +97,14 @@ enum RazerAccessories {
         // A static colour on ZERO_LED landed. The other effects follow OpenRazer.
         .init(pid: 0x0C01, name: "Razer Goliathus Chroma", kind: .mousepad, verified: true,
               transactionId: 0x3F, effectLed: Razer.zeroLed, brightnessLed: Razer.logoLed,
-              effects: LightingEffect.allCases.filter { $0 != .wave },
+              effects: LightingEffect.classic.filter { $0 != .wave },
               untestedEffects: [.breathing, .spectrum, .off]),
         // Goliathus Chroma Extended, from an in-app report on firmware v1.1: brightness reads
         // on LOGO_LED (ZERO_LED refuses it), and dimmed and came back there. A static colour on
         // ZERO_LED landed. The other effects follow OpenRazer.
         .init(pid: 0x0C02, name: "Razer Goliathus Chroma Extended", kind: .mousepad, verified: true,
               transactionId: 0x3F, effectLed: Razer.zeroLed, brightnessLed: Razer.logoLed,
-              effects: LightingEffect.allCases.filter { $0 != .wave },
+              effects: LightingEffect.classic.filter { $0 != .wave },
               untestedEffects: [.breathing, .spectrum, .off]),
         pad(0x0C06, "Razer Goliathus Chroma 3XL", wave: false),
         // Not the original Firefly (0x0C00): OpenRazer drives it with the older standard-matrix
@@ -121,7 +121,7 @@ enum RazerAccessories {
     private static func pad(_ pid: Int, _ name: String, wave: Bool = true) -> RazerAccessoryInfo {
         .init(pid: pid, name: name, kind: .mousepad, verified: false, transactionId: 0x3F,
               effectLed: Razer.zeroLed, brightnessLed: Razer.zeroLed,
-              effects: LightingEffect.allCases.filter { wave || $0 != .wave })
+              effects: LightingEffect.classic.filter { wave || $0 != .wave })
     }
 
     static func info(pid: Int) -> RazerAccessoryInfo? { known.first { $0.pid == pid } }

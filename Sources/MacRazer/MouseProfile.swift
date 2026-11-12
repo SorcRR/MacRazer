@@ -10,12 +10,17 @@ enum LightingEffect: String, CaseIterable, Identifiable {
     case staticColor = "Static"
     case breathing = "Breathing"
     case spectrum = "Spectrum"
+    case reactive = "Reactive"
     case wave = "Wave"
     case off = "Off"
     var id: Self { self }
 
     /// The effect takes the lighting colour, so the colour controls apply to it.
-    var usesColor: Bool { self == .staticColor || self == .breathing }
+    var usesColor: Bool { [.staticColor, .breathing, .reactive].contains(self) }
+
+    /// What a mouse without lighting zones offers. Reactive is a zone effect
+    /// (`ZonedLighting.effects`), so it stays off every other mouse's picker.
+    static let classic: [LightingEffect] = allCases.filter { $0 != .reactive }
 
     /// The effect a colour pick lands on: Breathing keeps breathing in the new colour, any
     /// other effect switches to Static. Where effects can't be set (Bluetooth) it's always
@@ -63,14 +68,38 @@ struct MouseProfile: Codable, Identifiable, Equatable {
     var color: RGB
 
     var lightingEffect: LightingEffect { LightingEffect(rawValue: effect) ?? .off }
-    var buttonMappings: [Int: RemapAction]
+    /// The remaps, kept as two tables (`RemapStorage`) so 0.9.0 and earlier still read the
+    /// profile list when a profile holds an action they don't know.
+    var buttonMappings: [Int: RemapAction] {
+        get { RemapStorage.merge(legacy: legacyMappings, extended: extendedMappings?.table ?? [:]) }
+        set {
+            let (legacy, extended) = RemapStorage.split(newValue)
+            legacyMappings = legacy
+            extendedMappings = extended.isEmpty ? nil : RemapStorage.Extended(extended)
+        }
+    }
+    private var legacyMappings: [Int: RemapAction] = [:]
+    private var extendedMappings: RemapStorage.Extended?
     /// The onboard DPI stage table (what the mouse's DPI button cycles). Optional so
     /// profiles saved before this existed keep decoding (they apply without touching the
     /// stage table, exactly as they always did).
     var dpiStages: [Int]?
+    /// The onboard slot (`OnboardSlots`) this profile is kept in, on mice that have them.
+    /// Given on first apply; nil for profiles not kept in the mouse.
+    var onboardSlot: Int?
+    /// Each zone's lighting, keyed by `LightingZone.storageKey`, on mice whose zones are set
+    /// one by one (`ZonedLighting`). Nil for every other profile, which applies `effect`,
+    /// `color` and `brightness` to the whole mouse.
+    var zones: [String: ZoneLighting]?
     /// The wave's speed byte (`WaveSpeed`). Optional for the same reason: older profiles
     /// apply at whatever speed the slider has.
     var waveSpeed: UInt8?
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, dpi, pollRate, brightness, effect, color, dpiStages, onboardSlot, zones, waveSpeed
+        case legacyMappings = "buttonMappings"
+        case extendedMappings = "extendedButtonMappings"
+    }
 
     init(name: String, dpi: Int, pollRate: Int, brightness: Int, effect: String, color: RGB,
          buttonMappings: [Int: RemapAction], dpiStages: [Int]? = nil, waveSpeed: UInt8? = nil) {
@@ -90,6 +119,30 @@ struct MouseProfile: Codable, Identifiable, Equatable {
     /// for profiles saved on mice without lighting — don't show a lighting mode they can't have.
     var summary: String {
         effect.isEmpty ? "\(dpi) DPI · \(pollRate) Hz" : "\(dpi) DPI · \(pollRate) Hz · \(effect)"
+    }
+}
+
+/// The names of a mouse's onboard slots (`OnboardSlots`), which are its profiles: the mouse
+/// keeps no names, so they live here, by device key and slot. An unnamed slot is "Profile N".
+struct SlotNames {
+    private static func key(forDevice deviceKey: String) -> String { "slotNames-\(deviceKey)" }
+
+    static func defaultName(_ slot: Int) -> String { "Profile \(slot)" }
+
+    /// The saved names, plus those of snapshot profiles that were kept in a slot before
+    /// slots became the profiles, for slots not named yet.
+    static func names(forDevice deviceKey: String, carrying profiles: [MouseProfile] = []) -> [Int: String] {
+        let saved = UserDefaults.standard.dictionary(forKey: key(forDevice: deviceKey)) as? [String: String] ?? [:]
+        var names = Dictionary(uniqueKeysWithValues: saved.compactMap { k, v in Int(k).map { ($0, v) } })
+        for profile in profiles {
+            if let slot = profile.onboardSlot, names[slot] == nil { names[slot] = profile.name }
+        }
+        return names
+    }
+
+    static func save(_ names: [Int: String], forDevice deviceKey: String) {
+        UserDefaults.standard.set(Dictionary(uniqueKeysWithValues: names.map { (String($0.key), $0.value) }),
+                                  forKey: key(forDevice: deviceKey))
     }
 }
 
