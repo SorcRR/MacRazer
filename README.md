@@ -101,6 +101,7 @@ says so.
 | Razer Viper | DPI, DPI stages, polling, lighting, brightness (wired only) | anonymous report |
 | Razer Viper Mini | DPI, polling, lighting, brightness (wired only) | anonymous report |
 | Razer Pro Click Mini (wireless) | Battery, DPI, DPI stages, polling (it has no lighting) | anonymous report |
+| Razer DeathAdder V4 Pro (Wired) | Battery, DPI, DPI stages, polling (it has no lighting) | anonymous report |
 | Razer DeathAdder V3 Pro (Wireless, both dongles, and the first one's cable) | Battery, DPI, DPI stages, polling (it has no lighting) | anonymous reports |
 | Razer Viper V3 Pro SE (Wireless) | Battery, DPI, DPI stages, polling (it has no lighting) | anonymous report |
 | Razer Naga V2 HyperSpeed | Battery, DPI, DPI stages, polling (it has no lighting) | anonymous reports |
@@ -118,7 +119,6 @@ says so.
 | Razer Mouse Dock Pro (with a Naga V3 Pro) | Battery, DPI, lighting, brightness; polling not confirmed yet | anonymous report |
 | Razer Mouse Dock V2 Pro (with a Basilisk V4 Pro) | Battery, DPI, DPI stages, lighting, brightness; polling not confirmed yet | cparedes |
 | Razer DeathAdder V3 | DPI, DPI stages; polling not confirmed yet (it has no battery or lighting) | anonymous reports |
-| Razer DeathAdder V4 Pro (Wired) | Battery, DPI, DPI stages; polling not confirmed yet (it has no lighting) | anonymous report |
 | Razer HyperFlux V2 (with the mouse on it) | Battery, DPI, DPI stages, polling; lighting not confirmed yet | anonymous report |
 | Razer Naga Chroma | DPI, polling; lighting not working yet | anonymous report |
 | Razer Naga Hex V2 | DPI, polling; lighting not working yet | foivos92 |

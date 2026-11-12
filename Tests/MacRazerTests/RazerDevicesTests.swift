@@ -556,8 +556,8 @@ final class RazerDevicesTests: XCTestCase {
     }
 
     /// The reports of 2026-11-11 and 11-12.
-    func testMiceFromTheNovemberTwelveReports() {
-        for pid in [0x008A, 0x009A, 0x007C] {
+    func testMiceFromTheNovemberElevenAndTwelveReports() {
+        for pid in [0x008A, 0x009A, 0x007C, 0x00BE] {
             XCTAssertEqual(RazerDevices.support(pid: pid), .full, String(format: "0x%04X", pid))
         }
         XCTAssertTrue(RazerDevices.hasLighting(pid: 0x007C), "DeathAdder V2 Pro: lighting on the cable too")
@@ -565,10 +565,8 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertFalse(RazerDevices.hasBattery(pid: 0x008A))
         XCTAssertFalse(RazerDevices.canCharge(pid: 0x009A), "Pro Click Mini runs on AA cells")
         XCTAssertEqual(RazerDevices.connection(pid: 0x009A), .wirelessDongle)
-        // DeathAdder V4 Pro: polling_rate2, still to be confirmed.
-        XCTAssertEqual(RazerDevices.unverified(pid: 0x00BE), [.polling])
-        XCTAssertTrue(RazerDevices.usesPollingRate2(pid: 0x00BE))
-        XCTAssertEqual(RazerDevices.maxPollingRate(pid: 0x00BE), 8000)
+        // DeathAdder V4 Pro: the classic polling command that passed, until polling_rate2 has.
+        XCTAssertFalse(RazerDevices.usesPollingRate2(pid: 0x00BE))
         XCTAssertEqual(RazerDevices.notOnMouse(pid: 0x00BE), [.lighting])
     }
 

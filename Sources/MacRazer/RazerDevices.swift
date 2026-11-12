@@ -398,7 +398,9 @@ enum RazerDevices {
         // failed at the USB level, the restore included, so the logo may have been left dark.
         // A second report (0.9.0, firmware v2.5) then passed lighting on the cable: LOGO went
         // dark, turned red and came back, with every command answering. The zone effect read
-        // answers on 0x00, 0x04 and 0x0A.
+        // answers on 0x00, 0x04 and 0x0A. The failure was on firmware v2.1 and the pass on
+        // v2.5, and the table can't tell them apart, so lighting is on for both. If a v2.1
+        // owner reports the logo stuck dark again, a firmware gate is the fix.
         .init(pid: 0x007C, name: "Razer DeathAdder V2 Pro (Wired)", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 20000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
         // Viper V3 HyperSpeed over the dongle (in-app report, no credit given): battery, DPI and
         // stages, and polling all passed with 0x1f (0x3f and 0x08 answer too; 0xFF and 0x80 time
@@ -529,15 +531,15 @@ enum RazerDevices {
         // battery, DPI and stages, and polling passed with 0x1f. It runs on AA cells: the
         // charging read answers 0x05, and there's no cable. No lighting. 12000 is the vendor
         // spec.
-        .init(pid: 0x009A, name: "Razer Pro Click Mini", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 12000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, hasCableLink: false, canCharge: false, notOnMouse: [.lighting]),
+        .init(pid: 0x009A, name: "Razer Pro Click Mini (Wireless)", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 12000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, hasCableLink: false, canCharge: false, notOnMouse: [.lighting]),
         // DeathAdder V4 Pro on the cable (in-app report on firmware v1.20, no credit given):
-        // battery (charging), DPI and stages passed with 0x1f, and every id answers. No
-        // lighting: every group answers 0x05. The classic polling command passed too, reading
-        // 1000 Hz, but the polling_rate2 read answered `00 04`, 2000 Hz, so the classic one
-        // doesn't show its real rate. It takes polling_rate2, as OpenRazer has it, and polling
-        // stays unverified until a test passes that. 45000 is as high as the app writes; it
-        // took a 45000 write. 8000 Hz is the vendor spec. Its dongle (0x00BF) has no row yet.
-        .init(pid: 0x00BE, name: "Razer DeathAdder V4 Pro (Wired)", unverified: [.polling], hasBattery: true, hasLighting: false, maxDPI: 45000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, usesPollingRate2: true, maxPollingRate: 8000, notOnMouse: [.lighting]),
+        // battery (charging), DPI and stages, and polling passed with 0x1f, and every id
+        // answers. No lighting: every group answers 0x05. The polling_rate2 read answered
+        // `00 04`, 2000 Hz, while the classic one read 1000 Hz and set 500 Hz and back. OpenRazer
+        // drives this mouse with polling_rate2, which reaches 8000 Hz, but no report has
+        // written it, so the row keeps the classic command that passed for now. 45000 is as
+        // high as the app writes; it took a 45000 write. Its dongle (0x00BF) has no row yet.
+        .init(pid: 0x00BE, name: "Razer DeathAdder V4 Pro (Wired)", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 45000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.lighting]),
         // Viper V3 Pro over its dongle (in-app report on firmware v1.12, no credit given):
         // battery, DPI and stages, and polling passed. No lighting. 35000 is the
         // vendor spec. Its cable has no row yet.
