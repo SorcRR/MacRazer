@@ -41,6 +41,25 @@
   },
   "buttons" : {
     "data" : {
+      "events" : [
+        {
+          "dpi" : 1600,
+          "ms" : 0,
+          "slot" : 1
+        },
+        {
+          "input" : "09:04",
+          "ms" : 900
+        },
+        {
+          "dpi" : 3200,
+          "ms" : 2100
+        },
+        {
+          "ms" : 3400,
+          "slot" : 2
+        }
+      ],
       "keys" : [
         {
           "keyCode" : 9,
@@ -67,7 +86,8 @@
         "09:05",
         "07:1e",
         "0c:223"
-      ]
+      ],
+      "unheard" : 2
     },
     "error" : "none",
     "exchanges" : [
@@ -744,7 +764,7 @@
     "transactionId" : 31
   },
   "replyEmail" : "person@example.com",
-  "schemaVersion" : 6,
+  "schemaVersion" : 7,
   "software" : {
     "mouseTaps" : [
       "BetterTouchTool"

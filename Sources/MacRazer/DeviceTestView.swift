@@ -410,6 +410,7 @@ struct DeviceTestView: View {
             } else {
                 reportWarning("MacRazer can't hear this mouse's buttons right now. Recording keys below may still catch them.")
             }
+            unheardQuestion
             Toggle(isOn: $model.recordKeys) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Also record keyboard keys").font(.system(size: 12))
@@ -421,6 +422,29 @@ struct DeviceTestView: View {
             if let problem = model.keyCaptureProblem {
                 reportWarning(problem)
                 Button("Open System Settings") { model.openSettings() }.buttonStyle(.link)
+            }
+        }
+    }
+
+    /// "Did every button you pressed show up?" (`ButtonsData.unheard`). Some buttons change
+    /// the DPI or profile inside the mouse and send the Mac nothing, so only the person knows
+    /// they pressed one.
+    private var unheardQuestion: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Did every button you pressed show up here?").font(.system(size: 12))
+            Picker("Did every button you pressed show up here?", selection: Binding<Int?>(
+                get: { model.unheard.map { min($0, 1) } },
+                set: { model.unheard = $0 == 0 ? 0 : max(model.unheard ?? 1, 1) }
+            )) {
+                Text("Yes").tag(Int?.some(0))
+                Text("Some didn't").tag(Int?.some(1))
+            }
+            .pickerStyle(.segmented).labelsHidden().fixedSize()
+            if let count = model.unheard, count > 0 {
+                Stepper(value: Binding(get: { count }, set: { model.unheard = $0 }), in: 1...24) {
+                    Text("\(count) didn't show up").font(.system(size: 12))
+                }
+                reportNote("Some buttons change the DPI or profile inside the mouse and never tell the Mac. Knowing they're there helps us make them remappable.")
             }
         }
     }
@@ -502,6 +526,9 @@ struct DeviceTestView: View {
                         if !leftOut.isEmpty { reportRow("Already verified", leftOut.joined(separator: ", ")) }
                         let skipped = verdict.skipped.filter { !leftOut.contains($0) }
                         if !skipped.isEmpty { reportRow("Skipped", skipped.joined(separator: ", ")) }
+                        if let unheard = report.buttons.data?.unheard, unheard > 0 {
+                            reportRow("Buttons not heard", "\(unheard)")
+                        }
                         if let keys = report.buttons.data?.keys {
                             reportRow(report.buttons.outcome == .passed || keys.isEmpty ? "Keys recorded" : "Keys only, no buttons",
                                       keys.isEmpty ? "None" : keys.map(\.displayName).joined(separator: ", "))

@@ -173,7 +173,10 @@ You can read the whole report on the last screen before it goes anywhere.
 - If no transaction id answers, whether the mouse's other interfaces do.
 - From the Bluetooth test: the Bluetooth services the mouse has, its standard battery level,
   and which of Razer's Bluetooth commands it answers, button table included.
-- Which extra buttons you pressed during the button step, not when.
+- Which extra buttons you pressed during the button step, and how many you pressed that
+  didn't show up, if you say. On a cable or dongle, also a timeline of the step: when each
+  press came, counted from the step opening, and any change of the mouse's DPI or profile
+  slot meanwhile. That shows buttons that change DPI inside the mouse. Never the time of day.
 - The app and macOS versions.
 - Only if you fill them in: a comment, a name to credit, and an email address for a reply.
 

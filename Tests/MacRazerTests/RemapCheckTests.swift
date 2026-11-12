@@ -213,4 +213,61 @@ final class RemapCheckTests: XCTestCase {
         XCTAssertTrue(model.keysSeen.isEmpty)
         XCTAssertEqual(model.software, .init())
     }
+
+    /// The button step's watch logs the first state in full, then only what changed. A read
+    /// the mouse didn't answer is a gap, not a change.
+    func testStateEventsLogOnlyChanges() {
+        typealias State = (dpi: Int?, slot: Int?)
+        let first = DeviceTestModel.stateEvent(ms: 0, state: (1600, 1), last: nil)
+        XCTAssertEqual(first, .init(ms: 0, dpi: 1600, slot: 1))
+        let last: State = (1600, 1)
+        XCTAssertNil(DeviceTestModel.stateEvent(ms: 500, state: (1600, 1), last: last), "nothing changed")
+        XCTAssertNil(DeviceTestModel.stateEvent(ms: 500, state: (nil, nil), last: last), "no answer")
+        XCTAssertEqual(DeviceTestModel.stateEvent(ms: 1000, state: (3200, 1), last: last), .init(ms: 1000, dpi: 3200))
+        XCTAssertEqual(DeviceTestModel.stateEvent(ms: 1500, state: (nil, 2), last: last), .init(ms: 1500, slot: 2))
+        XCTAssertNil(DeviceTestModel.stateEvent(ms: 0, state: (nil, nil), last: nil), "a mouse that answers neither")
+    }
+
+    /// The answer and the timeline go into the record as given; the outcome still follows
+    /// what the mouse sent.
+    func testButtonsRecordKeepsTheAnswerAndTimeline() {
+        let events: [DeviceReport.ButtonEvent] = [.init(ms: 0, dpi: 800), .init(ms: 700, dpi: 1600)]
+        let silent = DeviceTestModel.buttonsRecord(seen: [], keys: nil, unheard: 3, events: events)
+        XCTAssertEqual(silent.outcome, .skipped, "only silent buttons pressed: nothing to confirm")
+        XCTAssertEqual(silent.data?.unheard, 3)
+        XCTAssertEqual(silent.data?.events, events)
+        XCTAssertNil(DeviceTestModel.buttonsRecord(seen: ["09:04"], keys: nil).data?.unheard, "not answered")
+    }
+
+    /// The summary names each DPI or profile change after the first read, and marks the ones
+    /// no input came before.
+    func testButtonStepChangesInTheSummary() {
+        let events: [DeviceReport.ButtonEvent] = [
+            .init(ms: 0, dpi: 1600, slot: 1),
+            .init(ms: 900, input: "09:04"),
+            .init(ms: 1200, dpi: 3200),
+            .init(ms: 3400, slot: 2),
+        ]
+        XCTAssertEqual(DeviceReportOutput.buttonStepChanges(events),
+                       ["DPI 1600 → 3200", "profile 1 → 2 (no input)"])
+        XCTAssertEqual(DeviceReportOutput.buttonStepChanges([.init(ms: 0, dpi: 800)]), [], "a start, no change")
+    }
+
+    /// The timeline runs only where the step can hear the mouse's inputs, and never on
+    /// Bluetooth.
+    func testTheWatchRunsOnlyWhereInputsAreHeard() {
+        XCTAssertTrue(DeviceTestModel.watchesState(bluetooth: false, listening: true))
+        XCTAssertFalse(DeviceTestModel.watchesState(bluetooth: false, listening: false), "every change would look silent")
+        XCTAssertFalse(DeviceTestModel.watchesState(bluetooth: true, listening: true), "the step reads nothing there")
+        XCTAssertGreaterThan(DeviceTestModel.silentRoundsBeforeStopping, 1)
+    }
+
+    /// A press up to `quietWindowMs` before a change counts as its cause.
+    func testTheQuietWindow() {
+        let window = DeviceReportOutput.quietWindowMs
+        let caused: [DeviceReport.ButtonEvent] = [.init(ms: 0, dpi: 800), .init(ms: 100, input: "09:06"), .init(ms: 100 + window, dpi: 1600)]
+        XCTAssertEqual(DeviceReportOutput.buttonStepChanges(caused), ["DPI 800 → 1600"])
+        let late: [DeviceReport.ButtonEvent] = [.init(ms: 0, dpi: 800), .init(ms: 100, input: "09:06"), .init(ms: 101 + window, dpi: 1600)]
+        XCTAssertEqual(DeviceReportOutput.buttonStepChanges(late), ["DPI 800 → 1600 (no input)"])
+    }
 }
