@@ -44,6 +44,10 @@ Razer mice that use the same HID protocol family, but those are untested, so tre
   keyboard shortcuts (presets or a custom recorder), mouse clicks, and media keys. Saved per
   device. If another mouse app (Mac Mouse Fix, SteerMouse, BetterMouse) takes the side
   buttons' clicks first, the page names it so you know which one to quit.
+- **Reverse scrolling on Razer mice**, under Settings › General. Reverses wheel and tilt
+  scrolling on Razer mice while trackpads and other mice keep their directions. Off by
+  default and saved once for the app. Requires Accessibility and MacRazer running; it does
+  not change macOS's Natural scrolling setting.
 - **Any Razer mouse is detected and named.** Controls a model lacks are hidden automatically
   (no lighting on the Atheris, no battery UI on wired-only mice). A Razer keyboard or other
   product that is never a mouse is not taken for one.
@@ -259,7 +263,7 @@ ID ($99 a year). If you'd like to help with that, tips go to
 [ko-fi.com/sorcrr](https://ko-fi.com/sorcrr).
 
 After that it launches like any other app. It will then ask for **Input Monitoring**
-permission (and **Accessibility** if you use button remapping); see [Permissions](#permissions)
+permission (and **Accessibility** for button remapping or scroll reversal); see [Permissions](#permissions)
 below.
 
 ## Build and run
@@ -280,7 +284,7 @@ open "MacRazer.app"
 
 - **Input Monitoring** is required to send and receive HID reports to the mouse. The app
   requests it on launch; grant it in System Settings > Privacy & Security > Input Monitoring.
-- **Accessibility** is required only for button remapping (the event tap). The remap screen
+- **Accessibility** is required for button remapping and scroll reversal (the event tap). The remap screen
   has a button to open the right settings pane.
 
 macOS binds a permission grant to the app's code signature. An ad-hoc build gets a new

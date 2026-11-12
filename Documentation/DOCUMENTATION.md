@@ -55,7 +55,7 @@ open "MacRazer.app"
 ```
 
 **Permissions** (see §7): the app needs **Input Monitoring** (to send/receive HID reports)
-and, for button remapping, **Accessibility** (for the event tap). Both are requested in-app.
+and, for button remapping or scroll reversal, **Accessibility** (for the event tap). Both are requested in-app.
 
 ---
 
@@ -428,6 +428,36 @@ buttons are handled onboard and never reach macOS.
  side button gets through, the page names any such app that's running
  (`ButtonRemapper.competingTapApps`, from `CGGetEventTapList`, Apple's own processes left out).
 
+### 6.3.1 Reverse scrolling, `ScrollSettings.swift` and `ScrollDirection.swift`
+
+**Settings → General → Reverse scrolling on Razer mice** is off by default and saved
+once for the app under `reverseScrollingOnRazerMice`. Both vertical and horizontal scrolling
+reverse on Razer mice; trackpads and other mice keep their directions. The preference does
+not change mouse firmware, profiles, or macOS's Natural scrolling setting.
+
+`ScrollSettings` starts a separate scroll-only event tap only while the preference is enabled,
+a Razer mouse is connected, Accessibility is granted, and source identification is available.
+The tap has a dedicated thread and run loop. Disabling the setting, disconnecting, revoking
+permission, or quitting stops it. Button remapping keeps its existing tap and lifecycle.
+
+`ScrollEventRouter` identifies the underlying HID event's sender. `ScrollSources` preloads
+IORegistry sender identities before installation; newly seen senders are resolved on a
+separate queue. The event callback only consults cached decisions. Unresolved events pass
+through, and negative lookups expire so a newly arriving service can be identified later.
+Razer-vendor services match mouse usage or a known mouse PID, including their keyboard
+collections. Other Bluetooth identities require an existing recognised mouse model. HID serials
+are never compared with Razer protocol serials. No per-unit preference or migration is used.
+
+The sender accessors (`CGEventCopyIOHIDEvent` and `IOHIDEventGetSenderID`) are undocumented
+system interfaces, resolved dynamically. If unavailable, the switch is disabled. The HID
+event is used only to identify the sender; reversal changes the CGEvent line, pixel and
+fixed-point fields. The contributor confirmed CGEvent-only reversal works in Safari and a
+native `NSEvent.scrollingDelta` reader on their Basilisk V4 HyperSpeed. Hardware behaviour
+on other models and macOS versions still needs validation.
+
+Preview: `swift run MacRazer render-settings reversed /tmp/scrolling-settings.png`.
+The preview uses a fixed scratch defaults suite, removed before and after rendering.
+
 ### 6.4 Device test, `DeviceTest*.swift` + the Worker
 The right-click menu's **Help Support This Mouse…** (or **Test This Mouse…** on a verified
 model) runs a guided test and builds a report a maintainer can turn into a registry entry.
@@ -624,7 +654,7 @@ hides the setting.
 | Permission | Why | How |
 |---|---|---|
 | **Input Monitoring** | Razer mice enumerate as keyboard/mouse HID; macOS gates opening them. | Requested at launch via `IOHIDRequestAccess(kIOHIDRequestTypeListenEvent)`; in-app banner + settings link. |
-| **Accessibility** | The `CGEvent` tap for button remapping. | `AXIsProcessTrustedWithOptions`; banner + Open-Settings/Re-check in the remap view. |
+| **Accessibility** | The `CGEvent` tap for button remapping and scroll reversal. | `AXIsProcessTrustedWithOptions`; Open Settings / Re-check in the relevant controls. |
 
 **Signing matters for permissions.** TCC binds a grant to the app's code identity. The
 build is **ad-hoc signed by default, so every rebuild changes the identity and breaks the
