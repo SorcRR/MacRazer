@@ -396,8 +396,10 @@ enum RazerDevices {
         // battery (charging), DPI and stages, and polling passed with 0x1f. Only LOGO answers
         // brightness, as over the dongle. Taking it to 0 worked, but every command after that
         // failed at the USB level, the restore included, so the logo may have been left dark.
-        // Until a second report shows lighting is safe on the cable, it stays hidden here.
-        .init(pid: 0x007C, name: "Razer DeathAdder V2 Pro (Wired)", unverified: [.lighting], hasBattery: true, hasLighting: false, maxDPI: 20000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
+        // A second report (0.9.0, firmware v2.5) then passed lighting on the cable: LOGO went
+        // dark, turned red and came back, with every command answering. The zone effect read
+        // answers on 0x00, 0x04 and 0x0A.
+        .init(pid: 0x007C, name: "Razer DeathAdder V2 Pro (Wired)", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 20000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
         // Viper V3 HyperSpeed over the dongle (in-app report, no credit given): battery, DPI and
         // stages, and polling all passed with 0x1f (0x3f and 0x08 answer too; 0xFF and 0x80 time
         // out). It has no lighting: every group answers 0x05. The firmware echoed a 45000 DPI
@@ -445,6 +447,10 @@ enum RazerDevices {
         // The battery read answers 0x05. Only LOGO answers brightness. 16000 is the vendor
         // spec. The owner found the two left side buttons not detected for remapping.
         .init(pid: 0x0078, name: "Razer Viper", unverified: [], hasBattery: false, hasLighting: true, maxDPI: 16000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
+        // Viper Mini (in-app report on firmware v1.1, no credit given): DPI, polling and
+        // lighting passed with 0x1f, and every id answers. LOGO dimmed, turned red and came
+        // back. No battery (0x05). It holds a single DPI stage. 8500 is the vendor spec.
+        .init(pid: 0x008A, name: "Razer Viper Mini", unverified: [], hasBattery: false, hasLighting: true, maxDPI: 8500, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
         // DeathAdder V3 Pro over its first dongle (in-app report on firmware v2.1, no credit
         // given): battery, DPI and stages, and polling passed with 0x1f. 0xFF and 0x80 time
         // out. No lighting: every group returns 0x03. It also answers the polling_rate2 read,
@@ -519,6 +525,19 @@ enum RazerDevices {
         // given): battery, DPI and stages, and polling passed. It runs on an AA cell,
         // so there's no cable and no charging read. No lighting. 14000 is the vendor spec.
         .init(pid: 0x009C, name: "Razer DeathAdder V2 X HyperSpeed", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 14000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, hasCableLink: false, canCharge: false, notOnMouse: [.lighting]),
+        // Pro Click Mini over its dongle (in-app report on firmware v1.0, no credit given):
+        // battery, DPI and stages, and polling passed with 0x1f. It runs on AA cells: the
+        // charging read answers 0x05, and there's no cable. No lighting. 12000 is the vendor
+        // spec.
+        .init(pid: 0x009A, name: "Razer Pro Click Mini", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 12000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, hasCableLink: false, canCharge: false, notOnMouse: [.lighting]),
+        // DeathAdder V4 Pro on the cable (in-app report on firmware v1.20, no credit given):
+        // battery (charging), DPI and stages passed with 0x1f, and every id answers. No
+        // lighting: every group answers 0x05. The classic polling command passed too, reading
+        // 1000 Hz, but the polling_rate2 read answered `00 04`, 2000 Hz, so the classic one
+        // doesn't show its real rate. It takes polling_rate2, as OpenRazer has it, and polling
+        // stays unverified until a test passes that. 45000 is as high as the app writes; it
+        // took a 45000 write. 8000 Hz is the vendor spec. Its dongle (0x00BF) has no row yet.
+        .init(pid: 0x00BE, name: "Razer DeathAdder V4 Pro (Wired)", unverified: [.polling], hasBattery: true, hasLighting: false, maxDPI: 45000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, usesPollingRate2: true, maxPollingRate: 8000, notOnMouse: [.lighting]),
         // Viper V3 Pro over its dongle (in-app report on firmware v1.12, no credit given):
         // battery, DPI and stages, and polling passed. No lighting. 35000 is the
         // vendor spec. Its cable has no row yet.
@@ -537,7 +556,9 @@ enum RazerDevices {
         // SCROLL answers brightness, and it reads back what was written, but the owner saw
         // neither the dim nor the red, so lighting stays hidden until a test shows it working.
         // The zone effect read answers on 0x00, 0x01 and 0x11, which a working report should
-        // pick the zones from. 18000 is the vendor spec.
+        // pick the zones from. A second report (0.9.0, 2026-11-12) saw the red, but left the
+        // dim unanswered, so lighting still waits. Its side grid types 1 to 0, minus and
+        // equals, and it has no button table: the read fails. 18000 is the vendor spec.
         .init(pid: 0x0096, name: "Razer Naga X", unverified: [.lighting], hasBattery: false, hasLighting: false, maxDPI: 18000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
         // Mamba Tournament Edition (in-app report on firmware v1.3, no credit given): DPI and
         // polling passed with 0x1f. It's wired only: the battery read answers with zeros. Every

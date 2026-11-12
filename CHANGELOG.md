@@ -29,6 +29,9 @@ expect rough edges until 1.0.
     Elite:** DPI and polling work. Lighting waits on a test on both.
   - **Naga X** and **Mamba Tournament Edition:** DPI and polling work. Their lighting
     doesn't work yet.
+  - **Viper Mini** and **Pro Click Mini over its dongle:** fully supported. **DeathAdder V2
+    Pro on its cable:** lighting works now. **DeathAdder V4 Pro on its cable:** battery and
+    DPI work. Its polling uses the newer command and waits on a test.
 - **Tested keyboards and mousepads.** The Ornata V3, Ornata V3 X, Goliathus Chroma and
   Goliathus Chroma Extended lost their UNTESTED tag after passing the lighting test.
 - **The device test finds buttons the Mac never hears.** Some buttons change DPI or the
