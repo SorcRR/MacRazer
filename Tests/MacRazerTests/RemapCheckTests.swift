@@ -252,4 +252,22 @@ final class RemapCheckTests: XCTestCase {
                        ["DPI 1600 → 3200", "profile 1 → 2 (no input)"])
         XCTAssertEqual(DeviceReportOutput.buttonStepChanges([.init(ms: 0, dpi: 800)]), [], "a start, no change")
     }
+
+    /// The timeline runs only where the step can hear the mouse's inputs, and never on
+    /// Bluetooth.
+    func testTheWatchRunsOnlyWhereInputsAreHeard() {
+        XCTAssertTrue(DeviceTestModel.watchesState(bluetooth: false, listening: true))
+        XCTAssertFalse(DeviceTestModel.watchesState(bluetooth: false, listening: false), "every change would look silent")
+        XCTAssertFalse(DeviceTestModel.watchesState(bluetooth: true, listening: true), "the step reads nothing there")
+        XCTAssertGreaterThan(DeviceTestModel.silentRoundsBeforeStopping, 1)
+    }
+
+    /// A press up to `quietWindowMs` before a change counts as its cause.
+    func testTheQuietWindow() {
+        let window = DeviceReportOutput.quietWindowMs
+        let caused: [DeviceReport.ButtonEvent] = [.init(ms: 0, dpi: 800), .init(ms: 100, input: "09:06"), .init(ms: 100 + window, dpi: 1600)]
+        XCTAssertEqual(DeviceReportOutput.buttonStepChanges(caused), ["DPI 800 → 1600"])
+        let late: [DeviceReport.ButtonEvent] = [.init(ms: 0, dpi: 800), .init(ms: 100, input: "09:06"), .init(ms: 101 + window, dpi: 1600)]
+        XCTAssertEqual(DeviceReportOutput.buttonStepChanges(late), ["DPI 800 → 1600 (no input)"])
+    }
 }

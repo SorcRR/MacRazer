@@ -31,6 +31,10 @@ expect rough edges until 1.0.
     doesn't work yet.
 - **Tested keyboards and mousepads.** The Ornata V3, Ornata V3 X, Goliathus Chroma and
   Goliathus Chroma Extended lost their UNTESTED tag after passing the lighting test.
+- **The device test finds buttons the Mac never hears.** Some buttons change DPI or the
+  profile inside the mouse and send the Mac nothing. The button step now asks whether every
+  button you pressed showed up, and watches the DPI and profile while you press them. A
+  change with no press before it points at such a button, so a later version can remap it.
 - **The device test looks for what can take your side buttons.** The button step and Review
   say when Razer Synapse or another Razer helper is running, or another app watches mouse
   buttons. The report names them too, and nothing else about your apps. A GitHub issue

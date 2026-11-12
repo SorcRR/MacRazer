@@ -200,7 +200,8 @@ struct DeviceReport: Codable, Equatable {
         /// each change of its DPI or active profile slot, which the step reads twice a second.
         /// The first entry is the state it started from. A DPI change with no input next to it
         /// points at a button that changes DPI inside the mouse. Nil on Bluetooth, where the
-        /// step reads nothing. At most `maxButtonEvents`.
+        /// step reads nothing, and when the mouse's inputs couldn't be heard, where every
+        /// change would look silent. At most `maxButtonEvents`.
         var events: [ButtonEvent]?
     }
 

@@ -127,6 +127,8 @@ final class DeviceTestModel: ObservableObject {
     /// Reads DPI and the active slot twice a second while the button step is open, on a
     /// cable or dongle.
     private var stateWatch: Task<Void, Never>?
+    /// Whether this visit to the step keeps a timeline (`watchesState(bluetooth:listening:)`).
+    private var watchesState = false
     private var keyCapture: KeystrokeCapture?
     private var keyLog = KeystrokeLog()
     private var standardId: UInt8 = 0x1F
@@ -659,7 +661,6 @@ final class DeviceTestModel: ObservableObject {
         unheard = nil
         buttonEvents = []
         buttonStepOpened = Date()
-        if !bluetoothRun { startStateWatch() }
         noteSoftware()
         let capture = ButtonCapture { [weak self] label in
             Task { @MainActor in self?.saw(label) }
@@ -668,6 +669,8 @@ final class DeviceTestModel: ObservableObject {
         // The report's own vendor: a mouse on Bluetooth enumerates under BLEProtocol's.
         listening = capture.start(vendorID: report?.device.vendorID ?? Razer.vendorId,
                                   productID: report?.device.productID ?? 0)
+        watchesState = Self.watchesState(bluetooth: bluetoothRun, listening: listening)
+        if watchesState { startStateWatch() }
         updateKeyCapture()
     }
 
@@ -730,25 +733,42 @@ final class DeviceTestModel: ObservableObject {
         buttonEvents.append(event)
     }
 
+    /// Whether the button step keeps a timeline. Not on Bluetooth, where the step reads
+    /// nothing. Not when the mouse's own inputs can't be heard either: then every DPI or
+    /// profile change would look like a button that works inside the mouse.
+    nonisolated static func watchesState(bluetooth: Bool, listening: Bool) -> Bool {
+        !bluetooth && listening
+    }
+
+    /// Rounds in a row with neither read answered before the watch stops: a mouse that
+    /// answers neither would otherwise keep the test's queue busy with timeouts.
+    nonisolated static let silentRoundsBeforeStopping = 6
+
     /// Reads the mouse's DPI and active slot twice a second until the step closes, and logs
     /// each change. Reads only, through the same queue as the steps, so it never overlaps one.
+    /// Each event is stamped when its read starts: the change came before that, and a slow
+    /// read on a dongle would otherwise push it past the press that caused it.
     private func startStateWatch() {
         stateWatch?.cancel()
         let standard = standardId, matrix = matrixId, overrides = overrides
         stateWatch = Task { [weak self] in
             var last: (dpi: Int?, slot: Int?)?
-            while !Task.isCancelled {
-                guard let controller = self?.controller else { return }
+            var silentRounds = 0
+            while !Task.isCancelled, silentRounds < Self.silentRoundsBeforeStopping {
+                guard let controller = self?.controller, let ms = self?.buttonStepMs else { return }
                 let state = try? await controller.runDeviceTestStep { device in
                     DeviceTestSteps.mouseState(FixedTransactionChannel(base: device, standard: standard,
                                                                        matrix: matrix, overrides: overrides))
                 }
                 guard !Task.isCancelled, let self else { return }
-                if let state {
-                    if let event = Self.stateEvent(ms: self.buttonStepMs, state: state, last: last) {
+                if let state, state.dpi != nil || state.slot != nil {
+                    silentRounds = 0
+                    if let event = Self.stateEvent(ms: ms, state: state, last: last) {
                         self.logButtonEvent(event)
                     }
                     last = (state.dpi ?? last?.dpi, state.slot ?? last?.slot)
+                } else {
+                    silentRounds += 1
                 }
                 try? await Task.sleep(nanoseconds: 500_000_000)
             }
@@ -774,7 +794,7 @@ final class DeviceTestModel: ObservableObject {
         stateWatch?.cancel()
         stateWatch = nil
         report?.buttons = Self.buttonsRecord(seen: buttonsSeen, keys: recordKeys ? keysSeen : nil,
-                                             unheard: unheard, events: bluetoothRun ? nil : buttonEvents)
+                                             unheard: unheard, events: watchesState ? buttonEvents : nil)
     }
 
     /// The button step's record. Only the mouse's own buttons pass it. Keys alone may be the

@@ -172,13 +172,18 @@ enum DeviceReportOutput {
         return lines.joined(separator: "\n")
     }
 
+    /// How far before a change an input still counts as its cause, in ms. A change is
+    /// stamped when the read that saw it started: up to one half-second wait plus one slow
+    /// read (two timeouts on a dongle) after the press. The Worker uses the same window.
+    static let quietWindowMs = 1500
+
     /// Each DPI or profile change after the button step's first read, as "DPI 1600 → 3200".
-    /// One with no input from the mouse in the second before it gets "(no input)": a button
-    /// that did it inside the mouse. The Worker's report email words it the same way.
+    /// One with no input from the mouse in the `quietWindowMs` before it gets "(no input)":
+    /// a button that did it inside the mouse. The Worker's report email words it the same way.
     static func buttonStepChanges(_ events: [DeviceReport.ButtonEvent]) -> [String] {
         var dpi: Int?, slot: Int?, out: [String] = []
         for (i, event) in events.enumerated() {
-            let quiet = !events[..<i].contains { $0.input != nil && event.ms - $0.ms <= 1000 }
+            let quiet = !events[..<i].contains { $0.input != nil && event.ms - $0.ms <= quietWindowMs }
             let note = quiet ? " (no input)" : ""
             if let new = event.dpi {
                 if let old = dpi { out.append("DPI \(old) → \(new)" + note) }
