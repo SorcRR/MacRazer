@@ -99,6 +99,9 @@ says so.
 | Razer Pro Click V2 (wired + wireless) | Battery, DPI, DPI stages, polling | anonymous reports |
 | Razer Pro Click (wired + wireless) | Battery, DPI, DPI stages, polling (it has no lighting) | anonymous reports |
 | Razer Viper | DPI, DPI stages, polling, lighting, brightness (wired only) | anonymous report |
+| Razer Viper Mini | DPI, polling, lighting, brightness (wired only) | anonymous report |
+| Razer Pro Click Mini (wireless) | Battery, DPI, DPI stages, polling (it has no lighting) | anonymous report |
+| Razer DeathAdder V4 Pro (Wired) | Battery, DPI, DPI stages, polling (it has no lighting) | anonymous report |
 | Razer DeathAdder V3 Pro (Wireless, both dongles, and the first one's cable) | Battery, DPI, DPI stages, polling (it has no lighting) | anonymous reports |
 | Razer Viper V3 Pro SE (Wireless) | Battery, DPI, DPI stages, polling (it has no lighting) | anonymous report |
 | Razer Naga V2 HyperSpeed | Battery, DPI, DPI stages, polling (it has no lighting) | anonymous reports |
@@ -106,7 +109,7 @@ says so.
 | Razer Orochi V2 (Wireless) | Battery, DPI, DPI stages, polling (it has no lighting) | anonymous report |
 | Razer DeathAdder V3 HyperSpeed (wired + wireless) | Battery, DPI, DPI stages, polling (it has no lighting) | fxaxg and anonymous reports |
 | Razer DeathAdder V2 Pro (Wireless) | Battery, DPI, polling, lighting | anonymous reports |
-| Razer DeathAdder V2 Pro (Wired) | Battery, DPI, DPI stages, polling; lighting not working yet | anonymous report |
+| Razer DeathAdder V2 Pro (Wired) | Battery, DPI, DPI stages, polling, lighting, brightness | anonymous reports |
 | Razer Viper Ultimate (Wired) | Battery, DPI, polling, lighting | anonymous report |
 | Razer Taipan | DPI, polling; lighting not working yet | anonymous report |
 | Razer Basilisk V4 HyperSpeed (wired + wireless) | Battery, DPI, DPI stages; polling not confirmed yet | anonymous reports |
