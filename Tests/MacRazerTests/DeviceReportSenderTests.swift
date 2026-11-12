@@ -54,6 +54,11 @@ final class DeviceReportSenderTests: XCTestCase {
                 .init(keyCode: 9, modifiers: ["control"], postedBy: nil),
                 .init(keyCode: 8, modifiers: ["command"], postedBy: "Razer Synapse"),
                 .init(keyCode: 56, modifiers: ["shift"], postedBy: nil),
+            ], unheard: 2, events: [
+                .init(ms: 0, dpi: 1600, slot: 1),
+                .init(ms: 900, input: "09:04"),
+                .init(ms: 2100, dpi: 3200),
+                .init(ms: 3400, slot: 2),
             ]), error: "none"),
             // Every read the app makes, so the Worker's schema sees every name and LED id,
             // and every kind of answer.

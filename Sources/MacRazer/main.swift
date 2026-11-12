@@ -269,6 +269,12 @@ case "render-ui":
 
 case "render-settings":
     _ = NSApplication.shared
+    let renderSuite = "MacRazer.render-settings"
+    let renderDefaults = UserDefaults(suiteName: renderSuite)!
+    renderDefaults.removePersistentDomain(forName: renderSuite)
+    defer { renderDefaults.removePersistentDomain(forName: renderSuite) }
+    let renderScrolling = ScrollSettings(defaults: renderDefaults)
+    renderScrolling.setEnabled(args.contains("reversed"))
     let settingsPath = outputPath(args.dropFirst(), default: "settings-preview.png")
     let sc = MouseController()
     sc.loadPreviewState()
@@ -282,6 +288,7 @@ case "render-settings":
     let settingsPane = SettingsPane.allCases.first { args.contains($0.rawValue) } ?? .general
     // Hosted rather than `ImageRenderer`: each page is a scroll view.
     writeHostedPNG(SettingsView(controller: sc, launchAtLogin: sl, updateChecker: su, onDone: {},
+                                scrolling: renderScrolling,
                                 usageStats: .preview(consent: args.contains("notsharing") ? .declined : .granted),
                                 pane: settingsPane),
                    size: SettingsView.size, to: settingsPath)

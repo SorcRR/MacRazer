@@ -13,7 +13,7 @@ import Foundation
 /// that can take over the mouse's buttons (`software`). Keys the person pressed are only here
 /// when they turned on recording them, and then only as key codes (`ButtonsData.keys`).
 struct DeviceReport: Codable, Equatable {
-    static let currentSchema = 6
+    static let currentSchema = 7
 
     var schemaVersion = DeviceReport.currentSchema
     var appVersion: String
@@ -191,6 +191,29 @@ struct DeviceReport: Codable, Equatable {
         /// Schema 6. The keys macOS saw while the person had "record keyboard keys" on, each
         /// once, sorted. Nil when they never turned it on; empty when they did and nothing came.
         var keys: [KeyPress]?
+        /// Schema 7. How many pressed buttons never showed up, by the person's own answer: 0
+        /// when every one did. Nil when they didn't answer. A button that does a job inside
+        /// the mouse (DPI, profile) sends the Mac nothing, so only the person can say it was
+        /// pressed.
+        var unheard: Int?
+        /// Schema 7. What happened during the step, in order: each input the mouse sent, and
+        /// each change of its DPI or active profile slot, which the step reads twice a second.
+        /// The first entry is the state it started from. A DPI change with no input next to it
+        /// points at a button that changes DPI inside the mouse. Nil on Bluetooth, where the
+        /// step reads nothing, and when the mouse's inputs couldn't be heard, where every
+        /// change would look silent. At most `maxButtonEvents`.
+        var events: [ButtonEvent]?
+    }
+
+    static let maxButtonEvents = 128
+
+    /// One moment in the button step: an input (`seen`'s form) or the mouse's DPI and active
+    /// profile slot, each only when it changed. `ms` counts from the step opening.
+    struct ButtonEvent: Codable, Equatable, Sendable {
+        var ms: Int
+        var input: String?
+        var dpi: Int?
+        var slot: Int?
     }
 
     /// One distinct key press: a macOS virtual key code (not a HID usage like `seen`'s) and
@@ -427,6 +450,18 @@ enum DeviceTestSteps {
         return record
     }
 
+    /// The mouse's DPI and active profile slot, for the button step's watch (`ButtonEvent`).
+    /// One attempt each: it runs twice a second, and a miss is only a gap. Nil for a read the
+    /// mouse refuses or doesn't answer.
+    static func mouseState(_ channel: DeviceProbeChannel) -> (dpi: Int?, slot: Int?) {
+        let dpi = (try? channel.send(RazerCommands.getDPI())).map { Int(RazerCommands.parseDPI($0).x) }
+        let slot = (try? channel.send(activeSlotRead)).map { Int($0.arguments[0]) }
+        return (dpi, slot)
+    }
+
+    /// The active profile slot (05/84), as `capabilityReads` sends it.
+    static let activeSlotRead = RazerReport(commandClass: 0x05, commandId: 0x84, dataSize: 0x0A)
+
     /// `identify` on a real mouse, which can also try its other interfaces
     /// (`tryInterfaces`) when no id answers on the one MacRazer picked.
     static func identifyMouse(_ device: HIDDevice, registry: RazerDeviceInfo?)
@@ -560,7 +595,7 @@ enum DeviceTestSteps {
             ("smartReelSensitivity", read(0x02, 0xA3, 0x02, [Razer.varstore])),
             ("wheelMode", read(0x02, 0xB0, 0x02, [Razer.varstore])),
             ("profileSlots", read(0x05, 0x81, 0x0A)),
-            ("activeProfileSlot", read(0x05, 0x84, 0x0A)),
+            ("activeProfileSlot", activeSlotRead),
             ("buttonFunction", buttonFunctionRead(0x04)),
             ("buttonFunction", buttonFunctionRead(0x05)),
         ]

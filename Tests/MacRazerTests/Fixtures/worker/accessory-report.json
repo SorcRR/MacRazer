@@ -161,7 +161,7 @@
     ],
     "outcome" : "skipped"
   },
-  "schemaVersion" : 6,
+  "schemaVersion" : 7,
   "verdict" : {
     "failed" : [
       "Lighting"

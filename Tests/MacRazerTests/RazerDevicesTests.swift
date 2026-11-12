@@ -222,7 +222,7 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertFalse(RazerDevices.needsReport(pid: 0x0083), "no cable mode")
         XCTAssertFalse(RazerDevices.needsReport(pid: 0x007a), "its dongle side is verified")
         XCTAssertFalse(RazerDevices.needsReport(pid: 0x007b), "its cable side is verified now")
-        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x007D).map(\.connection), [.wired])
+        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x007D), [], "its cable row is verified now too")
         XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00C5), [], "its cable row is verified now")
         XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00C4), [], "its dongle row is verified")
         XCTAssertFalse(RazerDevices.needsReport(pid: 0x00C5))
@@ -314,7 +314,7 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(RazerDevices.connection(pid: 0x00B6), .wired)
         XCTAssertTrue(RazerDevices.canCharge(pid: 0x00B7), "the V3 Pro's dongle now has a cable to charge on")
         // Lighting still to confirm: hidden until a report shows it works and is safe.
-        for pid in [0x0050, 0x0088, 0x007C] {
+        for pid in [0x0050, 0x0088] {
             XCTAssertEqual(RazerDevices.unverified(pid: pid), [.lighting], String(format: "0x%04X", pid))
             XCTAssertFalse(RazerDevices.info(pid: pid)!.hasLighting)
         }
@@ -583,6 +583,21 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(PopoverView.pollRates(pid: 0x00EA, showsQuarter: true), [125, 250, 500, 1000], "no second 250")
         XCTAssertEqual(PopoverView.pollRates(pid: 0x00E5, showsQuarter: false).map(PopoverView.pollChipTitle),
                        ["125", "250", "500", "1000", "2K", "4K", "8K"])
+    }
+
+    /// The reports of 2026-11-11 and 11-12.
+    func testMiceFromTheNovemberElevenAndTwelveReports() {
+        for pid in [0x008A, 0x009A, 0x007C, 0x00BE] {
+            XCTAssertEqual(RazerDevices.support(pid: pid), .full, String(format: "0x%04X", pid))
+        }
+        XCTAssertTrue(RazerDevices.hasLighting(pid: 0x007C), "DeathAdder V2 Pro: lighting on the cable too")
+        XCTAssertTrue(RazerDevices.hasLighting(pid: 0x008A))
+        XCTAssertFalse(RazerDevices.hasBattery(pid: 0x008A))
+        XCTAssertFalse(RazerDevices.canCharge(pid: 0x009A), "Pro Click Mini runs on AA cells")
+        XCTAssertEqual(RazerDevices.connection(pid: 0x009A), .wirelessDongle)
+        // DeathAdder V4 Pro: the classic polling command that passed, until polling_rate2 has.
+        XCTAssertFalse(RazerDevices.usesPollingRate2(pid: 0x00BE))
+        XCTAssertEqual(RazerDevices.notOnMouse(pid: 0x00BE), [.lighting])
     }
 
     /// The Basilisk V3 verified on its cable, with both lit zones on the brightness slider.

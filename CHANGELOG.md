@@ -7,6 +7,10 @@ expect rough edges until 1.0.
 ## [Unreleased]
 
 ### Added
+- **Reverse scrolling on Razer mice.** A switch under Settings › General reverses wheel
+  and tilt scrolling on Razer mice while trackpads and other mice keep their directions.
+  Off by default, saved once for the app, and active while MacRazer is running with
+  Accessibility permission. The macOS Natural scrolling preference stays as set.
 - **Basilisk V4 Pro: its own settings, profiles and remaps.** From fn-milans's work in
   #55, tested on the mouse. Thanks!
   - **Bluetooth:** a new row. Battery, DPI and stages, brightness and the sleep timer work.
@@ -44,8 +48,14 @@ expect rough edges until 1.0.
     Elite:** DPI and polling work. Lighting waits on a test on both.
   - **Naga X** and **Mamba Tournament Edition:** DPI and polling work. Their lighting
     doesn't work yet.
+  - **Viper Mini**, **Pro Click Mini over its dongle** and **DeathAdder V4 Pro on its
+    cable:** fully supported. **DeathAdder V2 Pro on its cable:** lighting works now.
 - **Tested keyboards and mousepads.** The Ornata V3, Ornata V3 X, Goliathus Chroma and
   Goliathus Chroma Extended lost their UNTESTED tag after passing the lighting test.
+- **The device test finds buttons the Mac never hears.** Some buttons change DPI or the
+  profile inside the mouse and send the Mac nothing. The button step now asks whether every
+  button you pressed showed up, and watches the DPI and profile while you press them. A
+  change with no press before it points at such a button, so a later version can remap it.
 - **The device test looks for what can take your side buttons.** The button step and Review
   say when Razer Synapse or another Razer helper is running, or another app watches mouse
   buttons. The report names them too, and nothing else about your apps. A GitHub issue
