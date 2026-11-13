@@ -478,12 +478,19 @@ final class RecorderNSView: NSView {
     override func keyDown(with event: NSEvent) { capture(event) }
     override func performKeyEquivalent(with event: NSEvent) -> Bool { capture(event); return true }
 
-    private func capture(_ event: NSEvent) {
+    static func storedFlags(_ modifiers: NSEvent.ModifierFlags) -> CGEventFlags {
         var flags = CGEventFlags()
-        if event.modifierFlags.contains(.command) { flags.insert(.maskCommand) }
-        if event.modifierFlags.contains(.shift) { flags.insert(.maskShift) }
-        if event.modifierFlags.contains(.control) { flags.insert(.maskControl) }
-        if event.modifierFlags.contains(.option) { flags.insert(.maskAlternate) }
+        if modifiers.contains(.command) { flags.insert(.maskCommand) }
+        if modifiers.contains(.shift) { flags.insert(.maskShift) }
+        if modifiers.contains(.control) { flags.insert(.maskControl) }
+        if modifiers.contains(.option) { flags.insert(.maskAlternate) }
+        if modifiers.contains(.function) { flags.insert(.maskSecondaryFn) }
+        if modifiers.contains(.numericPad) { flags.insert(.maskNumericPad) }
+        return flags
+    }
+
+    private func capture(_ event: NSEvent) {
+        let flags = Self.storedFlags(event.modifierFlags)
         // A bare Escape is the universal "get me out" key — cancel the recording rather
         // than binding the mouse button to ⎋. (⌘⎋ etc. still record normally.)
         if event.keyCode == 53, flags.isEmpty {

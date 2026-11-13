@@ -54,6 +54,11 @@ expect rough edges until 1.0.
   show up in its report.
 
 ### Fixed
+- **Mission Control and the Space shortcuts open from a button.** A button set to Mission
+  Control, Space Left or Space Right did nothing: macOS stores those shortcuts with the Fn
+  flag a real arrow key carries, and MacRazer saved the arrow without it. The three are now
+  saved with it, and a recorded shortcut keeps it too. A button already set to one of them
+  needs it chosen again.
 - **Brightness on the Goliathus Chroma Extended.** It answers brightness on a different light
   than MacRazer used, so the slider did nothing.
 - **250 Hz polling is read correctly.** A mouse left at 250 Hz showed no rate, and the device
