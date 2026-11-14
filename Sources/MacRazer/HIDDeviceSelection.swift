@@ -144,3 +144,30 @@ enum HIDDeviceSelection {
         return score
     }
 }
+
+/// The order `HIDDevice.findAnsweringLink` tries interfaces and transaction ids in, apart
+/// from IOHID so it can be tested.
+enum LinkSearch {
+    /// Whether a read reached the firmware: it answered, or it refused (0x03 or 0x05), which
+    /// a mouse only does for an id it heard. Timeouts and garbled replies are not heard.
+    static func heard(_ result: Result<RazerReport, Error>) -> Bool {
+        switch result {
+        case .success: return true
+        case .failure(let error): return DeviceProbe.isRefusal(error)
+        }
+    }
+
+    /// The first pair, links in order and every id on each before the next link, whose read
+    /// is `heard`. Stops there: everyday traffic needs one id that works, not the full map
+    /// the device test draws. `skipping` is a pair already tried.
+    static func firstHeard<Link: Equatable>(links: [Link], ids: [UInt8], skipping: (Link, UInt8)? = nil,
+                                            read: (Link, UInt8) -> Result<RazerReport, Error>) -> (link: Link, id: UInt8)? {
+        for link in links {
+            for id in ids {
+                if let skipping, skipping.0 == link, skipping.1 == id { continue }
+                if heard(read(link, id)) { return (link, id) }
+            }
+        }
+        return nil
+    }
+}

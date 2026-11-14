@@ -54,6 +54,12 @@ expect rough edges until 1.0.
   show up in its report.
 
 ### Fixed
+- **Older mice that went Offline a few seconds after plugging in.** A mouse MacRazer doesn't
+  know yet, like the Lancehead Tournament Edition (#139), may want a different protocol id
+  than the one the app guessed. It then never answered and showed as Offline. Now, when such
+  a mouse stays silent, the app tries the other ids and the mouse's other interfaces, and
+  keeps the one that answers. The Lancehead Tournament Edition also has its own entry now,
+  with OpenRazer's settings. A device test from an owner will confirm it.
 - **Brightness on the Goliathus Chroma Extended.** It answers brightness on a different light
   than MacRazer used, so the slider did nothing.
 - **250 Hz polling is read correctly.** A mouse left at 250 Hz showed no rate, and the device

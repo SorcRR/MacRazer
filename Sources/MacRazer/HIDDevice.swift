@@ -4,6 +4,7 @@
 import Foundation
 import IOKit
 import IOKit.hid
+import os
 
 /// Thin wrapper over IOKit's HID Manager for talking to the Razer dongle.
 ///
@@ -273,9 +274,73 @@ final class HIDDevice {
     /// instead, which still works. `onDongle` says it did, so the app can try the cable again.
     static func openCableOrItsDongle(_ usb: IOHIDDevice, dongle: IOHIDDevice?) throws
         -> (device: HIDDevice, onDongle: Bool) {
-        try openPreferringCable(cable: { try open(usb) },
-                                dongle: dongle.map { d in { try open(d) } },
-                                answers: answers, close: { $0.close() })
+        let opened = try openPreferringCable(cable: { try open(usb) },
+                                             dongle: dongle.map { d in { try open(d) } },
+                                             answers: answers, close: { $0.close() })
+        return (findAnsweringLink(opened.device), opened.onDongle)
+    }
+
+    /// Per interface picked and searched this run (by registry ID, new on every replug), the
+    /// registry ID of the interface that answered on it.
+    private static let answeringInterface = OSAllocatedUnfairLock<[UInt64: UInt64]>(initialState: [:])
+
+    /// For a mouse whose protocol is a guess (`RazerDevices.guessesProtocol`): when the
+    /// interface `opened` doesn't hear its id, tries the other transaction ids on it, then
+    /// every id on the mouse's other interfaces that can carry the control report. The first
+    /// that is heard is used from then on: the id through `RazerDevices.learnTransactionId`,
+    /// the interface for as long as the mouse stays plugged in. Returns the device to use,
+    /// which is `opened` unless another interface answered (then `opened` is closed).
+    ///
+    /// Without this an unknown wired mouse on another id (#139, a Lancehead Tournament
+    /// Edition) showed up on plug-in, timed out on every read and dropped to Offline after
+    /// the first two polls. A verified mouse skips all of it: its id is known to work, so
+    /// silence there means asleep. Costs one read when the mouse answers, as it does on
+    /// every reopen once the right id is learned.
+    static func findAnsweringLink(_ opened: HIDDevice) -> HIDDevice {
+        let pid = opened.productID
+        guard RazerDevices.guessesProtocol(pid: pid) else { return opened }
+        let read = RazerCommands.getFirmwareVersion()
+        let current = RazerDevices.transactionId(pid: pid, commandClass: read.commandClass, commandId: read.commandId)
+        func result(_ dev: HIDDevice, _ id: UInt8) -> Result<RazerReport, Error> {
+            Result { try dev.sendWithRetry(read, attempts: 1, transactionId: id) }
+        }
+        if LinkSearch.heard(result(opened, current)) { return opened }
+
+        let pickID = registryID(of: opened.device)
+        let all = matchingDevices(vendorId: Razer.vendorId)
+        if let winnerID = answeringInterface.withLock({ $0[pickID] }) {
+            // Searched before on this plug-in: a silent mouse now is asleep, not misread.
+            guard winnerID != pickID,
+                  let winner = all.first(where: { registryID(of: $0) == winnerID }),
+                  let reopened = try? open(winner, as: "answering interface") else { return opened }
+            opened.close()
+            return reopened
+        }
+
+        let others: [HIDDevice] = all.compactMap { dev in
+            guard !CFEqual(dev, opened.device), productID(of: dev) == pid,
+                  locationID(of: dev) == opened.locationID,
+                  (intProp(dev, kIOHIDMaxFeatureReportSizeKey) ?? 0) >= HIDDeviceSelection.controlReportSize
+            else { return nil }
+            return try? open(dev, as: "fallback interface")
+        }
+        let links = [opened] + others
+        let found = LinkSearch.firstHeard(links: links.indices.map { $0 },
+                                          ids: DeviceProbe.transactionCandidates(preferred: current),
+                                          skipping: (0, current)) { result(links[$0], $1) }
+        guard let found else {
+            others.forEach { $0.close() }
+            FileHandle.standardError.write(Data("[MacRazer] no interface or transaction id answered\n".utf8))
+            return opened
+        }
+        let winner = links[found.link]
+        links.filter { $0 !== winner }.forEach { $0.close() }
+        if found.id != current { RazerDevices.learnTransactionId(found.id, pid: pid) }
+        let winnerID = registryID(of: winner.device)
+        answeringInterface.withLock { $0[pickID] = winnerID }
+        FileHandle.standardError.write(Data(String(
+            format: "[MacRazer] answered on interface %d with transaction id 0x%02X\n", found.link, found.id).utf8))
+        return winner
     }
 
     /// The decision `openCableOrItsDongle` makes, apart from IOHID so it can be tested. The

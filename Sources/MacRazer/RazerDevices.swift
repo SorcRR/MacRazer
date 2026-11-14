@@ -569,6 +569,16 @@ enum RazerDevices {
         // builds, so lighting stays hidden. The stage table read returns 0x03, so the popover
         // shows no stages. 16000 is the vendor spec.
         .init(pid: 0x0046, name: "Razer Mamba Tournament Edition", unverified: [.lighting], hasBattery: false, hasLighting: false, maxDPI: 16000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
+        // Lancehead Tournament Edition (#139): wired only. From OpenRazer alone, nothing
+        // shown on hardware yet. razermouse_driver.c gives it 0x3f for serial, firmware,
+        // DPI, polling and every extended-matrix command, and 0xFF for the DPI-stages pair.
+        // No battery. 16000 is the daemon's DPI_MAX. It has four lit zones (logo, scroll
+        // wheel, left side 0x11, right side 0x10), driven one zone at a time, never as
+        // ZERO_LED the way this app sends effects, so lighting stays hidden until a test shows
+        // what answers. The report said it went Offline as an unknown model on 0x1f. Since
+        // nothing here is verified, `HIDDevice.findAnsweringLink` still tries the other ids
+        // and interfaces if 0x3f doesn't answer either.
+        .init(pid: 0x0060, name: "Razer Lancehead Tournament Edition", unverified: [.dpi, .polling, .lighting], hasBattery: false, hasLighting: false, maxDPI: 16000, transactionId: 0x3f, matrixTransactionId: 0x3f, transactionOverrides: [0x0406: 0xff, 0x0486: 0xff], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
     ]
 
     static func info(pid: Int) -> RazerDeviceInfo? { known.first { $0.pid == pid } }
@@ -622,6 +632,30 @@ enum RazerDevices {
     }
     /// What the row for `pid` still needs a report for, or nil when the model isn't known.
     static func unverified(pid: Int) -> [RazerFeature]? { info(pid: pid).map(unverified(_:)) }
+
+    // MARK: - Ids found at run time
+
+    /// Whether the registry's transaction id for `pid` is a guess: a model not on record, or
+    /// one on record with nothing shown working on hardware yet. Only for these does
+    /// `HIDDevice.findAnsweringLink` try other ids and interfaces when the mouse is silent.
+    /// A verified row's id is known to work, so silence there means asleep or unplugged.
+    static func guessesProtocol(pid: Int) -> Bool {
+        info(pid: pid) == nil || verified(pid: pid).isEmpty
+    }
+
+    /// Per pid, the transaction id a mouse answered to after its registry id (or the 0x1f
+    /// default) didn't. In memory only: probing again on the next launch is cheap, and a
+    /// stale id saved to disk could outlive a fix to the row. Locked: HID traffic reads it
+    /// off the main thread.
+    private static let learned = OSAllocatedUnfairLock<[Int: UInt8]>(initialState: [:])
+
+    /// Used for every command class on `pid` from now on, ahead of the row's ids.
+    static func learnTransactionId(_ id: UInt8, pid: Int) {
+        learned.withLock { $0[pid] = id }
+    }
+    static func learnedTransactionId(pid: Int) -> UInt8? { learned.withLock { $0[pid] } }
+    /// For tests.
+    static func forgetLearnedTransactionIds() { learned.withLock { $0 = [:] } }
 
     // MARK: - The online support list
 
@@ -810,10 +844,12 @@ enum RazerDevices {
     static func effects(pid: Int) -> [LightingEffect] { info(pid: pid)?.effects ?? LightingEffect.allCases }
     /// Empty for a model not on record: the test is how anyone finds out.
     static func notOnMouse(pid: Int) -> Set<RazerFeature> { info(pid: pid)?.notOnMouse ?? [] }
-    /// Per-command transaction id: explicit per-command override, else the class split
-    /// (see `RazerDeviceInfo.matrixTransactionId`). 0x1f default for unknown models — the
+    /// Per-command transaction id: the id this run found the mouse answering to, if any,
+    /// else explicit per-command override, else the class split (see
+    /// `RazerDeviceInfo.matrixTransactionId`). 0x1f default for unknown models — the
     /// Cobra-family id this app has hardware verified.
     static func transactionId(pid: Int, commandClass: UInt8, commandId: UInt8) -> UInt8 {
+        if let learned = learnedTransactionId(pid: pid) { return learned }
         guard let info = info(pid: pid) else { return 0x1f }
         if let override = info.transactionOverrides[UInt16(commandClass) << 8 | UInt16(commandId)] {
             return override

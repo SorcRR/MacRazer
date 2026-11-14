@@ -675,6 +675,49 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(LightingEffect.wave.rawValue, "Wave")
         XCTAssertEqual(LightingEffect.off.rawValue, "Off")
     }
+
+    /// The Lancehead Tournament Edition (#139), from OpenRazer only: 0x3f everywhere but the
+    /// DPI-stages pair, wired, no battery, lighting hidden until a test shows its zones.
+    func testLanceheadTournamentEdition() {
+        let pid = 0x0060
+        XCTAssertEqual(RazerDevices.info(pid: pid)?.name, "Razer Lancehead Tournament Edition")
+        XCTAssertEqual(RazerDevices.transactionId(pid: pid, commandClass: 0x04, commandId: 0x05), 0x3f, "DPI")
+        XCTAssertEqual(RazerDevices.transactionId(pid: pid, commandClass: 0x00, commandId: 0x85), 0x3f, "polling")
+        XCTAssertEqual(RazerDevices.transactionId(pid: pid, commandClass: 0x0F, commandId: 0x04), 0x3f, "brightness")
+        XCTAssertEqual(RazerDevices.transactionId(pid: pid, commandClass: 0x04, commandId: 0x06), 0xff, "stages write")
+        XCTAssertEqual(RazerDevices.transactionId(pid: pid, commandClass: 0x04, commandId: 0x86), 0xff, "stages read")
+        XCTAssertFalse(RazerDevices.hasBattery(pid: pid))
+        XCTAssertEqual(RazerDevices.notOnMouse(pid: pid), [.battery])
+        XCTAssertFalse(RazerDevices.hasLighting(pid: pid))
+        XCTAssertEqual(RazerDevices.maxDPI(pid: pid), 16000)
+        XCTAssertEqual(RazerDevices.connection(pid: pid), .wired)
+        XCTAssertEqual(RazerDevices.unverified(pid: pid), [.dpi, .polling, .lighting])
+        XCTAssertTrue(RazerDevices.needsReport(pid: pid))
+    }
+
+    /// Only a mouse whose id is a guess gets searched: one not on record, or on record with
+    /// nothing shown working. A verified row is left alone.
+    func testGuessesProtocol() {
+        XCTAssertTrue(RazerDevices.guessesProtocol(pid: 0x9999), "not on record")
+        XCTAssertTrue(RazerDevices.guessesProtocol(pid: 0x0060), "Lancehead TE: nothing verified")
+        XCTAssertTrue(RazerDevices.guessesProtocol(pid: 0x006E), "DeathAdder Essential (2018): nothing verified")
+        XCTAssertFalse(RazerDevices.guessesProtocol(pid: 0x00DB), "Cobra HyperSpeed")
+        XCTAssertFalse(RazerDevices.guessesProtocol(pid: 0x0046), "Mamba TE: DPI and polling verified")
+    }
+
+    /// A learned id replaces the row's ids, and the 0x1f default, for every command class.
+    func testLearnedTransactionId() {
+        defer { RazerDevices.forgetLearnedTransactionIds() }
+        XCTAssertNil(RazerDevices.learnedTransactionId(pid: 0x9999))
+        RazerDevices.learnTransactionId(0xff, pid: 0x9999)
+        XCTAssertEqual(RazerDevices.transactionId(pid: 0x9999, commandClass: 0x04, commandId: 0x05), 0xff)
+        XCTAssertEqual(RazerDevices.transactionId(pid: 0x9999, commandClass: 0x0F, commandId: 0x04), 0xff)
+        XCTAssertEqual(RazerDevices.transactionId(pid: 0x9998, commandClass: 0x04, commandId: 0x05), 0x1f, "other pids untouched")
+        RazerDevices.learnTransactionId(0x1f, pid: 0x0060)
+        XCTAssertEqual(RazerDevices.transactionId(pid: 0x0060, commandClass: 0x04, commandId: 0x86), 0x1f, "ahead of overrides")
+        RazerDevices.forgetLearnedTransactionIds()
+        XCTAssertEqual(RazerDevices.transactionId(pid: 0x9999, commandClass: 0x04, commandId: 0x05), 0x1f)
+    }
 }
 
 /// Records every report and answers it, or throws for one LED group.
