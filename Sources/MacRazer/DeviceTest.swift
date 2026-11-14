@@ -960,9 +960,12 @@ enum DeviceTestSteps {
             return LitGroup(name: answer.name, led: answer.led, readLed: answer.led, raw: reading.value)
         }
         if let splitRead, !answering.contains(where: { $0.led == splitRead.led }),
-           let reading = try? channel.send(RazerCommands.getBrightness(led: splitRead.readLed)) {
-            let name = DeviceProbe.ledGroups.first { $0.led == splitRead.led }?.name
+           let reading = try? channel.sendWithRetry(RazerCommands.getBrightness(led: splitRead.readLed),
+                                                    attempts: DeviceProbe.attempts) {
+            // Named for both LEDs: the sweep above shows the write LED refusing a read.
+            let ledName = DeviceProbe.ledGroups.first { $0.led == splitRead.led }?.name
                 ?? String(format: "0x%02X", splitRead.led)
+            let name = ledName + String(format: " (read on 0x%02X)", splitRead.readLed)
             answering.append(LitGroup(name: name, led: splitRead.led, readLed: splitRead.readLed,
                                       raw: reading.arguments[2]))
         }

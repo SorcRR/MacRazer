@@ -878,9 +878,12 @@ enum RazerDevices {
     /// the Basilisk V4 HyperSpeed command's same three, and every polling_rate2 rate up to the
     /// row's `maxPollingRate` for the newer ones.
     static func pollingRates(pid: Int?) -> [Int] {
-        if pollingCommand(pid: pid) == .basiliskV4HyperSpeed { return RazerCommands.pollingRatesV4HyperSpeed }
-        guard let pid, let row = info(pid: pid), row.usesPollingRate2 else { return RazerCommands.supportedPollingRates }
-        return RazerCommands.pollingRate2Codes.map(\.hz).filter { $0 <= row.maxPollingRate }.sorted()
+        switch pollingCommand(pid: pid) {
+        case .classic: return RazerCommands.supportedPollingRates
+        case .basiliskV4HyperSpeed: return RazerCommands.pollingRatesV4HyperSpeed
+        case .rate2:
+            return RazerCommands.pollingRate2Codes.map(\.hz).filter { $0 <= maxPollingRate(pid: pid ?? 0) }.sorted()
+        }
     }
     static func fixedColor(pid: Int) -> Bool { info(pid: pid)?.fixedColor ?? false }
     static func hasBrightness(pid: Int) -> Bool { info(pid: pid)?.hasBrightness ?? true }

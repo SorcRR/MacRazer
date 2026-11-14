@@ -62,7 +62,7 @@ final class BasiliskV4HyperSpeedTests: XCTestCase {
         var record = DeviceTestSteps.lighting(mouse, sweep: sweep, splitRead: RazerDevices.brightnessSplitRead(pid: dongle),
                                               restoreEffect: nil, seconds: 2, wait: { waits.append($0) })
         XCTAssertEqual(waits, [2])
-        XCTAssertEqual(record.data?.groups, ["ZERO": 77])
+        XCTAssertEqual(record.data?.groups, ["ZERO (read on 0x0A)": 77])
         XCTAssertEqual(record.data?.dimShown, true)
         XCTAssertEqual(record.data?.restored, true)
         XCTAssertEqual(try mouse.send(RazerCommands.getBrightness(led: 0x0A)).arguments[2], 77)

@@ -2037,10 +2037,11 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         }
     }
 
-    /// io-queue only. Sets the rate with the command this mouse takes. A polling_rate2 mouse
+    /// io-queue only. Sets the rate with the command this mouse takes. A mouse not on the classic one
     /// goes through `DeviceProbe.writePollingRate`, the device test's own write: both of
     /// OpenRazer's writes, then a read-back, and the read decides (from fn-milans's Basilisk
-    /// V4 Pro work, #55). Polling_rate2 is USB only, so that mouse is always an `HIDDevice`.
+    /// V4 Pro work, #55). Polling_rate2 and the Basilisk V4 HyperSpeed's command are USB only,
+    /// so those mice are always an `HIDDevice`.
     private static func sendPollingRate(_ hz: Int, to dev: any RazerTransport) -> Bool {
         let command = RazerDevices.pollingCommand(pid: dev.productID)
         guard let hid = dev.unwrapped as? HIDDevice, command != .classic else {
