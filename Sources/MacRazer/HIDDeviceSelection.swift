@@ -148,6 +148,28 @@ enum HIDDeviceSelection {
 /// The order `HIDDevice.findAnsweringLink` tries interfaces and transaction ids in, apart
 /// from IOHID so it can be tested.
 enum LinkSearch {
+    /// What a search found on one picked interface.
+    enum Outcome: Equatable {
+        /// The interface (by registry ID) that was heard: the pick itself or another.
+        case answered(interface: UInt64)
+        /// Nothing was heard, at this time.
+        case silent(since: Date)
+    }
+
+    /// How long a search that heard nothing holds before the next reopen may run it again.
+    /// A mouse nothing answers on reopens on every poll; a minute keeps that to a search a
+    /// minute, and still catches a mouse that was only asleep when it was first searched.
+    static let silentRetry: TimeInterval = 60
+
+    /// Whether a silent reopen should run the search, given what the last one found.
+    static func shouldSearch(after previous: Outcome?, now: Date) -> Bool {
+        switch previous {
+        case nil: return true
+        case .answered: return false
+        case .silent(let since): return now.timeIntervalSince(since) >= silentRetry
+        }
+    }
+
     /// Whether a read reached the firmware: it answered, or it refused (0x03 or 0x05), which
     /// a mouse only does for an id it heard. Timeouts and garbled replies are not heard.
     static func heard(_ result: Result<RazerReport, Error>) -> Bool {

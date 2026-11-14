@@ -280,9 +280,9 @@ final class HIDDevice {
         return (findAnsweringLink(opened.device), opened.onDongle)
     }
 
-    /// Per interface picked and searched this run (by registry ID, new on every replug), the
-    /// registry ID of the interface that answered on it.
-    private static let answeringInterface = OSAllocatedUnfairLock<[UInt64: UInt64]>(initialState: [:])
+    /// Per interface picked and searched this run (by registry ID, new on every replug), what
+    /// the search found there.
+    private static let searched = OSAllocatedUnfairLock<[UInt64: LinkSearch.Outcome]>(initialState: [:])
 
     /// For a mouse whose protocol is a guess (`RazerDevices.guessesProtocol`): when the
     /// interface `opened` doesn't hear its id, tries the other transaction ids on it, then
@@ -295,41 +295,38 @@ final class HIDDevice {
     /// Edition) showed up on plug-in, timed out on every read and dropped to Offline after
     /// the first two polls. A verified mouse skips all of it: its id is known to work, so
     /// silence there means asleep. Costs one read when the mouse answers, as it does on
-    /// every reopen once the right id is learned.
+    /// every reopen once the right id is learned. A search that found nothing isn't run
+    /// again for `LinkSearch.silentRetry`: a mouse nothing answers on reopens on every poll,
+    /// and the full search there would hold up the queue for seconds each time.
     static func findAnsweringLink(_ opened: HIDDevice) -> HIDDevice {
         let pid = opened.productID
         guard RazerDevices.guessesProtocol(pid: pid) else { return opened }
+        let pickID = registryID(of: opened.device)
+        let before = searched.withLock { $0[pickID] }
+        // Another interface answered on this plug-in: go straight there.
+        if case .answered(let winnerID)? = before, winnerID != pickID {
+            guard let winner = matchingDevices(vendorId: Razer.vendorId).first(where: { registryID(of: $0) == winnerID }),
+                  let reopened = try? open(winner, as: "answering interface") else { return opened }
+            opened.close()
+            return reopened
+        }
         let read = RazerCommands.getFirmwareVersion()
         let current = RazerDevices.transactionId(pid: pid, commandClass: read.commandClass, commandId: read.commandId)
         func result(_ dev: HIDDevice, _ id: UInt8) -> Result<RazerReport, Error> {
             Result { try dev.sendWithRetry(read, attempts: 1, transactionId: id) }
         }
         if LinkSearch.heard(result(opened, current)) { return opened }
+        // Answered on this one before, so a silent mouse now is asleep, not misread.
+        guard LinkSearch.shouldSearch(after: before, now: Date()) else { return opened }
 
-        let pickID = registryID(of: opened.device)
-        let all = matchingDevices(vendorId: Razer.vendorId)
-        if let winnerID = answeringInterface.withLock({ $0[pickID] }) {
-            // Searched before on this plug-in: a silent mouse now is asleep, not misread.
-            guard winnerID != pickID,
-                  let winner = all.first(where: { registryID(of: $0) == winnerID }),
-                  let reopened = try? open(winner, as: "answering interface") else { return opened }
-            opened.close()
-            return reopened
-        }
-
-        let others: [HIDDevice] = all.compactMap { dev in
-            guard !CFEqual(dev, opened.device), productID(of: dev) == pid,
-                  locationID(of: dev) == opened.locationID,
-                  (intProp(dev, kIOHIDMaxFeatureReportSizeKey) ?? 0) >= HIDDeviceSelection.controlReportSize
-            else { return nil }
-            return try? open(dev, as: "fallback interface")
-        }
+        let others = otherControlInterfaces(of: opened).compactMap { try? open($0, as: "fallback interface") }
         let links = [opened] + others
         let found = LinkSearch.firstHeard(links: links.indices.map { $0 },
                                           ids: DeviceProbe.transactionCandidates(preferred: current),
                                           skipping: (0, current)) { result(links[$0], $1) }
         guard let found else {
             others.forEach { $0.close() }
+            searched.withLock { $0[pickID] = .silent(since: Date()) }
             FileHandle.standardError.write(Data("[MacRazer] no interface or transaction id answered\n".utf8))
             return opened
         }
@@ -337,10 +334,20 @@ final class HIDDevice {
         links.filter { $0 !== winner }.forEach { $0.close() }
         if found.id != current { RazerDevices.learnTransactionId(found.id, pid: pid) }
         let winnerID = registryID(of: winner.device)
-        answeringInterface.withLock { $0[pickID] = winnerID }
+        searched.withLock { $0[pickID] = .answered(interface: winnerID) }
         FileHandle.standardError.write(Data(String(
-            format: "[MacRazer] answered on interface %d with transaction id 0x%02X\n", found.link, found.id).utf8))
+            format: "[MacRazer] answered with transaction id 0x%02X on %@\n", found.id, describe(winner.device)).utf8))
         return winner
+    }
+
+    /// This mouse's other interfaces that can carry the control report: same product, same
+    /// USB location. Not opened.
+    private static func otherControlInterfaces(of mouse: HIDDevice) -> [IOHIDDevice] {
+        matchingDevices(vendorId: Razer.vendorId).filter { dev in
+            !CFEqual(dev, mouse.device) && productID(of: dev) == mouse.productID
+                && locationID(of: dev) == mouse.locationID
+                && (intProp(dev, kIOHIDMaxFeatureReportSizeKey) ?? 0) >= HIDDeviceSelection.controlReportSize
+        }
     }
 
     /// The decision `openCableOrItsDongle` makes, apart from IOHID so it can be tested. The
@@ -436,12 +443,8 @@ final class HIDDevice {
     /// opened, and closes them after. For the device test, when the interface picked doesn't
     /// answer: an answer on another one means the selection is wrong for this mouse.
     func withOtherControlInterfaces<T>(_ body: ([(usagePage: Int, usage: Int, channel: TransactionChannel)]) -> T) -> T {
-        let opened: [(usagePage: Int, usage: Int, device: HIDDevice)] = HIDDevice.matchingDevices(vendorId: Razer.vendorId).compactMap { dev in
-            guard !CFEqual(dev, device),
-                  HIDDevice.productID(of: dev) == productID,
-                  (HIDDevice.intProp(dev, kIOHIDLocationIDKey) ?? 0) == locationID,
-                  (HIDDevice.intProp(dev, kIOHIDMaxFeatureReportSizeKey) ?? 0) >= HIDDeviceSelection.controlReportSize,
-                  let other = try? HIDDevice.open(dev, as: "fallback interface") else { return nil }
+        let opened: [(usagePage: Int, usage: Int, device: HIDDevice)] = HIDDevice.otherControlInterfaces(of: self).compactMap { dev in
+            guard let other = try? HIDDevice.open(dev, as: "fallback interface") else { return nil }
             return (HIDDevice.intProp(dev, kIOHIDPrimaryUsagePageKey) ?? 0, HIDDevice.intProp(dev, kIOHIDPrimaryUsageKey) ?? 0, other)
         }
         defer { opened.forEach { $0.device.close() } }

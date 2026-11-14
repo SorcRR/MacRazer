@@ -57,4 +57,14 @@ final class LinkSearchTests: XCTestCase {
         XCTAssertNil(found)
         XCTAssertEqual(count, 2 * ids.count, "every id on every interface")
     }
+
+    /// A search that heard nothing waits a minute before the next reopen runs it again; one
+    /// that answered never runs again on that plug-in.
+    func testShouldSearch() {
+        let t0 = Date(timeIntervalSince1970: 1_000)
+        XCTAssertTrue(LinkSearch.shouldSearch(after: nil, now: t0))
+        XCTAssertFalse(LinkSearch.shouldSearch(after: .answered(interface: 7), now: t0))
+        XCTAssertFalse(LinkSearch.shouldSearch(after: .silent(since: t0), now: t0.addingTimeInterval(59)))
+        XCTAssertTrue(LinkSearch.shouldSearch(after: .silent(since: t0), now: t0.addingTimeInterval(60)))
+    }
 }
