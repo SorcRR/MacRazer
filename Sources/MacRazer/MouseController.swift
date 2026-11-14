@@ -584,6 +584,13 @@ final class MouseController: ObservableObject, @unchecked Sendable {
 
     private func pollTick() {
         let away = userIsAway()
+        // Back after a wake that found nobody there: the wake check does this read, with the
+        // Bluetooth cooldown lifted, rather than an ordinary poll.
+        if !away, wakeRecoveryDeferred {
+            wakeRecoveryDeferred = false
+            beginWakeRecovery()
+            return
+        }
         io.async { [weak self] in
             guard let self else { return }
             // The timer was set while someone was there, and they may have left since, or
@@ -635,7 +642,8 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         // opening the popover could otherwise still read offline. Looking is a good moment
         // to check.
         checkIfOffline()
-        resumeIfSomeoneIsBack()
+        // Offline, the check above has already read and rescheduled.
+        if connected { resumeIfSomeoneIsBack() }
         refreshSettings()
         let t = Timer(timeInterval: 2.0, repeats: true) { [weak self] _ in
             // A popover left open on an empty desk would keep the display awake too (#142).
