@@ -994,7 +994,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         // What the 2-second check compares against (`checkLiveSync`); only a complete read.
         let signature = tableDriven ? (stagesReport == nil ? nil : [activeDpiStage ?? -1] + stages) : d.map { [$0] }
         if !linkDead { dpiSignature = signature }
-        let pollRead = RazerCommands.pollingRateRead(usesPollingRate2: RazerDevices.usesPollingRate2(pid: dev.productID))
+        let pollRead = RazerCommands.pollingRateRead(command: RazerDevices.pollingCommand(pid: dev.productID))
         let p = read(pollRead.report, pollRead.parse)
         let b = RazerDevices.hasBrightness(pid: dev.productID)
             ? read(RazerCommands.getBrightness(led: RazerDevices.brightnessReadLed(pid: dev.productID))) { RazerCommands.brightnessPercent(fromRaw: $0.arguments[2]) }
@@ -2042,10 +2042,11 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// OpenRazer's writes, then a read-back, and the read decides (from fn-milans's Basilisk
     /// V4 Pro work, #55). Polling_rate2 is USB only, so that mouse is always an `HIDDevice`.
     private static func sendPollingRate(_ hz: Int, to dev: any RazerTransport) -> Bool {
-        guard let hid = dev.unwrapped as? HIDDevice, RazerDevices.usesPollingRate2(pid: hid.productID) else {
+        let command = RazerDevices.pollingCommand(pid: dev.productID)
+        guard let hid = dev.unwrapped as? HIDDevice, command != .classic else {
             return (try? dev.sendWithRetry(RazerCommands.setPollingRate(hz))) != nil
         }
-        return (try? DeviceProbe.writePollingRate(hid, hz: hz, usesPollingRate2: true))?.confirmed ?? false
+        return (try? DeviceProbe.writePollingRate(hid, hz: hz, command: command))?.confirmed ?? false
     }
 
     /// Sets brightness on every lit zone the model has (`RazerDevices.brightnessLeds`).

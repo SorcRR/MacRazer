@@ -142,6 +142,9 @@ struct RazerDeviceInfo {
     /// take OpenRazer's polling_rate2 pair instead (`RazerCommands.getPollingRate2`). USB only:
     /// Bluetooth has no polling command at all.
     var usesPollingRate2 = false
+    /// The polling command, when it is neither the classic one nor polling_rate2
+    /// (`pollingCommand(pid:)`). Nil follows `usesPollingRate2`.
+    var pollingCommand: PollingCommand? = nil
     /// The highest rate the picker offers. 1000 Hz unless the vendor spec or a report shows
     /// more; only a polling_rate2 mouse can go past it. A top that's too high only costs
     /// failed writes: each change is read back, so a rate the mouse can't take shows as a
@@ -399,7 +402,7 @@ enum RazerDevices {
         // test passes it, and 1000 Hz is its top rate (HyperSpeed). 33000 DPI is the vendor
         // spec (its Focus X 33K Gen-3 sensor). The name has
         // no "(Wireless)": usage stats count models by it, and 0.6 already sent it this way.
-        .init(pid: 0x00EA, name: "Razer Basilisk V4 HyperSpeed", unverified: [.polling], hasBattery: true, hasLighting: true, maxDPI: 33000, transactionId: 0x1f, matrixTransactionId: 0x1f, brightnessLed: Razer.zeroLed, brightnessReadLed: 0x0A, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, usesPollingRate2: true, buttonTable: .basiliskV4HyperSpeed),
+        .init(pid: 0x00EA, name: "Razer Basilisk V4 HyperSpeed", unverified: [.polling], hasBattery: true, hasLighting: true, maxDPI: 33000, transactionId: 0x1f, matrixTransactionId: 0x1f, brightnessLed: Razer.zeroLed, brightnessReadLed: 0x0A, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, pollingCommand: .basiliskV4HyperSpeed, buttonTable: .basiliskV4HyperSpeed),
         // Basilisk V4 Pro over the dongle (in-app report, no credit given): battery, DPI and
         // stages, static color and brightness passed with 0x1f. LOGO and SCROLL answer
         // brightness, ZERO and BACKLIGHT return 0x03. The classic polling command answers
@@ -473,7 +476,7 @@ enum RazerDevices {
         // interface is the fourth one. The owner found 2 of its 4 thumb buttons and one wheel
         // tilt unusable for remapping: the tilt sends horizontal scroll (consumer page 0x238),
         // and the other two thumb buttons sent nothing standard during the button step.
-        .init(pid: 0x00EB, name: "Razer Basilisk V4 HyperSpeed (Wired)", unverified: [.polling], hasBattery: true, hasLighting: true, maxDPI: 33000, transactionId: 0x1f, matrixTransactionId: 0x1f, brightnessLed: Razer.zeroLed, brightnessReadLed: 0x0A, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, usesPollingRate2: true),
+        .init(pid: 0x00EB, name: "Razer Basilisk V4 HyperSpeed (Wired)", unverified: [.polling], hasBattery: true, hasLighting: true, maxDPI: 33000, transactionId: 0x1f, matrixTransactionId: 0x1f, brightnessLed: Razer.zeroLed, brightnessReadLed: 0x0A, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, pollingCommand: .basiliskV4HyperSpeed),
         // Pro Click V2 over the dongle (in-app report, no credit given): battery, DPI and stages,
         // and polling passed with 0x1f. 0xFF and 0x80 time out. No lighting (every group
         // returns 0x03). 30000 is the vendor spec, as for the Vertical Edition. Its zone effect
@@ -859,7 +862,13 @@ enum RazerDevices {
     static func maxPollingRate(pid: Int) -> Int { info(pid: pid)?.maxPollingRate ?? 1000 }
     /// The rates the picker offers, lowest first. The classic command's three for most mice,
     /// and every polling_rate2 rate up to the row's `maxPollingRate` for the newer ones.
+    /// The polling command a mouse takes: the row's own, else polling_rate2 or the classic one.
+    static func pollingCommand(pid: Int?) -> PollingCommand {
+        guard let pid, let row = info(pid: pid) else { return .classic }
+        return row.pollingCommand ?? (row.usesPollingRate2 ? .rate2 : .classic)
+    }
     static func pollingRates(pid: Int?) -> [Int] {
+        if pollingCommand(pid: pid) == .basiliskV4HyperSpeed { return RazerCommands.pollingRatesV4HyperSpeed }
         guard let pid, let row = info(pid: pid), row.usesPollingRate2 else { return RazerCommands.supportedPollingRates }
         return RazerCommands.pollingRate2Codes.map(\.hz).filter { $0 <= row.maxPollingRate }.sorted()
     }

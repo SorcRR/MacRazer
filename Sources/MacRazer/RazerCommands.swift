@@ -344,15 +344,65 @@ enum RazerCommands {
     /// write twice, with argument 0x00 and then 0x01 ("maybe varstore"), on the cable too. The
     /// second one's status isn't what counts: the caller reads the rate back.
     static func setPollingRateReports(_ hz: Int, usesPollingRate2: Bool) -> [RazerReport] {
-        usesPollingRate2
-            ? [setPollingRate2(hz, argument: 0x00), setPollingRate2(hz, argument: 0x01)]
-            : [setPollingRate(hz)]
+        setPollingRateReports(hz, command: usesPollingRate2 ? .rate2 : .classic)
+    }
+
+    static func setPollingRateReports(_ hz: Int, command: PollingCommand) -> [RazerReport] {
+        switch command {
+        case .classic: return [setPollingRate(hz)]
+        case .rate2: return [setPollingRate2(hz, argument: 0x00), setPollingRate2(hz, argument: 0x01)]
+        case .basiliskV4HyperSpeed: return [setPollingRateV4HyperSpeed(hz)]
+        }
     }
 
     /// The report that reads the rate, and how to decode its answer.
     static func pollingRateRead(usesPollingRate2: Bool) -> (report: RazerReport, parse: (RazerReport) -> Int) {
-        if usesPollingRate2 { return (getPollingRate2(), parsePollingRate2) }
-        return (getPollingRate(), parsePollingRate)
+        pollingRateRead(command: usesPollingRate2 ? .rate2 : .classic)
+    }
+
+    static func pollingRateRead(command: PollingCommand) -> (report: RazerReport, parse: (RazerReport) -> Int) {
+        switch command {
+        case .classic: return (getPollingRate(), parsePollingRate)
+        case .rate2: return (getPollingRate2(), parsePollingRate2)
+        case .basiliskV4HyperSpeed: return (getPollingRateV4HyperSpeed(), parsePollingRateV4HyperSpeed)
+        }
+    }
+
+    // --- Polling rate, Basilisk V4 HyperSpeed ---
+    //
+    // This mouse answers both the classic pair (00:05/00:85) and polling_rate2 (00:40/00:C0)
+    // with "not supported" (0x05). It takes 00:0E to set and 00:8E to read, args [0x01, code],
+    // with the classic codes: 0x01 = 1000, 0x02 = 500, 0x08 = 125 Hz. From
+    // openrazer/openrazer#2959 (USB captures of Synapse 4, replayed on the mouse). 1000 Hz is
+    // the bundled receiver's top rate.
+
+    static let pollingRatesV4HyperSpeed = [125, 500, 1000]
+
+    static func getPollingRateV4HyperSpeed() -> RazerReport {
+        var r = RazerReport(commandClass: 0x00, commandId: 0x8E, dataSize: 0x02)
+        r.arguments[0] = 0x01
+        return r
+    }
+
+    /// An unknown rate falls back to 1000 Hz, as polling_rate2's does.
+    static func setPollingRateV4HyperSpeed(_ hz: Int) -> RazerReport {
+        var r = RazerReport(commandClass: 0x00, commandId: 0x0E, dataSize: 0x02)
+        r.arguments[0] = 0x01
+        switch hz {
+        case 500: r.arguments[1] = 0x02
+        case 125: r.arguments[1] = 0x08
+        default: r.arguments[1] = 0x01
+        }
+        return r
+    }
+
+    static func parsePollingRateV4HyperSpeed(_ resp: RazerReport) -> Int {
+        switch resp.arguments[1] {
+        case 0x01: return 1000
+        case 0x02: return 500
+        case 0x08: return 125
+        default: return 0
+        }
     }
 
 
@@ -643,4 +693,14 @@ enum RazerCommands {
 
     static func brightnessPercent(fromRaw raw: UInt8) -> Int { Int((Double(raw) * 100 / 255).rounded()) }
     static func brightnessRaw(fromPercent pct: Int) -> UInt8 { UInt8((Double(max(0, min(pct, 100))) * 255 / 100).rounded()) }
+}
+
+/// Which polling-rate command a mouse takes (`RazerDevices.pollingCommand`).
+enum PollingCommand: Equatable, Sendable {
+    /// 00:05 / 00:85.
+    case classic
+    /// polling_rate2, 00:40 / 00:C0: the HyperPolling mice.
+    case rate2
+    /// 00:0E / 00:8E (`RazerCommands.getPollingRateV4HyperSpeed`).
+    case basiliskV4HyperSpeed
 }

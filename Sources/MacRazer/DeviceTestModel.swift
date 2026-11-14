@@ -594,8 +594,8 @@ final class DeviceTestModel: ObservableObject {
     }
 
     func runPolling() async {
-        let rate2 = testedPID.map(RazerDevices.usesPollingRate2(pid:)) ?? false
-        await run(\.polling) { DeviceTestSteps.polling($0, usesPollingRate2: rate2) }
+        let command = RazerDevices.pollingCommand(pid: testedPID)
+        await run(\.polling) { DeviceTestSteps.polling($0, command: command) }
     }
 
     func runLighting() async {

@@ -64,6 +64,45 @@ final class BasiliskV4HyperSpeedTests: XCTestCase {
         XCTAssertNil(OnboardButtons.layout(pid: 0x00EC))
     }
 
+    // MARK: Polling (00:0E / 00:8E, openrazer/openrazer#2959)
+
+    func testPollingReadIs008EWithVarstore() {
+        let read = RazerCommands.pollingRateRead(command: .basiliskV4HyperSpeed).report
+        XCTAssertEqual(read.commandClass, 0x00)
+        XCTAssertEqual(read.commandId, 0x8E)
+        XCTAssertEqual(read.dataSize, 0x02)
+        XCTAssertEqual(read.arguments[0], 0x01)
+    }
+
+    func testPollingWriteIsOne000ECommandWithClassicCodes() {
+        for (hz, code) in [(1000, UInt8(0x01)), (500, 0x02), (125, 0x08)] {
+            let reports = RazerCommands.setPollingRateReports(hz, command: .basiliskV4HyperSpeed)
+            XCTAssertEqual(reports.count, 1, "\(hz)")
+            XCTAssertEqual(reports[0].commandClass, 0x00)
+            XCTAssertEqual(reports[0].commandId, 0x0E)
+            XCTAssertEqual(reports[0].dataSize, 0x02)
+            XCTAssertEqual(Array(reports[0].arguments[0...1]), [0x01, code], "\(hz)")
+        }
+        // A rate this mouse lacks falls back to 1000 Hz.
+        XCTAssertEqual(RazerCommands.setPollingRateV4HyperSpeed(250).arguments[1], 0x01)
+    }
+
+    func testPollingAnswerDecodesTheSecondArgument() {
+        var resp = RazerReport(commandClass: 0x00, commandId: 0x8E, dataSize: 0x02)
+        resp.arguments[0] = 0x01
+        for (code, hz) in [(UInt8(0x01), 1000), (0x02, 500), (0x08, 125), (0x04, 0)] {
+            resp.arguments[1] = code
+            XCTAssertEqual(RazerCommands.parsePollingRateV4HyperSpeed(resp), hz, "code \(code)")
+        }
+    }
+
+    func testOtherCommandsAreUnchanged() {
+        XCTAssertEqual(RazerCommands.setPollingRateReports(1000, command: .classic).map(\.commandId), [0x05])
+        XCTAssertEqual(RazerCommands.setPollingRateReports(1000, command: .rate2).map(\.commandId), [0x40, 0x40])
+        XCTAssertEqual(RazerCommands.pollingRateRead(command: .rate2).report.commandId, 0xC0)
+        XCTAssertEqual(RazerCommands.pollingRateRead(command: .classic).report.commandId, 0x85)
+    }
+
     func testNoSlotsMeansNoFactoryRestore() {
         XCTAssertFalse(RazerDevices.hasOnboardSlots(pid: dongle))
         XCTAssertTrue(OnboardSlots.factorySettings(pid: dongle).isEmpty)

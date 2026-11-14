@@ -555,9 +555,18 @@ final class RazerDevicesTests: XCTestCase {
     /// The models that answer the classic polling command with "not supported" take
     /// polling_rate2.
     func testPollingRate2Models() {
-        for pid in [0x00A4, 0x00F1, 0x00EA, 0x00EB, 0x00E3, 0x00E2, 0x00E5, 0x00E6, 0x0091, 0x00B2] {
+        for pid in [0x00A4, 0x00F1, 0x00E3, 0x00E2, 0x00E5, 0x00E6, 0x0091, 0x00B2] {
             XCTAssertTrue(RazerDevices.usesPollingRate2(pid: pid), String(pid, radix: 16))
+            XCTAssertEqual(RazerDevices.pollingCommand(pid: pid), .rate2, String(pid, radix: 16))
         }
+        // The Basilisk V4 HyperSpeed refuses polling_rate2 too, and takes its own command.
+        for pid in [0x00EA, 0x00EB] {
+            XCTAssertFalse(RazerDevices.usesPollingRate2(pid: pid), String(pid, radix: 16))
+            XCTAssertEqual(RazerDevices.pollingCommand(pid: pid), .basiliskV4HyperSpeed, String(pid, radix: 16))
+        }
+        XCTAssertEqual(RazerDevices.pollingCommand(pid: 0x00DB), .classic)
+        XCTAssertEqual(RazerDevices.pollingCommand(pid: 0x9999), .classic)
+        XCTAssertEqual(RazerDevices.pollingCommand(pid: nil), .classic)
         XCTAssertFalse(RazerDevices.usesPollingRate2(pid: 0x00DB))
         XCTAssertFalse(RazerDevices.usesPollingRate2(pid: 0x9999), "unknown models still try it")
     }
@@ -567,7 +576,8 @@ final class RazerDevicesTests: XCTestCase {
     func testPollingRates() {
         XCTAssertEqual(RazerDevices.pollingRates(pid: 0x00DB), [125, 500, 1000], "Cobra HyperSpeed")
         XCTAssertEqual(RazerDevices.pollingRates(pid: nil), [125, 500, 1000])
-        XCTAssertEqual(RazerDevices.pollingRates(pid: 0x00EA), [125, 250, 500, 1000], "Basilisk V4 HyperSpeed")
+        XCTAssertEqual(RazerDevices.pollingRates(pid: 0x00EA), [125, 500, 1000], "Basilisk V4 HyperSpeed")
+        XCTAssertEqual(RazerDevices.pollingRates(pid: 0x00EB), [125, 500, 1000], "Basilisk V4 HyperSpeed (Wired)")
         for pid in [0x00E2, 0x00E3, 0x00E5, 0x00E6, 0x0091, 0x00B2] {
             XCTAssertEqual(RazerDevices.pollingRates(pid: pid), [125, 250, 500, 1000, 2000, 4000, 8000], String(pid, radix: 16))
         }

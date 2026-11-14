@@ -598,12 +598,12 @@ case "poll":
     guard let dev = openDevice() else { exit(1) }
     defer { dev.close() }
     do {
-        let rate2 = RazerDevices.usesPollingRate2(pid: dev.productID)
+        let command = RazerDevices.pollingCommand(pid: dev.productID)
         // 250 Hz too on the classic command: not in OpenRazer's table, but the byte is 1000
         // over the rate.
-        let rates = rate2 ? RazerDevices.pollingRates(pid: dev.productID)
+        let rates = command != .classic ? RazerDevices.pollingRates(pid: dev.productID)
                           : (RazerCommands.supportedPollingRates + [250]).sorted()
-        let before = try DeviceProbe.readPollingRate(dev, usesPollingRate2: rate2).value
+        let before = try DeviceProbe.readPollingRate(dev, command: command).value
         print("Current polling rate: \(before)Hz")
         if let arg = args.dropFirst().first, let hz = Int(arg) {
             guard rates.contains(hz) else {
@@ -611,7 +611,7 @@ case "poll":
                 exit(64)
             }
             print("Setting polling rate to \(hz)Hz …")
-            let check = try DeviceProbe.writePollingRate(dev, hz: hz, usesPollingRate2: rate2)
+            let check = try DeviceProbe.writePollingRate(dev, hz: hz, command: command)
             print("  set status = 0x\(String(check.setResponse.status, radix: 16))")
             print("Read-back: \(check.readBack.value)Hz")
             print(check.confirmed ? "✓ Polling rate write confirmed" : "⚠︎ Read-back doesn't match.")
@@ -720,7 +720,7 @@ case "devicetest":
         identify: identify,
         battery: step { DeviceTestSteps.battery($0, expectsBattery: info?.hasBattery) },
         dpi: step { DeviceTestSteps.dpi($0, maxProbe: false) },
-        polling: step { DeviceTestSteps.polling($0, usesPollingRate2: RazerDevices.usesPollingRate2(pid: dev.productID)) },
+        polling: step { DeviceTestSteps.polling($0, command: RazerDevices.pollingCommand(pid: dev.productID)) },
         lighting: step { DeviceTestSteps.lighting($0, sweep: lightSweep, restoreEffect: nil, seconds: 2) },
         buttons: .init(),
         capabilities: DeviceTestSteps.capabilities(dev, identify: identify, registry: info))
