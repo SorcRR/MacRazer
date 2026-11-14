@@ -30,6 +30,58 @@ final class BasiliskV4HyperSpeedTests: XCTestCase {
         }
     }
 
+    func testOnlyThisMouseHasASplitBrightnessRead() throws {
+        for pid in [dongle, cable] {
+            let split = try XCTUnwrap(RazerDevices.brightnessSplitRead(pid: pid), String(pid, radix: 16))
+            XCTAssertEqual(split.led, Razer.zeroLed)
+            XCTAssertEqual(split.readLed, 0x0A)
+        }
+        XCTAssertFalse(RazerDevices.known.contains { $0.pid != dongle && $0.pid != cable
+            && RazerDevices.brightnessSplitRead(pid: $0.pid) != nil })
+        XCTAssertNil(RazerDevices.brightnessSplitRead(pid: 0xFFFF))
+    }
+
+    /// A mouse that keeps brightness written on ZERO_LED and answers a read only on 0x0A.
+    private func splitReadMouse(raw: UInt8) -> FakeMouse {
+        let mouse = FakeMouse()
+        mouse.holds(RazerCommands.setBrightness(raw, led: 0x0A))
+        mouse.refuse = { r in
+            r.commandClass == 0x0F && (r.commandId == 0x84 ? r.arguments[1] != 0x0A : r.commandId == 0x04 && r.arguments[1] != Razer.zeroLed)
+        }
+        mouse.clamp = { w in
+            w.commandClass == 0x0F && w.commandId == 0x04 ? RazerCommands.setBrightness(w.arguments[2], led: 0x0A) : w
+        }
+        return mouse
+    }
+
+    func testDeviceTestDimsAndRestoresLightingThroughTheReadLed() throws {
+        let mouse = splitReadMouse(raw: 77)
+        let sweep = DeviceProbe.brightnessSweep(mouse)
+        XCTAssertFalse(sweep.contains { (try? $0.result.get()) != nil }, "the sweep finds nothing")
+        var waits: [Double] = []
+        var record = DeviceTestSteps.lighting(mouse, sweep: sweep, splitRead: RazerDevices.brightnessSplitRead(pid: dongle),
+                                              restoreEffect: nil, seconds: 2, wait: { waits.append($0) })
+        XCTAssertEqual(waits, [2])
+        XCTAssertEqual(record.data?.groups, ["ZERO": 77])
+        XCTAssertEqual(record.data?.dimShown, true)
+        XCTAssertEqual(record.data?.restored, true)
+        XCTAssertEqual(try mouse.send(RazerCommands.getBrightness(led: 0x0A)).arguments[2], 77)
+        DeviceTestSteps.answered(dimmed: true, turnedRed: nil, &record)
+        XCTAssertEqual(record.outcome, .passed)
+    }
+
+    func testWithoutTheSplitReadTheStepStillSaysNotSupported() {
+        let mouse = splitReadMouse(raw: 77)
+        let record = DeviceTestSteps.lighting(mouse, sweep: DeviceProbe.brightnessSweep(mouse),
+                                              restoreEffect: nil, seconds: 0, wait: { _ in })
+        XCTAssertEqual(record.outcome, .notSupported)
+    }
+
+    func testCableLightingWaitsForATest() {
+        XCTAssertEqual(RazerDevices.unverified(pid: cable), [.polling, .lighting])
+        XCTAssertEqual(RazerDevices.unverified(pid: dongle), [.polling])
+    }
+
     func testDongleTableIsTheV4ProsWithoutDpiAndWheelMode() throws {
         let hyperSpeed = try XCTUnwrap(OnboardButtons.layout(pid: dongle))
         let pro = try XCTUnwrap(OnboardButtons.layout(pid: 0x00E3))

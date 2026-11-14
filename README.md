@@ -117,7 +117,7 @@ says so.
 | Razer DeathAdder V2 Pro (Wired) | Battery, DPI, DPI stages, polling, lighting, brightness | anonymous reports |
 | Razer Viper Ultimate (Wired) | Battery, DPI, polling, lighting | anonymous report |
 | Razer Taipan | DPI, polling; lighting not working yet | anonymous report |
-| Razer Basilisk V4 HyperSpeed (wired + wireless) | Battery, DPI, DPI stages; polling not confirmed yet | anonymous reports |
+| Razer Basilisk V4 HyperSpeed (wired + wireless) | Battery, DPI, DPI stages, lighting and brightness over the dongle, thumb-button remaps saved in the mouse over the dongle. Polling and the cable's lighting still wait on a test report | [@k4ton](https://github.com/k4ton) and anonymous reports |
 | Razer Viper V4 Pro (wired + wireless) | Battery, DPI, DPI stages; polling not confirmed yet | Robotxm and an anonymous report |
 | Razer Viper 8KHz | DPI, DPI stages, lighting, brightness (wired only); polling not confirmed yet | anonymous report |
 | Razer Mouse Dock Pro (with a Naga V3 Pro) | Battery, DPI, lighting, brightness; polling not confirmed yet | anonymous report |
@@ -215,7 +215,8 @@ Razer Synapse (Windows only — Razer dropped macOS support). The assignment is 
 mouse's onboard memory, so it persists on the Mac afterwards and MacRazer will then see the
 button like any other.
 
-The exception is a mouse whose button table MacRazer knows, today the **Basilisk V4 Pro**.
+The exception is a mouse whose button table MacRazer knows, today the **Basilisk V4 Pro** and
+the **Basilisk V4 HyperSpeed** over its dongle.
 There MacRazer writes each remap into the mouse's onboard memory itself, the way Synapse
 does, and the remaps keep working with MacRazer closed, on any link and on other computers.
 The side trigger is the HyperShift key until you remap it (any other button can take that

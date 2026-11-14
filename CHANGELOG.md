@@ -26,12 +26,21 @@ expect rough edges until 1.0.
     into the mouse and reads it back. They work with MacRazer closed, on any link and on other
     computers. The HyperShift layer is saved there too. MacRazer only changes buttons it
     remapped itself, and clearing a remap puts the factory function back.
+- **Basilisk V4 HyperSpeed: lighting, remaps and polling.** From k4ton's work in #55,
+  tested on the mouse over its dongle. Thanks!
+  - **Lighting and brightness** work now. This mouse reads brightness from a different zone
+    than it writes, so MacRazer used to think it had no lighting. The device test checks it too.
+  - **Thumb-button remaps over the dongle.** Side Front and Side Trigger send nothing to the
+    Mac, so they could not be remapped before. Configure Buttons now saves remaps in the
+    mouse, as on the Basilisk V4 Pro, and they keep working with MacRazer closed.
+  - **Polling rate.** The mouse refuses both polling commands MacRazer knew, so profiles
+    failed on the polling step. It now gets its own command, with 125, 500 and 1000 Hz.
 - **Reset side buttons saved in the mouse.** If Razer Synapse saved other functions to a
   Cobra HyperSpeed's side buttons (a keyboard shortcut, say), they never reach Configure
   Buttons as buttons. On Bluetooth the page now says what they send and offers Reset Side
   Buttons, which puts Back and Forward back in the mouse itself. No Windows needed.
-- **Polling rate on the HyperPolling mice.** The Basilisk V4 Pro and V4 HyperSpeed, Viper
-  V4 Pro, Viper 8KHz, DeathAdder V3 and both Mouse Docks refuse the classic polling command.
+- **Polling rate on the HyperPolling mice.** The Basilisk V4 Pro, Viper V4 Pro, Viper
+  8KHz, DeathAdder V3 and both Mouse Docks refuse the classic polling command.
   They now get the newer one, so the polling picker shows on them. The 8000 Hz models offer
   2K, 4K and 8K too. Each change is read back, and the device test checks polling there as
   well, so a report can confirm it. The command comes from fn-milans's Basilisk V4 Pro work.

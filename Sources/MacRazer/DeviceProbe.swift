@@ -188,10 +188,12 @@ enum DeviceProbe {
     }
 
     /// Writes a raw 0-255 brightness to one group and reads it back. Unlike the sweep, a
-    /// refusal here is a real failure, so it throws.
-    static func writeBrightness(_ channel: DeviceProbeChannel, raw: UInt8, led: UInt8) throws -> WriteCheck<UInt8> {
+    /// refusal here is a real failure, so it throws. `readLed` is where the read-back goes when
+    /// it isn't `led` (`RazerDeviceInfo.brightnessReadLed`).
+    static func writeBrightness(_ channel: DeviceProbeChannel, raw: UInt8, led: UInt8,
+                                readLed: UInt8? = nil) throws -> WriteCheck<UInt8> {
         let set = try channel.sendWithRetry(RazerCommands.setBrightness(raw, led: led), attempts: attempts)
-        let back = try channel.sendWithRetry(RazerCommands.getBrightness(led: led), attempts: attempts)
+        let back = try channel.sendWithRetry(RazerCommands.getBrightness(led: readLed ?? led), attempts: attempts)
         return WriteCheck(requested: raw, setResponse: set,
                           readBack: Reading(value: back.arguments[2], response: back))
     }

@@ -600,11 +600,12 @@ final class DeviceTestModel: ObservableObject {
 
     func runLighting() async {
         let sweep = lightSweep
+        let splitRead = RazerDevices.brightnessSplitRead(pid: testedPID)
         let restore = controller.lightingRestoreReport()
         dimmed = nil
         turnedRed = nil
         await run(\.lighting) {
-            DeviceTestSteps.lighting($0, sweep: sweep, restoreEffect: restore, seconds: 3)
+            DeviceTestSteps.lighting($0, sweep: sweep, splitRead: splitRead, restoreEffect: restore, seconds: 3)
         }
     }
 

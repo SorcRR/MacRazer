@@ -264,7 +264,7 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00CE),
                        [Link(connection: .wired, missing: [.lighting]), Link(connection: .wirelessDongle, missing: [.lighting])])
         // Polling counts too on a polling_rate2 mouse: the test now checks it there.
-        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00EA), [Link(connection: .wired, missing: [.polling])])
+        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00EA), [Link(connection: .wired, missing: [.polling, .lighting])])
         // Fully supported on every link it has a row for.
         XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00E8), [])
         XCTAssertEqual(RazerDevices.linksToTest(besides: 0x0090), [], "Naga Pro, both links verified")
@@ -446,10 +446,11 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00E0), [], "no cable, and no Bluetooth row yet")
     }
 
-    /// A polling_rate2 mouse is asked about polling like any other: the test sends the newer
-    /// command there, so a report can confirm it.
+    /// A polling_rate2 mouse, or one with its own polling command, is asked about polling like
+    /// any other: the test sends that mouse's command, so a report can confirm it. (The V4
+    /// HyperSpeed's cable waits on lighting too: BasiliskV4HyperSpeedTests.)
     func testPollingRate2MiceAreAskedAboutPolling() {
-        for pid in [0x00EA, 0x00EB, 0x00E3, 0x00E2, 0x0091] {
+        for pid in [0x00EA, 0x00E3, 0x00E2, 0x0091] {
             let ask = RazerDevices.ask(pid: pid)
             XCTAssertEqual(RazerDevices.unverified(pid: pid), [.polling], String(pid, radix: 16))
             XCTAssertEqual(ask.here, [.polling], String(pid, radix: 16))
@@ -512,8 +513,9 @@ final class RazerDevicesTests: XCTestCase {
     /// From the November reports: the other link of the Viper V4 Pro and Basilisk V4
     /// HyperSpeed, and four mice new to the registry.
     func testNovemberReportedMice() {
+        XCTAssertEqual(RazerDevices.unverified(pid: 0x00EB), [.polling, .lighting], "lighting is new on the cable")
         for pid in [0x00E6, 0x00EB] {
-            XCTAssertEqual(RazerDevices.unverified(pid: pid), [.polling], String(pid, radix: 16))
+            XCTAssertTrue(RazerDevices.unverified(pid: pid)?.contains(.polling) == true, String(pid, radix: 16))
             XCTAssertTrue(RazerDevices.hasBattery(pid: pid))
         }
         XCTAssertFalse(RazerDevices.hasLighting(pid: 0x00E6))
@@ -525,7 +527,7 @@ final class RazerDevicesTests: XCTestCase {
         // Polling is all either link lacks, and the test checks it with polling_rate2, so
         // each names the other.
         XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00E6), [.init(connection: .wired, missing: [.polling])])
-        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00EA), [.init(connection: .wired, missing: [.polling])])
+        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00EA), [.init(connection: .wired, missing: [.polling, .lighting])])
 
         XCTAssertTrue(RazerDevices.fullySupported(pid: 0x00D1), "Pro Click V2")
         XCTAssertFalse(RazerDevices.hasLighting(pid: 0x00D1))

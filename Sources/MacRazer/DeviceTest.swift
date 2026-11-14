@@ -942,7 +942,12 @@ enum DeviceTestSteps {
     /// turns red at full brightness for `seconds` and goes back to `restoreEffect` (the app's
     /// own setting: an effect can't be read back) and to each group's brightness. The
     /// questions come afterwards, so nothing is held waiting on the person.
+    ///
+    /// `splitRead` is a model that reads brightness on another LED than it writes
+    /// (`RazerDevices.brightnessSplitRead`). The sweep's reads all fail on it, so that one LED
+    /// is asked here, and the group is written on `led` and read back on `readLed`.
     static func lighting(_ channel: DeviceProbeChannel, sweep: [DeviceProbe.LEDAnswer]?,
+                         splitRead: (led: UInt8, readLed: UInt8)? = nil,
                          restoreEffect: RazerReport?,
                          red: RazerReport = RazerCommands.setStatic(rgb: RGB(r: 255, g: 0, b: 0)),
                          seconds: Double,
@@ -950,29 +955,36 @@ enum DeviceTestSteps {
         -> DeviceReport.StepRecord<DeviceReport.LightingData> {
         var record = DeviceReport.StepRecord<DeviceReport.LightingData>()
         var data = DeviceReport.LightingData()
-        let answering = (sweep ?? []).compactMap { answer -> (String, UInt8, UInt8)? in
+        var answering = (sweep ?? []).compactMap { answer -> LitGroup? in
             guard let reading = try? answer.result.get() else { return nil }
-            return (answer.name, answer.led, reading.value)
+            return LitGroup(name: answer.name, led: answer.led, readLed: answer.led, raw: reading.value)
+        }
+        if let splitRead, !answering.contains(where: { $0.led == splitRead.led }),
+           let reading = try? channel.send(RazerCommands.getBrightness(led: splitRead.readLed)) {
+            let name = DeviceProbe.ledGroups.first { $0.led == splitRead.led }?.name
+                ?? String(format: "0x%02X", splitRead.led)
+            answering.append(LitGroup(name: name, led: splitRead.led, readLed: splitRead.readLed,
+                                      raw: reading.arguments[2]))
         }
         guard !answering.isEmpty else {
             record.outcome = .notSupported
             record.data = data
             return record
         }
-        for (name, _, raw) in answering { data.groups[name] = raw }
+        for group in answering { data.groups[group.name] = group.raw }
 
         // Nothing from here to the restore can leave early (every call is `try?`), so the
         // restore always runs once anything has been changed.
         var dimmedAny = false
-        for (_, led, _) in answering {
-            dimmedAny = (try? DeviceProbe.writeBrightness(channel, raw: 0, led: led)) != nil || dimmedAny
+        for group in answering {
+            dimmedAny = (try? DeviceProbe.writeBrightness(channel, raw: 0, led: group.led, readLed: group.readLed)) != nil || dimmedAny
         }
         data.dimShown = dimmedAny
         if dimmedAny { wait(seconds) }
         var allBack = restoreBrightness(channel, answering)
 
         if let restoreEffect {
-            for (_, led, _) in answering { _ = try? DeviceProbe.writeBrightness(channel, raw: 255, led: led) }
+            for group in answering { _ = try? DeviceProbe.writeBrightness(channel, raw: 255, led: group.led, readLed: group.readLed) }
             data.redShown = (try? DeviceProbe.applyLighting(channel, red)) != nil
             if data.redShown { wait(seconds) }
             let effectBack = (try? DeviceProbe.applyLighting(channel, restoreEffect)) != nil
@@ -986,10 +998,19 @@ enum DeviceTestSteps {
         return record
     }
 
-    private static func restoreBrightness(_ channel: DeviceProbeChannel, _ groups: [(String, UInt8, UInt8)]) -> Bool {
+    /// A group the lighting step dims and restores: written on `led`, read back on `readLed`.
+    private struct LitGroup {
+        let name: String
+        let led: UInt8
+        let readLed: UInt8
+        let raw: UInt8
+    }
+
+    private static func restoreBrightness(_ channel: DeviceProbeChannel, _ groups: [LitGroup]) -> Bool {
         var allBack = true
-        for (_, led, raw) in groups {
-            allBack = ((try? DeviceProbe.writeBrightness(channel, raw: raw, led: led).confirmed) ?? false) && allBack
+        for group in groups {
+            allBack = ((try? DeviceProbe.writeBrightness(channel, raw: group.raw, led: group.led,
+                                                         readLed: group.readLed).confirmed) ?? false) && allBack
         }
         return allBack
     }

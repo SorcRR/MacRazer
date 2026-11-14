@@ -647,14 +647,15 @@ case "brightness":
         }
         if let arg = args.dropFirst().first, let pct = Int(arg) {
             let led = RazerDevices.brightnessLed(pid: dev.productID)
+            let readLed = RazerDevices.brightnessReadLed(pid: dev.productID)
             // The sweep records a refusal per group and carries on; this write throws on one
             // instead, because here it is a real failure to report, not a group that simply
             // doesn't answer.
             let raw = RazerCommands.brightnessRaw(fromPercent: pct)
             print("SET brightness \(pct)% (raw \(raw)) on led 0x\(String(format: "%02x", led)) …")
-            let check = try DeviceProbe.writeBrightness(dev, raw: raw, led: led)
+            let check = try DeviceProbe.writeBrightness(dev, raw: raw, led: led, readLed: readLed)
             print("  set: \(dump(check.setResponse))")
-            print("  read-back: \(dump(check.readBack.response)) → \(RazerCommands.brightnessPercent(fromRaw: check.readBack.value))%")
+            print("  read-back (led 0x\(String(format: "%02x", readLed))): \(dump(check.readBack.response)) → \(RazerCommands.brightnessPercent(fromRaw: check.readBack.value))%")
         }
     } catch {
         // The sweep above handles its own refusals per LED, so only the optional write can
@@ -721,7 +722,8 @@ case "devicetest":
         battery: step { DeviceTestSteps.battery($0, expectsBattery: info?.hasBattery) },
         dpi: step { DeviceTestSteps.dpi($0, maxProbe: false) },
         polling: step { DeviceTestSteps.polling($0, command: RazerDevices.pollingCommand(pid: dev.productID)) },
-        lighting: step { DeviceTestSteps.lighting($0, sweep: lightSweep, restoreEffect: nil, seconds: 2) },
+        lighting: step { DeviceTestSteps.lighting($0, sweep: lightSweep, splitRead: RazerDevices.brightnessSplitRead(pid: dev.productID),
+                                                restoreEffect: nil, seconds: 2) },
         buttons: .init(),
         capabilities: DeviceTestSteps.capabilities(dev, identify: identify, registry: info))
     report.verdict = report.currentVerdict()
