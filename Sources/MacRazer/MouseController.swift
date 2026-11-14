@@ -997,7 +997,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         let pollRead = RazerCommands.pollingRateRead(usesPollingRate2: RazerDevices.usesPollingRate2(pid: dev.productID))
         let p = read(pollRead.report, pollRead.parse)
         let b = RazerDevices.hasBrightness(pid: dev.productID)
-            ? read(RazerCommands.getBrightness(led: RazerDevices.brightnessLed(pid: dev.productID))) { RazerCommands.brightnessPercent(fromRaw: $0.arguments[2]) }
+            ? read(RazerCommands.getBrightness(led: RazerDevices.brightnessReadLed(pid: dev.productID))) { RazerCommands.brightnessPercent(fromRaw: $0.arguments[2]) }
             : nil
         let sleep: Int? = {
             if !dev.isBluetooth, RazerDevices.supportsSleepTimeout(pid: dev.productID) {
@@ -2066,7 +2066,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             guard let self else { return }
             let ok = (try? {
                 let dev = try self.ensureDevice()
-                let led = RazerDevices.brightnessLed(pid: dev.productID)
+                let led = RazerDevices.brightnessReadLed(pid: dev.productID)
                 let raw = RazerCommands.brightnessRaw(fromPercent: pct)
                 try Self.writeBrightness(raw, to: dev)
                 if RazerDevices.verifiesBrightnessWrite(pid: dev.productID) {

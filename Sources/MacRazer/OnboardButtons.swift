@@ -43,10 +43,18 @@ enum OnboardButtons {
     enum Table: Equatable, Sendable {
         /// Basilisk V4 Pro: the same table on the cable, the dongle and Bluetooth.
         case basiliskV4Pro
+        /// Basilisk V4 HyperSpeed over the dongle: the V4 Pro's entries and factory blocks, read
+        /// from the mouse in the device test of SorcRR/MacRazer#135 (firmware v1.0). The DPI
+        /// button (0x60) and the wheel-mode button (0x6A) are left out: on this mouse those
+        /// entries hold no valid block, so their real ids are still unknown.
+        case basiliskV4HyperSpeed
     }
 
     static func layout(_ table: Table) -> [Control] {
         switch table {
+        case .basiliskV4HyperSpeed:
+            let unknownOnThisMouse: Set<Int> = [HardwareButton.dpiCycle.rawValue, HardwareButton.wheelMode.rawValue]
+            return layout(.basiliskV4Pro).filter { !unknownOnThisMouse.contains($0.button) }
         case .basiliskV4Pro:
             return [
                 Control(button: 1, tableID: 0x02, factory: mouseBlock(2)),
@@ -99,12 +107,13 @@ enum OnboardButtons {
     /// The order the remap window lists a mouse's controls in, top to bottom, as they sit on
     /// the mouse. Nil for a mouse without one.
     static func rowOrder(pid: Int) -> [Int]? {
-        guard layout(pid: pid) != nil else { return nil }
+        guard let controls = layout(pid: pid) else { return nil }
+        let present = Set(controls.map(\.button))
         return [HardwareButton.leftClickSide.rawValue,
                 1, 2, HardwareButton.scrollUp.rawValue, HardwareButton.scrollDown.rawValue, HardwareButton.tiltLeft.rawValue, HardwareButton.tiltRight.rawValue,
                 HardwareButton.wheelMode.rawValue, HardwareButton.dpiCycle.rawValue,
                 HardwareButton.sideTrigger.rawValue, HardwareButton.sideFront.rawValue,
-                4, 3]
+                4, 3].filter(present.contains)
     }
 
     /// Whether MacRazer sees the control's presses while it holds its factory function: only

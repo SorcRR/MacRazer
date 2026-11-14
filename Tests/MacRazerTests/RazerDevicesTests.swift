@@ -515,8 +515,10 @@ final class RazerDevicesTests: XCTestCase {
         for pid in [0x00E6, 0x00EB] {
             XCTAssertEqual(RazerDevices.unverified(pid: pid), [.polling], String(pid, radix: 16))
             XCTAssertTrue(RazerDevices.hasBattery(pid: pid))
-            XCTAssertFalse(RazerDevices.hasLighting(pid: pid))
         }
+        XCTAssertFalse(RazerDevices.hasLighting(pid: 0x00E6))
+        // Lit after all: writes on ZERO_LED, reads on 0x0A (BasiliskV4HyperSpeedTests).
+        XCTAssertTrue(RazerDevices.hasLighting(pid: 0x00EB))
         XCTAssertEqual(RazerDevices.maxDPI(pid: 0x00E6), 45000)
         XCTAssertEqual(RazerDevices.connection(pid: 0x00E6), .wirelessDongle)
         XCTAssertEqual(RazerDevices.connection(pid: 0x00EB), .wired)
@@ -698,8 +700,13 @@ final class RazerDevicesTests: XCTestCase {
             XCTAssertFalse(row.supportsDpiModes, row.name)
             XCTAssertFalse(row.dpiStagesCountFromOne, row.name)
             XCTAssertEqual(row.lightingZones, [], row.name)
-            XCTAssertNil(row.buttonTable, row.name)
-            XCTAssertNil(OnboardButtons.layout(pid: row.pid), row.name)
+            // The Basilisk V4 HyperSpeed dongle opts in to a button table, and to nothing else.
+            if row.pid == 0x00EA {
+                XCTAssertEqual(row.buttonTable, .basiliskV4HyperSpeed, row.name)
+            } else {
+                XCTAssertNil(row.buttonTable, row.name)
+                XCTAssertNil(OnboardButtons.layout(pid: row.pid), row.name)
+            }
             if row.connection != .bluetooth { XCTAssertFalse(row.supportsSleepTimeout, row.name) }
         }
         let unknown = 0x9999

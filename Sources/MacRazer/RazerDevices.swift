@@ -99,6 +99,10 @@ struct RazerDeviceInfo {
     /// does not error, the slider just stops working, so a model gaining lighting support
     /// should be swept with `swift run MacRazer brightness` rather than inheriting this.
     var brightnessLed: UInt8 = Razer.logoLed
+    /// The LED a brightness read asks, when it isn't `brightnessLed`. The Basilisk V4 HyperSpeed
+    /// takes brightness writes and effects on ZERO_LED but only answers a read on 0x0A
+    /// (openrazer/openrazer#2959, from USB captures of Synapse 4). Nil reads `brightnessLed`.
+    var brightnessReadLed: UInt8? = nil
     /// Further lit zones that take their own brightness, written after `brightnessLed` so
     /// the slider moves the whole mouse. Reads and the write check use `brightnessLed` alone.
     /// The Nagas light the logo, scroll wheel and side panel, and all three answer.
@@ -395,7 +399,7 @@ enum RazerDevices {
         // test passes it, and 1000 Hz is its top rate (HyperSpeed). 33000 DPI is the vendor
         // spec (its Focus X 33K Gen-3 sensor). The name has
         // no "(Wireless)": usage stats count models by it, and 0.6 already sent it this way.
-        .init(pid: 0x00EA, name: "Razer Basilisk V4 HyperSpeed", unverified: [.polling], hasBattery: true, hasLighting: false, maxDPI: 33000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, usesPollingRate2: true),
+        .init(pid: 0x00EA, name: "Razer Basilisk V4 HyperSpeed", unverified: [.polling], hasBattery: true, hasLighting: true, maxDPI: 33000, transactionId: 0x1f, matrixTransactionId: 0x1f, brightnessLed: Razer.zeroLed, brightnessReadLed: 0x0A, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, usesPollingRate2: true, buttonTable: .basiliskV4HyperSpeed),
         // Basilisk V4 Pro over the dongle (in-app report, no credit given): battery, DPI and
         // stages, static color and brightness passed with 0x1f. LOGO and SCROLL answer
         // brightness, ZERO and BACKLIGHT return 0x03. The classic polling command answers
@@ -469,7 +473,7 @@ enum RazerDevices {
         // interface is the fourth one. The owner found 2 of its 4 thumb buttons and one wheel
         // tilt unusable for remapping: the tilt sends horizontal scroll (consumer page 0x238),
         // and the other two thumb buttons sent nothing standard during the button step.
-        .init(pid: 0x00EB, name: "Razer Basilisk V4 HyperSpeed (Wired)", unverified: [.polling], hasBattery: true, hasLighting: false, maxDPI: 33000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, usesPollingRate2: true),
+        .init(pid: 0x00EB, name: "Razer Basilisk V4 HyperSpeed (Wired)", unverified: [.polling], hasBattery: true, hasLighting: true, maxDPI: 33000, transactionId: 0x1f, matrixTransactionId: 0x1f, brightnessLed: Razer.zeroLed, brightnessReadLed: 0x0A, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, usesPollingRate2: true),
         // Pro Click V2 over the dongle (in-app report, no credit given): battery, DPI and stages,
         // and polling passed with 0x1f. 0xFF and 0x80 time out. No lighting (every group
         // returns 0x03). 30000 is the vendor spec, as for the Vertical Edition. Its zone effect
@@ -894,6 +898,10 @@ enum RazerDevices {
     /// Cobra family answers on.
     static func brightnessLed(pid: Int?) -> UInt8 {
         pid.flatMap { info(pid: $0)?.brightnessLed } ?? Razer.logoLed
+    }
+    /// The LED a brightness read goes to: `brightnessReadLed` where a model has one.
+    static func brightnessReadLed(pid: Int?) -> UInt8 {
+        pid.flatMap { info(pid: $0)?.brightnessReadLed } ?? brightnessLed(pid: pid)
     }
     /// Every LED group a brightness write goes to, `brightnessLed` first.
     static func brightnessLeds(pid: Int?) -> [UInt8] {

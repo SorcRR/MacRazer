@@ -95,6 +95,9 @@ enum OnboardSlots {
         // Stage 3 of 5 (1600 DPI), in this link's numbering.
         let activeStage: UInt8 = RazerDevices.dpiStagesCountFromOne(pid: pid) ? 0x03 : 0x02
         switch table {
+        case .basiliskV4HyperSpeed:
+            // No onboard slots on this row (`hasOnboardSlots` is off), so nothing to restore.
+            return []
         case .basiliskV4Pro:
             func raw(_ commandClass: UInt8, _ id: UInt8, _ size: UInt8, _ args: [UInt8]) -> RazerReport {
                 var r = RazerReport(commandClass: commandClass, commandId: id, dataSize: size)
