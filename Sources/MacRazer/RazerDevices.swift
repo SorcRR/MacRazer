@@ -643,17 +643,27 @@ enum RazerDevices {
         info(pid: pid) == nil || verified(pid: pid).isEmpty
     }
 
-    /// Per pid, the transaction id a mouse answered to after its registry id (or the 0x1f
-    /// default) didn't. In memory only: probing again on the next launch is cheap, and a
-    /// stale id saved to disk could outlive a fix to the row. Locked: HID traffic reads it
-    /// off the main thread.
-    private static let learned = OSAllocatedUnfairLock<[Int: UInt8]>(initialState: [:])
-
-    /// Used for every command class on `pid` from now on, ahead of the row's ids.
-    static func learnTransactionId(_ id: UInt8, pid: Int) {
-        learned.withLock { $0[pid] = id }
+    /// An id a mouse answered to, and the registry id (or the 0x1f default) it stands in for.
+    struct LearnedId: Equatable, Sendable {
+        /// The id that went unheard. Only commands that would go out on it change.
+        let replacing: UInt8
+        let id: UInt8
     }
-    static func learnedTransactionId(pid: Int) -> UInt8? { learned.withLock { $0[pid] } }
+
+    /// Per pid, the id a mouse answered to after its registry id didn't. In memory only:
+    /// probing again on the next launch is cheap, and a stale id saved to disk could outlive
+    /// a fix to the row. Locked: HID traffic reads it off the main thread.
+    private static let learned = OSAllocatedUnfairLock<[Int: LearnedId]>(initialState: [:])
+
+    /// From now on, every command on `pid` that would go out on `replacing` goes out on `id`
+    /// instead. The row's other ids (a per-command override, the matrix id) stay as they
+    /// are: only the id shown unheard is replaced.
+    static func learnTransactionId(_ id: UInt8, replacing: UInt8, pid: Int) {
+        learned.withLock { $0[pid] = LearnedId(replacing: replacing, id: id) }
+    }
+    static func learnedTransactionId(pid: Int) -> LearnedId? { learned.withLock { $0[pid] } }
+    /// On a replug: the next open starts from the row again.
+    static func forgetLearnedTransactionId(pid: Int) { _ = learned.withLock { $0.removeValue(forKey: pid) } }
     /// For tests.
     static func forgetLearnedTransactionIds() { learned.withLock { $0 = [:] } }
 
@@ -844,12 +854,19 @@ enum RazerDevices {
     static func effects(pid: Int) -> [LightingEffect] { info(pid: pid)?.effects ?? LightingEffect.allCases }
     /// Empty for a model not on record: the test is how anyone finds out.
     static func notOnMouse(pid: Int) -> Set<RazerFeature> { info(pid: pid)?.notOnMouse ?? [] }
-    /// Per-command transaction id: the id this run found the mouse answering to, if any,
-    /// else explicit per-command override, else the class split (see
+    /// Per-command transaction id: explicit per-command override, else the class split (see
     /// `RazerDeviceInfo.matrixTransactionId`). 0x1f default for unknown models — the
-    /// Cobra-family id this app has hardware verified.
+    /// Cobra-family id this app has hardware verified. Then, while the row is still a guess,
+    /// an id this run learned (`learnTransactionId`) stands in for the one it replaced.
     static func transactionId(pid: Int, commandClass: UInt8, commandId: UInt8) -> UInt8 {
-        if let learned = learnedTransactionId(pid: pid) { return learned }
+        let id = registryTransactionId(pid: pid, commandClass: commandClass, commandId: commandId)
+        if let learned = learnedTransactionId(pid: pid), learned.replacing == id, guessesProtocol(pid: pid) {
+            return learned.id
+        }
+        return id
+    }
+
+    private static func registryTransactionId(pid: Int, commandClass: UInt8, commandId: UInt8) -> UInt8 {
         guard let info = info(pid: pid) else { return 0x1f }
         if let override = info.transactionOverrides[UInt16(commandClass) << 8 | UInt16(commandId)] {
             return override

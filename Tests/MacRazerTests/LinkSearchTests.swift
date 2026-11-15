@@ -21,7 +21,7 @@ final class LinkSearchTests: XCTestCase {
     /// search stops at the first one heard.
     func testOtherIdOnThePickFirst() {
         var tried: [(Int, UInt8)] = []
-        let found = LinkSearch.firstHeard(links: [0, 1], ids: ids, skipping: (0, 0x1F)) { link, id in
+        let found = LinkSearch.firstHeard(links: [0, 1], ids: ids, current: 0x1F, skipping: (0, 0x1F)) { link, id in
             tried.append((link, id))
             return id == 0xFF ? .success(self.answer) : .failure(HIDDevice.HIDError.timeout)
         }
@@ -33,24 +33,27 @@ final class LinkSearchTests: XCTestCase {
 
     /// The pick hears nothing: another interface that answers on the usual id wins.
     func testAnotherInterface() {
-        let found = LinkSearch.firstHeard(links: [0, 1], ids: ids) { link, id in
+        let found = LinkSearch.firstHeard(links: [0, 1], ids: ids, current: 0x1F) { link, id in
             link == 1 && id == 0x1F ? .success(self.answer) : .failure(HIDDevice.HIDError.timeout)
         }
         XCTAssertEqual(found?.link, 1)
         XCTAssertEqual(found?.id, 0x1F)
     }
 
-    /// A refusal is heard, so it settles the id as an answer would.
-    func testRefusalCounts() {
-        let found = LinkSearch.firstHeard(links: [0], ids: ids) { _, id in
-            id == 0x3F ? .failure(HIDDevice.HIDError.notSupported) : .failure(HIDDevice.HIDError.timeout)
+    /// A refusal settles the id in use, but a new id needs a real answer: a dongle refuses
+    /// on its own while its mouse sleeps.
+    func testRefusalCountsOnlyOnTheCurrentId() {
+        let refusesAll = { (_: Int, _: UInt8) -> Result<RazerReport, Error> in .failure(HIDDevice.HIDError.notSupported) }
+        XCTAssertEqual(LinkSearch.firstHeard(links: [1], ids: ids, current: 0x1F, read: refusesAll)?.id, 0x1F)
+        let refusesOthers = { (_: Int, id: UInt8) -> Result<RazerReport, Error> in
+            id == 0x1F ? .failure(HIDDevice.HIDError.timeout) : .failure(HIDDevice.HIDError.notSupported)
         }
-        XCTAssertEqual(found?.id, 0x3F)
+        XCTAssertNil(LinkSearch.firstHeard(links: [0, 1], ids: ids, current: 0x1F, read: refusesOthers))
     }
 
     func testNothingHeard() {
         var count = 0
-        let found = LinkSearch.firstHeard(links: [0, 1], ids: ids) { _, _ in
+        let found = LinkSearch.firstHeard(links: [0, 1], ids: ids, current: 0x1F) { _, _ in
             count += 1
             return .failure(HIDDevice.HIDError.timeout)
         }
@@ -58,13 +61,21 @@ final class LinkSearchTests: XCTestCase {
         XCTAssertEqual(count, 2 * ids.count, "every id on every interface")
     }
 
-    /// A search that heard nothing waits a minute before the next reopen runs it again; one
-    /// that answered never runs again on that plug-in.
+    /// A search that heard nothing waits a minute before the next reopen runs it again,
+    /// twice as long after each further miss, up to ten minutes. One that answered never runs
+    /// again on that plug-in.
     func testShouldSearch() {
         let t0 = Date(timeIntervalSince1970: 1_000)
         XCTAssertTrue(LinkSearch.shouldSearch(after: nil, now: t0))
         XCTAssertFalse(LinkSearch.shouldSearch(after: .answered(interface: 7), now: t0))
-        XCTAssertFalse(LinkSearch.shouldSearch(after: .silent(since: t0), now: t0.addingTimeInterval(59)))
-        XCTAssertTrue(LinkSearch.shouldSearch(after: .silent(since: t0), now: t0.addingTimeInterval(60)))
+        let first = LinkSearch.silent(after: nil, now: t0)
+        XCTAssertEqual(first, .silent(since: t0, misses: 1))
+        XCTAssertFalse(LinkSearch.shouldSearch(after: first, now: t0.addingTimeInterval(59)))
+        XCTAssertTrue(LinkSearch.shouldSearch(after: first, now: t0.addingTimeInterval(60)))
+        let second = LinkSearch.silent(after: first, now: t0)
+        XCTAssertEqual(second, .silent(since: t0, misses: 2))
+        XCTAssertFalse(LinkSearch.shouldSearch(after: second, now: t0.addingTimeInterval(119)))
+        XCTAssertTrue(LinkSearch.shouldSearch(after: second, now: t0.addingTimeInterval(120)))
+        XCTAssertEqual(LinkSearch.retryDelay(misses: 10), 600, "capped")
     }
 }
