@@ -708,11 +708,12 @@ final class RazerDevicesTests: XCTestCase {
             XCTAssertFalse(row.hasSmartReelSensitivity, row.name)
             XCTAssertFalse(row.hasScrollAcceleration, row.name)
             XCTAssertFalse(row.supportsLowBatteryThreshold, row.name)
-            XCTAssertFalse(row.hasOnboardSlots, row.name)
+            // The Basilisk V4 HyperSpeed dongle also keeps its profiles in onboard slots.
+            XCTAssertEqual(row.hasOnboardSlots, row.pid == 0x00EA, row.name)
             XCTAssertFalse(row.supportsDpiModes, row.name)
             XCTAssertFalse(row.dpiStagesCountFromOne, row.name)
             XCTAssertEqual(row.lightingZones, [], row.name)
-            // The Basilisk V4 HyperSpeed dongle opts in to a button table, and to nothing else.
+            // The Basilisk V4 HyperSpeed dongle opts in to a button table, and to nothing else here.
             if row.pid == 0x00EA {
                 XCTAssertEqual(row.buttonTable, .basiliskV4HyperSpeed, row.name)
             } else {

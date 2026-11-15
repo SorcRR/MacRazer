@@ -166,8 +166,11 @@ final class BasiliskV4HyperSpeedTests: XCTestCase {
         XCTAssertEqual(RazerCommands.pollingRateRead(command: .classic).report.commandId, 0x85)
     }
 
-    func testNoSlotsMeansNoFactoryRestore() {
-        XCTAssertFalse(RazerDevices.hasOnboardSlots(pid: dongle))
+    /// The dongle keeps its profiles in onboard slots, like the V4 Pro. Its factory slot
+    /// settings haven't been read yet, so a new or reset slot only gets its button table back.
+    func testDongleHasSlotsButNoFactorySettingsYet() {
+        XCTAssertTrue(RazerDevices.hasOnboardSlots(pid: dongle))
         XCTAssertTrue(OnboardSlots.factorySettings(pid: dongle).isEmpty)
+        XCTAssertNotNil(OnboardButtons.layout(pid: dongle))
     }
 }

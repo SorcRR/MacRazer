@@ -407,8 +407,11 @@ enum RazerDevices {
         // stays unverified until a device test passes it, and 1000 Hz is the bundled
         // receiver's top rate. 33000 DPI is the vendor spec (its Focus X 33K Gen-3 sensor).
         // The name has no "(Wireless)": usage stats count models by it, and 0.6 already sent
-        // it this way.
-        .init(pid: 0x00EA, name: "Razer Basilisk V4 HyperSpeed", unverified: [.polling], hasBattery: true, hasLighting: true, maxDPI: 33000, transactionId: 0x1f, matrixTransactionId: 0x1f, brightnessLed: Razer.zeroLed, brightnessReadLed: 0x0A, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, pollingCommand: .basiliskV4HyperSpeed, buttonTable: .basiliskV4HyperSpeed),
+        // it this way. Its onboard profile slots answer the V4 Pro's commands (`OnboardSlots`):
+        // the device test in #135 read 5 slots at most with slot 1 the only one and active,
+        // the V4 Pro's factory state. With them on, its Cycle Profile button switches the
+        // app's profiles too.
+        .init(pid: 0x00EA, name: "Razer Basilisk V4 HyperSpeed", unverified: [.polling], hasBattery: true, hasLighting: true, maxDPI: 33000, transactionId: 0x1f, matrixTransactionId: 0x1f, brightnessLed: Razer.zeroLed, brightnessReadLed: 0x0A, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, pollingCommand: .basiliskV4HyperSpeed, hasOnboardSlots: true, buttonTable: .basiliskV4HyperSpeed),
         // Basilisk V4 Pro over the dongle (in-app report, no credit given): battery, DPI and
         // stages, static color and brightness passed with 0x1f. LOGO and SCROLL answer
         // brightness, ZERO and BACKLIGHT return 0x03. The classic polling command answers

@@ -96,7 +96,8 @@ enum OnboardSlots {
         let activeStage: UInt8 = RazerDevices.dpiStagesCountFromOne(pid: pid) ? 0x03 : 0x02
         switch table {
         case .basiliskV4HyperSpeed:
-            // No onboard slots on this row (`hasOnboardSlots` is off), so nothing to restore.
+            // Its untouched slots have not been read yet: a new or reset slot gets only its
+            // button table back (`OnboardButtons.layout`).
             return []
         case .basiliskV4Pro:
             func raw(_ commandClass: UInt8, _ id: UInt8, _ size: UInt8, _ args: [UInt8]) -> RazerReport {
