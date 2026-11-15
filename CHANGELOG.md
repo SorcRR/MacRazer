@@ -54,6 +54,10 @@ expect rough edges until 1.0.
   show up in its report.
 
 ### Fixed
+- **Profiles and remaps no longer vanish after a restart.** A mouse still asleep when the
+  Mac starts missed MacRazer's first read of its serial number, so the popover and Configure
+  Buttons showed none of its profiles or remaps until MacRazer was reopened. It now uses the
+  serial the mouse last had on that port, and asks again until the mouse answers.
 - **Brightness on the Goliathus Chroma Extended.** It answers brightness on a different light
   than MacRazer used, so the slider did nothing.
 - **250 Hz polling is read correctly.** A mouse left at 250 Hz showed no rate, and the device
