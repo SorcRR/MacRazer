@@ -335,7 +335,8 @@ enum OnboardButtons {
     /// are the blocks read, by table id; a shifted entry read as unset is the factory
     /// function. A control missing from a read keeps its mapping. Kept as they are: a mapping
     /// that already writes what the mouse holds (its name included), and an action only
-    /// MacRazer can do (Double Click) on a control the mouse still has on its factory function.
+    /// MacRazer can do (Double Click) on a control the mouse still has on its factory function,
+    /// and a mapping on an entry MacRazer never wrote that the mouse has on its factory one.
     ///
     /// `neverWritten` says which entries (table id, HyperShift layer or not) MacRazer has no
     /// record of writing into this mouse (`OnboardOwnership`). A mapping there keeps over a
