@@ -1794,6 +1794,28 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// a different unit now sits on the same interface.
     private var knownSerial: (locationID: Int, pid: Int, serial: String)?
 
+    /// The serial each link last reported, across launches (`RememberedSerialStore`).
+    private let rememberedSerials = RememberedSerialStore()
+
+    /// io-queue only. When the open link was last asked for its serial, so a failed read is
+    /// asked again every `DeviceIdentity.serialRetryInterval`, not on every poll.
+    private var lastSerialAttempt: Date?
+
+    /// io-queue only. Reads the serial from the open link; remembers it when it answers.
+    private func probeSerial(_ d: any RazerTransport) -> String? {
+        lastSerialAttempt = Date()
+        guard let serial = (try? d.sendWithRetry(RazerCommands.getSerial())).flatMap({ RazerCommands.parseSerial($0) })
+        else { return nil }
+        knownSerial = (d.locationID, d.productID, serial)
+        rememberedSerials.remember(serial, pid: d.productID, locationID: d.locationID)
+        return serial
+    }
+
+    /// io-queue only. Whether the open link's serial is known.
+    private func serialKnown(for d: any RazerTransport) -> Bool {
+        knownSerial.map { $0.locationID == d.locationID && $0.pid == d.productID } ?? false
+    }
+
     /// io-queue only. Decides what a failed battery read does to the open handle.
     ///
     /// A timeout is the dongle answering for a mouse that didn't: asleep, switched off, out of
@@ -1806,9 +1828,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// the USB level (the device gone, a failed transfer, a failed open) also forgets the
     /// serial, because the thing on that interface may no longer be the same mouse.
     private func releaseDeviceIfNeeded(after error: Error) {
-        let serialKnown = device.map { d in
-            knownSerial.map { $0.locationID == d.locationID && $0.pid == d.productID } ?? false
-        } ?? false
+        let serialKnown = device.map { self.serialKnown(for: $0) } ?? false
         let onDongle = device.map {
             !$0.isBluetooth && RazerDevices.connection(pid: $0.productID) == .wirelessDongle
         } ?? false
@@ -1919,7 +1939,17 @@ final class MouseController: ObservableObject, @unchecked Sendable {
 
     /// Must be called on `io`.
     private func ensureDevice() throws -> any RazerTransport {
-        if let d = device { return d }
+        if let d = device {
+            // A link whose serial read failed stays open while the mouse answers its battery
+            // reads, so the open below never asks again. Ask here instead; once it answers,
+            // reopen so the key, the settings and the onboard remaps follow the real serial.
+            guard DeviceIdentity.serialRetryDue(serialKnown: serialKnown(for: d),
+                                                lastAttempt: lastSerialAttempt, now: Date()),
+                  probeSerial(d) != nil else { return d }
+            d.close()
+            device = nil
+            return try ensureDevice()
+        }
         let d = try openTransport()
         device = d
         let pid = d.productID
@@ -1936,15 +1966,19 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         // reconnect (the wireless link is already known to be flaky) but we already have a
         // serial-keyed history for this session, keep using it instead of falling back to the
         // PID key — that fallback would fragment one mouse's history across two files on every
-        // transient serial-read failure rather than just on a genuine device change.
+        // transient serial-read failure rather than just on a genuine device change. On a
+        // fresh launch there is no session key yet: the serial last seen on this link is used
+        // (a mouse still asleep after the Mac starts misses the read), retried until it answers.
         let serial: String?
         if let known = knownSerial, known.locationID == d.locationID, known.pid == pid {
             serial = known.serial
         } else {
-            serial = (try? d.sendWithRetry(RazerCommands.getSerial())).flatMap { RazerCommands.parseSerial($0) }
-            if let serial { knownSerial = (d.locationID, pid, serial) }
+            serial = probeSerial(d)
         }
-        let key = serial ?? historyKey ?? String(format: "%04x", pid)
+        let key = DeviceIdentity.key(
+            probed: serial, sessionKey: historyKey,
+            remembered: rememberedSerials.serial(pid: pid, locationID: d.locationID),
+            pidKey: String(format: "%04x", pid))
         // Switch to this mouse's own battery history (per-device file + learned rate).
         if key != historyKey {
             // Same-session key upgrade: the serial probe failed on this session's first
