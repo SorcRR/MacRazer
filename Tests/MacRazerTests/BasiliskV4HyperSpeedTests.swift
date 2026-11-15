@@ -183,6 +183,35 @@ final class BasiliskV4HyperSpeedTests: XCTestCase {
         }
     }
 
+    /// The app's polling write goes through `DeviceProbe` on the bare link; it must still
+    /// reach the active slot, set and read-back alike. It used to land on slot 1.
+    func testPollingWriteThroughTheProbeReachesTheActiveSlot() throws {
+        final class Recorder: DeviceProbeChannel {
+            var sent: [RazerReport] = []
+            func send(_ report: RazerReport) throws -> RazerReport { try sendWithRetry(report, attempts: 1) }
+            func sendWithRetry(_ report: RazerReport, attempts: Int) throws -> RazerReport {
+                sent.append(report)
+                var reply = report
+                reply.arguments[1] = 0x02 // holds 500 Hz
+                return reply
+            }
+        }
+        let link = Recorder()
+        let check = try DeviceProbe.writePollingRate(SlotChannel(base: link, slot: 2), hz: 500,
+                                                     command: .basiliskV4HyperSpeed)
+        XCTAssertTrue(check.confirmed)
+        XCTAssertEqual(link.sent.map(\.commandId), [0x0E, 0x8E])
+        XCTAssertEqual(link.sent.map { $0.arguments[0] }, [2, 2])
+    }
+
+    /// A remap table handed back from before the latest slot change is dropped: it is the
+    /// previous slot's, and written to the new one it put back to factory every remap
+    /// MacRazer had written there (2026-11-15).
+    func testOnlyARemapTableFromTheCurrentSlotIsKept() {
+        XCTAssertTrue(MouseController.handedTableIsCurrent(handedEpoch: 3, slotEpoch: 3))
+        XCTAssertFalse(MouseController.handedTableIsCurrent(handedEpoch: 2, slotEpoch: 3))
+    }
+
     /// The dongle keeps its profiles in onboard slots, like the V4 Pro. Its factory slot
     /// settings haven't been read yet, so a new or reset slot only gets its button table back.
     func testDongleHasSlotsButNoFactorySettingsYet() {

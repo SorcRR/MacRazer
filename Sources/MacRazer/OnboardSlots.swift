@@ -186,6 +186,22 @@ final class OnboardSlotTransport: RazerTransport, ButtonFunctionTable {
     }
 }
 
+/// A probe channel with its settings commands pointed at one slot (`OnboardSlots.retarget`),
+/// for the writes that go through `DeviceProbe` on the bare link: without it they reach
+/// slot 1 whichever slot is active (the V4 HyperSpeed's polling rate did, 2026-11-15).
+struct SlotChannel: DeviceProbeChannel {
+    let base: any DeviceProbeChannel
+    let slot: UInt8
+
+    func send(_ report: RazerReport) throws -> RazerReport {
+        try base.send(OnboardSlots.retarget(report, to: slot))
+    }
+
+    func sendWithRetry(_ report: RazerReport, attempts: Int) throws -> RazerReport {
+        try base.sendWithRetry(OnboardSlots.retarget(report, to: slot), attempts: attempts)
+    }
+}
+
 extension RazerTransport {
     /// The Bluetooth link under this one, for the commands only Bluetooth has.
     var bluetoothDevice: BluetoothDevice? {

@@ -1223,12 +1223,21 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// Main thread. Hands the remap table over; it is written into the mouse straight away,
     /// and again whenever a mouse whose table is known connects.
     func setOnboardMappings(_ mappings: [Int: RemapAction], deviceKey: String?) {
+        let epoch = handedSlotEpoch
         userCommand { [weak self] in
             guard let self else { return }
+            // Made before the latest slot change: the previous slot's table. The new slot's
+            // own is read from the mouse and handed over (`onOnboardMappingsRead`).
+            guard Self.handedTableIsCurrent(handedEpoch: epoch, slotEpoch: self.slotEpoch) else { return }
             self.onboardMappings = deviceKey.map { ($0, mappings) }
             guard self.device != nil else { return }
             self.syncOnboardButtonsSync()
         }
+    }
+
+    /// Whether a remap table the remapper hands over belongs to the slot the link is on now.
+    static func handedTableIsCurrent(handedEpoch: Int, slotEpoch: Int) -> Bool {
+        handedEpoch == slotEpoch
     }
 
     /// io-queue only. Brings the open mouse's function table in line with the remap table
@@ -1266,7 +1275,11 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 handed = (handed.deviceKey, adopted)
                 onboardMappings = handed
                 let key = handed.deviceKey
-                publish { self.onOnboardMappingsRead?(key, adopted) }
+                let epoch = slotEpoch
+                publish {
+                    self.handedSlotEpoch = epoch
+                    self.onOnboardMappingsRead?(key, adopted)
+                }
             }
             onboardPublishNextRead = false
         }
@@ -1420,10 +1433,18 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// remaps replace the ones shown.
     private var onboardPublishNextRead = false
 
+    /// io-queue only. Counts the slot changes the link has followed (`followSlotSync`).
+    private var slotEpoch = 0
+    /// Main thread. The `slotEpoch` of the remaps last handed to the remapper. A table the
+    /// remapper hands back from before the latest slot change is the previous slot's: written
+    /// to the new one, it would put back to factory every entry MacRazer wrote there.
+    private var handedSlotEpoch = 0
+
     /// io-queue only. The link is on another slot now, or its slot was reset: its remaps are
     /// read back from the mouse on the next sync, from an empty table so nothing of the
     /// previous slot's carries over, and handed to the remapper.
     private func followSlotSync() {
+        slotEpoch &+= 1
         onboardConfirmed = nil
         // Read again even when it is the slot last read: a reset changes it under the app.
         onboardReadFrom = nil
@@ -2052,7 +2073,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         guard let hid = dev.unwrapped as? HIDDevice, command != .classic else {
             return (try? dev.sendWithRetry(RazerCommands.setPollingRate(hz))) != nil
         }
-        return (try? DeviceProbe.writePollingRate(hid, hz: hz, command: command))?.confirmed ?? false
+        // Pointed at the active slot, like every other settings write (`OnboardSlotTransport`).
+        let channel = SlotChannel(base: hid, slot: (dev as? OnboardSlotTransport)?.slot ?? OnboardSlots.first)
+        return (try? DeviceProbe.writePollingRate(channel, hz: hz, command: command))?.confirmed ?? false
     }
 
     /// Sets brightness on every lit zone the model has (`RazerDevices.brightnessLeds`).
