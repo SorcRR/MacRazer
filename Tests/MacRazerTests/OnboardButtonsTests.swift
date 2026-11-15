@@ -594,4 +594,49 @@ final class OnboardButtonsTests: XCTestCase {
         XCTAssertEqual(adopted, [3: .mouseButton(button: 4, name: "Forward"), 4: named, 2: appOnly],
                        "the DPI button is back on its factory function in the mouse; unread layers keep their mappings")
     }
+
+    /// Updating from a build that did the remaps in software: the mouse still holds its
+    /// factory functions, and that mustn't undo them.
+    func testRemapsMacRazerNeverWroteSurviveAFactoryRead() {
+        let layout = OnboardButtons.layout(pid: 0x00E3)!
+        let standard = Dictionary(uniqueKeysWithValues: layout.map { ($0.tableID, $0.factory) })
+        let shifted: [UInt8: [UInt8]?] = Dictionary(uniqueKeysWithValues: layout.map { ($0.tableID, nil) })
+        let copy = ButtonRemapper.presets[0].action
+        let local: [Int: RemapAction] = [3: copy, 4: .mediaKey(code: 7, name: "Mute"),
+                                         ButtonRemapper.hyperShiftKey(3): .mediaKey(code: 0, name: "Volume Up")]
+        let kept = OnboardButtons.adopt(pid: 0x00E3, mappings: local, standard: standard, shifted: shifted,
+                                        neverWritten: { _, _ in true })
+        XCTAssertEqual(kept, local)
+        // And they are what the sync then writes.
+        let writes = OnboardButtons.plan(pid: 0x00E3, mappings: kept).compactMap { entry in
+            OnboardButtons.step(entry.placement, current: standard[entry.control.tableID]!,
+                                factory: entry.control.factory, owned: []).write
+        }
+        XCTAssertEqual(writes.count, 2)
+    }
+
+    /// Once MacRazer wrote an entry, a factory read there means it was put back elsewhere,
+    /// so the mouse wins again. Entries it never wrote, on either layer, keep their remaps.
+    func testOnlyEntriesMacRazerWroteGiveWayToTheFactory() {
+        let layout = OnboardButtons.layout(pid: 0x00E3)!
+        let standard = Dictionary(uniqueKeysWithValues: layout.map { ($0.tableID, $0.factory) })
+        let shifted: [UInt8: [UInt8]?] = Dictionary(uniqueKeysWithValues: layout.map { ($0.tableID, nil) })
+        let mute = RemapAction.mediaKey(code: 7, name: "Mute")
+        let local: [Int: RemapAction] = [3: mute, 4: mute, ButtonRemapper.hyperShiftKey(4): mute]
+        // Side Back (button 3, entry 0x04) was written; Side Forward (4, 0x05) never, on either layer.
+        let adopted = OnboardButtons.adopt(pid: 0x00E3, mappings: local, standard: standard, shifted: shifted,
+                                           neverWritten: { id, _ in id != 0x04 })
+        XCTAssertEqual(adopted, [4: mute, ButtonRemapper.hyperShiftKey(4): mute])
+        XCTAssertEqual(OnboardButtons.adopt(pid: 0x00E3, mappings: local, standard: standard, shifted: shifted), [:],
+                       "without the record, the mouse wins as before")
+    }
+
+    func testANeverWrittenEntryStillShowsWhatTheMouseHoldsWhenItIsNotFactory() {
+        let layout = OnboardButtons.layout(pid: 0x00E3)!
+        var standard = Dictionary(uniqueKeysWithValues: layout.map { ($0.tableID, $0.factory) })
+        standard[0x04] = OnboardButtons.mouseBlock(5)                            // Synapse put Forward on Side Back
+        let adopted = OnboardButtons.adopt(pid: 0x00E3, mappings: [3: .mediaKey(code: 7, name: "Mute")],
+                                           standard: standard, shifted: [:], neverWritten: { _, _ in true })
+        XCTAssertEqual(adopted, [3: .mouseButton(button: 4, name: "Forward")])
+    }
 }

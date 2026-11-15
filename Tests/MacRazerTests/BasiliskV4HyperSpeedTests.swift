@@ -102,6 +102,17 @@ final class BasiliskV4HyperSpeedTests: XCTestCase {
         XCTAssertEqual(front.factory, OnboardButtons.disabledBlock)
     }
 
+    /// 0.9.0 did this mouse's remaps in software. The first sync after the update reads
+    /// factory functions from the mouse, and the remaps must survive it.
+    func testRemapsFromBeforeTheTableSurviveTheFirstSync() throws {
+        let table = try XCTUnwrap(OnboardButtons.layout(pid: dongle))
+        let standard = Dictionary(uniqueKeysWithValues: table.map { ($0.tableID, $0.factory) })
+        let shifted: [UInt8: [UInt8]?] = Dictionary(uniqueKeysWithValues: table.map { ($0.tableID, nil) })
+        let old: [Int: RemapAction] = [3: ButtonRemapper.presets[0].action, 4: .mediaKey(code: 7, name: "Mute")]
+        XCTAssertEqual(OnboardButtons.adopt(pid: dongle, mappings: old, standard: standard, shifted: shifted,
+                                            neverWritten: { _, _ in true }), old)
+    }
+
     func testRowOrderListsOnlyTheButtonsThisMouseHas() throws {
         let rows = try XCTUnwrap(OnboardButtons.rowOrder(pid: dongle))
         let table = try XCTUnwrap(OnboardButtons.layout(pid: dongle))

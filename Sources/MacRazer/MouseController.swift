@@ -1255,8 +1255,13 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             guard let read = readOnboardTablesSync(table, pid: dev.productID) else { return }
             fresh = read
             onboardReadFrom = (serial, dev.locationID)
+            // An entry MacRazer never wrote keeps its remap over the factory function: the
+            // remaps made before it knew the mouse's table were done in software.
+            let owned = onboardOwnership.owned(serial: serial)
+            let ownedShifted = onboardOwnership.owned(serial: OnboardOwnership.shiftedKey(serial: serial))
             let adopted = OnboardButtons.adopt(pid: dev.productID, mappings: handed.mappings,
-                                               standard: read.standard, shifted: read.shifted)
+                                               standard: read.standard, shifted: read.shifted,
+                                               neverWritten: { id, shifted in ((shifted ? ownedShifted : owned)[id] ?? []).isEmpty })
             if adopted != handed.mappings || onboardPublishNextRead {
                 handed = (handed.deviceKey, adopted)
                 onboardMappings = handed

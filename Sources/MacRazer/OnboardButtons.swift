@@ -336,8 +336,17 @@ enum OnboardButtons {
     /// function. A control missing from a read keeps its mapping. Kept as they are: a mapping
     /// that already writes what the mouse holds (its name included), and an action only
     /// MacRazer can do (Double Click) on a control the mouse still has on its factory function.
+    ///
+    /// `neverWritten` says which entries (table id, HyperShift layer or not) MacRazer has no
+    /// record of writing into this mouse (`OnboardOwnership`). A mapping there keeps over a
+    /// factory entry, and is then written in. Before MacRazer knew a mouse's table it did
+    /// every remap in software, so a factory entry it never wrote is no sign the remap was
+    /// undone elsewhere, and dropping it would lose the remaps made before the update. Once
+    /// MacRazer has written an entry, the mouse wins there again.
     static func adopt(pid: Int, mappings: [Int: RemapAction],
-                      standard: [UInt8: [UInt8]], shifted: [UInt8: [UInt8]?]) -> [Int: RemapAction] {
+                      standard: [UInt8: [UInt8]], shifted: [UInt8: [UInt8]?],
+                      neverWritten: (_ tableID: UInt8, _ shiftedLayer: Bool) -> Bool = { _, _ in false })
+        -> [Int: RemapAction] {
         guard let controls = layout(pid: pid) else { return mappings }
         var out = mappings
         func take(_ key: Int, read: [UInt8], control: Control, shiftedLayer: Bool) {
@@ -347,6 +356,7 @@ enum OnboardButtons {
             if shiftedLayer, found == .hyperShift { found = nil }
             switch found {
             case .passthrough?:
+                if local != .passthrough, neverWritten(control.tableID, shiftedLayer) { return }
                 if !shiftedLayer, local != .passthrough, placement(for: control, mappings: [key: local]) == .app { return }
                 out.removeValue(forKey: key)
             case let action?:

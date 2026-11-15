@@ -32,7 +32,8 @@ expect rough edges until 1.0.
     than it writes, so MacRazer used to think it had no lighting. The device test checks it too.
   - **Thumb-button remaps over the dongle.** Side Front and Side Trigger send nothing to the
     Mac, so they could not be remapped before. Configure Buttons now saves remaps in the
-    mouse, as on the Basilisk V4 Pro, and they keep working with MacRazer closed.
+    mouse, as on the Basilisk V4 Pro, and they keep working with MacRazer closed. Remaps
+    you made before the update stay, and are written into the mouse.
   - **Polling rate.** The mouse refuses both polling commands MacRazer knew, so profiles
     failed on the polling step. It now gets its own command, with 125, 500 and 1000 Hz.
 - **Reset side buttons saved in the mouse.** If Razer Synapse saved other functions to a
