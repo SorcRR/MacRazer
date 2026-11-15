@@ -45,11 +45,12 @@ final class Accessories: ObservableObject, @unchecked Sendable {
             })
         }
         // Synapse may put its own colours back on a wake; ours go back on after it. Not for a
-        // wake with nobody there (a scheduled or Power Nap wake): macOS counts each write as
-        // user activity and would light the display (#142). The screens waking does it then.
+        // wake with the screens still off (a scheduled or Power Nap wake): macOS counts each
+        // write as user activity and would light the display (#142). The screens waking does
+        // it then. The input counters can't tell those wakes apart, since they may not count
+        // the time asleep.
         observers.append(center.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
             self?.reapplyAfterWakePending = true
-            guard UserPresence.secondsSinceInput() < UserPresence.awayAfter else { return }
             self?.reapplyAfterWake()
         })
         observers.append(center.addObserver(forName: NSWorkspace.screensDidWakeNotification, object: nil, queue: .main) { [weak self] _ in
@@ -62,10 +63,11 @@ final class Accessories: ObservableObject, @unchecked Sendable {
     private var reapplyAfterWakePending = false
 
     private func reapplyAfterWake() {
-        guard reapplyAfterWakePending else { return }
-        reapplyAfterWakePending = false
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
-            for accessory in self?.connected ?? [] { accessory.reapplyOverSynapse() }
+            guard let self, self.reapplyAfterWakePending,
+                  CGDisplayIsAsleep(CGMainDisplayID()) == 0 else { return }
+            self.reapplyAfterWakePending = false
+            for accessory in self.connected { accessory.reapplyOverSynapse() }
         }
     }
 

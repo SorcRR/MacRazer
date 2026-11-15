@@ -294,9 +294,20 @@ final class UserPresenceTests: XCTestCase {
 
     func testInputKeepsSomeonePresent() {
         var p = UserPresence(now: t0)
-        p.observe(secondsSinceInput: 5, now: at(50)) // input at 45
-        XCTAssertFalse(p.isAway(now: at(100)))
-        XCTAssertTrue(p.isAway(now: at(105)))
+        p.observe(secondsSinceInput: 5, now: at(25)) // input at 20
+        XCTAssertFalse(p.isAway(now: at(20 + UserPresence.awayAfter - 1)))
+        XCTAssertTrue(p.isAway(now: at(20 + UserPresence.awayAfter)))
+    }
+
+    func testOnlyInputAfterAWakeCounts() {
+        // If the counters skip the time asleep, input from before the sleep is dated just
+        // before the wake. A Power Nap wake must not read as someone at the desk.
+        var p = UserPresence(now: t0)
+        p.woke(at: at(3600))
+        p.observe(secondsSinceInput: 2, now: at(3601)) // "a second before the wake"
+        XCTAssertTrue(p.isAway(now: at(3601)))
+        p.observe(secondsSinceInput: 0, now: at(3605)) // a hand on the mouse after it
+        XCTAssertFalse(p.isAway(now: at(3605)))
     }
 
     func testOlderInputNeverMovesTheClockBack() {
@@ -335,5 +346,57 @@ final class UserPresenceTests: XCTestCase {
         }
         p.observe(secondsSinceInput: 0, now: at(1.5))
         XCTAssertEqual(p.lastInput, at(1.5), "the first read has dropped out of the window list")
+    }
+}
+
+final class PollPauseTests: XCTestCase {
+    func testAWakeWithSomeoneThereChecksAtOnce() {
+        var p = PollPause()
+        XCTAssertEqual(p.didWake(awayForWakeCheck: false), .wakeCheck)
+        XCTAssertFalse(p.wakeCheckDeferred)
+    }
+
+    func testAWakeWithNobodyThereWaitsForThem() {
+        var p = PollPause()
+        XCTAssertNil(p.didWake(awayForWakeCheck: true))
+        XCTAssertNil(p.someoneMayBeBack(away: true, awayForWakeCheck: true), "still nobody")
+        XCTAssertEqual(p.someoneMayBeBack(away: false, awayForWakeCheck: false), .wakeCheck)
+        XCTAssertFalse(p.wakeCheckDeferred, "it runs once")
+        XCTAssertNil(p.someoneMayBeBack(away: false, awayForWakeCheck: false))
+    }
+
+    func testTheLockScreenDoesNotHoldTheWakeCheck() {
+        // Someone typing their password: the routine poll waits, the wake check doesn't.
+        var p = PollPause()
+        _ = p.didWake(awayForWakeCheck: true)
+        p.didPause()
+        XCTAssertEqual(p.someoneMayBeBack(away: true, awayForWakeCheck: false), .wakeCheck)
+        XCTAssertFalse(p.paused)
+    }
+
+    func testATimerThatFiresAfterTheReturnRunsTheDeferredWakeCheck() {
+        // The poll wasn't stopped yet, so its timer is what notices.
+        var p = PollPause()
+        _ = p.didWake(awayForWakeCheck: true)
+        XCTAssertEqual(p.timerFired(awayForWakeCheck: true), .poll, "nobody yet: an ordinary tick, which stops at the read")
+        XCTAssertTrue(p.wakeCheckDeferred)
+        XCTAssertEqual(p.timerFired(awayForWakeCheck: false), .wakeCheck)
+        XCTAssertEqual(p.timerFired(awayForWakeCheck: false), .poll)
+    }
+
+    func testAPausedPollResumesOnlyWhenSomeoneIsBack() {
+        var p = PollPause()
+        XCTAssertNil(p.someoneMayBeBack(away: false, awayForWakeCheck: false), "not paused: nothing to resume")
+        p.didPause()
+        XCTAssertNil(p.someoneMayBeBack(away: true, awayForWakeCheck: false), "locked: the poll still waits")
+        XCTAssertEqual(p.someoneMayBeBack(away: false, awayForWakeCheck: false), .poll)
+        XCTAssertFalse(p.paused)
+    }
+
+    func testSchedulingEndsThePause() {
+        var p = PollPause()
+        p.didPause()
+        p.didSchedule()
+        XCTAssertNil(p.someoneMayBeBack(away: false, awayForWakeCheck: false))
     }
 }

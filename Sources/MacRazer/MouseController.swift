@@ -410,7 +410,11 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
         ) { [weak self] _ in
             guard let self else { return }
-            if self.userIsAway() { self.wakeRecoveryDeferred = true } else { self.beginWakeRecovery() }
+            let now = Date()
+            self.presenceLock.withLock { self.presence.woke(at: now) }
+            if self.pollPause.didWake(awayForWakeCheck: self.away().forWakeCheck) == .wakeCheck {
+                self.beginWakeRecovery()
+            }
         }
         observeQuietScreens()
     }
@@ -431,21 +435,26 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     private var screensAsleep = false
     private var screenLocked = false
     private var sessionInactive = false
-    /// Main thread. The poll is stopped and the timer only looks for someone coming back.
-    private var pollPaused = false
-    /// Main thread. The Mac woke with nobody there, so the wake check waits for them.
-    private var wakeRecoveryDeferred = false
+    /// Main thread. Whether the poll is stopped, and whether a wake check waits (`PollPause`).
+    private var pollPause = PollPause()
 
     /// Main thread. Also takes in the input counters, so call it when deciding, not in a loop.
-    private func userIsAway() -> Bool {
-        if screensAsleep || screenLocked || sessionInactive { return true }
+    /// `forPoll` is for routine reads; `forWakeCheck` leaves the lock screen out (`PollPause`).
+    private func away() -> (forPoll: Bool, forWakeCheck: Bool) {
+        // The notification is the usual signal. The display's own state backs it up, for a
+        // sleep where it didn't come, and for a dark wake, where the screens stay off.
+        let screensOff = screensAsleep || CGDisplayIsAsleep(CGMainDisplayID()) != 0
         let seconds = UserPresence.secondsSinceInput()
         let now = Date()
-        return presenceLock.withLock {
+        let idle = presenceLock.withLock {
             presence.observe(secondsSinceInput: seconds, now: now)
             return presence.isAway(now: now)
         }
+        let forWakeCheck = screensOff || idle || sessionInactive
+        return (forWakeCheck || screenLocked, forWakeCheck)
     }
+
+    private func userIsAway() -> Bool { away().forPoll }
 
     /// `io` only: brackets a read of the device, so input the reads themselves produce isn't
     /// taken for a person (`UserPresence`). Returns the call that ends the bracket.
@@ -476,15 +485,15 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// Main thread. If the poll stopped for an empty desk and someone is back, read now: a
     /// mouse switched off meanwhile still shows connected with its remaps live until then.
     private func resumeIfSomeoneIsBack() {
-        guard pollPaused || wakeRecoveryDeferred, !deviceTestActive, !userIsAway() else { return }
-        pollPaused = false
+        guard pollPause.paused || pollPause.wakeCheckDeferred, !deviceTestActive else { return }
+        let away = away()
+        guard let action = pollPause.someoneMayBeBack(away: away.forPoll, awayForWakeCheck: away.forWakeCheck)
+        else { return }
         pollTimer?.invalidate()
         pollTimer = nil
-        if wakeRecoveryDeferred {
-            wakeRecoveryDeferred = false
-            beginWakeRecovery()
-        } else {
-            pollTick()
+        switch action {
+        case .wakeCheck: beginWakeRecovery()
+        case .poll: pollTick()
         }
     }
 
@@ -528,7 +537,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// even while the menu/popover is being tracked.
     private func scheduleNextPoll(after interval: TimeInterval) {
         pollTimer?.invalidate()
-        pollPaused = false
+        pollPause.didSchedule()
         // A poll already on the device queue when a test began still lands here when it
         // finishes. `endDeviceTest` restarts the loop.
         guard !deviceTestActive else { pollTimer = nil; return }
@@ -557,7 +566,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     private func pausePoll() {
         pollTimer?.invalidate()
         guard !deviceTestActive else { pollTimer = nil; return }
-        pollPaused = true
+        pollPause.didPause()
         let interval = BatteryPollStateMachine.Cadence.awayCheck
         let t = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
             self?.resumeIfSomeoneIsBack()
@@ -583,11 +592,11 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     }
 
     private func pollTick() {
-        let away = userIsAway()
+        let state = away()
+        let away = state.forPoll
         // Back after a wake that found nobody there: the wake check does this read, with the
         // Bluetooth cooldown lifted, rather than an ordinary poll.
-        if !away, wakeRecoveryDeferred {
-            wakeRecoveryDeferred = false
+        if pollPause.timerFired(awayForWakeCheck: state.forWakeCheck) == .wakeCheck {
             beginWakeRecovery()
             return
         }
