@@ -295,6 +295,7 @@ final class HIDDevice {
             found[pickID] = outcome
             found = found.filter { attached.contains($0.key) || $0.key == pickID }
         }
+        RazerDevices.forgetLearnedTransactionIds(keeping: attached)
     }
 
     /// For a mouse whose protocol is a guess (`RazerDevices.guessesProtocol`): when the
@@ -315,10 +316,10 @@ final class HIDDevice {
     static func findAnsweringLink(_ opened: HIDDevice) -> (device: HIDDevice, heard: Bool?) {
         let pid = opened.productID
         guard RazerDevices.guessesProtocol(pid: pid) else { return (opened, nil) }
-        let pickID = registryID(of: opened.device)
+        let pickID = opened.registryID
         var before = searched.withLock { $0[pickID] }
         // Another interface answered on this plug-in: go straight there.
-        if case .answered(let winnerID)? = before, winnerID != pickID {
+        if let winnerID = LinkSearch.redirect(pick: pickID, after: before) {
             if let winner = matchingDevices(vendorId: Razer.vendorId).first(where: { registryID(of: $0) == winnerID }),
                let reopened = try? open(winner, as: "answering interface") {
                 opened.close()
@@ -328,45 +329,45 @@ final class HIDDevice {
             before = nil
             remember(nil, for: pickID)
         }
-        // A new plug-in (registry IDs are new on each) starts from the row again, so an id
-        // learned on an earlier one can't outlive it.
-        if before == nil { RazerDevices.forgetLearnedTransactionId(pid: pid) }
         let read = RazerCommands.getFirmwareVersion()
-        let current = RazerDevices.transactionId(pid: pid, commandClass: read.commandClass, commandId: read.commandId)
+        let current = RazerDevices.transactionId(pid: pid, commandClass: read.commandClass, commandId: read.commandId,
+                                                 link: pickID)
         func result(_ dev: HIDDevice, _ id: UInt8, attempts: Int = 1) -> Result<RazerReport, Error> {
             Result { try dev.sendWithRetry(read, attempts: attempts, transactionId: id) }
         }
-        if LinkSearch.heard(result(opened, current)) {
-            if before == nil { remember(.answered(interface: pickID), for: pickID) }
+        switch LinkSearch.afterFirstRead(heard: LinkSearch.heard(result(opened, current)), pick: pickID,
+                                         before: before, now: Date()) {
+        case .use(let record):
+            if let record { remember(record, for: pickID) }
             return (opened, true)
+        case .quiet:
+            return (opened, false)
+        case .search:
+            break
         }
-        // Answered on this one before, so a silent mouse now is asleep, not misread.
-        guard LinkSearch.shouldSearch(after: before, now: Date()) else { return (opened, false) }
 
         let others = otherControlInterfaces(of: opened).compactMap { try? open($0, as: "fallback interface") }
         let links = [opened] + others
         let found = LinkSearch.firstHeard(links: links.indices.map { $0 },
-                                          ids: DeviceProbe.transactionCandidates(preferred: current),
-                                          current: current, skipping: (0, current)) { result(links[$0], $1) }
-        guard let found else {
-            others.forEach { $0.close() }
-            remember(LinkSearch.silent(after: before, now: Date()), for: pickID)
+                                          ids: DeviceProbe.transactionCandidates(preferred: current), current: current,
+                                          acceptsRefusal: RazerDevices.connection(pid: pid) != .wirelessDongle,
+                                          skipping: (0, current)) { result(links[$0], $1) }
+        let winner = found.map { links[$0.link] }
+        links.filter { $0 !== winner }.forEach { $0.close() }
+        // One more try on the id in use, not a full retry: a mouse that was only slow once
+        // answers the second time.
+        let settled = LinkSearch.afterSearch(found: found.map { (links[$0.link].registryID, $0.id) }, current: current,
+                                             before: before, now: Date(),
+                                             currentHeardOnWinner: { winner.map { LinkSearch.heard(result($0, current, attempts: 2)) } ?? false })
+        remember(settled.outcome, for: pickID)
+        guard let winner else {
             FileHandle.standardError.write(Data("[MacRazer] no interface or transaction id answered\n".utf8))
             return (opened, false)
         }
-        let winner = links[found.link]
-        links.filter { $0 !== winner }.forEach { $0.close() }
-        // One quiet read, as a mouse can give right after plug-in, isn't enough to swap the
-        // id: if the one in use answers on the winner after all, it stays.
-        if found.id != current,
-           !LinkSearch.heard(result(winner, current, attempts: HIDDevice.defaultAttempts)) {
-            RazerDevices.learnTransactionId(found.id, replacing: current, pid: pid)
-            FileHandle.standardError.write(Data(String(
-                format: "[MacRazer] answered with transaction id 0x%02X on %@\n", found.id, describe(winner.device)).utf8))
-        } else {
-            FileHandle.standardError.write(Data("[MacRazer] answered on \(describe(winner.device))\n".utf8))
-        }
-        remember(.answered(interface: registryID(of: winner.device)), for: pickID)
+        if let id = settled.learn { RazerDevices.learnTransactionId(id, replacing: current, link: winner.registryID) }
+        FileHandle.standardError.write(Data(String(
+            format: "[MacRazer] answered with transaction id 0x%02X on %@\n",
+            settled.learn ?? current, describe(winner.device)).utf8))
         return (winner, true)
     }
 
@@ -511,7 +512,7 @@ final class HIDDevice {
         // the single point every command passes through — the builders in `RazerCommands`
         // stay model-agnostic.
         report.transactionId = transactionId ?? RazerDevices.transactionId(
-            pid: productID, commandClass: report.commandClass, commandId: report.commandId)
+            pid: productID, commandClass: report.commandClass, commandId: report.commandId, link: registryID)
         let out = report.serialized()
         let setResult = out.withUnsafeBufferPointer { ptr in
             IOHIDDeviceSetReport(device, kIOHIDReportTypeFeature, 0, ptr.baseAddress!, ptr.count)

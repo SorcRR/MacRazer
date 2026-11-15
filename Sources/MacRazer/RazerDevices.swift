@@ -650,20 +650,24 @@ enum RazerDevices {
         let id: UInt8
     }
 
-    /// Per pid, the id a mouse answered to after its registry id didn't. In memory only:
-    /// probing again on the next launch is cheap, and a stale id saved to disk could outlive
-    /// a fix to the row. Locked: HID traffic reads it off the main thread.
-    private static let learned = OSAllocatedUnfairLock<[Int: LearnedId]>(initialState: [:])
+    /// Per interface (by registry ID, new on every replug), the id a mouse answered to
+    /// after its registry id didn't. Per interface, not per pid, so two mice of one model
+    /// each keep their own, and a replug starts from the row again. In memory only: probing
+    /// again on the next launch is cheap, and a stale id saved to disk could outlive a fix
+    /// to the row. Locked: HID traffic reads it off the main thread.
+    private static let learned = OSAllocatedUnfairLock<[UInt64: LearnedId]>(initialState: [:])
 
-    /// From now on, every command on `pid` that would go out on `replacing` goes out on `id`
-    /// instead. The row's other ids (a per-command override, the matrix id) stay as they
-    /// are: only the id shown unheard is replaced.
-    static func learnTransactionId(_ id: UInt8, replacing: UInt8, pid: Int) {
-        learned.withLock { $0[pid] = LearnedId(replacing: replacing, id: id) }
+    /// From now on, every command over `link` that would go out on `replacing` goes out on
+    /// `id` instead. The row's other ids (a per-command override, the matrix id) stay as
+    /// they are: only the id shown unheard is replaced.
+    static func learnTransactionId(_ id: UInt8, replacing: UInt8, link: UInt64) {
+        learned.withLock { $0[link] = LearnedId(replacing: replacing, id: id) }
     }
-    static func learnedTransactionId(pid: Int) -> LearnedId? { learned.withLock { $0[pid] } }
-    /// On a replug: the next open starts from the row again.
-    static func forgetLearnedTransactionId(pid: Int) { _ = learned.withLock { $0.removeValue(forKey: pid) } }
+    static func learnedTransactionId(link: UInt64) -> LearnedId? { learned.withLock { $0[link] } }
+    /// Drops what was learned on interfaces not in `attached`, the ones unplugged since.
+    static func forgetLearnedTransactionIds(keeping attached: Set<UInt64>) {
+        learned.withLock { $0 = $0.filter { attached.contains($0.key) } }
+    }
     /// For tests.
     static func forgetLearnedTransactionIds() { learned.withLock { $0 = [:] } }
 
@@ -857,10 +861,10 @@ enum RazerDevices {
     /// Per-command transaction id: explicit per-command override, else the class split (see
     /// `RazerDeviceInfo.matrixTransactionId`). 0x1f default for unknown models — the
     /// Cobra-family id this app has hardware verified. Then, while the row is still a guess,
-    /// an id this run learned (`learnTransactionId`) stands in for the one it replaced.
-    static func transactionId(pid: Int, commandClass: UInt8, commandId: UInt8) -> UInt8 {
+    /// an id learned on `link` (`learnTransactionId`) stands in for the one it replaced.
+    static func transactionId(pid: Int, commandClass: UInt8, commandId: UInt8, link: UInt64? = nil) -> UInt8 {
         let id = registryTransactionId(pid: pid, commandClass: commandClass, commandId: commandId)
-        if let learned = learnedTransactionId(pid: pid), learned.replacing == id, guessesProtocol(pid: pid) {
+        if let link, let learned = learnedTransactionId(link: link), learned.replacing == id, guessesProtocol(pid: pid) {
             return learned.id
         }
         return id

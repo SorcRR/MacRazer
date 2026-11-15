@@ -78,4 +78,62 @@ final class LinkSearchTests: XCTestCase {
         XCTAssertTrue(LinkSearch.shouldSearch(after: second, now: t0.addingTimeInterval(120)))
         XCTAssertEqual(LinkSearch.retryDelay(misses: 10), 600, "capped")
     }
+
+    /// Over a cable, a refusal on another id is heard too: nothing but the mouse can refuse.
+    func testRefusalOnAnotherIdOverACable() {
+        let found = LinkSearch.firstHeard(links: [0], ids: ids, current: 0x1F, acceptsRefusal: true) { _, id in
+            id == 0x3F ? .failure(HIDDevice.HIDError.notSupported) : .failure(HIDDevice.HIDError.timeout)
+        }
+        XCTAssertEqual(found?.id, 0x3F)
+    }
+
+    func testRedirect() {
+        XCTAssertNil(LinkSearch.redirect(pick: 1, after: nil))
+        XCTAssertNil(LinkSearch.redirect(pick: 1, after: .answered(interface: 1)))
+        XCTAssertNil(LinkSearch.redirect(pick: 1, after: .silent(since: Date(), misses: 1)))
+        XCTAssertEqual(LinkSearch.redirect(pick: 1, after: .answered(interface: 2)), 2)
+    }
+
+    /// A pick heard after a silent search is recorded as answered, so its later silence
+    /// reads as sleep and no search runs.
+    func testAfterFirstRead() {
+        let t0 = Date(timeIntervalSince1970: 1_000)
+        XCTAssertEqual(LinkSearch.afterFirstRead(heard: true, pick: 1, before: nil, now: t0),
+                       .use(record: .answered(interface: 1)))
+        XCTAssertEqual(LinkSearch.afterFirstRead(heard: true, pick: 1, before: .silent(since: t0, misses: 3), now: t0),
+                       .use(record: .answered(interface: 1)), "woke up after a silent search")
+        XCTAssertEqual(LinkSearch.afterFirstRead(heard: true, pick: 1, before: .answered(interface: 1), now: t0),
+                       .use(record: nil))
+        XCTAssertEqual(LinkSearch.afterFirstRead(heard: false, pick: 1, before: .answered(interface: 1), now: t0), .quiet)
+        XCTAssertEqual(LinkSearch.afterFirstRead(heard: false, pick: 1, before: nil, now: t0), .search)
+        XCTAssertEqual(LinkSearch.afterFirstRead(heard: false, pick: 1, before: .silent(since: t0, misses: 1),
+                                                 now: t0.addingTimeInterval(10)), .quiet)
+    }
+
+    func testAfterSearch() {
+        let t0 = Date(timeIntervalSince1970: 1_000)
+        var rechecked = 0
+        // Nothing heard: silent, one more miss, nothing learned, no recheck.
+        let none = LinkSearch.afterSearch(found: nil, current: 0x1F, before: .silent(since: t0, misses: 1), now: t0) {
+            rechecked += 1; return false
+        }
+        XCTAssertEqual(none, .init(outcome: .silent(since: t0, misses: 2), learn: nil))
+        // Another interface on the id in use: switch interface, learn nothing, no recheck.
+        let otherLink = LinkSearch.afterSearch(found: (5, 0x1F), current: 0x1F, before: nil, now: t0) {
+            rechecked += 1; return false
+        }
+        XCTAssertEqual(otherLink, .init(outcome: .answered(interface: 5), learn: nil))
+        XCTAssertEqual(rechecked, 0)
+        // A new id, and the id in use still unheard: learn it.
+        let learned = LinkSearch.afterSearch(found: (1, 0x3F), current: 0x1F, before: nil, now: t0) {
+            rechecked += 1; return false
+        }
+        XCTAssertEqual(learned, .init(outcome: .answered(interface: 1), learn: 0x3F))
+        // A new id, but the id in use answers on the recheck: it was only slow once.
+        let slow = LinkSearch.afterSearch(found: (1, 0x3F), current: 0x1F, before: nil, now: t0) {
+            rechecked += 1; return true
+        }
+        XCTAssertEqual(slow, .init(outcome: .answered(interface: 1), learn: nil))
+        XCTAssertEqual(rechecked, 2)
+    }
 }

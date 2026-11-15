@@ -705,26 +705,30 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertFalse(RazerDevices.guessesProtocol(pid: 0x0046), "Mamba TE: DPI and polling verified")
     }
 
-    /// A learned id replaces only the id it stands in for, so a row's per-command split
-    /// survives, and stops applying once the row is verified.
+    /// A learned id replaces only the id it stands in for, on its own interface, so a
+    /// row's per-command split survives, and stops applying once the row is verified.
     func testLearnedTransactionId() {
         defer { RazerDevices.forgetLearnedTransactionIds() }
-        XCTAssertNil(RazerDevices.learnedTransactionId(pid: 0x9999))
-        RazerDevices.learnTransactionId(0xff, replacing: 0x1f, pid: 0x9999)
-        XCTAssertEqual(RazerDevices.transactionId(pid: 0x9999, commandClass: 0x04, commandId: 0x05), 0xff)
-        XCTAssertEqual(RazerDevices.transactionId(pid: 0x9999, commandClass: 0x0F, commandId: 0x04), 0xff)
-        XCTAssertEqual(RazerDevices.transactionId(pid: 0x9998, commandClass: 0x04, commandId: 0x05), 0x1f, "other pids untouched")
+        let link: UInt64 = 7, other: UInt64 = 8
+        XCTAssertNil(RazerDevices.learnedTransactionId(link: link))
+        RazerDevices.learnTransactionId(0xff, replacing: 0x1f, link: link)
+        XCTAssertEqual(RazerDevices.transactionId(pid: 0x9999, commandClass: 0x04, commandId: 0x05, link: link), 0xff)
+        XCTAssertEqual(RazerDevices.transactionId(pid: 0x9999, commandClass: 0x0F, commandId: 0x04, link: link), 0xff)
+        XCTAssertEqual(RazerDevices.transactionId(pid: 0x9999, commandClass: 0x04, commandId: 0x05, link: other), 0x1f,
+                       "a second mouse of the model keeps its own")
+        XCTAssertEqual(RazerDevices.transactionId(pid: 0x9999, commandClass: 0x04, commandId: 0x05), 0x1f, "no link, the row")
         // Lancehead TE: 0x3f unheard, 0x1f answered. The 0xFF DPI-stages override stays.
-        RazerDevices.learnTransactionId(0x1f, replacing: 0x3f, pid: 0x0060)
-        XCTAssertEqual(RazerDevices.transactionId(pid: 0x0060, commandClass: 0x00, commandId: 0x81), 0x1f)
-        XCTAssertEqual(RazerDevices.transactionId(pid: 0x0060, commandClass: 0x0F, commandId: 0x04), 0x1f)
-        XCTAssertEqual(RazerDevices.transactionId(pid: 0x0060, commandClass: 0x04, commandId: 0x86), 0xff, "override kept")
+        RazerDevices.learnTransactionId(0x1f, replacing: 0x3f, link: other)
+        XCTAssertEqual(RazerDevices.transactionId(pid: 0x0060, commandClass: 0x00, commandId: 0x81, link: other), 0x1f)
+        XCTAssertEqual(RazerDevices.transactionId(pid: 0x0060, commandClass: 0x0F, commandId: 0x04, link: other), 0x1f)
+        XCTAssertEqual(RazerDevices.transactionId(pid: 0x0060, commandClass: 0x04, commandId: 0x86, link: other), 0xff, "override kept")
         // A verified row's ids are known to work: a learned id doesn't touch them.
-        RazerDevices.learnTransactionId(0x3f, replacing: 0x1f, pid: 0x00DB)
-        XCTAssertEqual(RazerDevices.transactionId(pid: 0x00DB, commandClass: 0x00, commandId: 0x81), 0x1f)
-        RazerDevices.forgetLearnedTransactionId(pid: 0x9999)
-        XCTAssertEqual(RazerDevices.transactionId(pid: 0x9999, commandClass: 0x04, commandId: 0x05), 0x1f)
-        XCTAssertNotNil(RazerDevices.learnedTransactionId(pid: 0x0060), "only that pid forgotten")
+        RazerDevices.learnTransactionId(0x3f, replacing: 0x1f, link: 9)
+        XCTAssertEqual(RazerDevices.transactionId(pid: 0x00DB, commandClass: 0x00, commandId: 0x81, link: 9), 0x1f)
+        // Unplugged interfaces are dropped.
+        RazerDevices.forgetLearnedTransactionIds(keeping: [other])
+        XCTAssertNil(RazerDevices.learnedTransactionId(link: link))
+        XCTAssertNotNil(RazerDevices.learnedTransactionId(link: other))
     }
 }
 
