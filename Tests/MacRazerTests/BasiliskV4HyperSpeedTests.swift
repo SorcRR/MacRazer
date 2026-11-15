@@ -166,6 +166,23 @@ final class BasiliskV4HyperSpeedTests: XCTestCase {
         XCTAssertEqual(RazerCommands.pollingRateRead(command: .classic).report.commandId, 0x85)
     }
 
+    /// Its polling command's first argument is the slot, like the other settings commands,
+    /// so each profile keeps its own rate: set and read go to the active slot.
+    func testPollingFollowsTheActiveSlot() {
+        let set = OnboardSlots.retarget(RazerCommands.setPollingRateV4HyperSpeed(500), to: 2)
+        XCTAssertEqual(set.arguments[0], 2)
+        XCTAssertEqual(set.arguments[1], 0x02, "500 Hz is kept")
+        XCTAssertEqual(OnboardSlots.retarget(RazerCommands.getPollingRateV4HyperSpeed(), to: 3).arguments[0], 3)
+        // Slot 1 is what it always sent.
+        XCTAssertEqual(OnboardSlots.retarget(RazerCommands.setPollingRateV4HyperSpeed(500), to: 1).arguments[0], 1)
+        // The other polling commands carry no slot: their first argument is the rate.
+        let classic = RazerCommands.setPollingRateReports(500, command: .classic)[0]
+        XCTAssertEqual(OnboardSlots.retarget(classic, to: 2).arguments, classic.arguments)
+        for report in RazerCommands.setPollingRateReports(500, command: .rate2) {
+            XCTAssertEqual(OnboardSlots.retarget(report, to: 2).arguments, report.arguments)
+        }
+    }
+
     /// The dongle keeps its profiles in onboard slots, like the V4 Pro. Its factory slot
     /// settings haven't been read yet, so a new or reset slot only gets its button table back.
     func testDongleHasSlotsButNoFactorySettingsYet() {

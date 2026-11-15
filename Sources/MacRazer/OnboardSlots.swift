@@ -65,6 +65,7 @@ enum OnboardSlots {
         0x0214, 0x0294, 0x0217, 0x0297, // scroll mode, Smart-Reel
         0x0230, 0x02B0,                 // wheel mode
         0x0F02, 0x0F82, 0x0F04, 0x0F84, // lighting effect, brightness
+        0x000E, 0x008E,                 // polling rate, Basilisk V4 HyperSpeed (args [slot, code])
     ]
 
     /// `report` pointed at `slot` when it is a settings command addressed to slot 1.
