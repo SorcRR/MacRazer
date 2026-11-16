@@ -72,16 +72,25 @@ struct BatteryPollStateMachine {
         /// No HID device is enumerated. `HIDMonitor` checks as soon as a device appears, so
         /// this is only a safety net in case its registration failed.
         static let unplugged: TimeInterval = 120
+        /// While nobody is at the Mac the poll stops (`UserPresence`), and this is how often
+        /// the app looks for them coming back. The look reads the window server's input
+        /// counters only and sends nothing to the mouse.
+        static let awayCheck: TimeInterval = 5
     }
 
     /// How long to wait before the next poll, given what the last one found and whether
-    /// anyone is using the pointer (`Cadence.inUse`).
-    func nextPollInterval(pointerActive: Bool) -> TimeInterval {
+    /// anyone is using the pointer (`Cadence.inUse`). Nil means don't poll: nobody is at
+    /// the Mac (`userAway`), and every read would count as activity and keep the display
+    /// awake (#142).
+    func nextPollInterval(pointerActive: Bool, userAway: Bool = false) -> TimeInterval? {
         // Checked before everything else: this is a failure the UI hasn't acted on yet, so
         // it outranks even "nothing is plugged in", which would otherwise wait two minutes
-        // to confirm a device that vanished between polls.
+        // to confirm a device that vanished between polls. It outranks an empty desk too:
+        // the mouse still reads as connected with its remaps live until the second read.
         if consecutiveFailures > 0 && !offlineDeclared { return Cadence.confirming }
+        // Nothing to talk to, so nothing to keep the display awake with: the safety net stays.
         if deviceGone { return Cadence.unplugged }
+        if userAway { return nil }
         if lastReadOK && batteryReady { return pointerActive ? Cadence.inUse : Cadence.connected }
         return pollsWithoutReading < Cadence.fastPolls ? Cadence.settling : Cadence.asleep
     }
