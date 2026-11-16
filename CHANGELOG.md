@@ -60,6 +60,10 @@ expect rough edges until 1.0.
   a mouse stays silent, the app tries the other ids and the mouse's other interfaces, and
   keeps the one that answers. The Lancehead Tournament Edition also has its own entry now,
   with OpenRazer's settings. A device test from an owner will confirm it.
+- **The display sleeps again with MacRazer running.** macOS counts every battery read as
+  user activity, so the poll kept the display awake. Now the poll stops after 30 seconds
+  without keyboard or pointer input, and while the screen is asleep or locked. It starts
+  again on the next input. Thanks to ccoddington for the measurements (#142).
 - **Brightness on the Goliathus Chroma Extended.** It answers brightness on a different light
   than MacRazer used, so the slider did nothing.
 - **250 Hz polling is read correctly.** A mouse left at 250 Hz showed no rate, and the device
