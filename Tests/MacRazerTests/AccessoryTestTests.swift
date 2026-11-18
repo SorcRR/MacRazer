@@ -179,7 +179,10 @@ final class AccessoryTestTests: XCTestCase {
     /// An accessory report as the Worker takes it, shared with its tests. Rewrite with
     /// UPDATE_WORKER_FIXTURE=1, like `full-report.json`.
     static func accessoryReport() -> DeviceReport {
-        let info = RazerAccessories.info(pid: 0x0C08)!
+        // The Firefly V2 Pro as it was before reports verified it, written out so the fixture
+        // doesn't move when the registry learns more about the pad.
+        let info = RazerAccessoryInfo(pid: 0x0C08, name: "Razer Firefly V2 Pro", kind: .mousepad, verified: false,
+                                      transactionId: 0x3F, effectLed: Razer.zeroLed, brightnessLed: Razer.zeroLed)
         let ids = DeviceProbe.knownTransactionIds.map {
             DeviceReport.TransactionResult(id: $0, answered: $0 == 0x3F, groups: $0 == 0x3F ? ["ZERO"] : [])
         }

@@ -89,12 +89,20 @@ enum RazerAccessories {
         .init(pid: 0x0C04, name: "Razer Firefly V2", kind: .mousepad, verified: true, transactionId: 0x1F,
               effectLed: Razer.zeroLed, brightnessLed: Razer.backlightLed,
               untestedEffects: [.breathing, .spectrum, .wave, .off]),
-        pad(0x0C08, "Razer Firefly V2 Pro"),
+        // Firefly V2 Pro, from three in-app reports on firmware v1.0 (2026-11-18): every id
+        // answers, but brightness answers on BACKLIGHT_LED only (ZERO_LED, LOGO_LED and
+        // SCROLL_LED refuse it), as on the Firefly V2. It dimmed and came back each time, with
+        // 0x3F. A static colour on ZERO_LED landed in two of the three. The other effects follow
+        // OpenRazer and haven't been seen yet.
+        .init(pid: 0x0C08, name: "Razer Firefly V2 Pro", kind: .mousepad, verified: true, transactionId: 0x3F,
+              effectLed: Razer.zeroLed, brightnessLed: Razer.backlightLed,
+              untestedEffects: [.breathing, .spectrum, .wave, .off]),
         // No wave in OpenRazer for the Goliathus pads.
         //
         // Goliathus Chroma, from an in-app report on firmware v1.1: as on the Extended,
         // brightness reads on LOGO_LED (ZERO_LED refuses it), and dimmed and came back there.
-        // A static colour on ZERO_LED landed. The other effects follow OpenRazer.
+        // A static colour on ZERO_LED landed. The other effects follow OpenRazer. A later report
+        // (0.9.0, macOS 14.6) dimmed it too, but the owner saw no red.
         .init(pid: 0x0C01, name: "Razer Goliathus Chroma", kind: .mousepad, verified: true,
               transactionId: 0x3F, effectLed: Razer.zeroLed, brightnessLed: Razer.logoLed,
               effects: LightingEffect.allCases.filter { $0 != .wave },
