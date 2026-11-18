@@ -105,6 +105,30 @@ enum SideButtonReset {
         return Remap(id: id, current: function.current, factory: function.factory)
     }
 
+    /// The same remap read over USB, where the reply carries the current block only: the
+    /// factory one is the side button itself, as Synapse writes it.
+    static func remap(id: UInt8, block: [UInt8]) -> Remap? {
+        guard ids.contains(id), block.count == 7, block.contains(where: { $0 != 0 }) else { return nil }
+        let factory = mouseBlock(id)
+        guard block != factory else { return nil }
+        return Remap(id: id, current: block, factory: factory)
+    }
+
+    /// Puts the factory block back over USB and reads it back. The write lands in the active
+    /// profile only: USB has no measured slot read, so nothing else is written.
+    static func reset(remap: Remap, on transport: RazerTransport) throws {
+        let write = try transport.sendWithRetry(RazerCommands.setButtonFunction(id: remap.id, block: remap.factory))
+        guard write.status == 0x02 else { throw HIDDevice.HIDError.commandFailed }
+        let check = try transport.sendWithRetry(RazerCommands.getButtonFunction(id: remap.id))
+        guard check.arguments[1] == remap.id, Array(check.arguments[3..<10]) == remap.factory else {
+            throw ResetError.notReadBack
+        }
+    }
+
+    /// The line a USB reset leaves on the page. The BLE one counts profile slots; USB writes
+    /// the active one only.
+    static func usbDoneText() -> String { "Side buttons reset in the active profile." }
+
     /// The button's name on the page.
     static func name(_ id: UInt8) -> String { id == 0x04 ? "Back" : "Forward" }
 

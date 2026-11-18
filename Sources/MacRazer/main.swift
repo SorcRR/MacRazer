@@ -4,7 +4,7 @@
 import Foundation
 
 // Entry point. No arguments launches the menu bar app; subcommands are CLI diagnostics
-// against real hardware (battery / dpi / poll / rgb / brightness / info) plus render-*
+// against real hardware (battery / dpi / poll / rgb / brightness / buttons / info) plus render-*
 // commands that draw UI pages and icons to PNGs for visual inspection without a device.
 // Battery reads may time out over the wireless dongle — the known issue from
 // openrazer/openrazer#2583.
@@ -499,6 +499,45 @@ case "iconset":
         MenuBarIcon.writeAppIcon(to: "\(dir)/\(name).png", size: sz, bg: bg, mark: mark)
     }
     print("Wrote iconset to \(dir)")
+
+case "buttons":
+    // Read the side buttons' entries in the mouse's own table, and optionally put back the
+    // factory blocks. The same read the Configure Buttons notice uses over USB
+    // (`SideButtonReset`), exposed so a contributor can check a model without the GUI.
+    guard let dev = openDevice() else { exit(1) }
+    defer { dev.close() }
+    let canResetOverUSB = RazerDevices.resetsOnboardSideButtonsOverUSB(pid: dev.productID)
+    do {
+        var remaps: [SideButtonReset.Remap] = []
+        for id in SideButtonReset.ids {
+            let reply = try dev.sendWithRetry(RazerCommands.getButtonFunction(id: id))
+            let block = Array(reply.arguments[3..<10])
+            let text = SideButtonReset.describe(block) ?? "a function MacRazer can't name"
+            print("\(SideButtonReset.name(id)): \(text)  [\(block.map { String(format: "%02x", $0) }.joined(separator: " "))]")
+            if let remap = SideButtonReset.remap(id: id, block: block) { remaps.append(remap) }
+        }
+        guard args.contains("reset") else {
+            if !remaps.isEmpty {
+                print("\(remaps.count) side button(s) hold another function. `buttons reset` puts them back.")
+            }
+            exit(0)
+        }
+        guard canResetOverUSB else {
+            print("This model has no confirmed USB reset; nothing written.")
+            exit(2)
+        }
+        guard !remaps.isEmpty else {
+            print("Nothing to reset.")
+            exit(0)
+        }
+        for remap in remaps {
+            try SideButtonReset.reset(remap: remap, on: dev)
+            print("\(SideButtonReset.name(remap.id)): reset.")
+        }
+    } catch {
+        print("Button table failed: \(error)")
+        exit(2)
+    }
 
 case "battery":
     guard let dev = openDevice() else { exit(1) }

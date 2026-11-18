@@ -630,10 +630,7 @@ enum DeviceTestSteps {
     /// A button function table entry on the base layer: args [VARSTORE, id, layer 0], and
     /// the answer's args 3-9 hold the entry's block. Read from the Basilisk V4 Pro (#55).
     static func buttonFunctionRead(_ id: UInt8) -> RazerReport {
-        var r = RazerReport(commandClass: 0x02, commandId: 0x8C, dataSize: 0x0A)
-        r.arguments[0] = Razer.varstore
-        r.arguments[1] = id
-        return r
+        RazerCommands.getButtonFunction(id: id)
     }
 
     /// The entry ids `readButtonTable` asks for. The Basilisk V4 Pro's table (#55) runs from

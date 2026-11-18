@@ -27,6 +27,26 @@ final class SideButtonResetTests: XCTestCase {
         XCTAssertEqual(remaps.map { SideButtonReset.describe($0.current) }, ["⌃V", "⌃C"])
     }
 
+    // MARK: - USB reads carry the current block only
+
+    func testAUSBReadOfCtrlVIsARemap() throws {
+        let remap = try XCTUnwrap(SideButtonReset.remap(id: 4, block: [0x02, 0x02, 0x01, 0x19, 0, 0, 0]))
+        XCTAssertEqual(remap.factory, SideButtonReset.mouseBlock(4))
+        XCTAssertEqual(SideButtonReset.describe(remap.current), "⌃V")
+    }
+
+    func testAUSBFactoryBlockIsNoRemap() {
+        XCTAssertNil(SideButtonReset.remap(id: 4, block: SideButtonReset.mouseBlock(4)))
+    }
+
+    func testAUSBEmptyBlockIsNoRemap() {
+        XCTAssertNil(SideButtonReset.remap(id: 4, block: [0, 0, 0, 0, 0, 0, 0]))
+    }
+
+    func testUSBOnlyOffersTheSideButtons() {
+        XCTAssertNil(SideButtonReset.remap(id: 1, block: [0x02, 0x02, 0, 0x04, 0, 0, 0]))
+    }
+
     func testAButtonOnItsFactoryFunctionIsNoRemap() {
         XCTAssertNil(SideButtonReset.remap(id: 4, payload: reply([4, 0, 1, 1, 1, 1, 4, 4, 0, 0, 0, 0])))
     }

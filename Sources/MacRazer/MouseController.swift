@@ -1429,10 +1429,13 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         }
     }
 
-    /// The connected mouse is one whose side buttons `checkSideButtons` reads: on Bluetooth and
-    /// with `detectsOnboardSideButtonRemaps`. Main thread.
+    /// The connected mouse is one whose side buttons `checkSideButtons` reads: on Bluetooth
+    /// with `detectsOnboardSideButtonRemaps`, or over USB with
+    /// `resetsOnboardSideButtonsOverUSB`. Main thread.
     var checksSideButtons: Bool {
-        connected && deviceIsBluetooth && deviceID.map(RazerDevices.detectsOnboardSideButtonRemaps(pid:)) == true
+        guard connected, let pid = deviceID else { return false }
+        if deviceIsBluetooth { return RazerDevices.detectsOnboardSideButtonRemaps(pid: pid) }
+        return RazerDevices.resetsOnboardSideButtonsOverUSB(pid: pid)
     }
 
     /// `checkSideButtons` when `checksSideButtons`. For the Configure Buttons page opening, so
@@ -1442,31 +1445,50 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         checkSideButtons()
     }
 
-    /// Reads the side buttons' entries on a mouse with `detectsOnboardSideButtonRemaps`. A read
-    /// only: a failure leaves the list as it was and says nothing, as the page works without it.
+    /// Reads the side buttons' entries on a mouse whose table this app can read: Bluetooth
+    /// with `detectsOnboardSideButtonRemaps`, or USB with `resetsOnboardSideButtonsOverUSB`.
+    /// A read only: a failure leaves the list as it was and says nothing, as the page works
+    /// without it.
     func checkSideButtons() {
         userCommand { [weak self] in
-            guard let self,
-                  let bluetooth = try? self.ensureDevice() as? BluetoothDevice,
-                  RazerDevices.detectsOnboardSideButtonRemaps(pid: bluetooth.productID) else { return }
-            var remaps: [SideButtonReset.Remap] = []
-            for id in SideButtonReset.ids {
-                guard let payload = try? bluetooth.readButtonFunctionPayload(id) else { return }
-                if let remap = SideButtonReset.remap(id: id, payload: payload) { remaps.append(remap) }
-            }
-            let found = remaps
-            // A read that ends after the mouse went away says nothing about it now.
-            self.publish {
-                guard self.connected, self.deviceIsBluetooth else { return }
-                self.update(\.remappedSideButtons, found)
+            guard let self else { return }
+            if self.deviceIsBluetooth {
+                guard let bluetooth = try? self.ensureDevice() as? BluetoothDevice,
+                      RazerDevices.detectsOnboardSideButtonRemaps(pid: bluetooth.productID) else { return }
+                var remaps: [SideButtonReset.Remap] = []
+                for id in SideButtonReset.ids {
+                    guard let payload = try? bluetooth.readButtonFunctionPayload(id) else { return }
+                    if let remap = SideButtonReset.remap(id: id, payload: payload) { remaps.append(remap) }
+                }
+                let found = remaps
+                // A read that ends after the mouse went away says nothing about it now.
+                self.publish {
+                    guard self.connected, self.deviceIsBluetooth else { return }
+                    self.update(\.remappedSideButtons, found)
+                }
+            } else {
+                guard let transport = try? self.ensureDevice(),
+                      RazerDevices.resetsOnboardSideButtonsOverUSB(pid: transport.productID) else { return }
+                var remaps: [SideButtonReset.Remap] = []
+                for id in SideButtonReset.ids {
+                    guard let reply = try? transport.sendWithRetry(RazerCommands.getButtonFunction(id: id)),
+                          reply.arguments[1] == id else { return }
+                    let block = Array(reply.arguments[3..<10])
+                    if let remap = SideButtonReset.remap(id: id, block: block) { remaps.append(remap) }
+                }
+                let found = remaps
+                self.publish {
+                    guard self.connected, !self.deviceIsBluetooth else { return }
+                    self.update(\.remappedSideButtons, found)
+                }
             }
         }
     }
 
-    /// Writes each remapped side button's factory block back to every profile slot that holds
-    /// it (`BluetoothDevice.resetButtonFunction`).
-    /// Each button leaves the list as soon as its write is confirmed, so a reset that stops
-    /// halfway still shows only what is left.
+    /// Writes each remapped side button's factory block back: over Bluetooth to every profile
+    /// slot that holds it (`BluetoothDevice.resetButtonFunction`), over USB to the active
+    /// profile (`SideButtonReset.reset`). Each button leaves the list as soon as its write is
+    /// confirmed, so a reset that stops halfway still shows only what is left.
     func resetSideButtons() {
         let remaps = remappedSideButtons
         guard !remaps.isEmpty else { return }
@@ -1478,19 +1500,34 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         userCommand { [weak self] in
             guard let self else { return }
             do {
-                guard let bluetooth = try self.ensureDevice() as? BluetoothDevice,
-                      RazerDevices.detectsOnboardSideButtonRemaps(pid: bluetooth.productID) else {
-                    throw HIDDevice.HIDError.notSupported
-                }
-                var written = Set<UInt8>()
-                for remap in remaps {
-                    written.formUnion(try bluetooth.resetButtonFunction(remap))
-                    self.publish { self.update(\.remappedSideButtons, self.remappedSideButtons.filter { $0.id != remap.id }) }
-                }
-                let done = SideButtonReset.doneText(profiles: written.count)
-                self.publish {
-                    self.isResettingSideButtons = false
-                    self.sideButtonResetDone = done
+                if self.deviceIsBluetooth {
+                    guard let bluetooth = try self.ensureDevice() as? BluetoothDevice,
+                          RazerDevices.detectsOnboardSideButtonRemaps(pid: bluetooth.productID) else {
+                        throw HIDDevice.HIDError.notSupported
+                    }
+                    var written = Set<UInt8>()
+                    for remap in remaps {
+                        written.formUnion(try bluetooth.resetButtonFunction(remap))
+                        self.publish { self.update(\.remappedSideButtons, self.remappedSideButtons.filter { $0.id != remap.id }) }
+                    }
+                    let done = SideButtonReset.doneText(profiles: written.count)
+                    self.publish {
+                        self.isResettingSideButtons = false
+                        self.sideButtonResetDone = done
+                    }
+                } else {
+                    let transport = try self.ensureDevice()
+                    guard RazerDevices.resetsOnboardSideButtonsOverUSB(pid: transport.productID) else {
+                        throw HIDDevice.HIDError.notSupported
+                    }
+                    for remap in remaps {
+                        try SideButtonReset.reset(remap: remap, on: transport)
+                        self.publish { self.update(\.remappedSideButtons, self.remappedSideButtons.filter { $0.id != remap.id }) }
+                    }
+                    self.publish {
+                        self.isResettingSideButtons = false
+                        self.sideButtonResetDone = SideButtonReset.usbDoneText()
+                    }
                 }
             } catch {
                 let text = SideButtonReset.failureText(error)
