@@ -107,7 +107,6 @@ says so.
 | Razer Pro Click Mini (wireless) | Battery, DPI, DPI stages, polling (it has no lighting) | anonymous report |
 | Razer DeathAdder V4 Pro (wired + wireless) | Battery, DPI, DPI stages, polling (it has no lighting) | anonymous reports |
 | Razer Viper Mini Signature Edition (Wired) | Battery, DPI, polling (it has no lighting) | anonymous report |
-| Razer Lancehead Tournament Edition | DPI, polling, lighting, brightness (wired only) | anonymous report |
 | Razer Orochi 2013 | DPI, polling | [@raphaelchenouard](https://github.com/raphaelchenouard) and an anonymous report |
 | Razer DeathAdder V3 Pro (Wireless, both dongles, and the first one's cable) | Battery, DPI, DPI stages, polling (it has no lighting) | anonymous reports |
 | Razer Viper V3 Pro SE (Wireless) | Battery, DPI, DPI stages, polling (it has no lighting) | anonymous report |
@@ -133,6 +132,7 @@ says so.
 | Razer Naga X | DPI, DPI stages, polling; lighting not working yet | anonymous report |
 | Razer Basilisk Ultimate (wired + wireless) | Battery, DPI, DPI stages, polling; lighting not confirmed yet | anonymous reports |
 | Razer Basilisk | DPI, DPI stages, polling; lighting not confirmed yet | anonymous report |
+| Razer Lancehead Tournament Edition | DPI, polling; lighting not confirmed yet | anonymous report |
 | Razer DeathAdder V2 Mini | DPI, DPI stages, polling; lighting not confirmed yet | anonymous reports |
 | Razer Basilisk V3 Pro 35K (wired + wireless) | Battery, DPI, DPI stages, polling; lighting not confirmed yet | anonymous reports |
 | Razer DeathAdder Elite | DPI, polling; lighting not tried yet | anonymous report |

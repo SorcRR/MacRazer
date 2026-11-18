@@ -268,10 +268,10 @@ enum RazerDevices {
         // Basilisk (in-app report on 0.9.0, firmware v1.0, no credit given): DPI and polling
         // passed with 0x1f, and every id answers. The battery read answers 0x05. LOGO and SCROLL
         // answer brightness, but both read 0 (the lights were off), and the owner saw no red, so
-        // lighting stays hidden until a test shows it. Its zones read as spectrum. 16000 is the
-        // vendor spec; it read 26000 and took a 25950 write without clamping. It holds two DPI
-        // stages.
-        .init(pid: 0x0064, name: "Razer Basilisk", unverified: [.lighting], hasBattery: false, hasLighting: false, maxDPI: 16000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
+        // lighting stays hidden until a test shows it. Its zones read as spectrum. The vendor spec
+        // is 16000, but it was running at 26000 and took a 25950 write, so the slider goes to
+        // 26000. It holds two DPI stages.
+        .init(pid: 0x0064, name: "Razer Basilisk", unverified: [.lighting], hasBattery: false, hasLighting: false, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
         // Naga Hex V2 (in-app report on firmware v1.0, credited to foivos92): DPI and polling
         // passed with 0x1f. It has no battery: the read answers with zeros. Every LED group
         // answers brightness with 0 and ignores writes: OpenRazer drives this model with the
@@ -621,8 +621,10 @@ enum RazerDevices {
         // read, polling and lighting all passed there; every id answers identify. LOGO and SCROLL
         // answer brightness, and both dimmed, turned red and came back. No battery (0x05).
         // It holds a single DPI stage. 16000 is the daemon's DPI_MAX. The zone effect read also
-        // answers on 0x10 and 0x11, its side strips.
-        .init(pid: 0x0060, name: "Razer Lancehead Tournament Edition", unverified: [], hasBattery: false, hasLighting: true, maxDPI: 16000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
+        // answers on 0x10 and 0x11, its side strips, which the effect on ZERO_LED may not reach
+        // (on the Basilisk Ultimate's cable only the scroll wheel changed), and brightness was
+        // tried on LOGO and SCROLL only. So lighting stays hidden until a test shows every zone.
+        .init(pid: 0x0060, name: "Razer Lancehead Tournament Edition", unverified: [.lighting], hasBattery: false, hasLighting: false, maxDPI: 16000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
     ]
 
     static func info(pid: Int) -> RazerDeviceInfo? { known.first { $0.pid == pid } }

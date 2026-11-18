@@ -64,7 +64,8 @@ expect rough edges until 1.0.
   than the one the app guessed. It then never answered and showed as Offline. Now, when such
   a mouse stays silent, the app tries the other ids and the mouse's other interfaces, and
   keeps the one that answers. The Lancehead Tournament Edition also has its own entry now,
-  and an owner's device test confirmed it: DPI, polling and lighting all work.
+  and an owner's device test confirmed it: DPI and polling work. Lighting waits on a
+  test that shows every zone.
 - **The display sleeps again with MacRazer running.** macOS counts every battery read as
   user activity, so the poll kept the display awake. Now the poll stops after 30 seconds
   without keyboard or pointer input, and while the screen is asleep or locked. It starts

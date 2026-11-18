@@ -557,7 +557,7 @@ final class RazerDevicesTests: XCTestCase {
 
     /// The reports of 2026-11-09 to 11-18.
     func testMiceFromTheNovemberEighteenReports() {
-        for pid in [0x00BF, 0x009E, 0x0039, 0x0060] {
+        for pid in [0x00BF, 0x009E, 0x0039] {
             XCTAssertEqual(RazerDevices.support(pid: pid), .full, String(format: "0x%04X", pid))
         }
         XCTAssertEqual(RazerDevices.connection(pid: 0x00BF), .wirelessDongle)
@@ -697,7 +697,7 @@ final class RazerDevicesTests: XCTestCase {
     }
 
     /// The Lancehead Tournament Edition (#139): first from OpenRazer, then a report on 0x1f
-    /// passed every step but the battery it doesn't have.
+    /// passed DPI and polling. Lighting stays hidden until every zone is shown working.
     func testLanceheadTournamentEdition() {
         let pid = 0x0060
         XCTAssertEqual(RazerDevices.info(pid: pid)?.name, "Razer Lancehead Tournament Edition")
@@ -707,11 +707,10 @@ final class RazerDevicesTests: XCTestCase {
         }
         XCTAssertFalse(RazerDevices.hasBattery(pid: pid))
         XCTAssertEqual(RazerDevices.notOnMouse(pid: pid), [.battery])
-        XCTAssertTrue(RazerDevices.hasLighting(pid: pid))
-        XCTAssertEqual(RazerDevices.brightnessLeds(pid: pid), [Razer.logoLed, Razer.scrollLed])
+        XCTAssertFalse(RazerDevices.hasLighting(pid: pid), "its side strips may not take ZERO_LED")
+        XCTAssertEqual(RazerDevices.unverified(pid: pid), [.lighting])
         XCTAssertEqual(RazerDevices.maxDPI(pid: pid), 16000)
         XCTAssertEqual(RazerDevices.connection(pid: pid), .wired)
-        XCTAssertEqual(RazerDevices.support(pid: pid), .full)
         XCTAssertFalse(RazerDevices.guessesProtocol(pid: pid), "verified now, so no search")
     }
 
