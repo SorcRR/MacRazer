@@ -390,9 +390,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 }
             }
             self.bypassBluetoothRetryCooldown = false
-            let next = self.pollState.nextPollInterval(pointerActive: Self.pointerIsInUse())
+            let state = self.pollState
             self.publish {
-                self.scheduleNextPoll(after: next)
+                self.scheduleNextPoll(from: state)
                 guard self.isCurrentWakeRecovery(generation) else { return }
                 if self.connected {
                     self.update(\.bluetoothRecoveryState, .idle)
@@ -438,13 +438,98 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         }
         // Sleep is where a mouse most often disappears: switched off, or its dongle moved to
         // another machine. The poll may be minutes away by then, so ask as soon as we're up.
+        // Unless nobody is there: a scheduled or Power Nap wake has no one to show it to, and
+        // the read would count as activity (#142). The first input does it instead.
         wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
-        ) { [weak self] _ in self?.beginWakeRecovery() }
+        ) { [weak self] _ in
+            guard let self else { return }
+            let now = Date()
+            self.presenceLock.withLock { self.presence.woke(at: now) }
+            if self.pollPause.didWake(awayForWakeCheck: self.away().forWakeCheck) == .wakeCheck {
+                self.beginWakeRecovery()
+            }
+        }
+        observeQuietScreens()
     }
 
     private var sleepObserver: NSObjectProtocol?
     private var wakeObserver: NSObjectProtocol?
+    private var quietObservers: [(NotificationCenter, NSObjectProtocol)] = []
+
+    // MARK: - Nobody at the Mac (#142)
+
+    /// Every read counts as user activity to macOS and resets the display's idle timer, so
+    /// the routine poll stops while nobody is there. See `UserPresence`.
+    /// Recorded on `io` around each read, checked on main.
+    private var presence = UserPresence(now: Date())
+    private let presenceLock = NSLock()
+    /// Main thread. The displays are asleep, the screen is locked, or another user has the
+    /// session. Each one means nobody is at this session, whatever the counters say.
+    private var screensAsleep = false
+    private var screenLocked = false
+    private var sessionInactive = false
+    /// Main thread. Whether the poll is stopped, and whether a wake check waits (`PollPause`).
+    private var pollPause = PollPause()
+
+    /// Main thread. Also takes in the input counters, so call it when deciding, not in a loop.
+    /// `forPoll` is for routine reads; `forWakeCheck` leaves the lock screen out (`PollPause`).
+    private func away() -> (forPoll: Bool, forWakeCheck: Bool) {
+        // The notification is the usual signal. The display's own state backs it up, for a
+        // sleep where it didn't come, and for a dark wake, where the screens stay off.
+        let screensOff = screensAsleep || CGDisplayIsAsleep(CGMainDisplayID()) != 0
+        let seconds = UserPresence.secondsSinceInput()
+        let now = Date()
+        let idle = presenceLock.withLock {
+            presence.observe(secondsSinceInput: seconds, now: now)
+            return presence.isAway(now: now)
+        }
+        let forWakeCheck = screensOff || idle || sessionInactive
+        return (forWakeCheck || screenLocked, forWakeCheck)
+    }
+
+    private func userIsAway() -> Bool { away().forPoll }
+
+    /// `io` only: brackets a read of the device, so input the reads themselves produce isn't
+    /// taken for a person (`UserPresence`). Returns the call that ends the bracket.
+    private func noteDeviceRead() -> () -> Void {
+        presenceLock.withLock { presence.readStarted(at: Date()) }
+        return { [self] in presenceLock.withLock { presence.readEnded(at: Date()) } }
+    }
+
+    private func observeQuietScreens() {
+        let workspace = NSWorkspace.shared.notificationCenter
+        let distributed = DistributedNotificationCenter.default()
+        func on(_ center: NotificationCenter, _ name: Notification.Name, _ body: @escaping @Sendable (MouseController) -> Void) {
+            let token = center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                guard let self else { return }
+                body(self)
+                self.resumeIfSomeoneIsBack()
+            }
+            quietObservers.append((center, token))
+        }
+        on(workspace, NSWorkspace.screensDidSleepNotification) { $0.screensAsleep = true }
+        on(workspace, NSWorkspace.screensDidWakeNotification) { $0.screensAsleep = false }
+        on(workspace, NSWorkspace.sessionDidResignActiveNotification) { $0.sessionInactive = true }
+        on(workspace, NSWorkspace.sessionDidBecomeActiveNotification) { $0.sessionInactive = false }
+        on(distributed, Notification.Name("com.apple.screenIsLocked")) { $0.screenLocked = true }
+        on(distributed, Notification.Name("com.apple.screenIsUnlocked")) { $0.screenLocked = false }
+    }
+
+    /// Main thread. If the poll stopped for an empty desk and someone is back, read now: a
+    /// mouse switched off meanwhile still shows connected with its remaps live until then.
+    private func resumeIfSomeoneIsBack() {
+        guard pollPause.paused || pollPause.wakeCheckDeferred, !deviceTestActive else { return }
+        let away = away()
+        guard let action = pollPause.someoneMayBeBack(away: away.forPoll, awayForWakeCheck: away.forWakeCheck)
+        else { return }
+        pollTimer?.invalidate()
+        pollTimer = nil
+        switch action {
+        case .wakeCheck: beginWakeRecovery()
+        case .poll: pollTick()
+        }
+    }
 
     /// Writes the throttled history and curve out without waiting. The Mac is going to sleep
     /// either way; if the queue is mid-read this lands a moment later, or on wake.
@@ -486,6 +571,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// even while the menu/popover is being tracked.
     private func scheduleNextPoll(after interval: TimeInterval) {
         pollTimer?.invalidate()
+        pollPause.didSchedule()
         // A poll already on the device queue when a test began still lands here when it
         // finishes. `endDeviceTest` restarts the loop.
         guard !deviceTestActive else { pollTimer = nil; return }
@@ -495,6 +581,31 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         // A tenth of the wait, so macOS can fold the poll's wakeup in with others' for
         // battery life. No cadence here depends on being exact.
         t.tolerance = interval / 10
+        RunLoop.main.add(t, forMode: .common)
+        pollTimer = t
+    }
+
+    /// Main thread. Schedules from what the last read found (`state`, a copy taken on `io`)
+    /// and whether anyone is at the Mac. Nobody there stops the poll (#142).
+    private func scheduleNextPoll(from state: BatteryPollStateMachine) {
+        if let next = state.nextPollInterval(pointerActive: Self.pointerIsInUse(), userAway: userIsAway()) {
+            scheduleNextPoll(after: next)
+        } else {
+            pausePoll()
+        }
+    }
+
+    /// Main thread. Stops reading the mouse and only looks for someone coming back, by the
+    /// window server's input counters. Nothing goes to the device until they do.
+    private func pausePoll() {
+        pollTimer?.invalidate()
+        guard !deviceTestActive else { pollTimer = nil; return }
+        pollPause.didPause()
+        let interval = BatteryPollStateMachine.Cadence.awayCheck
+        let t = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
+            self?.resumeIfSomeoneIsBack()
+        }
+        t.tolerance = interval / 5
         RunLoop.main.add(t, forMode: .common)
         pollTimer = t
     }
@@ -515,14 +626,29 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     }
 
     private func pollTick() {
+        let state = away()
+        let away = state.forPoll
+        // Back after a wake that found nobody there: the wake check does this read, with the
+        // Bluetooth cooldown lifted, rather than an ordinary poll.
+        if pollPause.timerFired(awayForWakeCheck: state.forWakeCheck) == .wakeCheck {
+            beginWakeRecovery()
+            return
+        }
         io.async { [weak self] in
             guard let self else { return }
+            // The timer was set while someone was there, and they may have left since, or
+            // the Mac slept in between. Stop here unless a failure still needs its second
+            // read (`nextPollInterval` decides that, as it does for the schedule).
+            if away, self.pollState.nextPollInterval(pointerActive: false, userAway: true) == nil {
+                self.publish { self.pausePoll() }
+                return
+            }
             self.readBatterySync()
             // Fast while settling or just dropped, slow once connected (faster while the
             // pointer is in use), and backing off when the mouse stays unreachable. See
             // `BatteryPollStateMachine.Cadence`.
-            let next = self.pollState.nextPollInterval(pointerActive: Self.pointerIsInUse())
-            self.publish { self.scheduleNextPoll(after: next) }
+            let state = self.pollState
+            self.publish { self.scheduleNextPoll(from: state) }
         }
     }
 
@@ -600,11 +726,15 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         // opening the popover could otherwise still read offline. Looking is a good moment
         // to check.
         checkIfOffline()
+        // Offline, the check above has already read and rescheduled.
+        if connected { resumeIfSomeoneIsBack() }
         refreshSettings()
         // Only what a button on the mouse changes is checked this often (`checkLiveSync`);
         // everything else is read when the popover opens, and again after a change.
         let t = Timer(timeInterval: 2.0, repeats: true) { [weak self] _ in
-            self?.checkLive()
+            // A popover left open on an empty desk would keep the display awake too (#142).
+            guard let self, !self.userIsAway() else { return }
+            self.checkLive()
         }
         t.tolerance = 0.2
         RunLoop.main.add(t, forMode: .common)
@@ -694,10 +824,10 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         io.async { [weak self] in
             guard let self else { return }
             self.readBatterySync()
-            let next = self.pollState.nextPollInterval(pointerActive: Self.pointerIsInUse())
+            let state = self.pollState
             self.publish {
                 self.offlineCheckQueued = false
-                self.scheduleNextPoll(after: next)
+                self.scheduleNextPoll(from: state)
             }
         }
     }
@@ -707,8 +837,8 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         io.async { [weak self] in
             guard let self else { return }
             self.readBatterySync(immediateOffline: immediateOffline)
-            let next = self.pollState.nextPollInterval(pointerActive: Self.pointerIsInUse())
-            self.publish { self.scheduleNextPoll(after: next) }
+            let state = self.pollState
+            self.publish { self.scheduleNextPoll(from: state) }
         }
     }
 
@@ -737,6 +867,8 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// Runs on `io`. Performs the HID reads, feeds the outcome to `pollState` (where every
     /// decision rule lives — see `BatteryPollStateMachine`), and acts on the verdict.
     private func readBatterySync(immediateOffline: Bool = false) {
+        let readEnded = noteDeviceRead()
+        defer { readEnded() }
         let outcome: BatteryPollStateMachine.ReadOutcome
         var errText: String?
         /// The charging flag as the device reported it this tick, or nil when the charging
@@ -954,6 +1086,8 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// ladders against a dead link would occupy the serial queue for seconds and delay any
     /// queued user write. Battery refresh surfaces connection errors; this can fail quietly.
     private func readSettingsSync() {
+        let readEnded = noteDeviceRead()
+        defer { readEnded() }
         guard let dev = try? ensureDevice() else { return }
         checkActiveSlotSync()
         var linkDead = false

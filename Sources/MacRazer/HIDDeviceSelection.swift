@@ -144,3 +144,113 @@ enum HIDDeviceSelection {
         return score
     }
 }
+
+/// The order `HIDDevice.findAnsweringLink` tries interfaces and transaction ids in, apart
+/// from IOHID so it can be tested.
+enum LinkSearch {
+    /// What a search found on one picked interface.
+    enum Outcome: Equatable {
+        /// The interface (by registry ID) that was heard: the pick itself or another.
+        case answered(interface: UInt64)
+        /// Nothing was heard, the last time at `since`, `misses` searches in a row.
+        case silent(since: Date, misses: Int)
+    }
+
+    /// How long a search that heard nothing holds before the next reopen may run it again,
+    /// doubling with each search in a row that heard nothing, up to `silentRetryMax`. A
+    /// mouse nothing answers on reopens on every poll, and a full search holds the HID queue
+    /// for a few seconds. The first retry still comes soon enough to catch a mouse that was
+    /// only asleep the first time.
+    static let silentRetry: TimeInterval = 60
+    static let silentRetryMax: TimeInterval = 600
+
+    static func retryDelay(misses: Int) -> TimeInterval {
+        min(silentRetry * pow(2, Double(max(misses, 1) - 1)), silentRetryMax)
+    }
+
+    /// Whether a silent reopen should run the search, given what the last one found.
+    static func shouldSearch(after previous: Outcome?, now: Date) -> Bool {
+        switch previous {
+        case nil: return true
+        case .answered: return false
+        case .silent(let since, let misses): return now.timeIntervalSince(since) >= retryDelay(misses: misses)
+        }
+    }
+
+    /// What comes after `previous` when a search hears nothing at `now`.
+    static func silent(after previous: Outcome?, now: Date) -> Outcome {
+        if case .silent(_, let misses)? = previous { return .silent(since: now, misses: misses + 1) }
+        return .silent(since: now, misses: 1)
+    }
+
+    /// Whether a read reached the firmware: it answered, or it refused (0x03 or 0x05), which
+    /// a mouse only does for an id it heard. Timeouts and garbled replies are not heard.
+    static func heard(_ result: Result<RazerReport, Error>) -> Bool {
+        switch result {
+        case .success: return true
+        case .failure(let error): return DeviceProbe.isRefusal(error)
+        }
+    }
+
+    /// The first pair, links in order and every id on each before the next link, whose read
+    /// is heard. Stops there: everyday traffic needs one id that works, not the full map the
+    /// device test draws. `skipping` is a pair already tried. A refusal counts on `current`,
+    /// the id already in use, but on another id only when `acceptsRefusal`: a dongle
+    /// refuses on its own while its mouse sleeps, so over a dongle an id to switch to has to
+    /// be shown by a real answer. Over a cable nothing else can refuse, and a mouse that
+    /// doesn't do the firmware read still refuses it on the id it hears.
+    static func firstHeard<Link: Equatable>(links: [Link], ids: [UInt8], current: UInt8, acceptsRefusal: Bool = false,
+                                            skipping: (Link, UInt8)? = nil,
+                                            read: (Link, UInt8) -> Result<RazerReport, Error>) -> (link: Link, id: UInt8)? {
+        for link in links {
+            for id in ids {
+                if let skipping, skipping.0 == link, skipping.1 == id { continue }
+                let result = read(link, id)
+                if id == current || acceptsRefusal ? heard(result) : (try? result.get()) != nil { return (link, id) }
+            }
+        }
+        return nil
+    }
+
+    /// The interface to go to instead of `pick`: another one heard on this plug-in.
+    static func redirect(pick: UInt64, after previous: Outcome?) -> UInt64? {
+        if case .answered(let winner)? = previous, winner != pick { return winner }
+        return nil
+    }
+
+    /// What follows the first read on the pick, with the id in use.
+    enum FirstRead: Equatable {
+        /// Heard: use the pick, recording `record` when there's something new to record.
+        case use(record: Outcome?)
+        /// Not heard, and too soon (or no reason) to search: use the pick as it is.
+        case quiet
+        /// Not heard: search.
+        case search
+    }
+
+    /// A heard pick is recorded as answered, even one an earlier search found silent (a
+    /// wireless mouse asleep then), so later silence there reads as sleep, not a misread.
+    static func afterFirstRead(heard: Bool, pick: UInt64, before: Outcome?, now: Date) -> FirstRead {
+        if heard {
+            if case .answered? = before { return .use(record: nil) }
+            return .use(record: .answered(interface: pick))
+        }
+        return shouldSearch(after: before, now: now) ? .search : .quiet
+    }
+
+    /// What a search settles: the outcome to record, and the id to learn, if any.
+    struct Settled: Equatable {
+        let outcome: Outcome
+        let learn: UInt8?
+    }
+
+    /// `found` is the interface and id heard, nil for none. A different id is learned only
+    /// when the id in use still isn't heard on that interface (`currentHeardOnWinner`, run
+    /// only then): one quiet read, as a mouse can give right after plug-in, isn't enough.
+    static func afterSearch(found: (interface: UInt64, id: UInt8)?, current: UInt8, before: Outcome?, now: Date,
+                            currentHeardOnWinner: () -> Bool) -> Settled {
+        guard let found else { return Settled(outcome: silent(after: before, now: now), learn: nil) }
+        let learn = found.id != current && !currentHeardOnWinner() ? found.id : nil
+        return Settled(outcome: .answered(interface: found.interface), learn: learn)
+    }
+}
