@@ -1746,8 +1746,12 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         guard let slotted = device as? OnboardSlotTransport, !userWorkPending else { return }
         if slotsReadOn != ObjectIdentifier(slotted) {
             // Not read when this link opened: read them now, and the mouse's profiles appear.
+            // The link assumed a slot until now. Still on it, the remaps handed over are its
+            // own: following would replace them with an empty table, and so drop the remaps
+            // kept on this Mac before MacRazer wrote any into the mouse.
+            let assumed = slotted.slot
             guard let active = readOnboardSlotsSync(slotted) else { return }
-            followSlotSync()
+            if active != assumed { followSlotSync() }
             publish {
                 self.update(\.activeOnboardSlot, Int(active))
                 self.refreshSettings()
@@ -3058,7 +3062,12 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         slotsReadOn = nil
         let slot = readOnboardSlotsSync(d)
         ioCanCharge = RazerDevices.canCharge(pid: pid)
+        // A new link starts level: the remapper hands its table over again for this mouse
+        // (`setOnboardMappings`), and one left behind by a slot change on the last link,
+        // whose read never ran, mustn't keep every hand-over out.
+        let epoch = slotEpoch
         publish {
+            self.handedSlotEpoch = epoch
             self.update(\.activeOnboardSlot, slot.map(Int.init))
             if let slot { self.followActiveSlot(Int(slot)) }
             self.update(\.deviceIsBluetooth, bluetooth)
