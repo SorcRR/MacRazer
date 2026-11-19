@@ -126,15 +126,6 @@ extension PopoverLook {
     }
 }
 
-/// Renders through a real `NSHostingView` in a real window instead of `ImageRenderer`.
-///
-/// `ImageRenderer` draws a `ScrollView` as an empty box, since its content is laid out lazily
-/// and never makes it into the snapshot, and it draws native controls as placeholders. A view
-/// hosted in a window draws both as the app does.
-///
-/// `size` is optional: a view that sizes itself, like a window's content, is measured with
-/// `fittingSize`. Only a scroll view has to be told how much room it has, because it will
-/// take whatever it is given.
 /// Runs AppKit's event loop for a while. `RunLoop.run` alone never hands AppKit its events,
 /// and activation and becoming key arrive as events.
 @MainActor func pumpEvents(for seconds: TimeInterval) {
@@ -146,11 +137,22 @@ extension PopoverLook {
     }
 }
 
+/// The window a hosted render is drawn in. A borderless window can't become key on its own,
+/// and the popover is key while someone uses it, so this one can too.
 final class RenderWindow: NSWindow {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
 }
 
+/// Renders through a real `NSHostingView` in a real window instead of `ImageRenderer`.
+///
+/// `ImageRenderer` draws a `ScrollView` as an empty box, since its content is laid out lazily
+/// and never makes it into the snapshot, and it draws native controls as placeholders. A view
+/// hosted in a window draws both as the app does.
+///
+/// `size` is optional: a view that sizes itself, like a window's content, is measured with
+/// `fittingSize`. Only a scroll view has to be told how much room it has, because it will
+/// take whatever it is given.
 @MainActor func writeHostedPNG<V: View>(_ view: V, size: CGSize? = nil, look: PopoverLook = .solidDark,
                                         to path: String) {
     // The backdrop the popover or window paints behind its content. `cacheDisplay` captures
@@ -177,7 +179,10 @@ final class RenderWindow: NSWindow {
     // Mac that made it (a P3 laptop panel and an sRGB monitor gave different swatches).
     window.colorSpace = .sRGB
     window.contentView = host
-    window.orderFrontRegardless()
+    // Active and key, as the app is while its popover is open: only then do switches that are
+    // on draw green. macOS lets only a launched app activate itself, so this works when the
+    // render runs from an app bundle opened with `open` (Scripts/render-screenshots.sh). Run
+    // from a terminal, it's ignored and switches draw grey.
     NSApp.finishLaunching()
     NSApp.activate(ignoringOtherApps: true)
     window.makeKeyAndOrderFront(nil)
