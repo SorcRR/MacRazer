@@ -203,6 +203,16 @@ final class RenderWindow: NSWindow {
         }
         image = cropped
     }
+    // The window server hands back the main display's colour space (Display P3 on a MacBook,
+    // a monitor's own profile on another). Convert to sRGB so the same render comes out the
+    // same whichever display it ran on, and reads right where the profile is ignored.
+    if let srgb = CGColorSpace(name: CGColorSpace.sRGB), image.colorSpace?.name != srgb.name,
+       let ctx = CGContext(data: nil, width: image.width, height: image.height, bitsPerComponent: 8,
+                           bytesPerRow: 0, space: srgb,
+                           bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) {
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        if let converted = ctx.makeImage() { image = converted }
+    }
     guard let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else {
         print("Render failed")
         return
@@ -359,6 +369,9 @@ case "render-ui":
     renderAppearance.twoColumns = args.contains("twocolumns")
     renderAppearance.glass = false
     renderAppearance.theme = renderTheme(args)
+    // The same two remaps as `render-remap`, so the Buttons row reads "2 remapped" as it does in use.
+    let renderRemapper = ButtonRemapper()
+    renderRemapper.loadPreviewState()
     let rootView: AnyView = args.contains("color")
         ? AnyView(ColorPickerPage(color: .constant(.blue),
                                   device: accessoryPIDs.isEmpty ? nil
@@ -370,7 +383,7 @@ case "render-ui":
         : args.contains("profiles")
         ? AnyView(ProfilesView(controller: controller, remapper: ButtonRemapper(), onBack: {},
                                 width: PopoverLayout.oneColumnWidth))
-        : AnyView(PopoverView(controller: controller, remapper: ButtonRemapper(), updateChecker: updateChecker,
+        : AnyView(PopoverView(controller: controller, remapper: renderRemapper, updateChecker: updateChecker,
                               launchAtLogin: launchAtLogin, appearance: renderAppearance,
                               onOpenSettings: {},
                               onOpenDeviceTest: {}, onTestAccessory: { _ in }, // no windows in a render
