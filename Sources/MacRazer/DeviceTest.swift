@@ -878,7 +878,7 @@ enum DeviceTestSteps {
             data.readBack = Int(check.readBack.value.x)
             if maxProbe {
                 // nil, not 0, when the probe got no answer: 0 would read as a real ceiling.
-                data.maxProbe = (try? DeviceProbe.writeDPI(channel, .init(x: 45000, y: 45000))).map { Int($0.readBack.value.x) }
+                data.maxProbe = (try? DeviceProbe.writeDPI(channel, .init(x: UInt16(RazerCommands.dpiCeiling), y: UInt16(RazerCommands.dpiCeiling)))).map { Int($0.readBack.value.x) }
             }
             if let table = try? DeviceProbe.readStages(channel) {
                 data.stages = table.value.stages
@@ -898,11 +898,15 @@ enum DeviceTestSteps {
 
     /// Writes another supported rate, reads it back, and restores. `usesPollingRate2` picks the
     /// newer command, for the mice that refuse the classic one.
-    static func polling(_ channel: DeviceProbeChannel, usesPollingRate2: Bool = false) -> DeviceReport.StepRecord<DeviceReport.PollingData> {
+    static func polling(_ channel: DeviceProbeChannel, usesPollingRate2: Bool) -> DeviceReport.StepRecord<DeviceReport.PollingData> {
+        polling(channel, command: usesPollingRate2 ? .rate2 : .classic)
+    }
+
+    static func polling(_ channel: DeviceProbeChannel, command: PollingCommand = .classic) -> DeviceReport.StepRecord<DeviceReport.PollingData> {
         var record = DeviceReport.StepRecord<DeviceReport.PollingData>()
         var data = DeviceReport.PollingData()
         do {
-            let original = try DeviceProbe.readPollingRate(channel, usesPollingRate2: usesPollingRate2).value
+            let original = try DeviceProbe.readPollingRate(channel, command: command).value
             data.original = original
             // A rate the table doesn't name (0) can't be written back, so don't change it.
             guard original != 0 else {
@@ -917,11 +921,11 @@ enum DeviceTestSteps {
             defer {
                 if wrote {
                     data.restored = (try? DeviceProbe.writePollingRate(channel, hz: original,
-                                                                       usesPollingRate2: usesPollingRate2).confirmed) ?? false
+                                                                       command: command).confirmed) ?? false
                 }
             }
             wrote = true
-            let check = try DeviceProbe.writePollingRate(channel, hz: test, usesPollingRate2: usesPollingRate2)
+            let check = try DeviceProbe.writePollingRate(channel, hz: test, command: command)
             data.readBack = check.readBack.value
             record.outcome = check.confirmed ? .passed : .failed
         } catch {
@@ -938,9 +942,15 @@ enum DeviceTestSteps {
     /// turns red at full brightness for `seconds` and goes back to `restoreEffect` (the app's
     /// own setting: an effect can't be read back) and to each group's brightness. The
     /// questions come afterwards, so nothing is held waiting on the person.
+    ///
+    /// `splitRead` is a model that reads brightness on another LED than it writes
+    /// (`RazerDevices.brightnessSplitRead`). The sweep's reads all fail on it, so that one LED
+    /// is asked here, and the group is written on `led` and read back on `readLed`.
+    ///
     /// `red` and `restoreEffect` hold one report per effect zone (`RazerDevices.effectLeds`).
     /// Red counts as shown when any zone took it, as in `MouseController.writeLighting`.
     static func lighting(_ channel: DeviceProbeChannel, sweep: [DeviceProbe.LEDAnswer]?,
+                         splitRead: (led: UInt8, readLed: UInt8)? = nil,
                          restoreEffect: [RazerReport]?,
                          red: [RazerReport] = [RazerCommands.setStatic(rgb: RGB(r: 255, g: 0, b: 0))],
                          seconds: Double,
@@ -948,29 +958,39 @@ enum DeviceTestSteps {
         -> DeviceReport.StepRecord<DeviceReport.LightingData> {
         var record = DeviceReport.StepRecord<DeviceReport.LightingData>()
         var data = DeviceReport.LightingData()
-        let answering = (sweep ?? []).compactMap { answer -> (String, UInt8, UInt8)? in
+        var answering = (sweep ?? []).compactMap { answer -> LitGroup? in
             guard let reading = try? answer.result.get() else { return nil }
-            return (answer.name, answer.led, reading.value)
+            return LitGroup(name: answer.name, led: answer.led, readLed: answer.led, raw: reading.value)
+        }
+        if let splitRead, !answering.contains(where: { $0.led == splitRead.led }),
+           let reading = try? channel.sendWithRetry(RazerCommands.getBrightness(led: splitRead.readLed),
+                                                    attempts: DeviceProbe.attempts) {
+            // Named for both LEDs: the sweep above shows the write LED refusing a read.
+            let ledName = DeviceProbe.ledGroups.first { $0.led == splitRead.led }?.name
+                ?? String(format: "0x%02X", splitRead.led)
+            let name = ledName + String(format: " (read on 0x%02X)", splitRead.readLed)
+            answering.append(LitGroup(name: name, led: splitRead.led, readLed: splitRead.readLed,
+                                      raw: reading.arguments[2]))
         }
         guard !answering.isEmpty else {
             record.outcome = .notSupported
             record.data = data
             return record
         }
-        for (name, _, raw) in answering { data.groups[name] = raw }
+        for group in answering { data.groups[group.name] = group.raw }
 
         // Nothing from here to the restore can leave early (every call is `try?`), so the
         // restore always runs once anything has been changed.
         var dimmedAny = false
-        for (_, led, _) in answering {
-            dimmedAny = (try? DeviceProbe.writeBrightness(channel, raw: 0, led: led)) != nil || dimmedAny
+        for group in answering {
+            dimmedAny = (try? DeviceProbe.writeBrightness(channel, raw: 0, led: group.led, readLed: group.readLed)) != nil || dimmedAny
         }
         data.dimShown = dimmedAny
         if dimmedAny { wait(seconds) }
         var allBack = restoreBrightness(channel, answering)
 
         if let restoreEffect {
-            for (_, led, _) in answering { _ = try? DeviceProbe.writeBrightness(channel, raw: 255, led: led) }
+            for group in answering { _ = try? DeviceProbe.writeBrightness(channel, raw: 255, led: group.led, readLed: group.readLed) }
             data.redShown = applyLighting(channel, red)
             if data.redShown { wait(seconds) }
             let effectBack = applyLighting(channel, restoreEffect)
@@ -984,6 +1004,14 @@ enum DeviceTestSteps {
         return record
     }
 
+    /// A group the lighting step dims and restores: written on `led`, read back on `readLed`.
+    private struct LitGroup {
+        let name: String
+        let led: UInt8
+        let readLed: UInt8
+        let raw: UInt8
+    }
+
     /// Sends every zone's report, all of them even after a refusal. True when any took it.
     private static func applyLighting(_ channel: DeviceProbeChannel, _ reports: [RazerReport]) -> Bool {
         reports.reduce(false) { took, report in
@@ -991,10 +1019,11 @@ enum DeviceTestSteps {
         }
     }
 
-    private static func restoreBrightness(_ channel: DeviceProbeChannel, _ groups: [(String, UInt8, UInt8)]) -> Bool {
+    private static func restoreBrightness(_ channel: DeviceProbeChannel, _ groups: [LitGroup]) -> Bool {
         var allBack = true
-        for (_, led, raw) in groups {
-            allBack = ((try? DeviceProbe.writeBrightness(channel, raw: raw, led: led).confirmed) ?? false) && allBack
+        for group in groups {
+            allBack = ((try? DeviceProbe.writeBrightness(channel, raw: group.raw, led: group.led,
+                                                         readLed: group.readLed).confirmed) ?? false) && allBack
         }
         return allBack
     }

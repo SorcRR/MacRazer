@@ -142,7 +142,11 @@ enum DeviceProbe {
     /// In Hz, or 0 for an answer the protocol table doesn't name. `usesPollingRate2` picks the
     /// newer command (`RazerDeviceInfo.usesPollingRate2`).
     static func readPollingRate(_ channel: DeviceProbeChannel, usesPollingRate2: Bool = false) throws -> Reading<Int> {
-        let read = RazerCommands.pollingRateRead(usesPollingRate2: usesPollingRate2)
+        try readPollingRate(channel, command: usesPollingRate2 ? .rate2 : .classic)
+    }
+
+    static func readPollingRate(_ channel: DeviceProbeChannel, command: PollingCommand) throws -> Reading<Int> {
+        let read = RazerCommands.pollingRateRead(command: command)
         let response = try channel.sendWithRetry(read.report, attempts: attempts)
         return Reading(value: read.parse(response), response: response)
     }
@@ -154,11 +158,15 @@ enum DeviceProbe {
     /// cost every retry on each change. The popover writes through here too
     /// (`MouseController.sendPollingRate`), so both paths stay one.
     static func writePollingRate(_ channel: DeviceProbeChannel, hz: Int, usesPollingRate2: Bool = false) throws -> WriteCheck<Int> {
-        let reports = RazerCommands.setPollingRateReports(hz, usesPollingRate2: usesPollingRate2)
+        try writePollingRate(channel, hz: hz, command: usesPollingRate2 ? .rate2 : .classic)
+    }
+
+    static func writePollingRate(_ channel: DeviceProbeChannel, hz: Int, command: PollingCommand) throws -> WriteCheck<Int> {
+        let reports = RazerCommands.setPollingRateReports(hz, command: command)
         let set = try channel.sendWithRetry(reports[0], attempts: attempts)
         for report in reports.dropFirst() { _ = try? channel.sendWithRetry(report, attempts: 1) }
         return WriteCheck(requested: hz, setResponse: set,
-                          readBack: try readPollingRate(channel, usesPollingRate2: usesPollingRate2))
+                          readBack: try readPollingRate(channel, command: command))
     }
 
     // MARK: - Lighting
@@ -180,10 +188,12 @@ enum DeviceProbe {
     }
 
     /// Writes a raw 0-255 brightness to one group and reads it back. Unlike the sweep, a
-    /// refusal here is a real failure, so it throws.
-    static func writeBrightness(_ channel: DeviceProbeChannel, raw: UInt8, led: UInt8) throws -> WriteCheck<UInt8> {
+    /// refusal here is a real failure, so it throws. `readLed` is where the read-back goes when
+    /// it isn't `led` (`RazerDeviceInfo.brightnessReadLed`).
+    static func writeBrightness(_ channel: DeviceProbeChannel, raw: UInt8, led: UInt8,
+                                readLed: UInt8? = nil) throws -> WriteCheck<UInt8> {
         let set = try channel.sendWithRetry(RazerCommands.setBrightness(raw, led: led), attempts: attempts)
-        let back = try channel.sendWithRetry(RazerCommands.getBrightness(led: led), attempts: attempts)
+        let back = try channel.sendWithRetry(RazerCommands.getBrightness(led: readLed ?? led), attempts: attempts)
         return WriteCheck(requested: raw, setResponse: set,
                           readBack: Reading(value: back.arguments[2], response: back))
     }

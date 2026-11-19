@@ -361,7 +361,7 @@ struct AccessoryIcon: View {
 
         init(effect: LightingEffect, color: Color) {
             switch effect {
-            case .staticColor, .breathing: self = .color(color)
+            case .staticColor, .breathing, .reactive: self = .color(color)
             case .spectrum, .wave: self = .rainbow
             case .off: self = .unlit
             }
