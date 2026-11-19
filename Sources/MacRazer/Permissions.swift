@@ -59,6 +59,7 @@ final class PermissionsModel: ObservableObject {
     /// Re-read both permissions from the system. Call on launch, when the setup window appears,
     /// and whenever the app returns to the foreground (e.g. back from System Settings).
     func recheck() {
+        guard !isPreview else { return }
         inputMonitoring = IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) == kIOHIDAccessTypeGranted
         bluetoothControllable = HIDDevice.bluetoothRazerMouse()?.controllablePID != nil
         // refreshAccessibility also (re)installs the event tap once granted.
@@ -114,7 +115,11 @@ final class PermissionsModel: ObservableObject {
     // MARK: - Preview
 
     /// Mixed state for the `render-permissions` preview command (IM granted, Accessibility not).
+    /// Set by `loadPreviewState`: a render shows the preview, not this Mac's real state.
+    private var isPreview = false
+
     func loadPreviewState() {
+        isPreview = true
         inputMonitoring = true
         accessibility = false
         needsRelaunch = false

@@ -87,6 +87,17 @@ func renderLook(_ args: [String]) -> PopoverLook {
     args.contains("light") ? .solidLight : args.contains("green") ? .solidGreen : .solidDark
 }
 
+extension PopoverLook {
+    /// The Settings theme that gives this look, for a render's popover.
+    var theme: PopoverTheme {
+        switch self {
+        case .lightGlass, .solidLight: return .light
+        case .darkGlass, .solidDark: return .dark
+        case .greenGlass, .solidGreen: return .razerGreen
+        }
+    }
+}
+
 /// Shared by the render-* commands: draw a SwiftUI view at 2x on a theme's backdrop and write
 /// it to a PNG.
 ///
@@ -94,6 +105,10 @@ func renderLook(_ args: [String]) -> PopoverLook {
 /// as a yellow placeholder, so it only suits views made of shapes and text. Prefer
 /// `writeHostedPNG` for anything meant to be seen.
 @MainActor func writeViewPNG<V: View>(_ view: V, look: PopoverLook = .solidDark, to path: String) {
+    guard RenderOptions.crop == nil else {
+        print("Render failed: crop= works on hosted renders only. Add `hosted`.")
+        exit(1)
+    }
     // In the look's colour scheme, to match its backdrop. Without it `.secondary` and
     // `.tertiary` resolve for the other scheme and read as a contrast bug that isn't there.
     let renderer = ImageRenderer(
@@ -205,6 +220,9 @@ final class RenderWindow: NSWindow {
 /// fit the content after the first layout, and a capture taken mid-resize came out scaled and
 /// cropped. One that doesn't match is taken again.
 @MainActor private func windowServerImage(_ window: NSWindow) -> CGImage? {
+    if window.backingScaleFactor != 2 {
+        print("Note: the display is at \(window.backingScaleFactor)x, so this render is too, not 2x.")
+    }
     for _ in 0..<10 {
         let scale = window.backingScaleFactor
         let expected = (Int((window.frame.width * scale).rounded()), Int((window.frame.height * scale).rounded()))
@@ -213,7 +231,7 @@ final class RenderWindow: NSWindow {
            (image.width, image.height) == expected {
             return image
         }
-        RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+        pumpEvents(for: 0.2)
     }
     print("The window server's capture never matched the window's size; drawing it directly instead.")
     return nil
@@ -346,7 +364,7 @@ case "render-ui":
     let renderAppearance = AppearanceSettings(defaults: UserDefaults(suiteName: "MacRazer.render-ui") ?? .standard)
     renderAppearance.twoColumns = args.contains("twocolumns")
     renderAppearance.glass = false
-    renderAppearance.theme = args.contains("light") ? .light : args.contains("green") ? .razerGreen : .dark
+    renderAppearance.theme = renderLook(args).theme
     let rootView: AnyView = args.contains("color")
         ? AnyView(ColorPickerPage(color: .constant(.blue),
                                   device: accessoryPIDs.isEmpty ? nil

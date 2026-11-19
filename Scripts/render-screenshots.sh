@@ -27,7 +27,7 @@ mkdir -p "$OUT"
 OUT="$(cd "$OUT" && pwd)" # absolute: the bundle runs with / as its working directory
 
 echo "▸ Building…"
-swift build >/dev/null 2>&1
+swift build >/dev/null 2>&1 || { swift build; exit 1; } # again, to show why
 BIN="$(swift build --show-bin-path)/MacRazer"
 
 BUNDLE_ID="com.macrazer.render"
@@ -70,7 +70,9 @@ expect_size() { # expect_size <file> <width> <height>, in pixels of the 2x rende
   w=$(sips -g pixelWidth "$OUT/$1" | awk '/pixelWidth/ {print $2}')
   h=$(sips -g pixelHeight "$OUT/$1" | awk '/pixelHeight/ {print $2}')
   if [[ "$w" != "$2" || "$h" != "$3" ]]; then
-    echo "✗ $1 is ${w}x${h}, the crops were measured on ${2}x${3}. Check the crops, then update." >&2
+    echo "✗ $1 is ${w}x${h}, the crops were measured on ${2}x${3}." >&2
+    echo "  Half that size means the main display is 1x: render on a Retina display. Otherwise" >&2
+    echo "  the layout changed: check the crops, then update the sizes here." >&2
     exit 1
   fi
 }

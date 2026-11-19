@@ -1373,6 +1373,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     }
 
     func refreshDpiCycleButtonBinding() {
+        guard !isPreview else { return }
         userCommand { [weak self] in
             guard let self else { return }
             self.publish {
@@ -1440,7 +1441,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// `checkSideButtons` when `checksSideButtons`. For the Configure Buttons page opening, so
     /// other mice queue nothing.
     func checkSideButtonsIfSupported() {
-        guard checksSideButtons else { return }
+        guard !isPreview, checksSideButtons else { return }
         checkSideButtons()
     }
 
@@ -1841,7 +1842,11 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     }
 
     /// Populate plausible state for the `render-ui` preview command (no device needed).
+    /// Set by `loadPreviewState`: a render shows the preview and never opens a real mouse.
+    private var isPreview = false
+
     func loadPreviewState() {
+        isPreview = true
         connected = true
         deviceName = "Razer Cobra HyperSpeed"
         deviceID = 0x00DB
@@ -1851,7 +1856,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         // The stages read from the mouse, as the real popover has them: their own chips, the
         // custom chip after them, and the Edit button.
         dpiStages = [400, 800, 1600, 3200, 6400]
-        activeDpiStage = 3
+        activeDpiStage = 2 // 1600, zero-based
         pollRate = 1000
         timeEstimate = "~3d 0h left (est.)" // matches BatteryHistory.estimateString's real format
         let now = Date()
