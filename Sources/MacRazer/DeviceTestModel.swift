@@ -601,11 +601,14 @@ final class DeviceTestModel: ObservableObject {
     func runLighting() async {
         let sweep = lightSweep
         let splitRead = RazerDevices.brightnessSplitRead(pid: testedPID)
-        let restore = controller.lightingRestoreReport()
+        let restore = controller.lightingRestoreReports(pid: testedPID)
+        // Red on every zone the tested mouse takes effects on, as the popover sends them.
+        let red = RazerCommands.effect(.staticColor, color: RGB(r: 255, g: 0, b: 0),
+                                       leds: RazerDevices.effectLeds(pid: testedPID))
         dimmed = nil
         turnedRed = nil
         await run(\.lighting) {
-            DeviceTestSteps.lighting($0, sweep: sweep, splitRead: splitRead, restoreEffect: restore, seconds: 3)
+            DeviceTestSteps.lighting($0, sweep: sweep, splitRead: splitRead, restoreEffect: restore, red: red, seconds: 3)
         }
     }
 

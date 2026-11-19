@@ -1,0 +1,26 @@
+{
+  "daily" : [
+    {
+      "name" : "an answer",
+      "request" : "\/v1\/releases?app=0.9.0&stats=no&count=1"
+    },
+    {
+      "name" : "an answer and a mouse",
+      "request" : "\/v1\/releases?app=0.9.0&mouse=00db.dongle.1.Razer%20Cobra%20HyperSpeed&stats=yes&count=1"
+    },
+    {
+      "name" : "a mouse while the question is on screen",
+      "request" : "\/v1\/releases?app=0.9.0&mouse=00db.dongle.1.Razer%20Cobra%20HyperSpeed&count=1"
+    },
+    {
+      "name" : "a closed question",
+      "request" : "\/v1\/releases?app=0.9.0&stats=unasked&change=dismissed&count=1"
+    }
+  ],
+  "plain" : [
+    {
+      "name" : "the update check",
+      "request" : "\/v1\/releases?app=0.9.0"
+    }
+  ]
+}
