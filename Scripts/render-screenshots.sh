@@ -4,8 +4,8 @@
 #   ./Scripts/render-screenshots.sh                 # into dist/screenshots/
 #   ./Scripts/render-screenshots.sh out/ 0.11.0     # another folder, another version
 #
-# Every shot is a `render-*` command (see main.swift) in the solid Dark theme, captured from
-# the window server, so it shows what the app draws on screen. The version in the popover's
+# Every shot is a `render-*` command (see main.swift), captured from the window server so it
+# shows what the app draws on screen. They're in the solid Dark theme, except the theme shots. The version in the popover's
 # footer is the latest tag unless one is given.
 #
 # The renders run from a throwaway app bundle opened with `open`, not from the bare binary:
@@ -19,12 +19,16 @@
 #             theme-light, theme-green, dpi-stages, device-test  → .github/screenshots/
 #   Website:  the same, plus the card-* crops                    → macrazer-worker site/public/assets/
 set -euo pipefail
-cd "$(dirname "$0")/.."
 
-OUT="${1:-dist/screenshots}"
-VERSION="${2:-$(git describe --tags --abbrev=0 | sed 's/^v//')}"
+# A folder given here is relative to where you ran the script; the default is in the repo.
+if [[ -n "${1:-}" ]]; then
+  mkdir -p "$1"
+  OUT="$(cd "$1" && pwd)" # absolute: the bundle runs with / as its working directory
+fi
+cd "$(dirname "$0")/.."
+OUT="${OUT:-$PWD/dist/screenshots}"
 mkdir -p "$OUT"
-OUT="$(cd "$OUT" && pwd)" # absolute: the bundle runs with / as its working directory
+VERSION="${2:-$(git describe --tags --abbrev=0 | sed 's/^v//')}"
 
 echo "▸ Building…"
 swift build >/dev/null 2>&1 || { swift build; exit 1; } # again, to show why
@@ -44,11 +48,10 @@ cat > "$APP/Contents/Info.plist" <<EOF
   <key>CFBundleIdentifier</key><string>$BUNDLE_ID</string>
   <key>CFBundleName</key><string>MacRazer</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>$VERSION</string>
   <key>LSUIElement</key><true/>
 </dict></plist>
 EOF
-codesign -f -s - "$APP" 2>/dev/null
+codesign -f -s - "$APP" 2>"$WORK/codesign" || { echo "✗ Couldn't sign the render bundle:" >&2; cat "$WORK/codesign" >&2; exit 1; }
 
 # What's open in the popover: Lighting, and the keyboard's card in the accessories shot.
 defaults delete "$BUNDLE_ID" 2>/dev/null || true

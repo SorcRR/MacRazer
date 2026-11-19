@@ -45,7 +45,7 @@ final class LaunchAtLogin: ObservableObject {
     /// foreground — the user may have just toggled MacRazer in System Settings and switched
     /// back, exactly as with the permission rechecks.
     func refresh() {
-        guard !isPreview else { return }
+        guard !RenderOptions.isActive else { return }
         guard isSupported else {
             isEnabled = false
             needsApproval = false
@@ -86,11 +86,7 @@ final class LaunchAtLogin: ObservableObject {
 
     /// The switch as an installed copy sees it, for the `render-ui` preview — `swift run` has
     /// no bundle, so the real state there is always the disabled one.
-    /// Set by `loadPreviewState`: a render shows the preview, not this Mac's real state.
-    private var isPreview = false
-
     func loadPreviewState() {
-        isPreview = true
         isSupported = true
         isEnabled = true
         needsApproval = false

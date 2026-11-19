@@ -42,14 +42,12 @@ final class ScrollSettings: ObservableObject, @unchecked Sendable {
     /// For `render-settings reversed`: reversing works, as on a Mac that granted Accessibility,
     /// rather than showing the render process's own missing grant. No tap is started.
     func loadPreviewState() {
-        isPreview = true
         accessibilityGranted = true
         eventTapAvailable = true
     }
-    private var isPreview = false
 
     func refreshAccessibility(prompt: Bool = false) {
-        guard !isPreview else { return }
+        guard !RenderOptions.isActive else { return }
         accessibilityGranted = AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": prompt] as CFDictionary)
         updateTap()
     }

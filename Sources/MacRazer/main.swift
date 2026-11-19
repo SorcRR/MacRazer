@@ -27,6 +27,7 @@ if args.isEmpty {
 
 let command = args.first!
 if command.hasPrefix("render") {
+    RenderOptions.isActive = true
     AppInfo.renderVersion = args.first { $0.hasPrefix("version=") }.map { String($0.dropFirst("version=".count)) }
     if let crop = args.first(where: { $0.hasPrefix("crop=") }) {
         let n = crop.dropFirst("crop=".count).split(separator: ",").compactMap { Double($0) }
@@ -83,19 +84,12 @@ func openDevice() -> HIDDevice? {
 /// The look a `render-*` command draws in: `light` or `green` among its arguments picks the
 /// solid Light or Razer Green theme, otherwise solid Dark. Solid rather than glass, because a
 /// render has no desktop behind it to show through.
-func renderLook(_ args: [String]) -> PopoverLook {
-    args.contains("light") ? .solidLight : args.contains("green") ? .solidGreen : .solidDark
+func renderTheme(_ args: [String]) -> PopoverTheme {
+    args.contains("light") ? .light : args.contains("green") ? .razerGreen : .dark
 }
 
-extension PopoverLook {
-    /// The Settings theme that gives this look, for a render's popover.
-    var theme: PopoverTheme {
-        switch self {
-        case .lightGlass, .solidLight: return .light
-        case .darkGlass, .solidDark: return .dark
-        case .greenGlass, .solidGreen: return .razerGreen
-        }
-    }
+func renderLook(_ args: [String]) -> PopoverLook {
+    PopoverLook.resolve(theme: renderTheme(args), glass: false, systemIsDark: true)
 }
 
 /// Shared by the render-* commands: draw a SwiftUI view at 2x on a theme's backdrop and write
@@ -198,10 +192,12 @@ final class RenderWindow: NSWindow {
     if let crop = RenderOptions.crop {
         // Points to pixels; the window server's image is at the display's scale.
         let scale = CGFloat(image.width) / host.bounds.width
-        guard let cropped = image.cropping(to: CGRect(x: crop.minX * scale, y: crop.minY * scale,
-                                                      width: crop.width * scale, height: crop.height * scale)),
-              cropped.width == Int((crop.width * scale).rounded()),
-              cropped.height == Int((crop.height * scale).rounded()) else {
+        // Whole pixels, as `cropping(to:)` would round it anyway; a crop that comes back
+        // smaller ran off the edge of the render.
+        let pixels = CGRect(x: crop.minX * scale, y: crop.minY * scale,
+                            width: crop.width * scale, height: crop.height * scale).integral
+        guard let cropped = image.cropping(to: pixels),
+              cropped.width == Int(pixels.width), cropped.height == Int(pixels.height) else {
             print("Render failed: crop \(crop) doesn't fit in the \(host.bounds.size) render.")
             exit(1)
         }
@@ -249,13 +245,6 @@ final class RenderWindow: NSWindow {
     return rep.cgImage
 }
 
-enum RenderOptions {
-    /// From a `render-*` command's `crop=x,y,width,height` argument, in points from the top
-    /// left: only that part of a hosted render is written. For the website's feature cards.
-    /// A static rather than a top-level `var`: main.swift runs top to bottom, so a top-level
-    /// one would be set to nil again when execution reached its declaration.
-    nonisolated(unsafe) static var crop: CGRect?
-}
 
 /// The output path for a `render-*` command: the first argument that names a PNG.
 ///
@@ -369,7 +358,7 @@ case "render-ui":
     let renderAppearance = AppearanceSettings(defaults: UserDefaults(suiteName: "MacRazer.render-ui") ?? .standard)
     renderAppearance.twoColumns = args.contains("twocolumns")
     renderAppearance.glass = false
-    renderAppearance.theme = renderLook(args).theme
+    renderAppearance.theme = renderTheme(args)
     let rootView: AnyView = args.contains("color")
         ? AnyView(ColorPickerPage(color: .constant(.blue),
                                   device: accessoryPIDs.isEmpty ? nil
