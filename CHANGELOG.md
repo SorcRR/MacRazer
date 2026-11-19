@@ -6,6 +6,8 @@ expect rough edges until 1.0.
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-11-19
+
 ### Added
 - **Reverse scrolling on Razer mice.** A switch under Settings › General reverses wheel
   and tilt scrolling on Razer mice while trackpads and other mice keep their directions.
