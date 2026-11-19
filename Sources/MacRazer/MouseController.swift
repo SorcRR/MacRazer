@@ -1186,8 +1186,10 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// The command for the lighting the app last set, for the test to return to after showing
     /// red. Main thread. The protocol has no lighting read-back, so this is the app's own idea
     /// of what the mouse shows, the same one its controls work from.
-    func lightingRestoreReport() -> RazerReport {
-        Self.lightingCommand(effect, color: lightingColor, waveSpeed: waveSpeed, effects: availableEffects).report
+    /// One report per effect zone of `pid` (the open mouse's by default).
+    func lightingRestoreReports(pid: Int? = nil) -> [RazerReport] {
+        Self.lightingCommand(effect, color: lightingColor, waveSpeed: waveSpeed, effects: availableEffects,
+                             leds: RazerDevices.effectLeds(pid: pid ?? deviceID)).reports
     }
 
     // MARK: - Writes
@@ -1567,10 +1569,18 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     }
 
     /// Sets brightness on every lit zone the model has (`RazerDevices.brightnessLeds`).
-    /// Throws on the first zone that refuses, so a half-dimmed mouse counts as a failed write.
+    /// Throws on the first confirmed zone that refuses, so a half-dimmed mouse counts as a
+    /// failed write. Zones that come only from the effect table are best effort, like the
+    /// effect writes to them: a refusal there doesn't fail the slider.
     static func writeBrightness(_ raw: UInt8, to dev: any RazerTransport) throws {
+        let confirmed = RazerDevices.confirmedBrightnessLeds(pid: dev.productID)
         for led in RazerDevices.brightnessLeds(pid: dev.productID) {
-            _ = try dev.sendWithRetry(RazerCommands.setBrightness(raw, led: led))
+            let report = RazerCommands.setBrightness(raw, led: led)
+            if confirmed.contains(led) {
+                _ = try dev.sendWithRetry(report)
+            } else {
+                _ = try? dev.sendWithRetry(report)
+            }
         }
     }
 
@@ -1621,11 +1631,31 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     }
 
     /// The one place a lighting command is built: the effect the mouse with these effects
-    /// runs for the one asked for, and the command for it.
+    /// runs for the one asked for, and the command for it on each of `leds`
+    /// (`RazerDevices.effectLeds`), in order.
     nonisolated static func lightingCommand(_ effect: LightingEffect, color: RGB, waveSpeed: UInt8,
-                                            effects: [LightingEffect]) -> (effect: LightingEffect, report: RazerReport) {
+                                            effects: [LightingEffect],
+                                            leds: [UInt8]) -> (effect: LightingEffect, reports: [RazerReport]) {
         let landed = supported(effect, in: effects)
-        return (landed, RazerCommands.effect(landed, color: color, waveSpeed: waveSpeed))
+        return (landed, RazerCommands.effect(landed, color: color, leds: leds, waveSpeed: waveSpeed))
+    }
+
+    /// Sends an effect to every zone it was built for. Every zone gets its write, even after
+    /// one refuses: a logo that has no wave must not keep the scroll wheel from getting it.
+    /// Succeeds when any zone took it, since ZERO_LED is listed first on mice where some
+    /// firmware shows it and some doesn't. Throws the last error when none did.
+    static func writeLighting(_ reports: [RazerReport], to dev: any RazerTransport) throws {
+        var lastError: Error?
+        var anyTook = false
+        for report in reports {
+            do {
+                _ = try dev.sendWithRetry(report)
+                anyTook = true
+            } catch {
+                lastError = error
+            }
+        }
+        if !anyTook { throw lastError ?? HIDDevice.HIDError.commandFailed }
     }
 
     /// An effect this mouse has: on a static-only one, breathing, spectrum or wave (from a
@@ -1668,9 +1698,10 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             guard let self else { return }
             let landed = try? { () throws -> LightingEffect in
                 let device = try self.ensureDevice()
-                let (landed, report) = Self.lightingCommand(effect, color: color, waveSpeed: speed,
-                                                            effects: RazerDevices.effects(pid: device.productID))
-                _ = try device.sendWithRetry(report)
+                let (landed, reports) = Self.lightingCommand(effect, color: color, waveSpeed: speed,
+                                                             effects: RazerDevices.effects(pid: device.productID),
+                                                             leds: RazerDevices.effectLeds(pid: device.productID))
+                try Self.writeLighting(reports, to: device)
                 return landed
             }()
             self.publish {
@@ -1782,8 +1813,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             // Built for the mouse it reaches: if that changed since the profile was read, an
             // effect it lacks lands as one it has.
             let (landed, lighting) = Self.lightingCommand(effect, color: color, waveSpeed: speed,
-                                                          effects: RazerDevices.effects(pid: dev.productID))
-            let lightOK = !hasLighting || (try? dev.sendWithRetry(lighting)) != nil
+                                                          effects: RazerDevices.effects(pid: dev.productID),
+                                                          leds: RazerDevices.effectLeds(pid: dev.productID))
+            let lightOK = !hasLighting || (try? Self.writeLighting(lighting, to: dev)) != nil
             let allOK = stagesOK && dpiOK && pollOK && brightOK && lightOK
             let anyOK = dpiOK || pollOK || (hasLighting && (brightOK || lightOK))
                 || (stagesReport != nil && stagesOK)

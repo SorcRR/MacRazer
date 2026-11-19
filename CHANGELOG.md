@@ -40,8 +40,13 @@ expect rough edges until 1.0.
     doesn't work yet.
   - **Viper Mini**, **Pro Click Mini over its dongle** and **DeathAdder V4 Pro on its
     cable:** fully supported. **DeathAdder V2 Pro on its cable:** lighting works now.
-- **Tested keyboards and mousepads.** The Ornata V3, Ornata V3 X, Goliathus Chroma and
-  Goliathus Chroma Extended lost their UNTESTED tag after passing the lighting test.
+  - **DeathAdder V4 Pro over its dongle** and **Viper Mini Signature Edition on its cable:**
+    fully supported. **Orochi 2013:** polling works now.
+  - **Basilisk Ultimate on its cable**, the **Basilisk** and the **DeathAdder V2 Mini:**
+    battery (where there is one), DPI and polling work. Their lighting waits on more tests.
+- **Tested keyboards and mousepads.** The Ornata V3, Ornata V3 X, Goliathus Chroma,
+  Goliathus Chroma Extended and Firefly V2 Pro lost their UNTESTED tag after passing the
+  lighting test.
 - **The device test finds buttons the Mac never hears.** Some buttons change DPI or the
   profile inside the mouse and send the Mac nothing. The button step now asks whether every
   button you pressed showed up, and watches the DPI and profile while you press them. A
@@ -59,12 +64,22 @@ expect rough edges until 1.0.
   show up in its report.
 
 ### Fixed
+- **Colours on mice that ignore the all-zones light.** Some mice say yes to a colour sent to
+  every zone at once, then keep their old one. Device tests showed it on the Viper Ultimate,
+  Basilisk Ultimate, Basilisk, DeathAdder V2 Mini and Basilisk V3 Pro 35K. Brightness still
+  dimmed there. Effects now go to each lit zone too (logo, scroll wheel, side strips), as
+  OpenRazer does. Other mice get the same single write as before. On the Viper Ultimate,
+  whose lighting already shows, the logo now gets a second write. The others keep lighting
+  hidden until a new device test shows colours land, and the test now sends its red to
+  every zone too. The brightness slider dims those zones as well, so the side strips and
+  underglow don't stay bright.
 - **Older mice that went Offline a few seconds after plugging in.** A mouse MacRazer doesn't
   know yet, like the Lancehead Tournament Edition (#139), may want a different protocol id
   than the one the app guessed. It then never answered and showed as Offline. Now, when such
   a mouse stays silent, the app tries the other ids and the mouse's other interfaces, and
   keeps the one that answers. The Lancehead Tournament Edition also has its own entry now,
-  with OpenRazer's settings. A device test from an owner will confirm it.
+  and an owner's device test confirmed it: DPI and polling work. Lighting waits on a
+  test that shows every zone.
 - **The display sleeps again with MacRazer running.** macOS counts every battery read as
   user activity, so the poll kept the display awake. Now the poll stops after 30 seconds
   without keyboard or pointer input, and while the screen is asleep or locked. It starts
