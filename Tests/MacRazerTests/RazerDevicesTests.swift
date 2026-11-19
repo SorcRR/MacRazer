@@ -711,7 +711,7 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(RazerDevices.unverified(pid: pid), [.lighting])
         XCTAssertEqual(RazerDevices.maxDPI(pid: pid), 16000)
         XCTAssertEqual(RazerDevices.connection(pid: pid), .wired)
-        XCTAssertFalse(RazerDevices.guessesProtocol(pid: pid), "verified now, so no search")
+        XCTAssertTrue(RazerDevices.guessesProtocol(pid: pid), "OpenRazer says 0x3f, so a silent one is still searched")
     }
 
     /// Only a mouse whose id is a guess gets searched: one not on record, or on record with
@@ -720,6 +720,7 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertTrue(RazerDevices.guessesProtocol(pid: 0x9999), "not on record")
         XCTAssertTrue(RazerDevices.guessesProtocol(pid: 0x006E), "DeathAdder Essential (2018): nothing verified")
         XCTAssertFalse(RazerDevices.guessesProtocol(pid: 0x00DB), "Cobra HyperSpeed")
+        XCTAssertTrue(RazerDevices.guessesProtocol(pid: 0x0060), "Lancehead TE: verified, but its id may differ")
         XCTAssertFalse(RazerDevices.guessesProtocol(pid: 0x0046), "Mamba TE: DPI and polling verified")
     }
 
@@ -738,6 +739,8 @@ final class RazerDevicesTests: XCTestCase {
         // A verified row's ids are known to work: a learned id doesn't touch them.
         RazerDevices.learnTransactionId(0x3f, replacing: 0x1f, link: 9)
         XCTAssertEqual(RazerDevices.transactionId(pid: 0x00DB, commandClass: 0x00, commandId: 0x81, link: 9), 0x1f)
+        // Unless its id may differ: a Lancehead TE that answered 0x3f keeps it.
+        XCTAssertEqual(RazerDevices.transactionId(pid: 0x0060, commandClass: 0x04, commandId: 0x05, link: 9), 0x3f)
         // Unplugged interfaces are dropped.
         RazerDevices.learnTransactionId(0x3f, replacing: 0x1f, link: other)
         RazerDevices.forgetLearnedTransactionIds(keeping: [other])

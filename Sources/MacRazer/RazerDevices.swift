@@ -88,6 +88,9 @@ struct RazerDeviceInfo {
     /// DPI-stages pair (0x04/0x06 and 0x04/0x86), which it shares with the plain Cobra's
     /// 0xFF group.
     var transactionOverrides: [UInt16: UInt8] = [:]
+    /// Its id worked on one unit, but sources disagree on it, so a silent mouse still gets
+    /// `HIDDevice.findAnsweringLink`'s search even though the row is verified.
+    var idMayDiffer = false
     /// Which LED group answers the extended-matrix *brightness* commands (class 0x0F,
     /// 0x04/0x84). Not the same id the effect commands take: the Cobra family drives
     /// effects as one group via ZERO_LED but only answers brightness on LOGO_LED, and the
@@ -624,7 +627,9 @@ enum RazerDevices {
         // answers on 0x10 and 0x11, its side strips, which the effect on ZERO_LED may not reach
         // (on the Basilisk Ultimate's cable only the scroll wheel changed), and brightness was
         // tried on LOGO and SCROLL only. So lighting stays hidden until a test shows every zone.
-        .init(pid: 0x0060, name: "Razer Lancehead Tournament Edition", unverified: [.lighting], hasBattery: false, hasLighting: false, maxDPI: 16000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
+        // OpenRazer drives it with 0x3f, so a unit that stays silent on 0x1f still gets the
+        // search for the id it answers.
+        .init(pid: 0x0060, name: "Razer Lancehead Tournament Edition", unverified: [.lighting], hasBattery: false, hasLighting: false, maxDPI: 16000, transactionId: 0x1f, matrixTransactionId: 0x1f, idMayDiffer: true, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
     ]
 
     static func info(pid: Int) -> RazerDeviceInfo? { known.first { $0.pid == pid } }
@@ -686,7 +691,8 @@ enum RazerDevices {
     /// `HIDDevice.findAnsweringLink` try other ids and interfaces when the mouse is silent.
     /// A verified row's id is known to work, so silence there means asleep or unplugged.
     static func guessesProtocol(pid: Int) -> Bool {
-        info(pid: pid) == nil || verified(pid: pid).isEmpty
+        guard let info = info(pid: pid) else { return true }
+        return info.idMayDiffer || verified(pid: pid).isEmpty
     }
 
     /// An id a mouse answered to, and the registry id (or the 0x1f default) it stands in for.
