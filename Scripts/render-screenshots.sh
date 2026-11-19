@@ -10,7 +10,8 @@
 #
 # The renders run from a throwaway app bundle opened with `open`, not from the bare binary:
 # only an app launched that way may make itself active, and an inactive app draws its switches
-# grey whether they're on or off. So each render takes focus for a moment, then gives it back.
+# grey whether they're on or off. So each render takes focus for a moment, and macOS hands it
+# back when the render quits. Keys you press meanwhile are dropped, not typed into the render.
 # The bundle has its own defaults domain, which this script sets, so a render never depends on
 # the popover sections you happen to have open in your own MacRazer.
 #

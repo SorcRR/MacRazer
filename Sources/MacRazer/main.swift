@@ -30,9 +30,12 @@ if command.hasPrefix("render") {
     RenderOptions.isActive = true
     AppInfo.renderVersion = args.first { $0.hasPrefix("version=") }.map { String($0.dropFirst("version=".count)) }
     if let crop = args.first(where: { $0.hasPrefix("crop=") }) {
-        let n = crop.dropFirst("crop=".count).split(separator: ",").compactMap { Double($0) }
-        guard n.count == 4 else {
-            status("crop= takes four numbers in points: crop=x,y,width,height")
+        // Every part a number: dropping the ones that aren't could still leave four, of the wrong crop.
+        let parts = crop.dropFirst("crop=".count).split(separator: ",", omittingEmptySubsequences: false)
+            .map { Double($0) }
+        let n = parts.compactMap { $0 }
+        guard parts.count == 4, n.count == 4, n[0] >= 0, n[1] >= 0, n[2] > 0, n[3] > 0 else {
+            status("crop= takes four numbers in points, a size above zero: crop=x,y,width,height")
             exit(1)
         }
         RenderOptions.crop = CGRect(x: n[0], y: n[1], width: n[2], height: n[3])
@@ -100,8 +103,7 @@ func renderLook(_ args: [String]) -> PopoverLook {
 /// `writeHostedPNG` for anything meant to be seen.
 @MainActor func writeViewPNG<V: View>(_ view: V, look: PopoverLook, to path: String) {
     guard RenderOptions.crop == nil else {
-        status("Render failed: crop= works on hosted renders only. Add `hosted`.")
-        exit(1)
+        renderFailed("crop= works on hosted renders only. Add `hosted`.")
     }
     // In the look's colour scheme, to match its backdrop. Without it `.secondary` and
     // `.tertiary` resolve for the other scheme and read as a contrast bug that isn't there.
@@ -113,11 +115,22 @@ func renderLook(_ args: [String]) -> PopoverLook {
        let tiff = img.tiffRepresentation,
        let rep = NSBitmapImageRep(data: tiff),
        let png = rep.representation(using: .png, properties: [:]) {
-        try? png.write(to: URL(fileURLWithPath: path))
-        print("Wrote \(path)")
+        writeRender(png, to: path)
     } else {
-        status("Render failed")
+        renderFailed()
     }
+}
+
+/// A render that didn't happen exits non-zero, so a caller can tell it from one that did.
+func renderFailed(_ why: String = "") -> Never {
+    status(why.isEmpty ? "Render failed" : "Render failed: \(why)")
+    exit(1)
+}
+
+/// Writes a render's PNG, or fails the render: a missing folder isn't a success.
+func writeRender(_ png: Data, to path: String) {
+    do { try png.write(to: URL(fileURLWithPath: path)) } catch { renderFailed("\(error.localizedDescription)") }
+    print("Wrote \(path)")
 }
 
 /// Runs AppKit's event loop for a while. `RunLoop.run` alone never hands AppKit its events,
@@ -131,7 +144,7 @@ func renderLook(_ args: [String]) -> PopoverLook {
                                         .scrollWheel]
     while Date() < deadline {
         if let event = NSApp.nextEvent(matching: .any, until: deadline, inMode: .default, dequeue: true),
-           !input.contains(NSEvent.EventTypeMask(rawValue: 1 << event.type.rawValue)) {
+           !input.contains(NSEvent.EventTypeMask(type: event.type)) {
             NSApp.sendEvent(event)
         }
     }
@@ -165,8 +178,7 @@ final class RenderWindow: NSWindow {
     // A view with no intrinsic size measures as zero, and the capture below then fails with
     // nothing to say about why. Name the cause instead.
     guard frameSize.width > 0, frameSize.height > 0 else {
-        status("Render failed: the view has no size of its own. Pass an explicit size.")
-        return
+        renderFailed("the view has no size of its own. Pass an explicit size.")
     }
     host.frame = CGRect(origin: .zero, size: frameSize)
     // Inside a window, ordered in far off screen. Outside one, a view resolves colours
@@ -184,6 +196,8 @@ final class RenderWindow: NSWindow {
     // render runs from an app bundle opened with `open` (Scripts/render-screenshots.sh). Run
     // from a terminal, it's ignored and switches draw grey.
     NSApp.finishLaunching()
+    // The deprecated call on purpose: `activate()` is cooperative, and a launched render that
+    // nobody handed focus to stays inactive with it, so the switches came out grey.
     NSApp.activate(ignoringOtherApps: true)
     window.makeKeyAndOrderFront(nil)
     defer { window.orderOut(nil) }
@@ -191,10 +205,7 @@ final class RenderWindow: NSWindow {
     pumpEvents(for: 0.5)
     host.layoutSubtreeIfNeeded()
     host.display()
-    guard var image = windowServerImage(window) ?? cachedDisplayImage(host) else {
-        status("Render failed")
-        return
-    }
+    guard var image = windowServerImage(window) ?? cachedDisplayImage(host) else { renderFailed() }
     if let crop = RenderOptions.crop {
         // Points to pixels; the window server's image is at the display's scale.
         let scale = CGFloat(image.width) / host.bounds.width
@@ -204,8 +215,7 @@ final class RenderWindow: NSWindow {
                             width: crop.width * scale, height: crop.height * scale).integral
         guard let cropped = image.cropping(to: pixels),
               cropped.width == Int(pixels.width), cropped.height == Int(pixels.height) else {
-            status("Render failed: crop \(crop) doesn't fit in the \(host.bounds.size) render.")
-            exit(1)
+            renderFailed("crop \(crop) doesn't fit in the \(host.bounds.size) render.")
         }
         image = cropped
     }
@@ -220,11 +230,9 @@ final class RenderWindow: NSWindow {
         if let converted = ctx.makeImage() { image = converted }
     }
     guard let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else {
-        status("Render failed")
-        return
+        renderFailed()
     }
-    try? png.write(to: URL(fileURLWithPath: path))
-    print("Wrote \(path)")
+    writeRender(png, to: path)
 }
 
 /// The window as the window server composited it: exactly what the app shows on screen. A
@@ -238,7 +246,7 @@ final class RenderWindow: NSWindow {
 /// cropped. One that doesn't match is taken again.
 @MainActor private func windowServerImage(_ window: NSWindow) -> CGImage? {
     if window.backingScaleFactor != 2 {
-        print("Note: the display is at \(window.backingScaleFactor)x, so this render is too, not 2x.")
+        status("Note: the display is at \(window.backingScaleFactor)x, so this render is too, not 2x.")
     }
     for _ in 0..<10 {
         let scale = window.backingScaleFactor
@@ -250,7 +258,7 @@ final class RenderWindow: NSWindow {
         }
         pumpEvents(for: 0.2)
     }
-    print("The window server's capture never matched the window's size; drawing it directly instead.")
+    status("The window server's capture never matched the window's size; drawing it directly instead.")
     return nil
 }
 
