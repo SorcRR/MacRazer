@@ -61,7 +61,8 @@ expect rough edges until 1.0.
   OpenRazer does. Other mice get the same single write as before. On the Viper Ultimate,
   whose lighting already shows, the logo now gets a second write. The others keep lighting
   hidden until a new device test shows colours land, and the test now sends its red to
-  every zone too.
+  every zone too. The brightness slider dims those zones as well, so the side strips and
+  underglow don't stay bright.
 - **Older mice that went Offline a few seconds after plugging in.** A mouse MacRazer doesn't
   know yet, like the Lancehead Tournament Edition (#139), may want a different protocol id
   than the one the app guessed. It then never answered and showed as Offline. Now, when such

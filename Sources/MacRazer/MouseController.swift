@@ -1536,10 +1536,18 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     }
 
     /// Sets brightness on every lit zone the model has (`RazerDevices.brightnessLeds`).
-    /// Throws on the first zone that refuses, so a half-dimmed mouse counts as a failed write.
+    /// Throws on the first confirmed zone that refuses, so a half-dimmed mouse counts as a
+    /// failed write. Zones that come only from the effect table are best effort, like the
+    /// effect writes to them: a refusal there doesn't fail the slider.
     static func writeBrightness(_ raw: UInt8, to dev: any RazerTransport) throws {
+        let confirmed = RazerDevices.confirmedBrightnessLeds(pid: dev.productID)
         for led in RazerDevices.brightnessLeds(pid: dev.productID) {
-            _ = try dev.sendWithRetry(RazerCommands.setBrightness(raw, led: led))
+            let report = RazerCommands.setBrightness(raw, led: led)
+            if confirmed.contains(led) {
+                _ = try dev.sendWithRetry(report)
+            } else {
+                _ = try? dev.sendWithRetry(report)
+            }
         }
     }
 

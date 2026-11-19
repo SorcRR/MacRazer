@@ -329,7 +329,7 @@ final class RazerDevicesTests: XCTestCase {
             XCTAssertFalse(RazerDevices.linksToTest(besides: dock).contains { $0.connection == .wired },
                            "a dock's cable is the mouse's own link")
         }
-        XCTAssertEqual(RazerDevices.brightnessLeds(pid: 0x00CD), [Razer.logoLed], "no unconfirmed scroll zone")
+        XCTAssertEqual(RazerDevices.confirmedBrightnessLeds(pid: 0x00CD), [Razer.logoLed], "no unconfirmed scroll zone")
     }
 
     /// Identify fails a known model whose lighting id no longer answers, except on a light
@@ -751,6 +751,8 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(RazerDevices.effectLeds(pid: 0x0064), [0x00, 0x04, 0x01], "Basilisk: logo, scroll")
         XCTAssertEqual(RazerDevices.effectLeds(pid: 0x008C), [0x00, 0x04], "DeathAdder V2 Mini: logo")
         XCTAssertEqual(RazerDevices.effectLeds(pid: 0x00CC), [0x00, 0x04, 0x01, 0x0A], "V3 Pro 35K")
+        XCTAssertEqual(RazerDevices.effectLeds(pid: 0x0088), [0x00, 0x04, 0x01, 0x11, 0x10, 0x0A],
+                       "Basilisk Ultimate dongle: its zone read answered on 0x0A too")
         XCTAssertEqual(RazerDevices.effectLeds(pid: 0x0060), [0x00, 0x04, 0x01, 0x11, 0x10], "Lancehead TE")
     }
 
@@ -823,6 +825,65 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertThrowsError(try MouseController.writeLighting(
             RazerCommands.effect(.staticColor, color: RGB(r: 9, g: 9, b: 9), leds: [Razer.zeroLed]), to: single),
             "nothing took it: a failed write, as before")
+    }
+}
+
+extension RazerDevicesTests {
+    // MARK: Brightness on the effect zones
+
+    /// The slider reaches every zone an effect lights: the confirmed zones first, then the
+    /// effect zones not yet listed, never ZERO_LED and never a zone twice.
+    func testBrightnessCoversEveryEffectZone() {
+        XCTAssertEqual(RazerDevices.brightnessLeds(pid: 0x0088), [0x04, 0x01, 0x11, 0x10, 0x0A])
+        XCTAssertEqual(RazerDevices.brightnessLeds(pid: 0x0086), [0x04, 0x01, 0x11, 0x10])
+        XCTAssertEqual(RazerDevices.brightnessLeds(pid: 0x00CC), [0x04, 0x01, 0x0A], "row's scroll zone once")
+        XCTAssertEqual(RazerDevices.brightnessLeds(pid: 0x00CD), [0x04, 0x01, 0x0A])
+        XCTAssertEqual(RazerDevices.brightnessLeds(pid: 0x007B), [0x04], "Viper Ultimate: logo already the brightness zone")
+        XCTAssertEqual(RazerDevices.brightnessLeds(pid: 0x0060), [0x04, 0x01, 0x11, 0x10])
+        for (pid, _) in RazerDevices.effectZones {
+            let leds = RazerDevices.brightnessLeds(pid: pid)
+            let label = String(format: "0x%04X", pid)
+            XCTAssertEqual(leds.first, RazerDevices.brightnessLed(pid: pid), label)
+            XCTAssertFalse(leds.contains(Razer.zeroLed), label)
+            XCTAssertEqual(Set(leds).count, leds.count, label)
+        }
+    }
+
+    /// Mice outside the effect table keep exactly the zones their row gives.
+    func testUnlistedMiceKeepTheirBrightnessZones() {
+        for pid in [0x00DB, 0x00AA, 0x0085, 0x00E7, 0x00B9, 0x9999] {
+            XCTAssertEqual(RazerDevices.brightnessLeds(pid: pid), RazerDevices.confirmedBrightnessLeds(pid: pid),
+                           String(format: "0x%04X", pid))
+        }
+        XCTAssertEqual(RazerDevices.brightnessLeds(pid: nil), [Razer.logoLed])
+        let cobra = RecordingTransport(productID: 0x00DB)
+        try? MouseController.writeBrightness(0x80, to: cobra)
+        XCTAssertEqual(cobra.sent.map { $0.serialized() },
+                       [RazerCommands.setBrightness(0x80, led: Razer.logoLed).serialized()], "one write, as before")
+    }
+
+    func testBrightnessWriteReachesEveryZoneInOrder() throws {
+        let dongle = RecordingTransport(productID: 0x0088)
+        try MouseController.writeBrightness(0x40, to: dongle)
+        XCTAssertEqual(dongle.sent.map { $0.arguments[1] }, [0x04, 0x01, 0x11, 0x10, 0x0A])
+        for report in dongle.sent {
+            XCTAssertEqual(report.serialized(), RazerCommands.setBrightness(0x40, led: report.arguments[1]).serialized())
+        }
+    }
+
+    /// A zone known only from the effect table is best effort. A confirmed zone that
+    /// refuses still fails the write.
+    func testOnlyConfirmedBrightnessZonesCanFailTheWrite() {
+        let underglow = RecordingTransport(productID: 0x0088, refuses: Razer.underglowLed)
+        XCTAssertNoThrow(try MouseController.writeBrightness(0x40, to: underglow))
+        let side = RecordingTransport(productID: 0x0088, refuses: Razer.leftSideLed)
+        XCTAssertNoThrow(try MouseController.writeBrightness(0x40, to: side))
+        XCTAssertEqual(side.sent.map { $0.arguments[1] }, [0x04, 0x01, 0x11, 0x10, 0x0A], "the rest still written")
+
+        let logo = RecordingTransport(productID: 0x0088, refuses: Razer.logoLed)
+        XCTAssertThrowsError(try MouseController.writeBrightness(0x40, to: logo))
+        let naga = RecordingTransport(productID: 0x00E7, refuses: Razer.backlightLed)
+        XCTAssertThrowsError(try MouseController.writeBrightness(0x40, to: naga), "row zones keep failing the write")
     }
 }
 

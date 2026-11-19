@@ -898,9 +898,20 @@ enum RazerDevices {
     static func brightnessLed(pid: Int?) -> UInt8 {
         pid.flatMap { info(pid: $0)?.brightnessLed } ?? Razer.logoLed
     }
-    /// Every LED group a brightness write goes to, `brightnessLed` first.
-    static func brightnessLeds(pid: Int?) -> [UInt8] {
+    /// The zones the row confirms for brightness: `brightnessLed`, then `extraBrightnessLeds`.
+    static func confirmedBrightnessLeds(pid: Int?) -> [UInt8] {
         [brightnessLed(pid: pid)] + (pid.flatMap { info(pid: $0)?.extraBrightnessLeds } ?? [])
+    }
+    /// Every LED group a brightness write goes to, `brightnessLed` first. The confirmed
+    /// zones, then each effect zone (`effectZones`) not already listed, so the slider dims
+    /// every zone an effect lights. ZERO_LED is left out: it is the all-zones id for
+    /// effects, not a zone of its own. Unlisted mice keep their confirmed zones alone.
+    static func brightnessLeds(pid: Int?) -> [UInt8] {
+        var leds = confirmedBrightnessLeds(pid: pid)
+        for led in effectLeds(pid: pid) where led != Razer.zeroLed && !leds.contains(led) {
+            leds.append(led)
+        }
+        return leds
     }
 
     /// The LED groups an effect goes to, one write each, for mice that acknowledge an
@@ -916,9 +927,12 @@ enum RazerDevices {
         // Viper Ultimate: logo only (OpenRazer has logo_matrix_effect_* and nothing else).
         0x007A: [Razer.zeroLed, Razer.logoLed],
         0x007B: [Razer.zeroLed, Razer.logoLed],
-        // Basilisk Ultimate: logo, scroll wheel and both side strips.
+        // Basilisk Ultimate: logo, scroll wheel and both side strips. The dongle's report
+        // also answered its zone read on 0x0A, so the dongle gets it too. The cable's
+        // report answered on 0x01, 0x04, 0x10 and 0x11 only, and OpenRazer has no 0x0A or
+        // backlight zone for this mouse, so the cable leaves it out.
         0x0086: [Razer.zeroLed, Razer.logoLed, Razer.scrollLed, Razer.leftSideLed, Razer.rightSideLed],
-        0x0088: [Razer.zeroLed, Razer.logoLed, Razer.scrollLed, Razer.leftSideLed, Razer.rightSideLed],
+        0x0088: [Razer.zeroLed, Razer.logoLed, Razer.scrollLed, Razer.leftSideLed, Razer.rightSideLed, Razer.underglowLed],
         // Basilisk (2018): logo and scroll wheel.
         0x0064: [Razer.zeroLed, Razer.logoLed, Razer.scrollLed],
         // DeathAdder V2 Mini: logo only.
