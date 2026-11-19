@@ -730,6 +730,90 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertNil(RazerDevices.learnedTransactionId(link: link))
         XCTAssertNotNil(RazerDevices.learnedTransactionId(link: other))
     }
+
+    // MARK: Effect zones
+
+    /// The effect bytes per zone: class 0x0F, id 0x02, the zone in args[1], and otherwise
+    /// exactly what a ZERO_LED write carries.
+    func testEffectGoesToEveryZoneOfTheModel() {
+        let red = RGB(r: 0xFF, g: 0x00, b: 0x00)
+        let basiliskUltimate = RazerCommands.effect(.staticColor, color: red,
+                                                    leds: RazerDevices.effectLeds(pid: 0x0086))
+        XCTAssertEqual(basiliskUltimate.map { $0.arguments[1] }, [0x00, 0x04, 0x01, 0x11, 0x10])
+        for report in basiliskUltimate {
+            XCTAssertEqual(report.commandClass, 0x0F)
+            XCTAssertEqual(report.commandId, 0x02)
+            XCTAssertEqual(report.dataSize, 0x09)
+            XCTAssertEqual(Array(report.arguments[0...8]),
+                           [Razer.varstore, report.arguments[1], 0x01, 0x00, 0x00, 0x01, 0xFF, 0x00, 0x00])
+        }
+        XCTAssertEqual(RazerDevices.effectLeds(pid: 0x007B), [0x00, 0x04], "Viper Ultimate: logo")
+        XCTAssertEqual(RazerDevices.effectLeds(pid: 0x0064), [0x00, 0x04, 0x01], "Basilisk: logo, scroll")
+        XCTAssertEqual(RazerDevices.effectLeds(pid: 0x008C), [0x00, 0x04], "DeathAdder V2 Mini: logo")
+        XCTAssertEqual(RazerDevices.effectLeds(pid: 0x00CC), [0x00, 0x04, 0x01, 0x0A], "V3 Pro 35K")
+        XCTAssertEqual(RazerDevices.effectLeds(pid: 0x0060), [0x00, 0x04, 0x01, 0x11, 0x10], "Lancehead TE")
+    }
+
+    func testEveryZoneGetsTheSameEffectBytes() {
+        for effect in LightingEffect.allCases {
+            let color = RGB(r: 0x44, g: 0xD6, b: 0x2C)
+            let zones = RazerCommands.effect(effect, color: color, leds: [0x00, 0x04, 0x01], waveSpeed: 0x30)
+            for report in zones {
+                var expected = RazerCommands.effect(effect, color: color, led: report.arguments[1], waveSpeed: 0x30)
+                expected.arguments[1] = report.arguments[1]
+                XCTAssertEqual(report.serialized(), expected.serialized(), "\(effect) on \(report.arguments[1])")
+                var asZero = report
+                asZero.arguments[1] = 0x00
+                XCTAssertEqual(asZero.serialized(), RazerCommands.effect(effect, color: color, waveSpeed: 0x30).serialized(),
+                               "\(effect): only the zone byte differs from ZERO_LED")
+            }
+        }
+    }
+
+    /// A mouse that isn't listed is sent exactly what it was sent before: one ZERO_LED write.
+    func testUnlistedMiceKeepTheOneZeroLedWrite() {
+        let color = RGB(r: 1, g: 2, b: 3)
+        for pid in [0x00DB, 0x00AA, 0x0085, 0x9999] {
+            XCTAssertEqual(RazerDevices.effectLeds(pid: pid), [Razer.zeroLed])
+            let (_, reports) = MouseController.lightingCommand(.staticColor, color: color, waveSpeed: WaveSpeed.standard,
+                                                               effects: LightingEffect.allCases,
+                                                               leds: RazerDevices.effectLeds(pid: pid))
+            XCTAssertEqual(reports.map { $0.serialized() }, [RazerCommands.setStatic(rgb: color).serialized()])
+        }
+        XCTAssertEqual(RazerDevices.effectLeds(pid: nil), [Razer.zeroLed])
+    }
+
+    func testZoneTableKeepsZeroLedFirstAndLeavesBluetoothAlone() {
+        for (pid, leds) in RazerDevices.effectZones {
+            XCTAssertEqual(leds.first, Razer.zeroLed, String(format: "0x%04X", pid))
+            XCTAssertEqual(Set(leds).count, leds.count, "no zone twice")
+            XCTAssertFalse(RazerDevices.bluetoothPIDs.contains(pid), "Bluetooth keeps ZERO_LED")
+        }
+    }
+
+    func testLightingWritesEveryZoneInOrder() throws {
+        let viper = RecordingTransport(productID: 0x007B)
+        let (_, reports) = MouseController.lightingCommand(.wave, color: RGB(r: 0, g: 0, b: 0), waveSpeed: 0x28,
+                                                           effects: LightingEffect.allCases,
+                                                           leds: RazerDevices.effectLeds(pid: 0x007B))
+        try MouseController.writeLighting(reports, to: viper)
+        XCTAssertEqual(viper.sent.map { $0.arguments[1] }, [0x00, 0x04])
+        XCTAssertEqual(viper.sent.map { $0.arguments[2] }, [0x04, 0x04], "wave on both")
+    }
+
+    /// A zone that refuses doesn't stop the rest, and the write counts while one took it.
+    func testOneRefusingZoneDoesNotStopTheOthers() throws {
+        let leds = RazerDevices.effectLeds(pid: 0x0086)
+        let reports = RazerCommands.effect(.staticColor, color: RGB(r: 9, g: 9, b: 9), leds: leds)
+        let refusing = RecordingTransport(productID: 0x0086, refuses: Razer.scrollLed)
+        XCTAssertNoThrow(try MouseController.writeLighting(reports, to: refusing))
+        XCTAssertEqual(refusing.sent.map { $0.arguments[1] }, leds, "every zone still written")
+
+        let single = RecordingTransport(productID: 0x00DB, refuses: Razer.zeroLed)
+        XCTAssertThrowsError(try MouseController.writeLighting(
+            RazerCommands.effect(.staticColor, color: RGB(r: 9, g: 9, b: 9), leds: [Razer.zeroLed]), to: single),
+            "nothing took it: a failed write, as before")
+    }
 }
 
 /// Records every report and answers it, or throws for one LED group.

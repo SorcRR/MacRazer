@@ -902,4 +902,37 @@ enum RazerDevices {
     static func brightnessLeds(pid: Int?) -> [UInt8] {
         [brightnessLed(pid: pid)] + (pid.flatMap { info(pid: $0)?.extraBrightnessLeds } ?? [])
     }
+
+    /// The LED groups an effect goes to, one write each, for mice that acknowledge an
+    /// effect on ZERO_LED without showing it. Device test reports showed this on the
+    /// Viper Ultimate, Basilisk Ultimate, Basilisk, DeathAdder V2 Mini and Basilisk V3 Pro
+    /// 35K: status 0x02, brightness dims, but the colour stays. OpenRazer drives these per
+    /// zone (`logo_`, `scroll_`, `left_`, `right_matrix_effect_*`), so the zones come from
+    /// razermouse_driver.c, and 0x0A on the 35K from its reports' zone reads. ZERO_LED stays
+    /// first, so a unit whose firmware does show it keeps working.
+    /// Keyed by product id rather than a row field so the table can hold pids whose rows
+    /// are still in review. USB only: Bluetooth pids keep ZERO_LED.
+    static let effectZones: [Int: [UInt8]] = [
+        // Viper Ultimate: logo only (OpenRazer has logo_matrix_effect_* and nothing else).
+        0x007A: [Razer.zeroLed, Razer.logoLed],
+        0x007B: [Razer.zeroLed, Razer.logoLed],
+        // Basilisk Ultimate: logo, scroll wheel and both side strips.
+        0x0086: [Razer.zeroLed, Razer.logoLed, Razer.scrollLed, Razer.leftSideLed, Razer.rightSideLed],
+        0x0088: [Razer.zeroLed, Razer.logoLed, Razer.scrollLed, Razer.leftSideLed, Razer.rightSideLed],
+        // Basilisk (2018): logo and scroll wheel.
+        0x0064: [Razer.zeroLed, Razer.logoLed, Razer.scrollLed],
+        // DeathAdder V2 Mini: logo only.
+        0x008C: [Razer.zeroLed, Razer.logoLed],
+        // Basilisk V3 Pro 35K: logo and scroll wheel per OpenRazer, and 0x0A answers too.
+        0x00CC: [Razer.zeroLed, Razer.logoLed, Razer.scrollLed, Razer.zone0ALed],
+        0x00CD: [Razer.zeroLed, Razer.logoLed, Razer.scrollLed, Razer.zone0ALed],
+        // Lancehead Tournament Edition: logo, scroll wheel and both sides.
+        0x0060: [Razer.zeroLed, Razer.logoLed, Razer.scrollLed, Razer.leftSideLed, Razer.rightSideLed],
+    ]
+
+    /// Every LED group an effect write goes to. ZERO_LED alone unless `effectZones` lists
+    /// the model, which is how every mouse here was driven before.
+    static func effectLeds(pid: Int?) -> [UInt8] {
+        pid.flatMap { effectZones[$0] } ?? [Razer.zeroLed]
+    }
 }

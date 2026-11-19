@@ -54,6 +54,14 @@ expect rough edges until 1.0.
   show up in its report.
 
 ### Fixed
+- **Colours on mice that ignore the all-zones light.** Some mice say yes to a colour sent to
+  every zone at once, then keep their old one. Device tests showed it on the Viper Ultimate,
+  Basilisk Ultimate, Basilisk, DeathAdder V2 Mini and Basilisk V3 Pro 35K. Brightness still
+  dimmed there. Effects now go to each lit zone too (logo, scroll wheel, side strips), as
+  OpenRazer does. Other mice get the same single write as before. On the Viper Ultimate,
+  whose lighting already shows, the logo now gets a second write. The others keep lighting
+  hidden until a new device test shows colours land, and the test now sends its red to
+  every zone too.
 - **Older mice that went Offline a few seconds after plugging in.** A mouse MacRazer doesn't
   know yet, like the Lancehead Tournament Edition (#139), may want a different protocol id
   than the one the app guessed. It then never answered and showed as Offline. Now, when such

@@ -28,6 +28,11 @@ enum Razer {
     static let backlightLed: UInt8 = 0x05
     static let logoLed: UInt8 = 0x04
     static let scrollLed: UInt8 = 0x01
+    static let rightSideLed: UInt8 = 0x10
+    static let leftSideLed: UInt8 = 0x11
+    /// Not in razercommon.h. The Basilisk V3 Pro 35K answers effect reads on it, beside
+    /// ZERO, SCROLL and LOGO; its underglow is the lit part left over.
+    static let zone0ALed: UInt8 = 0x0A
     /// "All zones as one" for the effect commands — and, on no model yet seen, for
     /// brightness. Named so the `brightness` probe's sweep reads as a set of constants
     /// rather than three names and a literal.
@@ -430,6 +435,13 @@ enum RazerCommands {
         case .wave: return setWave(led: led, speed: waveSpeed)
         case .off: return setNone(led: led)
         }
+    }
+
+    /// The same effect for each zone in `leds`, in order: one report per zone
+    /// (`RazerDevices.effectLeds`). The bytes per report are exactly `effect(…led:)`'s.
+    static func effect(_ effect: LightingEffect, color: RGB, leds: [UInt8],
+                       waveSpeed: UInt8 = WaveSpeed.standard) -> [RazerReport] {
+        leds.map { self.effect(effect, color: color, led: $0, waveSpeed: waveSpeed) }
     }
 
     // --- LED brightness (extended matrix, class 0x0F) ---
