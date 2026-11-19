@@ -809,11 +809,9 @@ final class RazerDevicesTests: XCTestCase {
         }
     }
 
-    /// Every table entry belongs to a USB row, apart from the pids whose rows are in review
-    /// (#150). Drop a pid from `pending` once its row lands.
+    /// Every table entry belongs to a USB row.
     func testZoneTablePidsHaveRows() {
-        let pending: Set<Int> = [0x0086, 0x0064, 0x008C]
-        for pid in RazerDevices.effectZones.keys where !pending.contains(pid) {
+        for pid in RazerDevices.effectZones.keys {
             let row = RazerDevices.info(pid: pid)
             XCTAssertNotNil(row, String(format: "0x%04X has no row", pid))
             XCTAssertNotEqual(row?.connection, .bluetooth)

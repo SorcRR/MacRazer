@@ -973,8 +973,7 @@ enum RazerDevices {
     /// zone (`logo_`, `scroll_`, `left_`, `right_matrix_effect_*`), so the zones come from
     /// razermouse_driver.c, and 0x0A on the 35K from its reports' zone reads. ZERO_LED stays
     /// first, so a unit whose firmware does show it keeps working.
-    /// Keyed by product id rather than a row field so the table can hold pids whose rows
-    /// are still in review. USB only: Bluetooth pids keep ZERO_LED.
+    /// USB only: Bluetooth pids keep ZERO_LED.
     static let effectZones: [Int: [UInt8]] = [
         // Viper Ultimate: logo only (OpenRazer has logo_matrix_effect_* and nothing else).
         0x007A: [Razer.zeroLed, Razer.logoLed],
