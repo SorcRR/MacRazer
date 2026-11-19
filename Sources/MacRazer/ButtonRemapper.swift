@@ -157,6 +157,7 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
 
     /// Re-check the Accessibility grant (call when the window appears / returns to front).
     func refreshAccessibility(prompt: Bool) {
+        guard !isPreview else { return }
         // An explicit Re-check is the user saying they changed a permission: try the
         // keyboard-capable tap again.
         if prompt { keyboardTapRefused = false }
@@ -228,11 +229,17 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
 
     /// Mock state for the `render-remap` preview command.
     func loadPreviewState() {
+        isPreview = true
         accessibilityGranted = true
         eventTapAvailable = true
         seenButtons = [2, 3, 4, 5]
-        mappings = [3: .keystroke(keyCode: 8, modifiers: CGEventFlags.maskCommand.rawValue, name: "Copy  ⌘C")]
+        mappings = [3: .keystroke(keyCode: 8, modifiers: CGEventFlags.maskCommand.rawValue, name: "Copy  ⌘C"),
+                    4: .keystroke(keyCode: 9, modifiers: CGEventFlags.maskCommand.rawValue, name: "Paste  ⌘V")]
     }
+
+    /// Set by `loadPreviewState`: a render shows the preview, not this Mac's permissions and
+    /// running apps (a render beside the real MacRazer would name it as taking the clicks).
+    private var isPreview = false
 
     // MARK: - Event tap
 

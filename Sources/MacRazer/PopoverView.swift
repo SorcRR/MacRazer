@@ -72,6 +72,8 @@ struct PopoverView: View {
     /// Opens the lighting test for an untested keyboard or mousepad, from its card.
     /// Not defaulted, for the same reason as `onOpenSettings`.
     var onTestAccessory: (AccessoryController) -> Void
+    /// For `render-ui stages`: open with the DPI card in Edit mode.
+    var previewEditingStages = false
 
     enum Page { case main, color, buttons, usage, profiles, whatsNew }
     @State private var page: Page = .main
@@ -203,7 +205,10 @@ struct PopoverView: View {
         .onChange(of: colorTargetAccessory?.lighting.color) { _, new in
             if let new { accessoryColor = new.swiftUIColor }
         }
-        .onAppear { isShown = true }
+        .onAppear {
+            isShown = true
+            if previewEditingStages { editingDpiStages = true }
+        }
         .onDisappear { page = .main; isShown = false }
     }
 

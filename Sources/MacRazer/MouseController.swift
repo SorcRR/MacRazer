@@ -1848,6 +1848,10 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         batteryPercent = 72
         charging = false
         dpi = 1600
+        // The stages read from the mouse, as the real popover has them: their own chips, the
+        // custom chip after them, and the Edit button.
+        dpiStages = [400, 800, 1600, 3200, 6400]
+        activeDpiStage = 3
         pollRate = 1000
         timeEstimate = "~3d 0h left (est.)" // matches BatteryHistory.estimateString's real format
         let now = Date()
@@ -1868,6 +1872,11 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                                        end: end, startPercent: 100, endPercent: 5)
         }
         averageCycleHours = 23
+        // What the battery usage page reads its time remaining from, matching `timeEstimate`.
+        lastBatterySnapshot = LastBatterySnapshot(
+            deviceKey: "preview", productID: 0x00DB, deviceName: "Razer Cobra HyperSpeed", percent: 72,
+            observedAt: now, estimatedHoursRemaining: 72, wasCharging: false
+        )
         updateStatusText()
         let p1 = MouseProfile(name: "Work", dpi: 1600, pollRate: 1000, brightness: 60,
                                effect: LightingEffect.staticColor.rawValue, color: RGB(r: 0x44, g: 0xD6, b: 0x2C), buttonMappings: [:])

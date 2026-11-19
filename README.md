@@ -14,10 +14,11 @@ Razer mice that use the same HID protocol family, but those are untested, so tre
 "likely to work, not verified" until someone confirms it on real hardware.
 
 > Unofficial. Not affiliated with, authorized by, or endorsed by Razer Inc. See [NOTICE.md](NOTICE.md).
-> 
-> <img width="324" height="713" alt="MacRazer popover: battery, DPI stages, polling rate, lighting, buttons and profiles" src=".github/screenshots/popover.png" />
-> <img width="326" height="718" alt="Configure Buttons: Back and Forward mapped to Copy and Paste" src=".github/screenshots/buttons.png" />
-> <img width="325" height="711" alt="Battery Usage: discharge curve, rate, time left and past charges" src=".github/screenshots/battery-usage.png" />
+
+<p>
+  <img width="380" alt="MacRazer popover: battery, DPI stages, polling rate, lighting, buttons and profiles" src=".github/screenshots/popover.png" />
+  <img width="372" alt="Battery Usage: discharge curve, rate, time left and past charges" src=".github/screenshots/battery-usage.png" />
+</p>
 
 
 ## Features
@@ -72,6 +73,37 @@ Razer mice that use the same HID protocol family, but those are untested, so tre
 
 Settings persist across app restarts and reconnects, and the menu bar updates on its own when
 the mouse connects, disconnects, or sleeps.
+
+## Screens
+
+**Keyboard and mousepad lighting.** With a Razer keyboard or mousepad connected, the popover
+goes to two columns. Each device gets a card, and a keyboard can follow the mouse's lighting.
+
+<img width="760" alt="Two-column popover: the mouse's controls, and under Other Razer devices a Cynosa Chroma following the mouse, a Firefly V2 and an Ornata V3 on Wave" src=".github/screenshots/popover-accessories.png" />
+
+**Button remapping.** Point each extra button at a shortcut, a click or a media key.
+
+<img width="440" alt="Configure Buttons: Back mapped to Copy and Forward to Paste" src=".github/screenshots/buttons.png" />
+
+**DPI stages.** Click Edit on the DPI card, then a stage, to change its DPI on the mouse itself.
+
+<img width="380" alt="The DPI card in Edit mode: five stage chips with dashed outlines and a hint to click one" src=".github/screenshots/dpi-stages.png" />
+
+**Themes.** Light, Dark or Razer Green, in Settings › Appearance. System follows macOS.
+
+<p>
+  <img width="250" alt="The popover in the Light theme" src=".github/screenshots/theme-light.png" />
+  <img width="250" alt="The popover in the Dark theme" src=".github/screenshots/popover.png" />
+  <img width="250" alt="The popover in the Razer Green theme" src=".github/screenshots/theme-green.png" />
+</p>
+
+**Settings.** Reverse scrolling on Razer mice, login, menu bar and sounds.
+
+<img width="780" alt="Settings › General: Start at login, Reverse scrolling on Razer mice, battery percentage in the menu bar, connection sounds, and the device test prompt" src=".github/screenshots/settings-general.png" />
+
+**The device test.** Each step changes one thing, reads it back, then puts yours back.
+
+<img width="440" alt="Device test, DPI step: sets a value 50 away, reads it back, puts the original back, and lists the stages" src=".github/screenshots/device-test.png" />
 
 ## Supported mice
 
@@ -283,6 +315,9 @@ swift run MacRazer
 ./Scripts/build-app.sh          # produces "MacRazer.app", versioned "<version>-dev"
 open "MacRazer.app"
 ```
+
+The screenshots in this README and on the website come from preview data, no mouse needed:
+`./Scripts/render-screenshots.sh` writes them all to `dist/screenshots/`.
 
 ## Permissions
 
