@@ -759,8 +759,7 @@ final class RazerDevicesTests: XCTestCase {
             let color = RGB(r: 0x44, g: 0xD6, b: 0x2C)
             let zones = RazerCommands.effect(effect, color: color, leds: [0x00, 0x04, 0x01], waveSpeed: 0x30)
             for report in zones {
-                var expected = RazerCommands.effect(effect, color: color, led: report.arguments[1], waveSpeed: 0x30)
-                expected.arguments[1] = report.arguments[1]
+                let expected = RazerCommands.effect(effect, color: color, led: report.arguments[1], waveSpeed: 0x30)
                 XCTAssertEqual(report.serialized(), expected.serialized(), "\(effect) on \(report.arguments[1])")
                 var asZero = report
                 asZero.arguments[1] = 0x00
@@ -788,6 +787,17 @@ final class RazerDevicesTests: XCTestCase {
             XCTAssertEqual(leds.first, Razer.zeroLed, String(format: "0x%04X", pid))
             XCTAssertEqual(Set(leds).count, leds.count, "no zone twice")
             XCTAssertFalse(RazerDevices.bluetoothPIDs.contains(pid), "Bluetooth keeps ZERO_LED")
+        }
+    }
+
+    /// Every table entry belongs to a USB row, apart from the pids whose rows are in review
+    /// (#150). Drop a pid from `pending` once its row lands.
+    func testZoneTablePidsHaveRows() {
+        let pending: Set<Int> = [0x0086, 0x0064, 0x008C]
+        for pid in RazerDevices.effectZones.keys where !pending.contains(pid) {
+            let row = RazerDevices.info(pid: pid)
+            XCTAssertNotNil(row, String(format: "0x%04X has no row", pid))
+            XCTAssertNotEqual(row?.connection, .bluetooth)
         }
     }
 

@@ -924,8 +924,8 @@ enum RazerDevices {
         // DeathAdder V2 Mini: logo only.
         0x008C: [Razer.zeroLed, Razer.logoLed],
         // Basilisk V3 Pro 35K: logo and scroll wheel per OpenRazer, and 0x0A answers too.
-        0x00CC: [Razer.zeroLed, Razer.logoLed, Razer.scrollLed, Razer.zone0ALed],
-        0x00CD: [Razer.zeroLed, Razer.logoLed, Razer.scrollLed, Razer.zone0ALed],
+        0x00CC: [Razer.zeroLed, Razer.logoLed, Razer.scrollLed, Razer.underglowLed],
+        0x00CD: [Razer.zeroLed, Razer.logoLed, Razer.scrollLed, Razer.underglowLed],
         // Lancehead Tournament Edition: logo, scroll wheel and both sides.
         0x0060: [Razer.zeroLed, Razer.logoLed, Razer.scrollLed, Razer.leftSideLed, Razer.rightSideLed],
     ]

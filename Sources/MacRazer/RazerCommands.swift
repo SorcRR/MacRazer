@@ -30,9 +30,9 @@ enum Razer {
     static let scrollLed: UInt8 = 0x01
     static let rightSideLed: UInt8 = 0x10
     static let leftSideLed: UInt8 = 0x11
-    /// Not in razercommon.h. The Basilisk V3 Pro 35K answers effect reads on it, beside
-    /// ZERO, SCROLL and LOGO; its underglow is the lit part left over.
-    static let zone0ALed: UInt8 = 0x0A
+    /// Not in razercommon.h. The Basilisk V3 Pro 35K and V4 HyperSpeed answer effect reads
+    /// on it, beside ZERO, SCROLL and LOGO. Taken to be the underglow, the lit part left over.
+    static let underglowLed: UInt8 = 0x0A
     /// "All zones as one" for the effect commands — and, on no model yet seen, for
     /// brightness. Named so the `brightness` probe's sweep reads as a set of constants
     /// rather than three names and a literal.
