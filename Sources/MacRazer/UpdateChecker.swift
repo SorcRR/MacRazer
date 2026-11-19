@@ -144,6 +144,14 @@ final class UpdateChecker: ObservableObject {
     /// list and counts this Mac as active for the day, by a salted hash of its IP and nothing
     /// else (the homepage's privacy section says so). Any failure there, from a timeout to a
     /// bad answer, falls through to GitHub, so the Worker can never cost anyone an update.
+    /// The update check's request to the Worker: the version and nothing else. The Worker counts
+    /// it as a plain check, not as this Mac's daily count (`AnonymousCountReporter`), so adding
+    /// the mice, the usage stats answer or `count=1` here would count the Mac wrongly. The
+    /// contract test (UpdateCheckContractTests) writes this into the Worker's fixture.
+    static func workerCheck(appVersion: String?, base: URL? = WorkerEndpoint.base) -> URL? {
+        WorkerEndpoint.releases(appVersion: appVersion, base: base)
+    }
+
     static func fetchReleases(worker: URL?, github: URL,
                               viaWorker: Fetch = { try await WorkerSession.shared.data(from: $0) },
                               viaGitHub: Fetch = { try await URLSession.shared.data(from: $0) }) async throws -> [RemoteRelease] {
@@ -257,7 +265,7 @@ final class UpdateChecker: ObservableObject {
         defer { isChecking = false }
         do {
             // The mice go separately, from `AnonymousCountReporter`, once the controller has found them.
-            let releases = try await Self.fetchReleases(worker: WorkerEndpoint.releases(appVersion: AppInfo.version),
+            let releases = try await Self.fetchReleases(worker: Self.workerCheck(appVersion: AppInfo.version),
                                                         github: releaseAPIURL)
             // GitHub's `releases/latest` applied "no drafts, no prereleases" on its side. The
             // list does not, so the rule lives in `ReleaseSpan` now, with tests.
