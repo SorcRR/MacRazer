@@ -35,8 +35,13 @@ expect rough edges until 1.0.
     doesn't work yet.
   - **Viper Mini**, **Pro Click Mini over its dongle** and **DeathAdder V4 Pro on its
     cable:** fully supported. **DeathAdder V2 Pro on its cable:** lighting works now.
-- **Tested keyboards and mousepads.** The Ornata V3, Ornata V3 X, Goliathus Chroma and
-  Goliathus Chroma Extended lost their UNTESTED tag after passing the lighting test.
+  - **DeathAdder V4 Pro over its dongle** and **Viper Mini Signature Edition on its cable:**
+    fully supported. **Orochi 2013:** polling works now.
+  - **Basilisk Ultimate on its cable**, the **Basilisk** and the **DeathAdder V2 Mini:**
+    battery (where there is one), DPI and polling work. Their lighting waits on more tests.
+- **Tested keyboards and mousepads.** The Ornata V3, Ornata V3 X, Goliathus Chroma,
+  Goliathus Chroma Extended and Firefly V2 Pro lost their UNTESTED tag after passing the
+  lighting test.
 - **The device test finds buttons the Mac never hears.** Some buttons change DPI or the
   profile inside the mouse and send the Mac nothing. The button step now asks whether every
   button you pressed showed up, and watches the DPI and profile while you press them. A
@@ -68,7 +73,8 @@ expect rough edges until 1.0.
   than the one the app guessed. It then never answered and showed as Offline. Now, when such
   a mouse stays silent, the app tries the other ids and the mouse's other interfaces, and
   keeps the one that answers. The Lancehead Tournament Edition also has its own entry now,
-  with OpenRazer's settings. A device test from an owner will confirm it.
+  and an owner's device test confirmed it: DPI and polling work. Lighting waits on a
+  test that shows every zone.
 - **The display sleeps again with MacRazer running.** macOS counts every battery read as
   user activity, so the poll kept the display awake. Now the poll stops after 30 seconds
   without keyboard or pointer input, and while the screen is asleep or locked. It starts
