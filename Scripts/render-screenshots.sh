@@ -21,6 +21,7 @@
 set -euo pipefail
 
 # A folder given here is relative to where you ran the script; the default is in the repo.
+OUT="" # not one from the environment: the script deletes files in it
 if [[ -n "${1:-}" ]]; then
   mkdir -p "$1"
   OUT="$(cd "$1" && pwd)" # absolute: the bundle runs with / as its working directory
@@ -28,7 +29,14 @@ fi
 cd "$(dirname "$0")/.."
 OUT="${OUT:-$PWD/dist/screenshots}"
 mkdir -p "$OUT"
-VERSION="${2:-$(git describe --tags --abbrev=0 | sed 's/^v//')}"
+if [[ -n "${2:-}" ]]; then
+  VERSION="$2"
+elif TAG="$(git describe --tags --abbrev=0 2>/dev/null)"; then
+  VERSION="${TAG#v}"
+else
+  echo "✗ No git tag to take the version from. Pass one: $0 <out> <version>" >&2
+  exit 1
+fi
 
 echo "▸ Building…"
 swift build >/dev/null 2>&1 || { swift build; exit 1; } # again, to show why

@@ -236,7 +236,6 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
                     4: .keystroke(keyCode: 9, modifiers: CGEventFlags.maskCommand.rawValue, name: "Paste  ⌘V")]
     }
 
-
     // MARK: - Event tap
 
     private func installTapIfNeeded() {

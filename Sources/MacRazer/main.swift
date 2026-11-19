@@ -98,9 +98,9 @@ func renderLook(_ args: [String]) -> PopoverLook {
 /// `ImageRenderer` is quick but draws every native control (menus, text fields, most buttons)
 /// as a yellow placeholder, so it only suits views made of shapes and text. Prefer
 /// `writeHostedPNG` for anything meant to be seen.
-@MainActor func writeViewPNG<V: View>(_ view: V, look: PopoverLook = .solidDark, to path: String) {
+@MainActor func writeViewPNG<V: View>(_ view: V, look: PopoverLook, to path: String) {
     guard RenderOptions.crop == nil else {
-        print("Render failed: crop= works on hosted renders only. Add `hosted`.")
+        status("Render failed: crop= works on hosted renders only. Add `hosted`.")
         exit(1)
     }
     // In the look's colour scheme, to match its backdrop. Without it `.secondary` and
@@ -116,16 +116,22 @@ func renderLook(_ args: [String]) -> PopoverLook {
         try? png.write(to: URL(fileURLWithPath: path))
         print("Wrote \(path)")
     } else {
-        print("Render failed")
+        status("Render failed")
     }
 }
 
 /// Runs AppKit's event loop for a while. `RunLoop.run` alone never hands AppKit its events,
-/// and activation and becoming key arrive as events.
+/// and activation and becoming key arrive as events. Keys and clicks are dropped: the render
+/// window takes focus for a moment, and whatever the person was typing elsewhere mustn't
+/// reach the view being captured.
 @MainActor func pumpEvents(for seconds: TimeInterval) {
     let deadline = Date().addingTimeInterval(seconds)
+    let input: NSEvent.EventTypeMask = [.keyDown, .keyUp, .flagsChanged, .leftMouseDown, .leftMouseUp,
+                                        .rightMouseDown, .rightMouseUp, .otherMouseDown, .otherMouseUp,
+                                        .scrollWheel]
     while Date() < deadline {
-        if let event = NSApp.nextEvent(matching: .any, until: deadline, inMode: .default, dequeue: true) {
+        if let event = NSApp.nextEvent(matching: .any, until: deadline, inMode: .default, dequeue: true),
+           !input.contains(NSEvent.EventTypeMask(rawValue: 1 << event.type.rawValue)) {
             NSApp.sendEvent(event)
         }
     }
@@ -147,7 +153,7 @@ final class RenderWindow: NSWindow {
 /// `size` is optional: a view that sizes itself, like a window's content, is measured with
 /// `fittingSize`. Only a scroll view has to be told how much room it has, because it will
 /// take whatever it is given.
-@MainActor func writeHostedPNG<V: View>(_ view: V, size: CGSize? = nil, look: PopoverLook = .solidDark,
+@MainActor func writeHostedPNG<V: View>(_ view: V, size: CGSize? = nil, look: PopoverLook,
                                         to path: String) {
     // The backdrop the popover or window paints behind its content. `cacheDisplay` captures
     // no window background, so without this the text would sit on nothing.
@@ -159,7 +165,7 @@ final class RenderWindow: NSWindow {
     // A view with no intrinsic size measures as zero, and the capture below then fails with
     // nothing to say about why. Name the cause instead.
     guard frameSize.width > 0, frameSize.height > 0 else {
-        print("Render failed: the view has no size of its own. Pass an explicit size.")
+        status("Render failed: the view has no size of its own. Pass an explicit size.")
         return
     }
     host.frame = CGRect(origin: .zero, size: frameSize)
@@ -186,7 +192,7 @@ final class RenderWindow: NSWindow {
     host.layoutSubtreeIfNeeded()
     host.display()
     guard var image = windowServerImage(window) ?? cachedDisplayImage(host) else {
-        print("Render failed")
+        status("Render failed")
         return
     }
     if let crop = RenderOptions.crop {
@@ -198,7 +204,7 @@ final class RenderWindow: NSWindow {
                             width: crop.width * scale, height: crop.height * scale).integral
         guard let cropped = image.cropping(to: pixels),
               cropped.width == Int(pixels.width), cropped.height == Int(pixels.height) else {
-            print("Render failed: crop \(crop) doesn't fit in the \(host.bounds.size) render.")
+            status("Render failed: crop \(crop) doesn't fit in the \(host.bounds.size) render.")
             exit(1)
         }
         image = cropped
@@ -214,7 +220,7 @@ final class RenderWindow: NSWindow {
         if let converted = ctx.makeImage() { image = converted }
     }
     guard let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else {
-        print("Render failed")
+        status("Render failed")
         return
     }
     try? png.write(to: URL(fileURLWithPath: path))
@@ -254,7 +260,6 @@ final class RenderWindow: NSWindow {
     view.cacheDisplay(in: view.bounds, to: rep)
     return rep.cgImage
 }
-
 
 /// The output path for a `render-*` command: the first argument that names a PNG.
 ///
@@ -397,7 +402,7 @@ case "render-settings":
     let renderDefaults = UserDefaults(suiteName: renderSuite)!
     renderDefaults.removePersistentDomain(forName: renderSuite)
     defer { renderDefaults.removePersistentDomain(forName: renderSuite) }
-    let renderScrolling = ScrollSettings(defaults: renderDefaults)
+    let renderScrolling = ScrollSettings(defaults: renderDefaults, sourceIdentificationAvailable: true)
     renderScrolling.setEnabled(args.contains("reversed"))
     renderScrolling.loadPreviewState()
     let settingsPath = outputPath(args.dropFirst(), default: "settings-preview.png")
@@ -586,7 +591,7 @@ case "icon":
     guard MenuBarIcon.writePreview(to: path, size: size, razerCutout: !iconArgs.contains("nologo"),
                                    charging: iconArgs.contains("charging"),
                                    lightMenuBar: iconArgs.contains("light")) else {
-        print("Render failed")
+        status("Render failed")
         exit(1)
     }
     print("Wrote \(path)")
