@@ -95,10 +95,11 @@ expect_size device-test.png 880 882
 render card-device-test.png        render-device-test dpi ran crop=0,0,440,200
 expect_size settings-general.png 1560 1080
 render card-settings-scrolling.png render-settings reversed crop=230,165,540,95
-# The three themes side by side, each the top of its popover: header, battery and DPI.
+# The three themes side by side, each a tight crop of its popover (header and battery), so
+# the text is still readable at a third of a card.
 for f in popover theme-light theme-green; do expect_size "$f.png" 760 1298; done
-render card-theme-dark.png         render-ui hosted crop=0,0,380,290
-render card-theme-light.png        render-ui hosted light crop=0,0,380,290
-render card-theme-green.png        render-ui hosted green crop=0,0,380,290
+render card-theme-dark.png         render-ui hosted crop=12,12,230,166
+render card-theme-light.png        render-ui hosted light crop=12,12,230,166
+render card-theme-green.png        render-ui hosted green crop=12,12,230,166
 
 ls -1 "$OUT"
