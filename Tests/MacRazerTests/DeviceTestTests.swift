@@ -284,7 +284,7 @@ final class DeviceTestTests: XCTestCase {
         let mouse = logoOnlyMouse()
         let appSetting = RazerCommands.setStatic(rgb: RGB(r: 0x44, g: 0xD6, b: 0x2C))
         var waits: [Double] = []
-        var record = DeviceTestSteps.lighting(mouse, sweep: sweep(mouse), restoreEffect: appSetting,
+        var record = DeviceTestSteps.lighting(mouse, sweep: sweep(mouse), restoreEffect: [appSetting],
                                               seconds: 3, wait: { waits.append($0) })
         XCTAssertEqual(waits, [3, 3], "dark, then red, each long enough to notice")
         XCTAssertEqual(record.data?.redShown, true)
@@ -300,12 +300,48 @@ final class DeviceTestTests: XCTestCase {
         XCTAssertEqual(record.outcome, .skipped)
     }
 
+    /// The red and the way back go to every zone the model takes effects on, so an owner's
+    /// test of a per-zone mouse checks the writes the popover makes.
+    func testRedAndRestoreGoToEveryZone() {
+        let mouse = logoOnlyMouse()
+        let leds = RazerDevices.effectLeds(pid: 0x0086)
+        let red = RazerCommands.effect(.staticColor, color: RGB(r: 255, g: 0, b: 0), leds: leds)
+        let back = RazerCommands.effect(.spectrum, color: RGB(r: 0, g: 0, b: 0), leds: leds)
+        let record = DeviceTestSteps.lighting(mouse, sweep: sweep(mouse), restoreEffect: back, red: red,
+                                              seconds: 0, wait: { _ in })
+        let effects = mouse.sent.filter { $0.commandClass == 0x0F && $0.commandId == 0x02 }
+        XCTAssertEqual(effects.map { $0.arguments[1] }, leds + leds, "red on each zone, then the restore on each")
+        XCTAssertEqual(effects.prefix(leds.count).map { Array($0.arguments[6...8]) },
+                       Array(repeating: [0xFF, 0x00, 0x00], count: leds.count))
+        XCTAssertEqual(effects.suffix(leds.count).map { $0.arguments[2] }, Array(repeating: 0x03, count: leds.count),
+                       "spectrum back on each")
+        XCTAssertEqual(record.data?.redShown, true)
+        XCTAssertEqual(record.data?.restored, true)
+    }
+
+    func testRedCountsAsShownWhenAnyZoneTookIt() {
+        let mouse = logoOnlyMouse()
+        let s = sweep(mouse)
+        mouse.refuse = { $0.commandClass == 0x0F && $0.commandId == 0x02 && $0.arguments[1] == Razer.zeroLed }
+        let leds = RazerDevices.effectLeds(pid: 0x007B)
+        let red = RazerCommands.effect(.staticColor, color: RGB(r: 255, g: 0, b: 0), leds: leds)
+        let record = DeviceTestSteps.lighting(mouse, sweep: s, restoreEffect: red, red: red, seconds: 0, wait: { _ in })
+        XCTAssertEqual(record.data?.redShown, true, "the logo took it")
+
+        let none = logoOnlyMouse()
+        let s2 = sweep(none)
+        none.refuse = { $0.commandClass == 0x0F && $0.commandId == 0x02 }
+        let refused = DeviceTestSteps.lighting(none, sweep: s2, restoreEffect: red, red: red, seconds: 0, wait: { _ in })
+        XCTAssertEqual(refused.data?.redShown, false)
+        XCTAssertEqual(refused.data?.restored, false)
+    }
+
     func testAMouseWithNoLightingIsNotTouched() {
         let mouse = FakeMouse()
         mouse.refuse = { $0.commandClass == 0x0F }
         let s = sweep(mouse)
         let before = mouse.calls.count
-        let record = DeviceTestSteps.lighting(mouse, sweep: s, restoreEffect: RazerCommands.setNone(),
+        let record = DeviceTestSteps.lighting(mouse, sweep: s, restoreEffect: [RazerCommands.setNone()],
                                               seconds: 3, wait: { _ in XCTFail("nothing to show") })
         XCTAssertEqual(record.outcome, .notSupported)
         XCTAssertEqual(mouse.calls.count, before, "no writes at all")
@@ -511,7 +547,7 @@ final class DeviceTestTests: XCTestCase {
             battery: DeviceTestSteps.battery(mouse, expectsBattery: nil),
             dpi: DeviceTestSteps.dpi(mouse, maxProbe: true),
             polling: DeviceTestSteps.polling(mouse),
-            lighting: DeviceTestSteps.lighting(mouse, sweep: lightSweep, restoreEffect: RazerCommands.setNone(),
+            lighting: DeviceTestSteps.lighting(mouse, sweep: lightSweep, restoreEffect: [RazerCommands.setNone()],
                                                seconds: 0, wait: { _ in }),
             buttons: .init(outcome: .passed, data: .init(seen: ["09:04", "09:05"])),
             capabilities: DeviceTestSteps.readCapabilities(mouse),
