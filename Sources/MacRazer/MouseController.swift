@@ -1373,6 +1373,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     }
 
     func refreshDpiCycleButtonBinding() {
+        guard !RenderOptions.isActive else { return }
         userCommand { [weak self] in
             guard let self else { return }
             self.publish {
@@ -1440,7 +1441,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// `checkSideButtons` when `checksSideButtons`. For the Configure Buttons page opening, so
     /// other mice queue nothing.
     func checkSideButtonsIfSupported() {
-        guard checksSideButtons else { return }
+        guard !RenderOptions.isActive, checksSideButtons else { return }
         checkSideButtons()
     }
 
@@ -1848,26 +1849,41 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         batteryPercent = 72
         charging = false
         dpi = 1600
+        // The stages read from the mouse, as the real popover has them: their own chips, the
+        // custom chip after them, and the Edit button.
+        dpiStages = [400, 800, 1600, 3200, 6400]
+        activeDpiStage = 2 // 1600, zero-based
         pollRate = 1000
-        timeEstimate = "~3d 0h left (est.)" // matches BatteryHistory.estimateString's real format
+        timeEstimate = "~2d 19h left (est.)" // matches BatteryHistory.estimateString's real format
         let now = Date()
+        // Every number agrees at 1%/hr: 100% 28h ago, 72% now, 67h left to the 5% every charge
+        // ends at, and past charges of about 95h (100% to 5%). The screenshots show the chart
+        // and the figures side by side.
         batterySamples = stride(from: 0, through: 28, by: 1).map {
-            BatterySample(t: now.addingTimeInterval(Double($0) * -3600), pct: min(100, 2 + $0 * 4))
+            BatterySample(t: now.addingTimeInterval(Double($0) * -3600), pct: min(100, 72 + $0))
         }.reversed()
         // The charge before it (dimmed context on the usage chart), with a 2h charge gap.
         let previousEnd = now.addingTimeInterval(-30 * 3600)
-        previousCycleSamples = stride(from: 0, through: 24, by: 1).map {
-            BatterySample(t: previousEnd.addingTimeInterval(Double($0) * -3600), pct: min(100, 8 + $0 * 4))
+        previousCycleSamples = stride(from: 0, through: 95, by: 1).map {
+            BatterySample(t: previousEnd.addingTimeInterval(Double($0) * -3600), pct: min(100, 5 + $0))
         }.reversed()
         dischargeRatePerHour = 1.0
         cycleStartedAt = batterySamples.first?.t
         cycleStartedPercent = batterySamples.first?.pct
-        pastCycles = (1...6).map { i in
-            let end = now.addingTimeInterval(Double(-i) * 86400)
-            return ChargeCycleSummary(start: end.addingTimeInterval(-Double(20 + i) * 3600),
-                                       end: end, startPercent: 100, endPercent: 5)
+        let cycleHours: [Double] = [95, 94, 97, 95, 93, 96] // the first is previousCycleSamples
+        var cycleEnd = previousEnd
+        pastCycles = cycleHours.map { hours in
+            let cycle = ChargeCycleSummary(start: cycleEnd.addingTimeInterval(-hours * 3600),
+                                           end: cycleEnd, startPercent: 100, endPercent: 5)
+            cycleEnd = cycle.start.addingTimeInterval(-2 * 3600) // charging in between
+            return cycle
         }
-        averageCycleHours = 23
+        averageCycleHours = 95
+        // What the battery usage page reads its time remaining from, matching `timeEstimate`.
+        lastBatterySnapshot = LastBatterySnapshot(
+            deviceKey: "preview", productID: 0x00DB, deviceName: "Razer Cobra HyperSpeed", percent: 72,
+            observedAt: now, estimatedHoursRemaining: 67, wasCharging: false
+        )
         updateStatusText()
         let p1 = MouseProfile(name: "Work", dpi: 1600, pollRate: 1000, brightness: 60,
                                effect: LightingEffect.staticColor.rawValue, color: RGB(r: 0x44, g: 0xD6, b: 0x2C), buttonMappings: [:])
