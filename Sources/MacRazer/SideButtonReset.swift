@@ -114,13 +114,20 @@ enum SideButtonReset {
         return Remap(id: id, current: block, factory: factory)
     }
 
+    /// The 7-byte block in a USB read of entry `id`, or nil when the reply names another
+    /// entry (a stale answer on the dongle, say).
+    static func usbBlock(id: UInt8, reply: RazerReport) -> [UInt8]? {
+        guard reply.arguments[1] == id else { return nil }
+        return Array(reply.arguments[3..<10])
+    }
+
     /// Puts the factory block back over USB and reads it back. The write lands in the active
     /// profile only: USB has no measured slot read, so nothing else is written.
     static func reset(remap: Remap, on transport: RazerTransport) throws {
         let write = try transport.sendWithRetry(RazerCommands.setButtonFunction(id: remap.id, block: remap.factory))
         guard write.status == 0x02 else { throw HIDDevice.HIDError.commandFailed }
         let check = try transport.sendWithRetry(RazerCommands.getButtonFunction(id: remap.id))
-        guard check.arguments[1] == remap.id, Array(check.arguments[3..<10]) == remap.factory else {
+        guard usbBlock(id: remap.id, reply: check) == remap.factory else {
             throw ResetError.notReadBack
         }
     }
@@ -149,7 +156,8 @@ enum SideButtonReset {
     }
 
     /// The notice's text, for one or both buttons.
-    static func noticeText(_ remaps: [Remap]) -> String {
+    /// `activeProfileOnly` for a USB reset, which writes the profile in use and no other.
+    static func noticeText(_ remaps: [Remap], activeProfileOnly: Bool = false) -> String {
         let parts = remaps.map { remap -> String in
             if let what = describe(remap.current) { return "\(name(remap.id)) sends \(what)" }
             return "\(name(remap.id)) does something else"
@@ -158,6 +166,8 @@ enum SideButtonReset {
         let pronoun = remaps.count == 1 ? "it's" : "they're"
         return "Your mouse has its side buttons saved to other functions, probably by Razer Synapse: "
             + "\(list). Configure Buttons can't remap them as Back and Forward until \(pronoun) reset. "
-            + "Resetting puts them back in the mouse itself, which removes what was saved there."
+            + (activeProfileOnly
+                ? "Resetting puts them back in the profile the mouse is using, which removes what was saved there."
+                : "Resetting puts them back in the mouse itself, which removes what was saved there.")
     }
 }

@@ -43,6 +43,21 @@ final class SideButtonResetTests: XCTestCase {
         XCTAssertNil(SideButtonReset.remap(id: 4, block: [0, 0, 0, 0, 0, 0, 0]))
     }
 
+    func testAUSBReplyForAnotherEntryHasNoBlock() {
+        var reply = RazerReport(commandClass: 0x02, commandId: 0x8C, dataSize: 0x0A)
+        reply.arguments[1] = 0x05
+        reply.arguments[3] = 0x02
+        XCTAssertNil(SideButtonReset.usbBlock(id: 0x04, reply: reply))
+        XCTAssertEqual(SideButtonReset.usbBlock(id: 0x05, reply: reply), [0x02, 0, 0, 0, 0, 0, 0])
+    }
+
+    func testTheUSBNoticeNamesTheActiveProfile() {
+        let remap = SideButtonReset.Remap(id: 4, current: [0x02, 0x02, 0x01, 0x19, 0, 0, 0],
+                                          factory: SideButtonReset.mouseBlock(4))
+        XCTAssertTrue(SideButtonReset.noticeText([remap], activeProfileOnly: true).contains("the profile the mouse is using"))
+        XCTAssertTrue(SideButtonReset.noticeText([remap]).contains("in the mouse itself"))
+    }
+
     func testUSBOnlyOffersTheSideButtons() {
         XCTAssertNil(SideButtonReset.remap(id: 1, block: [0x02, 0x02, 0, 0x04, 0, 0, 0]))
     }

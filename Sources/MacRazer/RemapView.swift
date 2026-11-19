@@ -339,7 +339,8 @@ private struct SideButtonResetNotice: View {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .top, spacing: 8) {
                     Image(systemName: "exclamationmark.triangle").foregroundStyle(Color.batteryMid)
-                    Text(SideButtonReset.noticeText(controller.remappedSideButtons))
+                    Text(SideButtonReset.noticeText(controller.remappedSideButtons,
+                                                    activeProfileOnly: !controller.deviceIsBluetooth))
                         .font(.system(size: 11)).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 0)

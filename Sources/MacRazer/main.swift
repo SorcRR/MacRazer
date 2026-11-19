@@ -511,7 +511,10 @@ case "buttons":
         var remaps: [SideButtonReset.Remap] = []
         for id in SideButtonReset.ids {
             let reply = try dev.sendWithRetry(RazerCommands.getButtonFunction(id: id))
-            let block = Array(reply.arguments[3..<10])
+            guard let block = SideButtonReset.usbBlock(id: id, reply: reply) else {
+                print("\(SideButtonReset.name(id)): the reply named entry \(String(format: "0x%02x", reply.arguments[1])), not this one.")
+                exit(2)
+            }
             let text = SideButtonReset.describe(block) ?? "a function MacRazer can't name"
             print("\(SideButtonReset.name(id)): \(text)  [\(block.map { String(format: "%02x", $0) }.joined(separator: " "))]")
             if let remap = SideButtonReset.remap(id: id, block: block) { remaps.append(remap) }

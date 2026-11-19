@@ -1451,36 +1451,32 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// without it.
     func checkSideButtons() {
         userCommand { [weak self] in
-            guard let self else { return }
-            if self.deviceIsBluetooth {
-                guard let bluetooth = try? self.ensureDevice() as? BluetoothDevice,
+            guard let self, let transport = try? self.ensureDevice() else { return }
+            // The device itself says which link it is on: `deviceIsBluetooth` is main-thread
+            // state and can lag behind the transport this queue holds.
+            let overBluetooth = transport.isBluetooth
+            var remaps: [SideButtonReset.Remap] = []
+            if overBluetooth {
+                guard let bluetooth = transport as? BluetoothDevice,
                       RazerDevices.detectsOnboardSideButtonRemaps(pid: bluetooth.productID) else { return }
-                var remaps: [SideButtonReset.Remap] = []
                 for id in SideButtonReset.ids {
                     guard let payload = try? bluetooth.readButtonFunctionPayload(id) else { return }
                     if let remap = SideButtonReset.remap(id: id, payload: payload) { remaps.append(remap) }
                 }
-                let found = remaps
-                // A read that ends after the mouse went away says nothing about it now.
-                self.publish {
-                    guard self.connected, self.deviceIsBluetooth else { return }
-                    self.update(\.remappedSideButtons, found)
-                }
             } else {
-                guard let transport = try? self.ensureDevice(),
-                      RazerDevices.resetsOnboardSideButtonsOverUSB(pid: transport.productID) else { return }
-                var remaps: [SideButtonReset.Remap] = []
+                guard RazerDevices.resetsOnboardSideButtonsOverUSB(pid: transport.productID) else { return }
                 for id in SideButtonReset.ids {
                     guard let reply = try? transport.sendWithRetry(RazerCommands.getButtonFunction(id: id)),
-                          reply.arguments[1] == id else { return }
-                    let block = Array(reply.arguments[3..<10])
+                          let block = SideButtonReset.usbBlock(id: id, reply: reply) else { return }
                     if let remap = SideButtonReset.remap(id: id, block: block) { remaps.append(remap) }
                 }
-                let found = remaps
-                self.publish {
-                    guard self.connected, !self.deviceIsBluetooth else { return }
-                    self.update(\.remappedSideButtons, found)
-                }
+            }
+            let found = remaps
+            // A read that ends after the mouse went away, or moved to the other link, says
+            // nothing about it now.
+            self.publish {
+                guard self.connected, self.deviceIsBluetooth == overBluetooth else { return }
+                self.update(\.remappedSideButtons, found)
             }
         }
     }
@@ -1500,8 +1496,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         userCommand { [weak self] in
             guard let self else { return }
             do {
-                if self.deviceIsBluetooth {
-                    guard let bluetooth = try self.ensureDevice() as? BluetoothDevice,
+                let transport = try self.ensureDevice()
+                if transport.isBluetooth {
+                    guard let bluetooth = transport as? BluetoothDevice,
                           RazerDevices.detectsOnboardSideButtonRemaps(pid: bluetooth.productID) else {
                         throw HIDDevice.HIDError.notSupported
                     }
@@ -1516,7 +1513,6 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                         self.sideButtonResetDone = done
                     }
                 } else {
-                    let transport = try self.ensureDevice()
                     guard RazerDevices.resetsOnboardSideButtonsOverUSB(pid: transport.productID) else {
                         throw HIDDevice.HIDError.notSupported
                     }
