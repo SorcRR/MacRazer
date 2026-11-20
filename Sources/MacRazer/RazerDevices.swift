@@ -144,6 +144,13 @@ struct RazerDeviceInfo {
     /// failed writes: each change is read back, so a rate the mouse can't take shows as a
     /// failure rather than landing as something else. Each row says where its top comes from.
     var maxPollingRate = 1000
+    /// True for a mouse that keeps one DPI axis and reads Y back as 0 (the Basilisk
+    /// Essential). The device test then confirms a DPI write on X alone. Only from a report.
+    var singleAxisDPI = false
+    /// True when the stage table the mouse answers with isn't the one its DPI button steps
+    /// through (the Basilisk Essential). The chips still show the table, but the popover
+    /// doesn't offer to edit it, since an edit wouldn't change what the button does.
+    var buttonIgnoresStageTable = false
     /// True for a mouse whose light has one colour of its own (the DeathAdder Essential's is
     /// green): only brightness changes it, so the popover hides colours and effects.
     var fixedColor = false
@@ -300,8 +307,9 @@ enum RazerDevices {
         // Nothing matches rows by name across the same link, so the difference is harmless,
         // but tell them apart by product id, not by name.
         // A 0.9.0 report on the 2018 one (firmware v1.1) passed DPI and polling with 0xff, and
-        // the extended-matrix brightness this app sends dimmed LOGO and SCROLL and came back. The red didn't show, and the owner says its one light is
-        // green only, so it gets brightness and no colours, like the 0x0098 row.
+        // the extended-matrix brightness this app sends dimmed LOGO and SCROLL and came back.
+        // The red didn't show, and the owner says its one light is green only, so it gets
+        // brightness and no colours, like the 0x0098 row.
         .init(pid: 0x006E, name: "Razer DeathAdder Essential (2018)", unverified: [], hasBattery: false, hasLighting: true, maxDPI: 6400, transactionId: 0xff, matrixTransactionId: 0xff, extraBrightnessLeds: [Razer.scrollLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, fixedColor: true, notOnMouse: [.battery]),
         .init(pid: 0x0071, name: "Razer DeathAdder Essential White Edition", unverified: [.dpi, .polling], hasBattery: false, hasLighting: false, maxDPI: 6400, transactionId: 0xff, matrixTransactionId: 0xff, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
         // Orochi 2013. A second in-app report (0.9.0, firmware v1.2, on the cable, no credit
@@ -638,11 +646,11 @@ enum RazerDevices {
         // Basilisk Essential (two 0.10.0 reports on firmware v1.2, no credit given): polling
         // and lighting passed with 0x1f, LOGO and SCROLL dimming and turning red. No battery.
         // Its DPI read answers X with Y always 0. X read back every write, so DPI counts as
-        // verified, and the test now accepts a 0 Y (`WriteCheck.confirmed` for DPI). Its stage
-        // table read [800, 4100] while the button step saw the DPI button cycle 6400, 800,
-        // 1800 and 3600: the table the mouse answers with isn't the one its button uses, so
-        // the stage editor may not match the button. 6400 is the vendor spec.
-        .init(pid: 0x0065, name: "Razer Basilisk Essential", unverified: [], hasBattery: false, hasLighting: true, maxDPI: 6400, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
+        // verified, and `singleAxisDPI` lets the test confirm on X. Its stage table read
+        // [800, 4100] while the button step saw the DPI button cycle 6400, 800, 1800 and
+        // 3600: the table it answers with isn't the one its button uses, so the popover
+        // doesn't offer to edit it. 6400 is the vendor spec.
+        .init(pid: 0x0065, name: "Razer Basilisk Essential", unverified: [], hasBattery: false, hasLighting: true, maxDPI: 6400, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, singleAxisDPI: true, buttonIgnoresStageTable: true, notOnMouse: [.battery]),
         // Naga Left Handed Edition (0.10.0 report on firmware v1.0, no credit given): DPI,
         // stages, polling and lighting all passed with 0x1f, LOGO and SCROLL dimming and
         // turning red. No battery, and no polling_rate2. Its twelve side keys type 1 to 0, -
@@ -924,8 +932,9 @@ enum RazerDevices {
     /// back after every write and reports a mismatch.
     static func supportsUSBStageEditing(pid: Int) -> Bool {
         guard let info = info(pid: pid) else { return false }
-        return info.connection != .bluetooth && !info.unverified.contains(.dpi)
+        return info.connection != .bluetooth && !info.unverified.contains(.dpi) && !info.buttonIgnoresStageTable
     }
+    static func singleAxisDPI(pid: Int) -> Bool { info(pid: pid)?.singleAxisDPI ?? false }
     static func verifiesBrightnessWrite(pid: Int) -> Bool { info(pid: pid)?.verifiesBrightnessWrite ?? false }
     static func usesPollingRate2(pid: Int) -> Bool { info(pid: pid)?.usesPollingRate2 ?? false }
     static func maxPollingRate(pid: Int) -> Int { info(pid: pid)?.maxPollingRate ?? 1000 }

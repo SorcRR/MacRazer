@@ -607,6 +607,10 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(RazerDevices.unverified(pid: 0x006C), [.lighting])
         XCTAssertFalse(RazerDevices.hasLighting(pid: 0x006C))
         XCTAssertEqual(RazerDevices.support(pid: 0x0065), .full, "X read back every write; Y is always 0")
+        XCTAssertTrue(RazerDevices.singleAxisDPI(pid: 0x0065))
+        XCTAssertFalse(RazerDevices.singleAxisDPI(pid: 0x008D))
+        XCTAssertFalse(RazerDevices.supportsUSBStageEditing(pid: 0x0065), "its button keeps its own stages")
+        XCTAssertTrue(RazerDevices.supportsUSBStageEditing(pid: 0x008D))
         XCTAssertTrue(RazerDevices.hasLighting(pid: 0x0065))
         // Naga Left Handed Edition: everything passed.
         XCTAssertEqual(RazerDevices.support(pid: 0x008D), .full)

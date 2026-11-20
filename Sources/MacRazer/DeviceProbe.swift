@@ -202,11 +202,11 @@ extension DeviceProbe.WriteCheck where Value: Equatable {
 }
 
 extension DeviceProbe.WriteCheck where Value == DeviceProbe.DPI {
-    /// A DPI write took when X reads back as written, and Y either does too or reads 0. Some
-    /// mice keep a single axis and answer Y with 0 (the Basilisk Essential); the app only
-    /// sets and shows X, so a 0 there isn't a refusal. A Y that reads back as some other
-    /// number still fails: the mouse changed it.
-    var confirmed: Bool {
-        readBack.value.x == requested.x && (readBack.value.y == requested.y || readBack.value.y == 0)
+    /// `confirmed`, or for a mouse that keeps one axis (`RazerDeviceInfo.singleAxisDPI`), X
+    /// as written and Y as written or 0. A Y the mouse changed to another number still fails.
+    /// Strict for everything else, so a two-axis mouse that drops Y still shows it.
+    func confirmed(singleAxis: Bool) -> Bool {
+        guard singleAxis else { return confirmed }
+        return readBack.value.x == requested.x && (readBack.value.y == requested.y || readBack.value.y == 0)
     }
 }

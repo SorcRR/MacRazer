@@ -17,8 +17,9 @@ expect rough edges until 1.0.
 - **Cynosa Lite tested.** It lost its UNTESTED tag after passing the lighting test.
 
 ### Fixed
-- **Test This Mouse on single-axis mice.** Some mice answer a DPI read with 0 for the second
-  axis. The DPI test failed them even when the DPI took. Now a 0 there passes.
+- **Test This Mouse on single-axis mice.** The Basilisk Essential answers a DPI read with 0
+  for the second axis, and the DPI test failed it even when the DPI took. On mice known to
+  do that, a 0 there passes now.
 
 ## [0.10.0] — 2026-11-19
 

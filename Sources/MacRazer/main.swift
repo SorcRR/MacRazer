@@ -857,7 +857,7 @@ case "devicetest":
         registry: info.map(DeviceReport.Registry.init),
         identify: identify,
         battery: step { DeviceTestSteps.battery($0, expectsBattery: info?.hasBattery) },
-        dpi: step { DeviceTestSteps.dpi($0, maxProbe: false) },
+        dpi: step { DeviceTestSteps.dpi($0, maxProbe: false, singleAxis: RazerDevices.singleAxisDPI(pid: dev.productID)) },
         polling: step { DeviceTestSteps.polling($0, usesPollingRate2: RazerDevices.usesPollingRate2(pid: dev.productID)) },
         lighting: step { DeviceTestSteps.lighting($0, sweep: lightSweep, restoreEffect: nil, seconds: 2) },
         buttons: .init(),
