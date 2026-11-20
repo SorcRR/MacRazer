@@ -451,13 +451,16 @@ enum RazerCommands {
     /// (the led asked, not the one the answer names). Built with the builders above, so only
     /// shapes they make come back. nil for anything else, and for an answer whose args[0]
     /// isn't 0: a mouse that only echoes the request (args[0] = VARSTORE, the rest 0) has said
-    /// nothing, and taking that as "off" would leave its lights dark.
+    /// nothing. Off is never put back either: an answer of all zeros looks the same as off,
+    /// and a mouse left dark is worse than one left in the app's colour. The answer must name
+    /// the led asked, except ZERO_LED, which answers as another zone (LOGO on the Lancehead
+    /// TE and the Basilisk V4 Pro). Another zone's effect is not this one's.
     static func effectRestore(from reply: RazerReport, led: UInt8) -> RazerReport? {
         let a = reply.arguments
-        guard reply.status == RazerStatus.successful.rawValue, a.count >= 12, a[0] == 0 else { return nil }
+        guard reply.status == RazerStatus.successful.rawValue, a.count >= 12, a[0] == 0,
+              a[1] == led || led == zeroLed else { return nil }
         func rgb(_ i: Int) -> RGB { RGB(r: a[i], g: a[i + 1], b: a[i + 2]) }
         switch (a[2], a[3], a[5]) {
-        case (0x00, _, _): return setNone(led: led)
         case (0x01, _, 0x01): return setStatic(led: led, rgb: rgb(6))
         case (0x02, 0x01, 0x01): return setBreathingSingle(led: led, rgb: rgb(6))
         case (0x02, 0x02, 0x02): return setBreathingDual(led: led, rgb1: rgb(6), rgb2: rgb(9))

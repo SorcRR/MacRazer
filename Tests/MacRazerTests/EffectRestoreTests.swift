@@ -38,10 +38,19 @@ final class EffectRestoreTests: XCTestCase {
         XCTAssertNil(RazerCommands.effectRestore(from: reply([1, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]), led: 0x0A))
     }
 
+    func testAnotherZonesAnswerIsNotThisOnes() {
+        // Only ZERO answers as another zone. A side strip answering as LOGO is not its own.
+        XCTAssertNil(RazerCommands.effectRestore(from: reply([0, 4, 1, 0, 0, 1, 255, 0, 0]), led: Razer.rightSideLed))
+        XCTAssertNotNil(RazerCommands.effectRestore(from: reply([0, 0x10, 1, 0, 0, 1, 255, 0, 0]), led: Razer.rightSideLed))
+    }
+
+    func testAllZerosIsNotOff() {
+        XCTAssertNil(RazerCommands.effectRestore(from: reply([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]), led: Razer.zeroLed))
+    }
+
     func testOtherShapes() {
         let green = RGB(r: 0, g: 255, b: 0), blue = RGB(r: 0, g: 0, b: 255)
-        XCTAssertEqual(bytes(RazerCommands.effectRestore(from: reply([0, 4, 0]), led: 4)),
-                       bytes(RazerCommands.setNone(led: 4)))
+        XCTAssertNil(RazerCommands.effectRestore(from: reply([0, 4, 0]), led: 4), "off, or all zeros: never put back")
         XCTAssertEqual(bytes(RazerCommands.effectRestore(from: reply([0, 4, 2, 1, 0, 1, 0, 255, 0]), led: 4)),
                        bytes(RazerCommands.setBreathingSingle(led: 4, rgb: green)))
         XCTAssertEqual(bytes(RazerCommands.effectRestore(from: reply([0, 4, 2, 2, 0, 2, 0, 255, 0, 0, 0, 255]), led: 4)),
