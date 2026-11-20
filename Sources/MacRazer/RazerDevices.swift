@@ -151,6 +151,10 @@ struct RazerDeviceInfo {
     /// through (the Basilisk Essential). The chips still show the table, but the popover
     /// doesn't offer to edit it, since an edit wouldn't change what the button does.
     var buttonIgnoresStageTable = false
+    /// True on a link whose reports show it acknowledging a polling write and keeping its old
+    /// rate (the Viper V4 Pro's dongle). The popover hides the picker there and a profile
+    /// doesn't write the rate. The device test still tries it, so a report can lift this.
+    var ignoresPollingWrites = false
     /// True for a mouse whose light has one colour of its own (the DeathAdder Essential's is
     /// green): only brightness changes it, so the popover hides colours and effects.
     var fixedColor = false
@@ -477,8 +481,9 @@ enum RazerDevices {
         // 8000 Hz is the vendor spec for its HyperPolling dongle.
         // Two 0.10.0 runs over the dongle (firmware v1.4, the same day the cable passed) failed
         // polling: both polling_rate2 writes for 500 Hz answered 0x02, but the read stayed at
-        // 8000 Hz. So the dongle doesn't take the rate this way yet, and polling stays unverified.
-        .init(pid: 0x00E6, name: "Razer Viper V4 Pro (Wireless)", unverified: [.polling], hasBattery: true, hasLighting: false, maxDPI: 45000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, usesPollingRate2: true, maxPollingRate: 8000, notOnMouse: [.lighting]),
+        // 8000 Hz. So the dongle doesn't take the rate this way yet: polling stays unverified,
+        // and `ignoresPollingWrites` hides the picker until a report shows a rate landing.
+        .init(pid: 0x00E6, name: "Razer Viper V4 Pro (Wireless)", unverified: [.polling], hasBattery: true, hasLighting: false, maxDPI: 45000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, usesPollingRate2: true, maxPollingRate: 8000, ignoresPollingWrites: true, notOnMouse: [.lighting]),
         // Basilisk V4 HyperSpeed on the cable (two in-app reports, no credit given): battery and
         // DPI and stages passed with 0x1f, and every id answers. As over the dongle, every LED
         // group refuses brightness and the classic polling command answers 0x05. Its control
@@ -943,6 +948,7 @@ enum RazerDevices {
         return info.connection != .bluetooth && !info.unverified.contains(.dpi) && !info.buttonIgnoresStageTable
     }
     static func singleAxisDPI(pid: Int) -> Bool { info(pid: pid)?.singleAxisDPI ?? false }
+    static func ignoresPollingWrites(pid: Int) -> Bool { info(pid: pid)?.ignoresPollingWrites ?? false }
     static func verifiesBrightnessWrite(pid: Int) -> Bool { info(pid: pid)?.verifiesBrightnessWrite ?? false }
     static func usesPollingRate2(pid: Int) -> Bool { info(pid: pid)?.usesPollingRate2 ?? false }
     static func maxPollingRate(pid: Int) -> Int { info(pid: pid)?.maxPollingRate ?? 1000 }

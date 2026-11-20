@@ -152,7 +152,7 @@ says so.
 | Razer Viper Ultimate (Wired) | Battery, DPI, polling, lighting | anonymous report |
 | Razer Taipan | DPI, polling; lighting not working yet | anonymous report |
 | Razer Basilisk V4 HyperSpeed (wired + wireless) | Battery, DPI, DPI stages; polling not confirmed yet | anonymous reports |
-| Razer Viper V4 Pro (wired + wireless) | Battery, DPI, DPI stages; polling up to 8000 Hz on the cable, not over the dongle yet | Robotxm, Kartas and an anonymous report |
+| Razer Viper V4 Pro (wired + wireless) | Battery, DPI, DPI stages; polling up to 8000 Hz on the cable; over the dongle the rate doesn't change yet, so the picker is hidden there | Robotxm, Kartas and an anonymous report |
 | Razer Viper 8KHz | DPI, DPI stages, polling up to 8000 Hz, lighting, brightness (wired only) | anonymous reports |
 | Razer Basilisk V4 Pro (wired + wireless) | Battery, DPI, DPI stages, polling up to 8000 Hz, lighting, brightness | by_hlz, Maude and anonymous reports |
 | Razer Mouse Dock Pro (with a Naga V3 Pro or Basilisk V4 HyperSpeed) | Battery, DPI, polling up to 8000 Hz; lighting and brightness with a Naga V3 Pro (the dock lights only what the mouse has) | maesta2, Kartas and an anonymous report |

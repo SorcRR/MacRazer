@@ -15,7 +15,7 @@ expect rough edges until 1.0.
   - **Basilisk Essential:** DPI, polling and lighting work.
   - **Naga Left Handed Edition:** DPI, polling and lighting all passed.
   - **Viper V4 Pro on the cable:** polling confirmed, up to 8000 Hz. Over the dongle the rate
-    doesn't change yet.
+    doesn't change yet, so the popover hides the picker there.
 - **Cynosa Lite tested.** It lost its UNTESTED tag after passing the lighting test.
 - **Joro keyboard.** It gets its own lighting card, with brightness and a static colour
   tested. Before, the app took it for a mouse.

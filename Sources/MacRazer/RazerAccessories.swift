@@ -84,7 +84,9 @@ enum RazerAccessories {
         // Joro on its cable, from a 0.10.0 report (firmware v1.2, credit Kartas). Not in the
         // table before, so the app tested it as a mouse: brightness answered on BACKLIGHT and
         // ZERO and dimmed and came back, and a static red on ZERO_LED landed, all with 0x1F.
-        // The other effects haven't been seen yet.
+        // The other effects haven't been seen yet. It's wireless too, but its dongle and
+        // Bluetooth product ids aren't known here, so on those links it may still be taken
+        // for a mouse until a report gives them.
         .init(pid: 0x02CD, name: "Razer Joro", kind: .keyboard, verified: true, transactionId: 0x1F,
               effectLed: Razer.zeroLed, brightnessLed: Razer.backlightLed,
               untestedEffects: [.breathing, .spectrum, .wave, .off]),

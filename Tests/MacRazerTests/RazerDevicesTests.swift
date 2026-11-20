@@ -622,6 +622,9 @@ final class RazerDevicesTests: XCTestCase {
         // Viper V4 Pro: the cable passed polling, the dongle didn't take the rate.
         XCTAssertEqual(RazerDevices.support(pid: 0x00E5), .full)
         XCTAssertEqual(RazerDevices.unverified(pid: 0x00E6), [.polling])
+        XCTAssertTrue(RazerDevices.ignoresPollingWrites(pid: 0x00E6), "the picker is hidden there")
+        XCTAssertFalse(RazerDevices.ignoresPollingWrites(pid: 0x00E5))
+        XCTAssertTrue(RazerDevices.ask(pid: 0x00E6).needsReport, "the test still tries polling")
         // The Joro is a keyboard, so it's never taken for the mouse.
         XCTAssertEqual(RazerAccessories.info(pid: 0x02CD)?.kind, .keyboard)
         XCTAssertNil(RazerDevices.info(pid: 0x02CD))
