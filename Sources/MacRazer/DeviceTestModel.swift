@@ -590,7 +590,8 @@ final class DeviceTestModel: ObservableObject {
 
     func runDPI() async {
         let probe = maxProbe
-        await run(\.dpi) { DeviceTestSteps.dpi($0, maxProbe: probe) }
+        let singleAxis = testedPID.map(RazerDevices.singleAxisDPI(pid:)) ?? false
+        await run(\.dpi) { DeviceTestSteps.dpi($0, maxProbe: probe, singleAxis: singleAxis) }
     }
 
     func runPolling() async {

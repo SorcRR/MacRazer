@@ -146,7 +146,11 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     // effects other than static, and switches DPI only between the mouse's own stages
     // (`BLEProtocol`). A profile sets all of those, so applying one there would half-fail.
     // The HyperPolling models take the newer polling command (`usesPollingRate2`).
-    var supportsPollRate: Bool { !deviceIsBluetooth }
+    /// Not over Bluetooth, which has no polling command, nor on a link known to keep its rate
+    /// whatever it's sent (`RazerDevices.ignoresPollingWrites`).
+    var supportsPollRate: Bool {
+        !deviceIsBluetooth && !(deviceID.map(RazerDevices.ignoresPollingWrites(pid:)) ?? false)
+    }
     var supportsLightingEffects: Bool { !deviceIsBluetooth && !lightHasFixedColor }
     /// The effects this mouse's firmware has (`RazerDeviceInfo.effects`): what the picker
     /// offers. Every effect while no mouse is known.
@@ -1772,7 +1776,8 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             // Capped for the mouse this reaches, which may not be the one the profile was
             // applied on if they changed in between.
             let hz = min(savedHz, RazerDevices.maxPollingRate(pid: dev.productID))
-            let pollOK = Self.sendPollingRate(hz, to: dev)
+            // Not sent where the rate never lands: it would only count as a failed apply.
+            let pollOK = RazerDevices.ignoresPollingWrites(pid: dev.productID) || Self.sendPollingRate(hz, to: dev)
             // Lighting commands only count on models that have lighting — the Atheris
             // (correctly) refuses them, and that must not block its profiles from applying.
             let hasLighting = RazerDevices.hasLighting(pid: dev.productID)

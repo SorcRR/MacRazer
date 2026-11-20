@@ -6,7 +6,24 @@ expect rough edges until 1.0.
 
 ## [Unreleased]
 
+### Added
+- **More mice from test reports.**
+  - **Polling confirmed with the newer command** on the Viper 8KHz, both Basilisk V4 Pro
+    links and the Mouse Dock Pro, which goes up to 8000 Hz.
+  - **DeathAdder Essential (2018):** DPI and polling work, and its green light dims.
+  - **Mamba Elite:** DPI and polling work. Lighting waits on a test.
+  - **Basilisk Essential:** DPI, polling and lighting work.
+  - **Naga Left Handed Edition:** DPI, polling and lighting all passed.
+  - **Viper V4 Pro on the cable:** polling confirmed, up to 8000 Hz. Over the dongle the rate
+    doesn't change yet, so the popover hides the picker there.
+- **Cynosa Lite tested.** It lost its UNTESTED tag after passing the lighting test.
+- **Joro keyboard.** It gets its own lighting card, with brightness and a static colour
+  tested. Before, the app took it for a mouse.
+
 ### Fixed
+- **Test This Mouse on single-axis mice.** The Basilisk Essential answers a DPI read with 0
+  for the second axis, and the DPI test failed it even when the DPI took. On mice known to
+  do that, a 0 there passes now.
 - **Mission Control and the Space shortcuts open from a button.** A button set to Mission
   Control, Space Left or Space Right did nothing: macOS stores those shortcuts with the Fn
   flag a real arrow key carries, and MacRazer saved the arrow without it. The three are now

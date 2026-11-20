@@ -41,6 +41,32 @@ final class DeviceProbeTests: XCTestCase {
         XCTAssertEqual(check.readBack.value, .init(x: 20000, y: 20000))
     }
 
+    /// The Basilisk Essential answers a DPI read with Y always 0. On a row marked single-axis,
+    /// a write that X kept is confirmed. A Y that reads back as another number isn't.
+    func testASingleAxisMouseIsConfirmedOnX() throws {
+        let mouse = FakeMouse()
+        mouse.clamp = { write in
+            guard write.commandId == 0x05, write.commandClass == 0x04 else { return write }
+            var kept = write
+            kept.arguments[3] = 0; kept.arguments[4] = 0
+            return kept
+        }
+        let check = try DeviceProbe.writeDPI(mouse, .init(x: 1600, y: 1600))
+        XCTAssertEqual(check.readBack.value, .init(x: 1600, y: 0))
+        XCTAssertTrue(check.confirmed(singleAxis: true))
+        XCTAssertFalse(check.confirmed, "strict for any other mouse, and the CLI")
+        XCTAssertFalse(check.confirmed(singleAxis: false), "a two-axis mouse that drops Y fails")
+
+        let changedY = DeviceProbe.WriteCheck(requested: DeviceProbe.DPI(x: 1600, y: 1600),
+                                              setResponse: check.setResponse,
+                                              readBack: .init(value: .init(x: 1600, y: 800), response: check.setResponse))
+        XCTAssertFalse(changedY.confirmed(singleAxis: true), "a Y the mouse changed is not a single-axis 0")
+        let changedX = DeviceProbe.WriteCheck(requested: DeviceProbe.DPI(x: 1600, y: 1600),
+                                              setResponse: check.setResponse,
+                                              readBack: .init(value: .init(x: 1550, y: 0), response: check.setResponse))
+        XCTAssertFalse(changedX.confirmed(singleAxis: true))
+    }
+
     func testPollingRateWriteReadsBack() throws {
         let mouse = FakeMouse()
         let check = try DeviceProbe.writePollingRate(mouse, hz: 500)
