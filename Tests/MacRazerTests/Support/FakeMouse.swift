@@ -13,6 +13,8 @@ final class FakeMouse: TransactionChannel {
     }
 
     private(set) var calls: [Call] = []
+    /// Every report sent, in order, with its bytes.
+    private(set) var sent: [RazerReport] = []
     var refuse: (RazerReport) -> Bool = { _ in false }
     var clamp: (RazerReport) -> RazerReport = { $0 }
     /// Last written arguments, keyed by command class, the read's command id and, for
@@ -39,12 +41,14 @@ final class FakeMouse: TransactionChannel {
 
     func send(_ report: RazerReport, transactionId: UInt8?) throws -> RazerReport {
         calls.append(.once(report.commandClass, report.commandId))
+        sent.append(report)
         transactionIds.append(transactionId)
         return try answer(report, transactionId: transactionId)
     }
 
     func sendWithRetry(_ report: RazerReport, attempts: Int, transactionId: UInt8?) throws -> RazerReport {
         calls.append(.retried(report.commandClass, report.commandId, attempts: attempts))
+        sent.append(report)
         transactionIds.append(transactionId)
         return try answer(report, transactionId: transactionId)
     }

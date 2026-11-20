@@ -66,7 +66,9 @@ enum RazerAccessories {
         // why mouse selection filters it out by name and by this table.
         keyboard(0x022A, "Razer Cynosa Chroma", verified: true, transactionId: 0x3F),
         keyboard(0x022C, "Razer Cynosa Chroma Pro", transactionId: 0x3F),
-        keyboard(0x023F, "Razer Cynosa Lite", transactionId: 0x3F),
+        // Tested from an in-app report on 0.10.0 (firmware v2.1): BACKLIGHT dimmed and came
+        // back, and a static colour landed.
+        keyboard(0x023F, "Razer Cynosa Lite", verified: true, transactionId: 0x3F),
         // #75 (MaxL34): an Ornata V3 next to a Naga V3 Pro.
         // Hardware-verified from in-app reports, 2026-11-10: brightness on BACKLIGHT dimmed and
         // came back, and a static colour landed. The other effects follow OpenRazer.
@@ -79,6 +81,15 @@ enum RazerAccessories {
               effectLed: Razer.backlightLed, brightnessLed: Razer.backlightLed,
               untestedEffects: [.breathing, .spectrum, .wave, .off]),
         keyboard(0x02A3, "Razer Ornata V3 Tenkeyless", transactionId: 0x1F),
+        // Joro on its cable, from a 0.10.0 report (firmware v1.2, credit Kartas). Not in the
+        // table before, so the app tested it as a mouse: brightness answered on BACKLIGHT and
+        // ZERO and dimmed and came back, and a static red on ZERO_LED landed, all with 0x1F.
+        // The other effects haven't been seen yet. It's wireless too, but its dongle and
+        // Bluetooth product ids aren't known here, so on those links it may still be taken
+        // for a mouse until a report gives them.
+        .init(pid: 0x02CD, name: "Razer Joro", kind: .keyboard, verified: true, transactionId: 0x1F,
+              effectLed: Razer.zeroLed, brightnessLed: Razer.backlightLed,
+              untestedEffects: [.breathing, .spectrum, .wave, .off]),
 
         // Mousepads (OpenRazer `razeraccessory_driver.c`): effects on ZERO_LED.
         //
@@ -89,12 +100,20 @@ enum RazerAccessories {
         .init(pid: 0x0C04, name: "Razer Firefly V2", kind: .mousepad, verified: true, transactionId: 0x1F,
               effectLed: Razer.zeroLed, brightnessLed: Razer.backlightLed,
               untestedEffects: [.breathing, .spectrum, .wave, .off]),
-        pad(0x0C08, "Razer Firefly V2 Pro"),
+        // Firefly V2 Pro, from three in-app reports on firmware v1.0 (2026-11-18): every id
+        // answers, but brightness answers on BACKLIGHT_LED only (ZERO_LED, LOGO_LED and
+        // SCROLL_LED refuse it), as on the Firefly V2. It dimmed and came back each time, with
+        // 0x3F. A static colour on ZERO_LED landed in two of the three. The other effects follow
+        // OpenRazer and haven't been seen yet.
+        .init(pid: 0x0C08, name: "Razer Firefly V2 Pro", kind: .mousepad, verified: true, transactionId: 0x3F,
+              effectLed: Razer.zeroLed, brightnessLed: Razer.backlightLed,
+              untestedEffects: [.breathing, .spectrum, .wave, .off]),
         // No wave in OpenRazer for the Goliathus pads.
         //
         // Goliathus Chroma, from an in-app report on firmware v1.1: as on the Extended,
         // brightness reads on LOGO_LED (ZERO_LED refuses it), and dimmed and came back there.
-        // A static colour on ZERO_LED landed. The other effects follow OpenRazer.
+        // A static colour on ZERO_LED landed. The other effects follow OpenRazer. A later report
+        // (0.9.0, macOS 14.6) dimmed it too, but the owner saw no red.
         .init(pid: 0x0C01, name: "Razer Goliathus Chroma", kind: .mousepad, verified: true,
               transactionId: 0x3F, effectLed: Razer.zeroLed, brightnessLed: Razer.logoLed,
               effects: LightingEffect.allCases.filter { $0 != .wave },

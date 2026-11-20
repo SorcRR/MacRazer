@@ -59,6 +59,7 @@ final class PermissionsModel: ObservableObject {
     /// Re-read both permissions from the system. Call on launch, when the setup window appears,
     /// and whenever the app returns to the foreground (e.g. back from System Settings).
     func recheck() {
+        guard !RenderOptions.isActive else { return }
         inputMonitoring = IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) == kIOHIDAccessTypeGranted
         bluetoothControllable = HIDDevice.bluetoothRazerMouse()?.controllablePID != nil
         // refreshAccessibility also (re)installs the event tap once granted.

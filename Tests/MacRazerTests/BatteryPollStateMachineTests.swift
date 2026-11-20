@@ -239,4 +239,164 @@ final class BatteryPollStateMachineTests: XCTestCase {
         XCTAssertEqual(m.nextPollInterval(pointerActive: false), Cadence.connected,
                        "one bad value from a live mouse is not a reason to poll harder")
     }
+
+    // MARK: - Nobody at the Mac (#142)
+
+    func testAnEmptyDeskStopsEveryPollThatTalksToTheMouse() {
+        // Each read counts as user activity and keeps the display awake, so none of them
+        // runs while nobody is there: not for a working mouse, a settling one or a sleeping one.
+        var m = BatteryPollStateMachine()
+        XCTAssertNil(m.nextPollInterval(pointerActive: false, userAway: true), "settling")
+        _ = m.handle(.battery(raw: raw85, charging: false))
+        XCTAssertNil(m.nextPollInterval(pointerActive: false, userAway: true), "connected")
+        _ = m.handle(.failure(deviceGone: false))
+        _ = m.handle(.failure(deviceGone: false))
+        for _ in 0..<Cadence.fastPolls { _ = m.handle(.failure(deviceGone: false)) }
+        XCTAssertNil(m.nextPollInterval(pointerActive: false, userAway: true), "asleep")
+        _ = m.handle(.aliveNoBattery)
+        XCTAssertNil(m.nextPollInterval(pointerActive: false, userAway: true), "battery-less")
+    }
+
+    func testAPendingFailureIsConfirmedEvenWithNobodyThere() {
+        // Until the second read, the mouse still shows connected with its remaps live.
+        var m = BatteryPollStateMachine()
+        _ = m.handle(.battery(raw: raw85, charging: false))
+        _ = m.handle(.failure(deviceGone: false))
+        XCTAssertEqual(m.nextPollInterval(pointerActive: false, userAway: true), Cadence.confirming)
+        _ = m.handle(.failure(deviceGone: false))
+        XCTAssertNil(m.nextPollInterval(pointerActive: false, userAway: true), "confirmed: now it can stop")
+    }
+
+    func testNothingPluggedInKeepsItsSafetyNet() {
+        // No device means no reads to keep the display awake with.
+        var m = BatteryPollStateMachine()
+        _ = m.handle(.failure(deviceGone: true), immediateOffline: true)
+        XCTAssertEqual(m.nextPollInterval(pointerActive: false, userAway: true), Cadence.unplugged)
+    }
+
+    func testSomeoneBackGetsTheOrdinaryCadence() {
+        var m = BatteryPollStateMachine()
+        _ = m.handle(.battery(raw: raw85, charging: false))
+        XCTAssertEqual(m.nextPollInterval(pointerActive: true, userAway: false), Cadence.inUse)
+        XCTAssertEqual(m.nextPollInterval(pointerActive: false, userAway: false), Cadence.connected)
+    }
+}
+
+final class UserPresenceTests: XCTestCase {
+    private let t0 = Date(timeIntervalSinceReferenceDate: 1_000_000)
+    private func at(_ s: TimeInterval) -> Date { t0.addingTimeInterval(s) }
+
+    func testPresentAtLaunchAndAwayAfterTheThreshold() {
+        let p = UserPresence(now: t0)
+        XCTAssertFalse(p.isAway(now: at(UserPresence.awayAfter - 1)))
+        XCTAssertTrue(p.isAway(now: at(UserPresence.awayAfter)))
+    }
+
+    func testInputKeepsSomeonePresent() {
+        var p = UserPresence(now: t0)
+        p.observe(secondsSinceInput: 5, now: at(25)) // input at 20
+        XCTAssertFalse(p.isAway(now: at(20 + UserPresence.awayAfter - 1)))
+        XCTAssertTrue(p.isAway(now: at(20 + UserPresence.awayAfter)))
+    }
+
+    func testOnlyInputAfterAWakeCounts() {
+        // If the counters skip the time asleep, input from before the sleep is dated just
+        // before the wake. A Power Nap wake must not read as someone at the desk.
+        var p = UserPresence(now: t0)
+        p.woke(at: at(3600))
+        p.observe(secondsSinceInput: 2, now: at(3601)) // "a second before the wake"
+        XCTAssertTrue(p.isAway(now: at(3601)))
+        p.observe(secondsSinceInput: 0, now: at(3605)) // a hand on the mouse after it
+        XCTAssertFalse(p.isAway(now: at(3605)))
+    }
+
+    func testOlderInputNeverMovesTheClockBack() {
+        var p = UserPresence(now: t0)
+        p.observe(secondsSinceInput: 0, now: at(40))
+        p.observe(secondsSinceInput: 30, now: at(50)) // a different counter, older
+        XCTAssertEqual(p.lastInput, at(40))
+    }
+
+    func testInputDuringOrJustAfterAReadIsTakenForItsEcho() {
+        // If a read ever shows up in the counters, it must not keep the poll going forever.
+        var p = UserPresence(now: t0)
+        p.readStarted(at: at(30))
+        p.observe(secondsSinceInput: 0, now: at(30.2)) // mid-read
+        p.readEnded(at: at(30.5))
+        p.observe(secondsSinceInput: 0, now: at(31.4)) // inside the margin
+        XCTAssertEqual(p.lastInput, t0, "both are the read's own echo")
+        XCTAssertTrue(p.isAway(now: at(UserPresence.awayAfter)))
+    }
+
+    func testInputAfterTheMarginCounts() {
+        var p = UserPresence(now: t0)
+        p.readStarted(at: at(30))
+        p.readEnded(at: at(30.5))
+        p.observe(secondsSinceInput: 0, now: at(32))
+        XCTAssertEqual(p.lastInput, at(32))
+    }
+
+    func testOnlyRecentReadsAreRemembered() {
+        var p = UserPresence(now: t0)
+        p.readStarted(at: at(1))
+        p.readEnded(at: at(2))
+        for i in 0..<20 {
+            p.readStarted(at: at(10 + Double(i)))
+            p.readEnded(at: at(10.1 + Double(i)))
+        }
+        p.observe(secondsSinceInput: 0, now: at(1.5))
+        XCTAssertEqual(p.lastInput, at(1.5), "the first read has dropped out of the window list")
+    }
+}
+
+final class PollPauseTests: XCTestCase {
+    func testAWakeWithSomeoneThereChecksAtOnce() {
+        var p = PollPause()
+        XCTAssertEqual(p.didWake(awayForWakeCheck: false), .wakeCheck)
+        XCTAssertFalse(p.wakeCheckDeferred)
+    }
+
+    func testAWakeWithNobodyThereWaitsForThem() {
+        var p = PollPause()
+        XCTAssertNil(p.didWake(awayForWakeCheck: true))
+        XCTAssertNil(p.someoneMayBeBack(away: true, awayForWakeCheck: true), "still nobody")
+        XCTAssertEqual(p.someoneMayBeBack(away: false, awayForWakeCheck: false), .wakeCheck)
+        XCTAssertFalse(p.wakeCheckDeferred, "it runs once")
+        XCTAssertNil(p.someoneMayBeBack(away: false, awayForWakeCheck: false))
+    }
+
+    func testTheLockScreenDoesNotHoldTheWakeCheck() {
+        // Someone typing their password: the routine poll waits, the wake check doesn't.
+        var p = PollPause()
+        _ = p.didWake(awayForWakeCheck: true)
+        p.didPause()
+        XCTAssertEqual(p.someoneMayBeBack(away: true, awayForWakeCheck: false), .wakeCheck)
+        XCTAssertFalse(p.paused)
+    }
+
+    func testATimerThatFiresAfterTheReturnRunsTheDeferredWakeCheck() {
+        // The poll wasn't stopped yet, so its timer is what notices.
+        var p = PollPause()
+        _ = p.didWake(awayForWakeCheck: true)
+        XCTAssertEqual(p.timerFired(awayForWakeCheck: true), .poll, "nobody yet: an ordinary tick, which stops at the read")
+        XCTAssertTrue(p.wakeCheckDeferred)
+        XCTAssertEqual(p.timerFired(awayForWakeCheck: false), .wakeCheck)
+        XCTAssertEqual(p.timerFired(awayForWakeCheck: false), .poll)
+    }
+
+    func testAPausedPollResumesOnlyWhenSomeoneIsBack() {
+        var p = PollPause()
+        XCTAssertNil(p.someoneMayBeBack(away: false, awayForWakeCheck: false), "not paused: nothing to resume")
+        p.didPause()
+        XCTAssertNil(p.someoneMayBeBack(away: true, awayForWakeCheck: false), "locked: the poll still waits")
+        XCTAssertEqual(p.someoneMayBeBack(away: false, awayForWakeCheck: false), .poll)
+        XCTAssertFalse(p.paused)
+    }
+
+    func testSchedulingEndsThePause() {
+        var p = PollPause()
+        p.didPause()
+        p.didSchedule()
+        XCTAssertNil(p.someoneMayBeBack(away: false, awayForWakeCheck: false))
+    }
 }

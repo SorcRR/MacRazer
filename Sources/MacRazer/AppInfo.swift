@@ -9,8 +9,12 @@ import Foundation
 enum AppInfo {
     /// The bundle's marketing version, or nil under `swift run`, which has no bundle.
     static var version: String? {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
+        renderVersion ?? Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
     }
+
+    /// The version a `render-*` command shows, from its `version=` argument, so a screenshot
+    /// rendered from a `swift build` binary doesn't say "vdev". Set once before rendering.
+    nonisolated(unsafe) static var renderVersion: String?
 
     static var build: String? {
         Bundle.main.infoDictionary?["CFBundleVersion"] as? String

@@ -488,7 +488,15 @@ enum DeviceTestSteps {
             // Not on a light that takes effects but has no brightness (the Pro Click V2
             // Vertical Edition): it answers no brightness read, and that says nothing about
             // the id.
-            if registry.hasLighting, registry.hasBrightness,
+            // Nor on a dock whose mouse answers no lighting read at all: its lighting is that
+            // mouse's, and one without lights is the right answer (a Basilisk V4 HyperSpeed
+            // on the Mouse Dock Pro). It must have heard and refused: a mouse asleep on the
+            // dock times out on every id and still fails, and so does one that refuses some
+            // other id while its own stays silent. An answer on another id fails too.
+            let dockedMouseUnlit = RazerDevices.lightingFollowsDockedMouse.contains(registry.pid)
+                && !data.lightingAttempts.contains(where: \.answered)
+                && data.lightingAttempts.contains(where: { $0.id == registry.matrixTransactionId && $0.refused })
+            if registry.hasLighting, registry.hasBrightness, !dockedMouseUnlit,
                !data.lightingAttempts.contains(where: { $0.id == registry.matrixTransactionId && $0.answered }) {
                 record.outcome = .failed
             }
@@ -860,7 +868,8 @@ enum DeviceTestSteps {
     /// Writes a test DPI 50 away from the current one, reads it back, and restores. Reads the
     /// stage table. `maxProbe` also asks for the protocol's ceiling to see what the mouse
     /// keeps, then restores again.
-    static func dpi(_ channel: DeviceProbeChannel, maxProbe: Bool) -> DeviceReport.StepRecord<DeviceReport.DPIData> {
+    /// `singleAxis` confirms the writes on X alone (`RazerDeviceInfo.singleAxisDPI`).
+    static func dpi(_ channel: DeviceProbeChannel, maxProbe: Bool, singleAxis: Bool = false) -> DeviceReport.StepRecord<DeviceReport.DPIData> {
         var record = DeviceReport.StepRecord<DeviceReport.DPIData>()
         var data = DeviceReport.DPIData()
         do {
@@ -871,7 +880,7 @@ enum DeviceTestSteps {
             var wrote = false
             defer {
                 // On every path, including a failed read-back: the user's DPI goes back.
-                if wrote { data.restored = (try? DeviceProbe.writeDPI(channel, original).confirmed) ?? false }
+                if wrote { data.restored = (try? DeviceProbe.writeDPI(channel, original).confirmed(singleAxis: singleAxis)) ?? false }
             }
             wrote = true
             let check = try DeviceProbe.writeDPI(channel, .init(x: test, y: test))
@@ -885,7 +894,7 @@ enum DeviceTestSteps {
                 data.activeStageByte = table.value.activeByte
                 if !table.value.stages.isEmpty { data.firstStageNumber = Int(table.response.arguments[3]) }
             }
-            record.outcome = check.confirmed ? .passed : .failed
+            record.outcome = check.confirmed(singleAxis: singleAxis) ? .passed : .failed
         } catch {
             record.error = String(describing: error)
             record.outcome = .failed
@@ -938,9 +947,11 @@ enum DeviceTestSteps {
     /// turns red at full brightness for `seconds` and goes back to `restoreEffect` (the app's
     /// own setting: an effect can't be read back) and to each group's brightness. The
     /// questions come afterwards, so nothing is held waiting on the person.
+    /// `red` and `restoreEffect` hold one report per effect zone (`RazerDevices.effectLeds`).
+    /// Red counts as shown when any zone took it, as in `MouseController.writeLighting`.
     static func lighting(_ channel: DeviceProbeChannel, sweep: [DeviceProbe.LEDAnswer]?,
-                         restoreEffect: RazerReport?,
-                         red: RazerReport = RazerCommands.setStatic(rgb: RGB(r: 255, g: 0, b: 0)),
+                         restoreEffect: [RazerReport]?,
+                         red: [RazerReport] = [RazerCommands.setStatic(rgb: RGB(r: 255, g: 0, b: 0))],
                          seconds: Double,
                          wait: (Double) -> Void = { Thread.sleep(forTimeInterval: $0) })
         -> DeviceReport.StepRecord<DeviceReport.LightingData> {
@@ -969,9 +980,9 @@ enum DeviceTestSteps {
 
         if let restoreEffect {
             for (_, led, _) in answering { _ = try? DeviceProbe.writeBrightness(channel, raw: 255, led: led) }
-            data.redShown = (try? DeviceProbe.applyLighting(channel, red)) != nil
+            data.redShown = applyLighting(channel, red)
             if data.redShown { wait(seconds) }
-            let effectBack = (try? DeviceProbe.applyLighting(channel, restoreEffect)) != nil
+            let effectBack = applyLighting(channel, restoreEffect)
             allBack = restoreBrightness(channel, answering) && effectBack && allBack
         }
         data.restored = allBack
@@ -980,6 +991,13 @@ enum DeviceTestSteps {
         record.outcome = data.dimShown ? .skipped : .failed
         record.data = data
         return record
+    }
+
+    /// Sends every zone's report, all of them even after a refusal. True when any took it.
+    private static func applyLighting(_ channel: DeviceProbeChannel, _ reports: [RazerReport]) -> Bool {
+        reports.reduce(false) { took, report in
+            (try? DeviceProbe.applyLighting(channel, report)) != nil || took
+        }
     }
 
     private static func restoreBrightness(_ channel: DeviceProbeChannel, _ groups: [(String, UInt8, UInt8)]) -> Bool {
@@ -1024,7 +1042,8 @@ extension DeviceTestSteps {
         let matrix = identify.data?.lightingId ?? info.transactionId
         let red = RazerCommands.effect(.staticColor, color: RGB(r: 255, g: 0, b: 0), led: info.effectLed)
         let lighting = recorded(device, standard: standard, matrix: matrix) {
-            Self.lighting($0, sweep: sweep, restoreEffect: restoreEffect, red: red, seconds: seconds, wait: wait)
+            Self.lighting($0, sweep: sweep, restoreEffect: restoreEffect.map { [$0] }, red: [red],
+                          seconds: seconds, wait: wait)
         }
         return (identify, lighting)
     }

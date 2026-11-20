@@ -7,6 +7,45 @@ expect rough edges until 1.0.
 ## [Unreleased]
 
 ### Added
+- **More mice from test reports.**
+  - **Polling confirmed with the newer command** on the Viper 8KHz, both Basilisk V4 Pro
+    links and the Mouse Dock Pro, which goes up to 8000 Hz.
+  - **DeathAdder Essential (2018):** DPI and polling work, and its green light dims.
+  - **Mamba Elite:** DPI and polling work. Lighting waits on a test.
+  - **Basilisk Essential:** DPI, polling and lighting work.
+  - **Naga Left Handed Edition:** DPI, polling and lighting all passed.
+  - **Viper V4 Pro on the cable:** polling confirmed, up to 8000 Hz. Over the dongle the rate
+    doesn't change yet, so the popover hides the picker there.
+- **Cynosa Lite tested.** It lost its UNTESTED tag after passing the lighting test.
+- **Joro keyboard.** It gets its own lighting card, with brightness and a static colour
+  tested. Before, the app took it for a mouse.
+
+### Fixed
+- **Mouse Dock Pro lighting follows the mouse on it.** The dock's lights are the docked
+  mouse's lights. The app now asks that mouse which zones it has. A mouse without lights,
+  like the Basilisk V4 HyperSpeed, no longer gets lighting controls that do nothing. Test
+  This Mouse no longer fails such a dock at the first step.
+- **Test This Mouse on single-axis mice.** The Basilisk Essential answers a DPI read with 0
+  for the second axis, and the DPI test failed it even when the DPI took. On mice known to
+  do that, a 0 there passes now.
+- **A mouse another app holds says so.** Some apps that remap keys or mice take a mouse for
+  themselves, and then MacRazer can't reach it. The popover only said Offline, and the device
+  test said no mouse was connected. Both now say another app is using the mouse and name a
+  few that can do it. Thanks to fortinmike for the log that showed it (#139).
+- **Mission Control and the Space shortcuts open from a button.** A button set to Mission
+  Control, Space Left or Space Right did nothing: macOS stores those shortcuts with the Fn
+  flag a real arrow key carries, and MacRazer saved the arrow without it. The three are now
+  saved with it, and a recorded shortcut keeps it too. A button set before this update works
+  too, without setting it again: arrows, F-keys and keys like Home and End now always go out
+  with the flags a real press carries.
+- **Profiles and remaps no longer vanish after a restart.** A mouse still asleep when the
+  Mac starts missed MacRazer's first read of its serial number, so the popover and Configure
+  Buttons showed none of its profiles or remaps until MacRazer was reopened. It now uses the
+  serial the mouse last had on that port, and asks again until the mouse answers.
+
+## [0.10.0] — 2026-11-19
+
+### Added
 - **Reverse scrolling on Razer mice.** A switch under Settings › General reverses wheel
   and tilt scrolling on Razer mice while trackpads and other mice keep their directions.
   Off by default, saved once for the app, and active while MacRazer is running with
@@ -35,8 +74,13 @@ expect rough edges until 1.0.
     doesn't work yet.
   - **Viper Mini**, **Pro Click Mini over its dongle** and **DeathAdder V4 Pro on its
     cable:** fully supported. **DeathAdder V2 Pro on its cable:** lighting works now.
-- **Tested keyboards and mousepads.** The Ornata V3, Ornata V3 X, Goliathus Chroma and
-  Goliathus Chroma Extended lost their UNTESTED tag after passing the lighting test.
+  - **DeathAdder V4 Pro over its dongle** and **Viper Mini Signature Edition on its cable:**
+    fully supported. **Orochi 2013:** polling works now.
+  - **Basilisk Ultimate on its cable**, the **Basilisk** and the **DeathAdder V2 Mini:**
+    battery (where there is one), DPI and polling work. Their lighting waits on more tests.
+- **Tested keyboards and mousepads.** The Ornata V3, Ornata V3 X, Goliathus Chroma,
+  Goliathus Chroma Extended and Firefly V2 Pro lost their UNTESTED tag after passing the
+  lighting test.
 - **The device test finds buttons the Mac never hears.** Some buttons change DPI or the
   profile inside the mouse and send the Mac nothing. The button step now asks whether every
   button you pressed showed up, and watches the DPI and profile while you press them. A
@@ -54,10 +98,26 @@ expect rough edges until 1.0.
   show up in its report.
 
 ### Fixed
-- **Profiles and remaps no longer vanish after a restart.** A mouse still asleep when the
-  Mac starts missed MacRazer's first read of its serial number, so the popover and Configure
-  Buttons showed none of its profiles or remaps until MacRazer was reopened. It now uses the
-  serial the mouse last had on that port, and asks again until the mouse answers.
+- **Colours on mice that ignore the all-zones light.** Some mice say yes to a colour sent to
+  every zone at once, then keep their old one. Device tests showed it on the Viper Ultimate,
+  Basilisk Ultimate, Basilisk, DeathAdder V2 Mini and Basilisk V3 Pro 35K. Brightness still
+  dimmed there. Effects now go to each lit zone too (logo, scroll wheel, side strips), as
+  OpenRazer does. Other mice get the same single write as before. On the Viper Ultimate,
+  whose lighting already shows, the logo now gets a second write. The others keep lighting
+  hidden until a new device test shows colours land, and the test now sends its red to
+  every zone too. The brightness slider dims those zones as well, so the side strips and
+  underglow don't stay bright.
+- **Older mice that went Offline a few seconds after plugging in.** A mouse MacRazer doesn't
+  know yet, like the Lancehead Tournament Edition (#139), may want a different protocol id
+  than the one the app guessed. It then never answered and showed as Offline. Now, when such
+  a mouse stays silent, the app tries the other ids and the mouse's other interfaces, and
+  keeps the one that answers. The Lancehead Tournament Edition also has its own entry now,
+  and an owner's device test confirmed it: DPI and polling work. Lighting waits on a
+  test that shows every zone.
+- **The display sleeps again with MacRazer running.** macOS counts every battery read as
+  user activity, so the poll kept the display awake. Now the poll stops after 30 seconds
+  without keyboard or pointer input, and while the screen is asleep or locked. It starts
+  again on the next input. Thanks to ccoddington for the measurements (#142).
 - **Brightness on the Goliathus Chroma Extended.** It answers brightness on a different light
   than MacRazer used, so the slider did nothing.
 - **250 Hz polling is read correctly.** A mouse left at 250 Hz showed no rate, and the device

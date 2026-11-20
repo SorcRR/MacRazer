@@ -35,6 +35,8 @@ final class DeviceTestModel: ObservableObject {
     enum Blocker: Equatable {
         case noMouse
         case bluetoothOnly(String)
+        /// Plugged in, but another app holds it exclusively (#139).
+        case heldByAnotherApp
     }
 
     /// When a relaunch for Input Monitoring was asked for, so the test window reopens after
@@ -501,6 +503,7 @@ final class DeviceTestModel: ObservableObject {
                 return IdentifyResult(pid: device.productID, name: device.productName, record: record,
                                       sweep: sweep, capabilities: capabilities, interfaces: interfaces, control: control)
             }
+            if Self.heldByAnotherApp(result.record.error, result.record.exchanges) { return stopHeldByAnotherApp() }
             let info = RazerDevices.info(pid: result.pid)
             report = Self.emptyReport(pid: result.pid, name: result.name, interfaces: result.interfaces,
                                       control: result.control, identify: result.record)
@@ -531,6 +534,8 @@ final class DeviceTestModel: ObservableObject {
             } else {
                 if case MouseController.DeviceTestLinkError.bluetooth(let name) = error {
                     blocker = .bluetoothOnly(name)
+                } else if HIDDevice.isHeldByAnotherApp(error) {
+                    blocker = .heldByAnotherApp
                 } else {
                     blocker = Self.unavailable()
                 }
@@ -556,10 +561,30 @@ final class DeviceTestModel: ObservableObject {
         running = true
         defer { running = false }
         let standard = standardId, matrix = matrixId, overrides = overrides
-        let record = try? await controller.runDeviceTestStep { device in
-            DeviceTestSteps.recorded(device, standard: standard, matrix: matrix, overrides: overrides, step)
+        let record: DeviceReport.StepRecord<T>?
+        do {
+            record = try await controller.runDeviceTestStep { device in
+                DeviceTestSteps.recorded(device, standard: standard, matrix: matrix, overrides: overrides, step)
+            }
+        } catch {
+            if HIDDevice.isHeldByAnotherApp(error) { return stopHeldByAnotherApp() }
+            record = nil
         }
+        if let record, Self.heldByAnotherApp(record.error, record.exchanges) { return stopHeldByAnotherApp() }
         report?[keyPath: keyPath] = record ?? .init(outcome: .failed, error: "The mouse wasn't reachable.")
+    }
+
+    /// Whether a step's failures came from another app taking the mouse mid-test (#139). Its
+    /// answers then say nothing about the mouse, and a report of them would read as features
+    /// it lacks.
+    nonisolated static func heldByAnotherApp(_ error: String?, _ exchanges: [RecordingChannel.Exchange]) -> Bool {
+        ([error] + exchanges.map(\.error)).contains { $0.map(HIDDevice.errorLooksHeldByAnotherApp) ?? false }
+    }
+
+    /// Drops the run, whose answers can't be trusted, and says why on the first screen.
+    private func stopHeldByAnotherApp() {
+        reset()
+        blocker = .heldByAnotherApp
     }
 
     func runBattery() async {
@@ -590,7 +615,8 @@ final class DeviceTestModel: ObservableObject {
 
     func runDPI() async {
         let probe = maxProbe
-        await run(\.dpi) { DeviceTestSteps.dpi($0, maxProbe: probe) }
+        let singleAxis = testedPID.map(RazerDevices.singleAxisDPI(pid:)) ?? false
+        await run(\.dpi) { DeviceTestSteps.dpi($0, maxProbe: probe, singleAxis: singleAxis) }
     }
 
     func runPolling() async {
@@ -600,11 +626,14 @@ final class DeviceTestModel: ObservableObject {
 
     func runLighting() async {
         let sweep = lightSweep
-        let restore = controller.lightingRestoreReport()
+        let restore = controller.lightingRestoreReports(pid: testedPID)
+        // Red on every zone the tested mouse takes effects on, as the popover sends them.
+        let red = RazerCommands.effect(.staticColor, color: RGB(r: 255, g: 0, b: 0),
+                                       leds: RazerDevices.effectLeds(pid: testedPID))
         dimmed = nil
         turnedRed = nil
         await run(\.lighting) {
-            DeviceTestSteps.lighting($0, sweep: sweep, restoreEffect: restore, seconds: 3)
+            DeviceTestSteps.lighting($0, sweep: sweep, restoreEffect: restore, red: red, seconds: 3)
         }
     }
 

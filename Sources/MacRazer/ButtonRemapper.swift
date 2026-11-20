@@ -129,9 +129,12 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         .init(id: "close", name: "Close  ⌘W", keyCode: 13, flags: .maskCommand),
         .init(id: "back", name: "Back  ⌘[", keyCode: 33, flags: .maskCommand),
         .init(id: "forward", name: "Forward  ⌘]", keyCode: 30, flags: .maskCommand),
-        .init(id: "missionControl", name: "Mission Control  ⌃↑", keyCode: 126, flags: .maskControl),
-        .init(id: "spaceLeft", name: "Space Left  ⌃←", keyCode: 123, flags: .maskControl),
-        .init(id: "spaceRight", name: "Space Right  ⌃→", keyCode: 124, flags: .maskControl),
+        .init(id: "missionControl", name: "Mission Control  ⌃↑", keyCode: 126,
+              flags: [.maskControl, .maskSecondaryFn, .maskNumericPad]),
+        .init(id: "spaceLeft", name: "Space Left  ⌃←", keyCode: 123,
+              flags: [.maskControl, .maskSecondaryFn, .maskNumericPad]),
+        .init(id: "spaceRight", name: "Space Right  ⌃→", keyCode: 124,
+              flags: [.maskControl, .maskSecondaryFn, .maskNumericPad]),
         .init(id: "screenshot", name: "Screenshot  ⇧⌘4", keyCode: 21, flags: [.maskCommand, .maskShift]),
         .init(id: "switchApp", name: "Switch App  ⌘Tab", keyCode: 48, flags: .maskCommand),
     ]
@@ -157,6 +160,7 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
 
     /// Re-check the Accessibility grant (call when the window appears / returns to front).
     func refreshAccessibility(prompt: Bool) {
+        guard !RenderOptions.isActive else { return }
         // An explicit Re-check is the user saying they changed a permission: try the
         // keyboard-capable tap again.
         if prompt { keyboardTapRefused = false }
@@ -231,7 +235,8 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         accessibilityGranted = true
         eventTapAvailable = true
         seenButtons = [2, 3, 4, 5]
-        mappings = [3: .keystroke(keyCode: 8, modifiers: CGEventFlags.maskCommand.rawValue, name: "Copy  ⌘C")]
+        mappings = [3: .keystroke(keyCode: 8, modifiers: CGEventFlags.maskCommand.rawValue, name: "Copy  ⌘C"),
+                    4: .keystroke(keyCode: 9, modifiers: CGEventFlags.maskCommand.rawValue, name: "Paste  ⌘V")]
     }
 
     // MARK: - Event tap
@@ -449,13 +454,44 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         }
     }
 
-    private func postKeystroke(keyCode: UInt16, flags: CGEventFlags) {
-        let down = CGEvent(keyboardEventSource: postSource, virtualKey: CGKeyCode(keyCode), keyDown: true)
-        down?.flags = flags
-        down?.post(tap: .cghidEventTap)
-        let up = CGEvent(keyboardEventSource: postSource, virtualKey: CGKeyCode(keyCode), keyDown: false)
-        up?.flags = flags
-        up?.post(tap: .cghidEventTap)
+    /// Arrow keys: a real press carries Fn and numeric pad.
+    static let arrowKeyCodes: Set<UInt16> = [123, 124, 125, 126]
+    /// Keys whose real press carries numeric pad: the arrows and the keypad's own keys
+    /// (0 to 9, the operators, decimal, clear, enter and equals).
+    static let numericPadKeyCodes: Set<UInt16> = arrowKeyCodes.union([
+        65, 67, 69, 71, 75, 76, 78, 81, 82, 83, 84, 85, 86, 87, 88, 89, 91, 92,
+    ])
+    /// F1 to F20, then Help, Home, Page Up, Forward Delete, End and Page Down: a real press
+    /// carries Fn (Apple's NSEvent.ModifierFlags.function docs list these keys).
+    static let fnKeyCodes: Set<UInt16> = arrowKeyCodes.union([
+        122, 120, 99, 118, 96, 97, 98, 100, 101, 109, 103, 111, 105, 107, 113, 106, 64, 79, 80, 90,
+        114, 115, 116, 117, 119, 121,
+    ])
+
+    /// The flags a keystroke goes out with: the saved ones plus the ones a real press of the
+    /// key carries. macOS matches its own shortcuts on those flags, so ⌃↑ without Fn never
+    /// opened Mission Control. Mappings saved before #143 lack them, and the recorder only keeps
+    /// them since then, so they are added here, where every saved mapping, profile and the
+    /// DPI-button bridge pass. Nothing saved is rewritten, and adding them twice changes nothing.
+    static func postedFlags(keyCode: UInt16, saved: CGEventFlags) -> CGEventFlags {
+        var flags = saved
+        if fnKeyCodes.contains(keyCode) { flags.insert(.maskSecondaryFn) }
+        if numericPadKeyCodes.contains(keyCode) { flags.insert(.maskNumericPad) }
+        return flags
+    }
+
+    /// The key-down and key-up a keystroke action posts, with `postedFlags` applied.
+    static func keystrokeEvents(keyCode: UInt16, saved: CGEventFlags, source: CGEventSource?) -> [CGEvent] {
+        let flags = postedFlags(keyCode: keyCode, saved: saved)
+        return [true, false].compactMap { keyDown in
+            let event = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(keyCode), keyDown: keyDown)
+            event?.flags = flags
+            return event
+        }
+    }
+
+    private func postKeystroke(keyCode: UInt16, flags saved: CGEventFlags) {
+        Self.keystrokeEvents(keyCode: keyCode, saved: saved, source: postSource).forEach { $0.post(tap: .cghidEventTap) }
     }
 
     private func postMouseClick(_ button: Int) {

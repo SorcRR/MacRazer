@@ -76,9 +76,9 @@ final class SupportPromptPolicyTests: XCTestCase {
 final class SupportPromptWordingTests: XCTestCase {
     func testCardText() {
         XCTAssertEqual(SupportPromptView.cardText(pid: 0xFFFE).title, "Help us support this mouse")
-        let partly = SupportPromptView.cardText(pid: 0x0039)
+        let partly = SupportPromptView.cardText(pid: 0x0034)
         XCTAssertEqual(partly.title, "Help finish support for this mouse")
-        XCTAssertTrue(partly.detail.hasPrefix("Polling rate still needs testing"), partly.detail)
+        XCTAssertTrue(partly.detail.hasPrefix("Lighting still needs testing"), partly.detail)
         let links = SupportPromptView.cardText(pid: 0x00C3)
         XCTAssertEqual(links.title, "Test its other connection")
         XCTAssertTrue(links.detail.contains("its cable"), links.detail)
