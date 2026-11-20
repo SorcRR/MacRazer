@@ -200,3 +200,13 @@ extension DeviceProbe.WriteCheck where Value: Equatable {
     /// ceiling) or quietly ignores a write reads back something else.
     var confirmed: Bool { readBack.value == requested }
 }
+
+extension DeviceProbe.WriteCheck where Value == DeviceProbe.DPI {
+    /// `confirmed`, or for a mouse that keeps one axis (`RazerDeviceInfo.singleAxisDPI`), X
+    /// as written and Y as written or 0. A Y the mouse changed to another number still fails.
+    /// Strict for everything else, so a two-axis mouse that drops Y still shows it.
+    func confirmed(singleAxis: Bool) -> Bool {
+        guard singleAxis else { return confirmed }
+        return readBack.value.x == requested.x && (readBack.value.y == requested.y || readBack.value.y == 0)
+    }
+}

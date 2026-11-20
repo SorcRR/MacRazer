@@ -153,6 +153,25 @@ final class DeviceTestTests: XCTestCase {
         XCTAssertEqual(try dpiNow(mouse), 8000)
     }
 
+    /// A mouse that reads Y back as 0 passes only when its row says it's single-axis.
+    func testDPIOnASingleAxisMouse() throws {
+        func mouse() -> FakeMouse {
+            let m = FakeMouse()
+            m.clamp = { write in
+                guard write.commandId == 0x05, write.commandClass == 0x04 else { return write }
+                var kept = write
+                kept.arguments[3] = 0; kept.arguments[4] = 0
+                return kept
+            }
+            m.holds(RazerCommands.setDPI(x: 1600, y: 0))
+            return m
+        }
+        let single = DeviceTestSteps.dpi(mouse(), maxProbe: false, singleAxis: true)
+        XCTAssertEqual(single.outcome, .passed)
+        XCTAssertEqual(single.data?.restored, true)
+        XCTAssertEqual(DeviceTestSteps.dpi(mouse(), maxProbe: false).outcome, .failed)
+    }
+
     func testDPIRestoresEvenWhenTheReadBackFails() throws {
         // The test value is written, then the read-back errors. The user's DPI still goes back.
         let mouse = FakeMouse()
