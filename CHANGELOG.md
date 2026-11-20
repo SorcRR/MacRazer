@@ -38,6 +38,10 @@ expect rough edges until 1.0.
   saved with it, and a recorded shortcut keeps it too. A button set before this update works
   too, without setting it again: arrows, F-keys and keys like Home and End now always go out
   with the flags a real press carries.
+- **Profiles and remaps no longer vanish after a restart.** A mouse still asleep when the
+  Mac starts missed MacRazer's first read of its serial number, so the popover and Configure
+  Buttons showed none of its profiles or remaps until MacRazer was reopened. It now uses the
+  serial the mouse last had on that port, and asks again until the mouse answers.
 
 ## [0.10.0] — 2026-11-19
 
