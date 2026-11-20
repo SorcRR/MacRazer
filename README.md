@@ -14,10 +14,11 @@ Razer mice that use the same HID protocol family, but those are untested, so tre
 "likely to work, not verified" until someone confirms it on real hardware.
 
 > Unofficial. Not affiliated with, authorized by, or endorsed by Razer Inc. See [NOTICE.md](NOTICE.md).
-> 
-> <img width="324" height="713" alt="MacRazer popover: battery, DPI stages, polling rate, lighting, buttons and profiles" src=".github/screenshots/popover.png" />
-> <img width="326" height="718" alt="Configure Buttons: Back and Forward mapped to Copy and Paste" src=".github/screenshots/buttons.png" />
-> <img width="325" height="711" alt="Battery Usage: discharge curve, rate, time left and past charges" src=".github/screenshots/battery-usage.png" />
+
+<p>
+  <img width="380" alt="MacRazer popover: battery, DPI stages, polling rate, lighting, buttons and profiles" src=".github/screenshots/popover.png" />
+  <img width="372" alt="Battery Usage: discharge curve, rate, time left and past charges" src=".github/screenshots/battery-usage.png" />
+</p>
 
 
 ## Features
@@ -53,9 +54,9 @@ Razer mice that use the same HID protocol family, but those are untested, so tre
   product that is never a mouse is not taken for one.
 - **Keyboard and mousepad lighting.** Each Razer keyboard or mousepad next to the mouse gets
   its own card in the popover, with its own colour, effect and brightness. Each can also
-  follow the mouse's lighting. Tested on the Cynosa Chroma, Ornata V3 and Ornata V3 X
+  follow the mouse's lighting. Tested on the Cynosa Chroma, Cynosa Lite, Joro, Ornata V3 and Ornata V3 X
   keyboards and the Firefly V2, Firefly V2 Pro, Goliathus Chroma and Goliathus Chroma Extended
-  mousepads. The Cynosa Chroma Pro, Cynosa Lite, the Ornata V3's other versions and the
+  mousepads. The Cynosa Chroma Pro, the Ornata V3's other versions and the
   Goliathus Chroma 3XL use the same commands but are untested. An untested one's card has a
   Test it button.
 - **Asks for help with a new mouse.** When a mouse MacRazer doesn't fully support connects, a
@@ -72,6 +73,37 @@ Razer mice that use the same HID protocol family, but those are untested, so tre
 
 Settings persist across app restarts and reconnects, and the menu bar updates on its own when
 the mouse connects, disconnects, or sleeps.
+
+## Screens
+
+**Keyboard and mousepad lighting.** With a Razer keyboard or mousepad connected, the popover
+goes to two columns. Each device gets a card, and a keyboard can follow the mouse's lighting.
+
+<img width="760" alt="Two-column popover: the mouse's controls, and under Other Razer devices a Cynosa Chroma following the mouse, a Firefly V2 and an Ornata V3 on Wave" src=".github/screenshots/popover-accessories.png" />
+
+**Button remapping.** Point each extra button at a shortcut, a click or a media key.
+
+<img width="440" alt="Configure Buttons: Back mapped to Copy and Forward to Paste" src=".github/screenshots/buttons.png" />
+
+**DPI stages.** Click Edit on the DPI card, then a stage, to change its DPI on the mouse itself.
+
+<img width="380" alt="The DPI card in Edit mode: five stage chips with dashed outlines and a hint to click one" src=".github/screenshots/dpi-stages.png" />
+
+**Themes.** Light, Dark or Razer Green, in Settings › Appearance. System follows macOS.
+
+<p>
+  <img width="250" alt="The popover in the Light theme" src=".github/screenshots/theme-light.png" />
+  <img width="250" alt="The popover in the Dark theme" src=".github/screenshots/popover.png" />
+  <img width="250" alt="The popover in the Razer Green theme" src=".github/screenshots/theme-green.png" />
+</p>
+
+**Settings.** Reverse scrolling on Razer mice, login, menu bar and sounds.
+
+<img width="780" alt="Settings › General: Start at login, Reverse scrolling on Razer mice, battery percentage in the menu bar, connection sounds, and the device test prompt" src=".github/screenshots/settings-general.png" />
+
+**The device test.** Each step changes one thing, reads it back, then puts yours back.
+
+<img width="440" alt="Device test, DPI step: sets a value 50 away, reads it back, puts the original back, and lists the stages" src=".github/screenshots/device-test.png" />
 
 ## Supported mice
 
@@ -91,6 +123,7 @@ says so.
 | Razer Naga V3 Pro (Wireless) | Battery, DPI, DPI stages, polling, lighting, brightness | [@chris-agnew](https://github.com/chris-agnew) |
 | Razer Naga V3 Pro (Wired) | Battery, DPI, DPI stages, polling, lighting, brightness | [@chris-agnew](https://github.com/chris-agnew) |
 | Razer Naga Trinity | DPI, DPI stages, polling, lighting, brightness | anonymous report |
+| Razer Naga Left Handed Edition | DPI, DPI stages, polling, lighting, brightness | anonymous report |
 | Razer Viper V3 HyperSpeed | Battery, DPI, DPI stages, polling | anonymous report |
 | Razer Basilisk V3 | DPI, DPI stages, polling, lighting, brightness | SuperSpacer54376 |
 | Razer Basilisk V3 Pro (wired + wireless) | Battery, DPI, DPI stages, polling, lighting, brightness | anonymous reports |
@@ -119,10 +152,10 @@ says so.
 | Razer Viper Ultimate (Wired) | Battery, DPI, polling, lighting | anonymous report |
 | Razer Taipan | DPI, polling; lighting not working yet | anonymous report |
 | Razer Basilisk V4 HyperSpeed (wired + wireless) | Battery, DPI, DPI stages; polling not confirmed yet | anonymous reports |
-| Razer Viper V4 Pro (wired + wireless) | Battery, DPI, DPI stages; polling not confirmed yet | Robotxm and an anonymous report |
-| Razer Viper 8KHz | DPI, DPI stages, lighting, brightness (wired only); polling not confirmed yet | anonymous report |
-| Razer Basilisk V4 Pro (wired + wireless) | Battery, DPI, DPI stages, lighting, brightness; polling not confirmed yet | by_hlz and an anonymous report |
-| Razer Mouse Dock Pro (with a Naga V3 Pro) | Battery, DPI, lighting, brightness; polling not confirmed yet | anonymous report |
+| Razer Viper V4 Pro (wired + wireless) | Battery, DPI, DPI stages; polling up to 8000 Hz on the cable; over the dongle the rate doesn't change yet, so the picker is hidden there | Robotxm, Kartas and an anonymous report |
+| Razer Viper 8KHz | DPI, DPI stages, polling up to 8000 Hz, lighting, brightness (wired only) | anonymous reports |
+| Razer Basilisk V4 Pro (wired + wireless) | Battery, DPI, DPI stages, polling up to 8000 Hz, lighting, brightness | by_hlz, Maude and anonymous reports |
+| Razer Mouse Dock Pro (with a Naga V3 Pro or Basilisk V4 HyperSpeed) | Battery, DPI, polling up to 8000 Hz; lighting and brightness with a Naga V3 Pro (the dock lights only what the mouse has) | maesta2, Kartas and an anonymous report |
 | Razer Mouse Dock V2 Pro (with a Basilisk V4 Pro) | Battery, DPI, DPI stages, lighting, brightness; polling not confirmed yet | cparedes |
 | Razer DeathAdder V3 | DPI, DPI stages; polling not confirmed yet (it has no battery or lighting) | anonymous reports |
 | Razer HyperFlux V2 (with the mouse on it) | Battery, DPI, DPI stages, polling; lighting not confirmed yet | anonymous report |
@@ -130,16 +163,19 @@ says so.
 | Razer Naga Hex V2 | DPI, polling; lighting not working yet | foivos92 |
 | Razer Mamba Tournament Edition | DPI, polling; lighting not working yet | anonymous report |
 | Razer Naga X | DPI, DPI stages, polling; lighting not working yet | anonymous report |
-| Razer Basilisk Ultimate (wired + wireless) | Battery, DPI, DPI stages, polling; lighting not confirmed yet | anonymous reports |
+| Razer Basilisk Ultimate (wired + wireless) | Battery, DPI, DPI stages, polling; lighting hidden for now (it dims over the dongle, but colours didn't show) | anonymous reports |
 | Razer Basilisk | DPI, DPI stages, polling; lighting not confirmed yet | anonymous report |
 | Razer Lancehead Tournament Edition | DPI, polling; lighting not confirmed yet | anonymous report |
 | Razer DeathAdder V2 Mini | DPI, DPI stages, polling; lighting not confirmed yet | anonymous reports |
 | Razer Basilisk V3 Pro 35K (wired + wireless) | Battery, DPI, DPI stages, polling; lighting not confirmed yet | anonymous reports |
 | Razer DeathAdder Elite | DPI, polling; lighting not tried yet | anonymous report |
+| Razer Mamba Elite | DPI, DPI stages, polling; lighting not tried yet | anonymous report |
+| Razer Basilisk Essential | DPI, polling, lighting, brightness; its DPI button keeps its own stages | anonymous reports |
 | Razer Basilisk V3 Pro 35K (Bluetooth) | Battery; DPI and lighting not tried yet | anonymous reports |
 | Razer Basilisk V4 HyperSpeed (Bluetooth) | Battery; DPI and lighting not tried yet | anonymous report |
 | Razer Pro Click V2 Vertical Edition (wired + wireless) | Battery, DPI, DPI stages, a static color, effects; polling on the cable not confirmed yet (it has no brightness) | [@k6n7frbrtc-hub](https://github.com/k6n7frbrtc-hub), tekumara and an anonymous report |
-| Razer DeathAdder Essential (2018, White Edition) | Nothing; values from OpenRazer | — |
+| Razer DeathAdder Essential (2018) | DPI, polling, brightness (its one light is green only) | anonymous report |
+| Razer DeathAdder Essential (White Edition) | Nothing; values from OpenRazer | — |
 | Razer Cobra, Cobra Pro (wired + wireless) | Nothing; same protocol family, values from OpenRazer | — |
 | Any other Razer mouse | Nothing; detected and named, controls attempted | — |
 
@@ -283,6 +319,9 @@ swift run MacRazer
 ./Scripts/build-app.sh          # produces "MacRazer.app", versioned "<version>-dev"
 open "MacRazer.app"
 ```
+
+The screenshots in this README and on the website come from preview data, no mouse needed:
+`./Scripts/render-screenshots.sh` writes them all to `dist/screenshots/`.
 
 ## Permissions
 

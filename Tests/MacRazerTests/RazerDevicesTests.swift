@@ -85,7 +85,7 @@ final class RazerDevicesTests: XCTestCase {
         // SCROLL_LED answers and LOGO, ZERO and BACKLIGHT all return 0x03.
         XCTAssertEqual(RazerDevices.brightnessLed(pid: 0x00B9), Razer.scrollLed)
         // From the in-app reports: the Trinity and the Basilisk V4 Pro answer on LOGO and
-        // SCROLL only. The Mouse Dock Pro stays on LOGO, whichever mouse is paired to it.
+        // SCROLL only. The Mouse Dock Pro is on LOGO until the mouse on it has answered.
         XCTAssertEqual(RazerDevices.brightnessLeds(pid: 0x0067), [Razer.logoLed, Razer.scrollLed])
         XCTAssertEqual(RazerDevices.brightnessLeds(pid: 0x00E3), [Razer.logoLed, Razer.scrollLed])
         XCTAssertEqual(RazerDevices.brightnessLeds(pid: 0x00A4), [Razer.logoLed])
@@ -181,8 +181,8 @@ final class RazerDevicesTests: XCTestCase {
     func testVerifiedAndUnverifiedFeatures() {
         XCTAssertEqual(RazerDevices.unverified(pid: 0x00DB), [])
         XCTAssertTrue(RazerDevices.fullySupported(pid: 0x00DB))
-        XCTAssertEqual(RazerDevices.unverified(pid: 0x00E3), [.polling])
-        XCTAssertFalse(RazerDevices.fullySupported(pid: 0x00E3))
+        XCTAssertEqual(RazerDevices.unverified(pid: 0x00EA), [.polling])
+        XCTAssertFalse(RazerDevices.fullySupported(pid: 0x00EA))
         XCTAssertNil(RazerDevices.unverified(pid: 0x9999))
         // Verified from 0.7.0 reports. The DeathAdder V2 Pro has no cable row yet, so it
         // still asks for that link; the others have nothing left to ask.
@@ -208,7 +208,7 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(RazerDevices.verified(pid: 0x0067), [.dpi, .polling, .lighting], "wired only: no battery")
         XCTAssertEqual(RazerDevices.verified(pid: 0x0078), [.dpi, .polling, .lighting], "Viper: wired only, no battery")
         XCTAssertEqual(RazerDevices.verified(pid: 0x0080), [.battery, .dpi, .polling], "Pro Click: no lighting")
-        XCTAssertEqual(RazerDevices.unverified(pid: 0x00E2), [.polling], "Basilisk V4 Pro cable, as its dongle")
+        XCTAssertEqual(RazerDevices.unverified(pid: 0x00EB), [.polling], "Basilisk V4 HyperSpeed cable, as its dongle")
         XCTAssertTrue(RazerDevices.isCable(0x0080, ofDongle: 0x0077), "Pro Click: same name on both rows")
         XCTAssertTrue(RazerDevices.isCable(0x00E2, ofDongle: 0x00E3), "Basilisk V4 Pro")
         XCTAssertEqual(RazerDevices.verified(pid: 0x0053), [.dpi, .polling], "lighting is hidden and unverified")
@@ -221,10 +221,10 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertFalse(RazerDevices.needsReport(pid: 0x0090), "verified on both links")
         XCTAssertTrue(RazerDevices.needsReport(pid: 0x00C3), "verified, but its cable has no row yet")
         XCTAssertTrue(RazerDevices.needsReport(pid: 0x0034), "partly verified")
-        XCTAssertTrue(RazerDevices.needsReport(pid: 0x00E3), "polling left, which the test now checks with polling_rate2")
+        XCTAssertTrue(RazerDevices.needsReport(pid: 0x00EA), "polling left, which the test now checks with polling_rate2")
         XCTAssertTrue(RazerDevices.needsReport(pid: 0x9999), "unknown")
         XCTAssertEqual(RazerDevices.support(pid: 0x0090), .full)
-        XCTAssertEqual(RazerDevices.support(pid: 0x006E), .unknown, "on record, nothing shown working")
+        XCTAssertEqual(RazerDevices.support(pid: 0x0071), .unknown, "on record, nothing shown working")
     }
 
     /// Which other links of a mouse the intro asks for.
@@ -348,7 +348,7 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(RazerDevices.support(pid: 0x00DF), .full)
         XCTAssertEqual(RazerDevices.maxDPI(pid: 0x00DF), 35000)
         XCTAssertEqual(RazerDevices.notOnMouse(pid: 0x00DF), [.lighting])
-        XCTAssertEqual(RazerDevices.unverified(pid: 0x0091), [.polling])
+        XCTAssertEqual(RazerDevices.unverified(pid: 0x0091), [], "polling confirmed on 0.10.0")
         XCTAssertTrue(RazerDevices.usesPollingRate2(pid: 0x0091))
         XCTAssertFalse(RazerDevices.hasBattery(pid: 0x0091))
         XCTAssertEqual(RazerDevices.linksToTest(besides: 0x0091), [], "wired only")
@@ -419,7 +419,7 @@ final class RazerDevicesTests: XCTestCase {
     /// A polling_rate2 mouse is asked about polling like any other: the test sends the newer
     /// command there, so a report can confirm it.
     func testPollingRate2MiceAreAskedAboutPolling() {
-        for pid in [0x00EA, 0x00EB, 0x00E3, 0x00E2, 0x0091] {
+        for pid in [0x00EA, 0x00EB, 0x00E6] {
             let ask = RazerDevices.ask(pid: pid)
             XCTAssertEqual(RazerDevices.unverified(pid: pid), [.polling], String(pid, radix: 16))
             XCTAssertEqual(ask.here, [.polling], String(pid, radix: 16))
@@ -469,10 +469,11 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00B8), [], "an AA-cell mouse has no cable mode")
     }
 
-    /// The Viper V4 Pro on its cable: no lighting, polling still to verify, and the classic
-    /// polling command refused, so the picker stays hidden.
+    /// The Viper V4 Pro on its cable: no lighting, and polling verified with polling_rate2
+    /// (the classic command is refused).
     func testViperV4ProWiredCapabilities() {
-        XCTAssertEqual(RazerDevices.unverified(pid: 0x00E5), [.polling])
+        XCTAssertEqual(RazerDevices.unverified(pid: 0x00E5), [])
+        XCTAssertTrue(RazerDevices.usesPollingRate2(pid: 0x00E5))
         XCTAssertTrue(RazerDevices.hasBattery(pid: 0x00E5))
         XCTAssertFalse(RazerDevices.hasLighting(pid: 0x00E5))
         XCTAssertEqual(RazerDevices.maxDPI(pid: 0x00E5), 45000)
@@ -491,8 +492,9 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(RazerDevices.connection(pid: 0x00E6), .wirelessDongle)
         XCTAssertEqual(RazerDevices.connection(pid: 0x00EB), .wired)
         // Polling is all either link lacks, and the test checks it with polling_rate2, so
-        // each names the other.
-        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00E6), [.init(connection: .wired, missing: [.polling])])
+        // each names the other. The Viper V4 Pro's cable has passed it since, so its dongle
+        // names nothing.
+        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00E6), [])
         XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00EA), [.init(connection: .wired, missing: [.polling])])
 
         XCTAssertTrue(RazerDevices.fullySupported(pid: 0x00D1), "Pro Click V2")
@@ -590,6 +592,45 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(RazerDevices.notOnMouse(pid: 0x00BE), [.lighting])
     }
 
+    /// The reports of 2026-11-18 to 11-20, most from 0.10.0.
+    func testMiceFromTheMidNovemberReports() {
+        // Polling confirmed with polling_rate2.
+        for pid in [0x0091, 0x00E2, 0x00E3, 0x00A4] {
+            XCTAssertEqual(RazerDevices.support(pid: pid), .full, String(format: "0x%04X", pid))
+            XCTAssertTrue(RazerDevices.usesPollingRate2(pid: pid))
+        }
+        XCTAssertEqual(RazerDevices.maxPollingRate(pid: 0x00A4), 8000, "the Mouse Dock Pro read 8000 Hz")
+        // DeathAdder Essential (2018): brightness on its green light, no colours.
+        XCTAssertEqual(RazerDevices.support(pid: 0x006E), .full)
+        XCTAssertTrue(RazerDevices.fixedColor(pid: 0x006E))
+        XCTAssertEqual(RazerDevices.brightnessLeds(pid: 0x006E), [Razer.logoLed, Razer.scrollLed])
+        XCTAssertEqual(RazerDevices.unverified(pid: 0x0071), [.dpi, .polling], "the White Edition still has no report")
+        // Mamba Elite and Basilisk Essential.
+        XCTAssertEqual(RazerDevices.unverified(pid: 0x006C), [.lighting])
+        XCTAssertFalse(RazerDevices.hasLighting(pid: 0x006C))
+        XCTAssertEqual(RazerDevices.support(pid: 0x0065), .full, "X read back every write; Y is always 0")
+        XCTAssertTrue(RazerDevices.singleAxisDPI(pid: 0x0065))
+        XCTAssertFalse(RazerDevices.singleAxisDPI(pid: 0x008D))
+        XCTAssertFalse(RazerDevices.supportsUSBStageEditing(pid: 0x0065), "its button keeps its own stages")
+        XCTAssertTrue(RazerDevices.supportsUSBStageEditing(pid: 0x008D))
+        XCTAssertTrue(RazerDevices.hasLighting(pid: 0x0065))
+        // Naga Left Handed Edition: everything passed.
+        XCTAssertEqual(RazerDevices.support(pid: 0x008D), .full)
+        XCTAssertFalse(RazerDevices.usesPollingRate2(pid: 0x008D))
+        XCTAssertEqual(RazerDevices.brightnessLeds(pid: 0x008D), [Razer.logoLed, Razer.scrollLed])
+        XCTAssertEqual(RazerDevices.maxDPI(pid: 0x008D), 20000)
+        // Viper V4 Pro: the cable passed polling, the dongle didn't take the rate.
+        XCTAssertEqual(RazerDevices.support(pid: 0x00E5), .full)
+        XCTAssertEqual(RazerDevices.unverified(pid: 0x00E6), [.polling])
+        XCTAssertTrue(RazerDevices.ignoresPollingWrites(pid: 0x00E6), "the picker is hidden there")
+        XCTAssertFalse(RazerDevices.ignoresPollingWrites(pid: 0x00E5))
+        XCTAssertTrue(RazerDevices.ask(pid: 0x00E6).needsReport, "the test still tries polling")
+        // The Joro is a keyboard, so it's never taken for the mouse.
+        XCTAssertEqual(RazerAccessories.info(pid: 0x02CD)?.kind, .keyboard)
+        XCTAssertNil(RazerDevices.info(pid: 0x02CD))
+        XCTAssertEqual(RazerDevices.unverified(pid: 0x0088), [.lighting], "Basilisk Ultimate: colour didn't show")
+    }
+
     /// The Basilisk V3 verified on its cable, with both lit zones on the brightness slider.
     func testBasiliskV3Verified() {
         XCTAssertTrue(RazerDevices.fullySupported(pid: 0x0099))
@@ -607,12 +648,14 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(RazerDevices.maxDPI(pid: 0x0098), 6400)
         XCTAssertEqual(RazerDevices.connection(pid: 0x0098), .wired)
         XCTAssertTrue(RazerDevices.fixedColor(pid: 0x0098), "green only: brightness, no colours")
-        // The older Essentials, from OpenRazer: 0xFF and nothing verified.
+        // The older Essentials use 0xFF, as OpenRazer has it. The 2018 one is verified now,
+        // with a green-only light; the White Edition has no report yet.
         for pid in [0x006E, 0x0071] {
-            XCTAssertEqual(RazerDevices.unverified(pid: pid), [.dpi, .polling])
             XCTAssertEqual(RazerDevices.transactionId(pid: pid, commandClass: 0x04, commandId: 0x05), 0xff)
-            XCTAssertFalse(RazerDevices.hasLighting(pid: pid))
         }
+        XCTAssertEqual(RazerDevices.unverified(pid: 0x0071), [.dpi, .polling])
+        XCTAssertFalse(RazerDevices.hasLighting(pid: 0x0071))
+        XCTAssertTrue(RazerDevices.fixedColor(pid: 0x006E))
     }
 
     func testConnectionKind() {
@@ -718,7 +761,7 @@ final class RazerDevicesTests: XCTestCase {
     /// nothing shown working. A verified row is left alone.
     func testGuessesProtocol() {
         XCTAssertTrue(RazerDevices.guessesProtocol(pid: 0x9999), "not on record")
-        XCTAssertTrue(RazerDevices.guessesProtocol(pid: 0x006E), "DeathAdder Essential (2018): nothing verified")
+        XCTAssertTrue(RazerDevices.guessesProtocol(pid: 0x0071), "DeathAdder Essential White Edition: nothing verified")
         XCTAssertFalse(RazerDevices.guessesProtocol(pid: 0x00DB), "Cobra HyperSpeed")
         XCTAssertTrue(RazerDevices.guessesProtocol(pid: 0x0060), "Lancehead TE: verified, but its id may differ")
         XCTAssertFalse(RazerDevices.guessesProtocol(pid: 0x0046), "Mamba TE: DPI and polling verified")

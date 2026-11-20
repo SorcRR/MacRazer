@@ -488,7 +488,15 @@ enum DeviceTestSteps {
             // Not on a light that takes effects but has no brightness (the Pro Click V2
             // Vertical Edition): it answers no brightness read, and that says nothing about
             // the id.
-            if registry.hasLighting, registry.hasBrightness,
+            // Nor on a dock whose mouse answers no lighting read at all: its lighting is that
+            // mouse's, and one without lights is the right answer (a Basilisk V4 HyperSpeed
+            // on the Mouse Dock Pro). It must have heard and refused: a mouse asleep on the
+            // dock times out on every id and still fails, and so does one that refuses some
+            // other id while its own stays silent. An answer on another id fails too.
+            let dockedMouseUnlit = RazerDevices.lightingFollowsDockedMouse.contains(registry.pid)
+                && !data.lightingAttempts.contains(where: \.answered)
+                && data.lightingAttempts.contains(where: { $0.id == registry.matrixTransactionId && $0.refused })
+            if registry.hasLighting, registry.hasBrightness, !dockedMouseUnlit,
                !data.lightingAttempts.contains(where: { $0.id == registry.matrixTransactionId && $0.answered }) {
                 record.outcome = .failed
             }
@@ -857,7 +865,8 @@ enum DeviceTestSteps {
     /// Writes a test DPI 50 away from the current one, reads it back, and restores. Reads the
     /// stage table. `maxProbe` also asks for the protocol's ceiling to see what the mouse
     /// keeps, then restores again.
-    static func dpi(_ channel: DeviceProbeChannel, maxProbe: Bool) -> DeviceReport.StepRecord<DeviceReport.DPIData> {
+    /// `singleAxis` confirms the writes on X alone (`RazerDeviceInfo.singleAxisDPI`).
+    static func dpi(_ channel: DeviceProbeChannel, maxProbe: Bool, singleAxis: Bool = false) -> DeviceReport.StepRecord<DeviceReport.DPIData> {
         var record = DeviceReport.StepRecord<DeviceReport.DPIData>()
         var data = DeviceReport.DPIData()
         do {
@@ -868,7 +877,7 @@ enum DeviceTestSteps {
             var wrote = false
             defer {
                 // On every path, including a failed read-back: the user's DPI goes back.
-                if wrote { data.restored = (try? DeviceProbe.writeDPI(channel, original).confirmed) ?? false }
+                if wrote { data.restored = (try? DeviceProbe.writeDPI(channel, original).confirmed(singleAxis: singleAxis)) ?? false }
             }
             wrote = true
             let check = try DeviceProbe.writeDPI(channel, .init(x: test, y: test))
@@ -882,7 +891,7 @@ enum DeviceTestSteps {
                 data.activeStageByte = table.value.activeByte
                 if !table.value.stages.isEmpty { data.firstStageNumber = Int(table.response.arguments[3]) }
             }
-            record.outcome = check.confirmed ? .passed : .failed
+            record.outcome = check.confirmed(singleAxis: singleAxis) ? .passed : .failed
         } catch {
             record.error = String(describing: error)
             record.outcome = .failed

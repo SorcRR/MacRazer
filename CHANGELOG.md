@@ -12,6 +12,41 @@ expect rough edges until 1.0.
   Forward, Configure Buttons now says so and offers to write the factory blocks back, with a
   read-back. The USB write lands in the active profile only, so the notice says that rather
   than counting slots.
+- **More mice from test reports.**
+  - **Polling confirmed with the newer command** on the Viper 8KHz, both Basilisk V4 Pro
+    links and the Mouse Dock Pro, which goes up to 8000 Hz.
+  - **DeathAdder Essential (2018):** DPI and polling work, and its green light dims.
+  - **Mamba Elite:** DPI and polling work. Lighting waits on a test.
+  - **Basilisk Essential:** DPI, polling and lighting work.
+  - **Naga Left Handed Edition:** DPI, polling and lighting all passed.
+  - **Viper V4 Pro on the cable:** polling confirmed, up to 8000 Hz. Over the dongle the rate
+    doesn't change yet, so the popover hides the picker there.
+- **Cynosa Lite tested.** It lost its UNTESTED tag after passing the lighting test.
+- **Joro keyboard.** It gets its own lighting card, with brightness and a static colour
+  tested. Before, the app took it for a mouse.
+
+### Fixed
+- **Mouse Dock Pro lighting follows the mouse on it.** The dock's lights are the docked
+  mouse's lights. The app now asks that mouse which zones it has. A mouse without lights,
+  like the Basilisk V4 HyperSpeed, no longer gets lighting controls that do nothing. Test
+  This Mouse no longer fails such a dock at the first step.
+- **Test This Mouse on single-axis mice.** The Basilisk Essential answers a DPI read with 0
+  for the second axis, and the DPI test failed it even when the DPI took. On mice known to
+  do that, a 0 there passes now.
+- **A mouse another app holds says so.** Some apps that remap keys or mice take a mouse for
+  themselves, and then MacRazer can't reach it. The popover only said Offline, and the device
+  test said no mouse was connected. Both now say another app is using the mouse and name a
+  few that can do it. Thanks to fortinmike for the log that showed it (#139).
+- **Mission Control and the Space shortcuts open from a button.** A button set to Mission
+  Control, Space Left or Space Right did nothing: macOS stores those shortcuts with the Fn
+  flag a real arrow key carries, and MacRazer saved the arrow without it. The three are now
+  saved with it, and a recorded shortcut keeps it too. A button set before this update works
+  too, without setting it again: arrows, F-keys and keys like Home and End now always go out
+  with the flags a real press carries.
+
+## [0.10.0] — 2026-11-19
+
+### Added
 - **Reverse scrolling on Razer mice.** A switch under Settings › General reverses wheel
   and tilt scrolling on Razer mice while trackpads and other mice keep their directions.
   Off by default, saved once for the app, and active while MacRazer is running with

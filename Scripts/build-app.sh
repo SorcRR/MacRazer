@@ -27,10 +27,13 @@ swift build -c release "${ARCHS[@]}"
 BIN="$(swift build -c release "${ARCHS[@]}" --show-bin-path)/${EXEC_NAME}"
 # Fail here rather than ship a release that quietly lost Intel (or Apple Silicon) support,
 # say after a toolchain change.
-if ! lipo "${BIN}" -verify_arch arm64 x86_64; then
-    echo "✗ ${BIN} is not universal: $(lipo -archs "${BIN}")" >&2
-    exit 1
-fi
+# One arch per call: newer lipo rejects "-verify_arch arm64 x86_64" as two input files.
+for arch in arm64 x86_64; do
+    if ! lipo "${BIN}" -verify_arch "${arch}"; then
+        echo "✗ ${BIN} is not universal: $(lipo -archs "${BIN}")" >&2
+        exit 1
+    fi
+done
 
 echo "▸ Assembling ${APP}…"
 rm -rf "${APP}"
