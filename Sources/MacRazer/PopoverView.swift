@@ -323,6 +323,7 @@ struct PopoverView: View {
             // A Razer mouse on Bluetooth can't be controlled (no control protocol over BT) —
             // explain it instead of just showing "offline".
             if controller.bluetoothMouse != nil && !controller.connected { bluetoothNotice }
+            else if heldByAnotherApp { heldByAnotherAppNotice }
             // Nothing to put beside the no-mouse card: it says what to do, across the page.
             if twoColumns && !(noMouse && accessories.available.isEmpty) {
                 // Status on the left, settings on the right. Accessories go under the status,
@@ -599,7 +600,7 @@ struct PopoverView: View {
         }
         if controller.connected { return controller.deviceSupported ? "Connected" : "Connected · limited support" }
         if controller.bluetoothMouse != nil { return "On Bluetooth" }
-        if controller.deviceName != nil { return "Offline" }
+        if controller.deviceName != nil { return heldByAnotherApp ? "In use by another app" : "Offline" }
         return "Connect a Razer mouse"
     }
 
@@ -673,6 +674,30 @@ struct PopoverView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Connected via Bluetooth").font(.system(size: 12, weight: .semibold))
                 Text(bluetoothNoticeText)
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.batteryMid.opacity(0.12), in: RoundedRectangle(cornerRadius: 13))
+    }
+
+    /// The mouse is plugged in, but another app has taken it for itself, so every read fails.
+    private var heldByAnotherApp: Bool {
+        guard !controller.connected, controller.deviceName != nil, let err = controller.lastError else { return false }
+        return HIDDevice.errorLooksHeldByAnotherApp(err)
+    }
+
+    private var heldByAnotherAppNotice: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "lock")
+                .foregroundStyle(Color.batteryMid)
+                .font(.system(size: 13, weight: .semibold))
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Another app is using this mouse").font(.system(size: 12, weight: .semibold))
+                Text("An app has taken the mouse for itself, so MacRazer can't reach it. Apps that remap keys or mice can do this, like Karabiner-Elements, SteerMouse or USB Overdrive. Turn off that app's control of this mouse, and MacRazer finds it again on its own.")
                     .font(.system(size: 11)).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }

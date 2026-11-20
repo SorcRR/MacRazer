@@ -128,6 +128,8 @@ struct DeviceTestView: View {
                 reportWarning("No Razer mouse is connected by cable or dongle right now. Connect it and press Start again.")
             case .bluetoothOnly(let name)?:
                 reportWarning("\(name) is connected over Bluetooth. The full test needs the dongle or the cable: switch it over and press Start again. Or run the shorter Bluetooth test, which only reads.")
+            case .heldByAnotherApp?:
+                reportWarning("Another app has taken your mouse for itself, so the test can't reach it. Apps that remap keys or mice can do this, like Karabiner-Elements, SteerMouse or USB Overdrive. Turn off that app's control of this mouse and press Start again.")
             case nil:
                 EmptyView()
             }

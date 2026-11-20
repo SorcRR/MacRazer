@@ -35,6 +35,8 @@ final class DeviceTestModel: ObservableObject {
     enum Blocker: Equatable {
         case noMouse
         case bluetoothOnly(String)
+        /// Plugged in, but another app holds it exclusively (#139).
+        case heldByAnotherApp
     }
 
     /// When a relaunch for Input Monitoring was asked for, so the test window reopens after
@@ -531,6 +533,8 @@ final class DeviceTestModel: ObservableObject {
             } else {
                 if case MouseController.DeviceTestLinkError.bluetooth(let name) = error {
                     blocker = .bluetoothOnly(name)
+                } else if HIDDevice.errorLooksHeldByAnotherApp(String(describing: error)) {
+                    blocker = .heldByAnotherApp
                 } else {
                     blocker = Self.unavailable()
                 }

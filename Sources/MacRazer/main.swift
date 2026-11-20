@@ -331,6 +331,7 @@ case "render-ui":
     let controller = MouseController()
     controller.loadPreviewState()
     if args.contains("offline") { controller.setPreviewOffline() }
+    if args.contains("held") { controller.setPreviewHeldByAnotherApp() }
     if args.contains("bluetooth") { controller.setPreviewBluetooth() }
     if args.contains("bluetooth-connected") { controller.setPreviewBluetoothConnected() }
     let updateChecker = UpdateChecker()

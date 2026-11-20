@@ -49,6 +49,14 @@ final class HIDDevice {
         text.contains("0xe00002e2") // kIOReturnNotPermitted
     }
 
+    /// Whether an error string from a failed open/read means another app holds the mouse
+    /// exclusively (kIOReturnExclusiveAccess). MacRazer never opens a device that way, so it
+    /// is always some other app: in #139 a wired Lancehead answered for a few seconds after
+    /// each plug-in, then every open and write failed with this code.
+    static func errorLooksHeldByAnotherApp(_ text: String) -> Bool {
+        text.contains("0xe00002c5")
+    }
+
     private let device: IOHIDDevice
     let productID: Int
     let productName: String

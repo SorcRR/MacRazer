@@ -1910,6 +1910,16 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         updateStatusText()
     }
 
+    /// For the `render-ui held` preview: a wired mouse another app holds exclusively (#139).
+    func setPreviewHeldByAnotherApp() {
+        deviceID = 0x0060
+        deviceName = "Razer Lancehead Tournament Edition"
+        deviceHasBattery = false
+        connected = false
+        lastError = String(describing: HIDDevice.HIDError.openFailed(kIOReturnExclusiveAccess))
+        updateStatusText()
+    }
+
     /// For the `render-ui bluetooth-connected` preview: the Cobra HyperSpeed controlled over
     /// Bluetooth, so the Bluetooth-only layout (no polling rate, no profiles) renders.
     func setPreviewBluetoothConnected() {
