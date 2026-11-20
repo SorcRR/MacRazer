@@ -24,6 +24,11 @@ expect rough edges until 1.0.
 - **Test This Mouse on single-axis mice.** The Basilisk Essential answers a DPI read with 0
   for the second axis, and the DPI test failed it even when the DPI took. On mice known to
   do that, a 0 there passes now.
+- **Mission Control and the Space shortcuts open from a button.** A button set to Mission
+  Control, Space Left or Space Right did nothing: macOS stores those shortcuts with the Fn
+  flag a real arrow key carries, and MacRazer saved the arrow without it. The three are now
+  saved with it, and a recorded shortcut keeps it too. A button already set to one of them
+  needs it chosen again.
 
 ## [0.10.0] — 2026-11-19
 
