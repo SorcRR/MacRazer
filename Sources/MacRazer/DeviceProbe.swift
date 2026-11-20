@@ -199,10 +199,13 @@ enum DeviceProbe {
 
     /// Asks the mouse on a dock for each group's brightness, once each, as the sweep does.
     /// Stops at the first timeout while nothing has been heard yet, so a sleeping mouse costs
-    /// one timeout, not seven.
-    static func dockedLighting(_ channel: DeviceProbeChannel) -> DockedLighting {
+    /// one timeout, not seven. When `shouldStop` turns true (a tap is waiting) it gives up
+    /// and says `.unknown`: half the answers can't tell lit from unlit.
+    static func dockedLighting(_ channel: DeviceProbeChannel,
+                               shouldStop: () -> Bool = { false }) -> DockedLighting {
         var answers: [(led: UInt8, result: Result<RazerReport, Error>)] = []
         for led in dockedLightingLeds {
+            if shouldStop() { return .unknown }
             let result = Result { try channel.send(RazerCommands.getBrightness(led: led)) }
             answers.append((led, result))
             if case .failure(let error) = result, !isRefusal(error),

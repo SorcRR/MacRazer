@@ -130,6 +130,24 @@ final class DockedLightingTests: XCTestCase {
         XCTAssertNil(record.data?.lightingAttempts.first(where: \.answered))
     }
 
+    func testIdentifyStillFailsADockWhoseMouseIsSilent() {
+        // Asleep on the dock: every lighting id times out. Nothing was refused, so nothing
+        // says the mouse has no lights.
+        let mouse = FakeMouse()
+        mouse.acceptedIds = [0x0F: []]
+        let (record, _) = DeviceTestSteps.identify(mouse, registry: RazerDevices.info(pid: dock))
+        XCTAssertEqual(record.outcome, .failed)
+    }
+
+    func testTheProbeGivesUpWhenATapIsWaiting() {
+        let dock = Dock()
+        dock.otherwise = .refuse
+        var asked = 0
+        let found = DeviceProbe.dockedLighting(dock, shouldStop: { asked += 1; return asked > 2 })
+        XCTAssertEqual(found, .unknown)
+        XCTAssertEqual(dock.asked.count, 2)
+    }
+
     func testIdentifyPassesADockWhoseMouseAnswersOnItsId() {
         let (record, _) = DeviceTestSteps.identify(FakeMouse(), registry: RazerDevices.info(pid: dock))
         XCTAssertEqual(record.outcome, .passed)

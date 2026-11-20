@@ -1057,7 +1057,11 @@ final class MouseController: ObservableObject, @unchecked Sendable {
            RazerDevices.dockedLightingLeds(pid: dev.productID).map({ (b != nil) != !$0.isEmpty }) ?? true {
             probeDockedLighting(dev, keepingWhatWasKnown: true)
             let lit = RazerDevices.hasLighting(pid: dev.productID)
-            publish { self.update(\.deviceHasLighting, lit) }
+            // As on open: an effect the new mouse lacks starts as the static colour.
+            publish {
+                self.update(\.deviceHasLighting, lit)
+                self.update(\.effect, self.supported(self.effect))
+            }
         }
         let sleep: Int? = {
             guard RazerDevices.supportsSleepTimeout(pid: dev.productID),
@@ -2120,7 +2124,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     private func probeDockedLighting(_ dev: any RazerTransport, keepingWhatWasKnown: Bool) {
         guard RazerDevices.lightingFollowsDockedMouse.contains(dev.productID),
               let channel = dev as? DeviceProbeChannel else { return }
-        let found = DeviceProbe.dockedLighting(channel)
+        let found = DeviceProbe.dockedLighting(channel, shouldStop: { self.userWorkPending })
         if found == .unknown, keepingWhatWasKnown { return }
         RazerDevices.learnDockedLighting(found, pid: dev.productID)
     }
