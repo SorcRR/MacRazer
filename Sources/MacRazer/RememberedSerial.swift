@@ -8,10 +8,10 @@ import Foundation
 /// without this the app would fall back to the PID key and show none of the mouse's profiles,
 /// remaps or history until the next launch.
 ///
-/// It is a hint, not proof of which mouse it is: it only picks the key the settings are
-/// loaded and shown under. Anything written to the mouse still waits for the serial the
-/// mouse reports itself (`knownSerial`), so a second unit of the same model plugged into the
-/// same port never gets the first one's remaps.
+/// It is a hint, not proof of which mouse it is. It picks the key the settings are loaded
+/// under, and software remaps follow that key, so a second unit of the same model on the same
+/// port uses the first one's settings until its own serial is read (`DeviceIdentity`'s retry,
+/// within seconds of the mouse answering).
 struct RememberedSerialStore {
     static let defaultsKey = "rememberedSerials"
 
@@ -48,11 +48,33 @@ enum DeviceIdentity {
     /// read sees both), and that is the very case remembered serials exist for.
     static let absentSerialRetryInterval: TimeInterval = 300
 
-    /// The serial the mouse reported wins. Then the key this session already uses (a failed
-    /// read on a reconnect is not a new mouse). Then the serial last seen on this link. The
-    /// PID only when there is none of these.
-    static func key(probed: String?, sessionKey: String?, remembered: String?, pidKey: String) -> String {
-        probed ?? sessionKey ?? remembered ?? pidKey
+    /// The serial the mouse reported wins. Then the key this session uses on this same link (a
+    /// failed read on a reconnect is not a new mouse). Then the serial last seen on this link,
+    /// ahead of a session key from another link, which may be another mouse. That session key
+    /// still beats the PID: it is often the same mouse, moved from its dongle to its cable.
+    static func key(probed: String?, sessionKey: String?, sessionIsThisLink: Bool, remembered: String?,
+                    pidKey: String) -> String {
+        probed ?? (sessionIsThisLink ? sessionKey : nil) ?? remembered ?? sessionKey ?? pidKey
+    }
+
+    /// What a serial read found.
+    enum SerialProbe: Equatable {
+        case serial(String)
+        /// The mouse answered without a usable serial: refused it, or sent blanks or zeros.
+        case absent
+        /// No answer (a timeout, a failed transfer): likely asleep, so worth asking again soon.
+        case noAnswer
+    }
+
+    static func classify(_ result: Result<RazerReport, Error>) -> SerialProbe {
+        switch result {
+        case .success(let reply):
+            return RazerCommands.parseSerial(reply).map(SerialProbe.serial) ?? .absent
+        case .failure(HIDDevice.HIDError.commandFailed), .failure(HIDDevice.HIDError.notSupported):
+            return .absent
+        case .failure:
+            return .noAnswer
+        }
     }
 
     /// Whether a serial read late on an open link means reopening it. Only when it changes the

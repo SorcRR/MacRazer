@@ -814,7 +814,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         /// when it's most likely docked, so "read failed" must not read as "on battery".
         var observedCharging: Bool?
         do {
-            let dev = try ensureDevice()
+            let dev = try retrySerialIfDue(ensureDevice())
             if !ioHasBattery {
                 // Battery-less mice (wired-only): a DPI read is the alive-check; no battery UI.
                 do {
@@ -2041,24 +2041,23 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// io-queue only. Reads the serial from the open link; remembers it when it answers.
     private func probeSerial(_ d: any RazerTransport) -> String? {
         lastSerialAttempt = Date()
-        let reply: RazerReport
-        do {
-            reply = try d.sendWithRetry(RazerCommands.getSerial())
-        } catch HIDDevice.HIDError.commandFailed, HIDDevice.HIDError.notSupported {
+        switch DeviceIdentity.classify(Result { try d.sendWithRetry(RazerCommands.getSerial()) }) {
+        case .serial(let serial):
+            serialAbsent = nil
+            knownSerial = (d.locationID, d.productID, serial)
+            rememberedSerials.remember(serial, pid: d.productID, locationID: d.locationID)
+            return serial
+        case .absent:
             serialAbsent = (d.locationID, d.productID)
             return nil
-        } catch {
-            return nil // no answer: likely asleep, so worth asking again
-        }
-        guard let serial = RazerCommands.parseSerial(reply) else {
-            serialAbsent = (d.locationID, d.productID)
+        case .noAnswer:
             return nil
         }
-        serialAbsent = nil
-        knownSerial = (d.locationID, d.productID, serial)
-        rememberedSerials.remember(serial, pid: d.productID, locationID: d.locationID)
-        return serial
     }
+
+    /// io-queue only. The link `historyKey` was chosen on, so a failed serial read on another
+    /// link prefers that link's remembered serial over the previous mouse's key.
+    private var historyLink: (pid: Int, locationID: Int)?
 
     /// io-queue only. Whether the open link's serial is known.
     private func serialKnown(for d: any RazerTransport) -> Bool {
@@ -2206,26 +2205,35 @@ final class MouseController: ObservableObject, @unchecked Sendable {
 
     /// Must be called on `io`.
     private func ensureDevice() throws -> any RazerTransport {
-        if let d = device {
-            // A link whose serial read failed stays open while the mouse answers its battery
-            // reads, so the open below never asks again. Ask here instead. Not mid-test: the
-            // steps must all talk to the handle identify chose.
-            guard !deviceTestActiveForIO,
-                  DeviceIdentity.serialRetryDue(serialKnown: serialKnown(for: d), serialAbsent: serialAbsent(for: d),
-                                                lastAttempt: lastSerialAttempt, now: Date()),
-                  let serial = probeSerial(d),
-                  // The usual answer is the key already in use (the remembered serial was
-                  // right, or a plug event only cleared `knownSerial`): keep the handle.
-                  DeviceIdentity.reopensAfterRetry(probed: serial, sessionKey: historyKey)
-            else { return d }
-            // Another serial: reopen so the key and the settings follow it. Bluetooth tears down
-            // on its own queue, so wait for it, or the cancel could land on the new connection.
-            if let bluetooth = d as? BluetoothDevice { bluetooth.closeAndWait() } else { d.close() }
-            device = nil
-            return try ensureDevice()
-        }
+        if let d = device { return d }
         let d = try openTransport()
         device = d
+        return try identify(d)
+    }
+
+    /// Must be called on `io`, from the poll only, so a user's command never waits behind it.
+    /// A link whose serial read failed stays open while the mouse answers its battery reads,
+    /// so the open never asks again. Ask here instead. Not mid-test: the steps must all talk
+    /// to the handle identify chose.
+    private func retrySerialIfDue(_ d: any RazerTransport) throws -> any RazerTransport {
+        guard !deviceTestActiveForIO,
+              DeviceIdentity.serialRetryDue(serialKnown: serialKnown(for: d), serialAbsent: serialAbsent(for: d),
+                                            lastAttempt: lastSerialAttempt, now: Date()),
+              let serial = probeSerial(d),
+              // The usual answer is the key already in use (the remembered serial was
+              // right, or a plug event only cleared `knownSerial`): keep the handle.
+              DeviceIdentity.reopensAfterRetry(probed: serial, sessionKey: historyKey)
+        else { return d }
+        // Another serial: reopen so the key and the settings follow it. Bluetooth tears down
+        // on its own queue, so wait for it, or the cancel could land on the new connection.
+        if let bluetooth = d as? BluetoothDevice { bluetooth.closeAndWait() } else { d.close() }
+        device = nil
+        return try ensureDevice()
+    }
+
+    /// Must be called on `io`, right after `d` is opened: picks the key its settings and
+    /// history live under, and publishes who it is.
+    private func identify(_ d: any RazerTransport) throws -> any RazerTransport {
         let pid = d.productID
         // Model-scoped (not per-serial) discharge curve, shared across every unit of a covered
         // model so data accumulates faster. Independent of the per-unit `historyKey` swap below
@@ -2251,8 +2259,10 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         }
         let key = DeviceIdentity.key(
             probed: serial, sessionKey: historyKey,
+            sessionIsThisLink: historyLink.map { $0.pid == pid && $0.locationID == d.locationID } ?? false,
             remembered: rememberedSerials.serial(pid: pid, locationID: d.locationID),
             pidKey: String(format: "%04x", pid))
+        historyLink = (pid, d.locationID)
         // Switch to this mouse's own battery history (per-device file + learned rate).
         if key != historyKey {
             // Same-session key upgrade: the serial probe failed on this session's first

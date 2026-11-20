@@ -46,24 +46,24 @@ final class RememberedSerialTests: XCTestCase {
     // MARK: - Key choice
 
     func testTheReportedSerialWinsOverEverythingElse() {
-        XCTAssertEqual(DeviceIdentity.key(probed: "SERIAL-B", sessionKey: "SERIAL-A",
+        XCTAssertEqual(DeviceIdentity.key(probed: "SERIAL-B", sessionKey: "SERIAL-A", sessionIsThisLink: true,
                                           remembered: "SERIAL-C", pidKey: "00ea"), "SERIAL-B")
     }
 
     func testAFailedReadOnAReconnectKeepsTheSessionKey() {
-        XCTAssertEqual(DeviceIdentity.key(probed: nil, sessionKey: "SERIAL-A",
+        XCTAssertEqual(DeviceIdentity.key(probed: nil, sessionKey: "SERIAL-A", sessionIsThisLink: true,
                                           remembered: "SERIAL-C", pidKey: "00ea"), "SERIAL-A")
     }
 
     /// The bug: after a restart the mouse missed the serial read, the app used `00ea` and
     /// showed no profiles or remaps although they were all saved under the serial.
     func testAFailedReadOnLaunchUsesTheSerialLastSeenOnThisLink() {
-        XCTAssertEqual(DeviceIdentity.key(probed: nil, sessionKey: nil,
+        XCTAssertEqual(DeviceIdentity.key(probed: nil, sessionKey: nil, sessionIsThisLink: false,
                                           remembered: "SERIAL-A", pidKey: "00ea"), "SERIAL-A")
     }
 
     func testThePIDOnlyWhenNoSerialWasEverSeen() {
-        XCTAssertEqual(DeviceIdentity.key(probed: nil, sessionKey: nil,
+        XCTAssertEqual(DeviceIdentity.key(probed: nil, sessionKey: nil, sessionIsThisLink: false,
                                           remembered: nil, pidKey: "00ea"), "00ea")
     }
 
@@ -105,5 +105,45 @@ final class RememberedSerialTests: XCTestCase {
         XCTAssertTrue(DeviceIdentity.reopensAfterRetry(probed: "SERIAL-A", sessionKey: "00ea"), "from the PID key")
         XCTAssertTrue(DeviceIdentity.reopensAfterRetry(probed: "SERIAL-B", sessionKey: "SERIAL-A"), "another unit")
         XCTAssertTrue(DeviceIdentity.reopensAfterRetry(probed: "SERIAL-A", sessionKey: nil))
+    }
+
+    // MARK: - Another link
+
+    /// Mouse A's key must not stick to mouse C, plugged in later, when C's link remembers C.
+    func testAnotherLinksSessionKeyGivesWayToThisLinksRememberedSerial() {
+        XCTAssertEqual(DeviceIdentity.key(probed: nil, sessionKey: "SERIAL-A", sessionIsThisLink: false,
+                                          remembered: "SERIAL-C", pidKey: "00ea"), "SERIAL-C")
+    }
+
+    /// The same mouse moved from its dongle to its cable: a new link with nothing remembered.
+    func testAnotherLinksSessionKeyStillBeatsThePID() {
+        XCTAssertEqual(DeviceIdentity.key(probed: nil, sessionKey: "SERIAL-A", sessionIsThisLink: false,
+                                          remembered: nil, pidKey: "00eb"), "SERIAL-A")
+    }
+
+    // MARK: - Classifying a serial read
+
+    private func reply(_ text: String) -> RazerReport {
+        var report = RazerReport(commandClass: 0x00, commandId: 0x82, dataSize: 0x16)
+        for (i, byte) in text.utf8.prefix(22).enumerated() { report.arguments[i] = byte }
+        return report
+    }
+
+    func testARealSerialIsKept() {
+        XCTAssertEqual(DeviceIdentity.classify(.success(reply("PM2219H12345678"))), .serial("PM2219H12345678"))
+    }
+
+    func testBlanksZerosAndRefusalsMeanNoSerial() {
+        XCTAssertEqual(DeviceIdentity.classify(.success(reply(""))), .absent)
+        XCTAssertEqual(DeviceIdentity.classify(.success(reply("000000000000"))), .absent)
+        XCTAssertEqual(DeviceIdentity.classify(.failure(HIDDevice.HIDError.commandFailed)), .absent)
+        XCTAssertEqual(DeviceIdentity.classify(.failure(HIDDevice.HIDError.notSupported)), .absent)
+    }
+
+    /// An asleep mouse must stay on the short retry, or the restart bug comes back.
+    func testNoAnswerIsAskedAgainSoon() {
+        XCTAssertEqual(DeviceIdentity.classify(.failure(HIDDevice.HIDError.timeout)), .noAnswer)
+        XCTAssertEqual(DeviceIdentity.classify(.failure(HIDDevice.HIDError.badResponse)), .noAnswer)
+        XCTAssertEqual(DeviceIdentity.classify(.failure(HIDDevice.HIDError.getReportFailed(-1))), .noAnswer)
     }
 }
