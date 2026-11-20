@@ -27,8 +27,19 @@ final class HIDDevice {
         case commandFailed
         case notSupported
 
+        /// How an IOReturn code shows in `description`, and in the text that stores it.
+        static func hex(_ r: IOReturn) -> String { String(format: "0x%08x", UInt32(bitPattern: r)) }
+
+        /// Another app holds the device exclusively (`errorLooksHeldByAnotherApp`).
+        var isExclusiveAccess: Bool {
+            switch self {
+            case .openFailed(let r), .setReportFailed(let r), .getReportFailed(let r): return r == kIOReturnExclusiveAccess
+            default: return false
+            }
+        }
+
         var description: String {
-            func hex(_ r: IOReturn) -> String { String(format: "0x%08x", UInt32(bitPattern: r)) }
+            let hex = Self.hex
             switch self {
             case .notFound: return "No Razer mouse found on USB (is the cable or 2.4GHz dongle plugged in?)"
             case .openFailed(let r): return "IOHIDDeviceOpen failed: \(hex(r))"
@@ -53,8 +64,15 @@ final class HIDDevice {
     /// exclusively (kIOReturnExclusiveAccess). MacRazer never opens a device that way, so it
     /// is always some other app: in #139 a wired Lancehead answered for a few seconds after
     /// each plug-in, then every open and write failed with this code.
+    ///
+    /// For text only, like a device test exchange's stored error. An error still in hand goes
+    /// through `isHeldByAnotherApp`, which reads the code itself.
     static func errorLooksHeldByAnotherApp(_ text: String) -> Bool {
-        text.contains("0xe00002c5")
+        text.contains(HIDError.hex(kIOReturnExclusiveAccess))
+    }
+
+    static func isHeldByAnotherApp(_ error: Error) -> Bool {
+        (error as? HIDError)?.isExclusiveAccess ?? false
     }
 
     private let device: IOHIDDevice

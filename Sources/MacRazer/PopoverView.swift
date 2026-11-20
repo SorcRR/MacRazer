@@ -322,8 +322,11 @@ struct PopoverView: View {
             else if updateChecker.justUpdatedTo != nil { updatedCard }
             // A Razer mouse on Bluetooth can't be controlled (no control protocol over BT) —
             // explain it instead of just showing "offline".
-            if controller.bluetoothMouse != nil && !controller.connected { bluetoothNotice }
-            else if heldByAnotherApp { heldByAnotherAppNotice }
+            switch offlineNotice {
+            case .bluetooth?: bluetoothNotice
+            case .heldByAnotherApp?: heldByAnotherAppNotice
+            case nil: EmptyView()
+            }
             // Nothing to put beside the no-mouse card: it says what to do, across the page.
             if twoColumns && !(noMouse && accessories.available.isEmpty) {
                 // Status on the left, settings on the right. Accessories go under the status,
@@ -427,9 +430,11 @@ struct PopoverView: View {
                 Image(systemName: "computermouse")
                     .font(.system(size: 26, weight: .light))
                     .foregroundStyle(.tertiary)
-                Text(needsPermission ? "MacRazer can't see your mouse yet" : "No Razer mouse found")
+                Text(controller.heldByAnotherApp ? HeldByAnotherApp.title
+                     : needsPermission ? "MacRazer can't see your mouse yet" : "No Razer mouse found")
                     .font(.system(size: 12.5, weight: .semibold))
-                Text(needsPermission
+                Text(controller.heldByAnotherApp ? HeldByAnotherApp.popoverDetail
+                     : needsPermission
                      ? "It needs Input Monitoring permission to talk to the mouse."
                      : "Plug in the wireless dongle or a USB cable, or move the mouse to wake it.")
                     .font(.system(size: 11)).foregroundStyle(.secondary)
@@ -594,14 +599,14 @@ struct PopoverView: View {
     }
 
     private var headerSubtitle: String {
-        switch controller.bluetoothRecoveryState {
-        case .reconnecting where !controller.connected: return "Reconnecting…"
-        default: break
-        }
-        if controller.connected { return controller.deviceSupported ? "Connected" : "Connected · limited support" }
-        if controller.bluetoothMouse != nil { return "On Bluetooth" }
-        if controller.deviceName != nil { return heldByAnotherApp ? "In use by another app" : "Offline" }
-        return "Connect a Razer mouse"
+        let reconnecting: Bool = {
+            if case .reconnecting = controller.bluetoothRecoveryState { return true }
+            return false
+        }()
+        return PopoverStatus.headerSubtitle(connected: controller.connected, supported: controller.deviceSupported,
+                                            reconnecting: reconnecting, onBluetooth: controller.bluetoothMouse != nil,
+                                            deviceKnown: controller.deviceName != nil,
+                                            held: controller.heldByAnotherApp)
     }
 
     /// The active control transport, shown as a small chip beside "Connected". Resolved from
@@ -684,10 +689,9 @@ struct PopoverView: View {
         .background(Color.batteryMid.opacity(0.12), in: RoundedRectangle(cornerRadius: 13))
     }
 
-    /// The mouse is plugged in, but another app has taken it for itself, so every read fails.
-    private var heldByAnotherApp: Bool {
-        guard !controller.connected, controller.deviceName != nil, let err = controller.lastError else { return false }
-        return HIDDevice.errorLooksHeldByAnotherApp(err)
+    private var offlineNotice: PopoverStatus.Notice? {
+        PopoverStatus.notice(connected: controller.connected, onBluetooth: controller.bluetoothMouse != nil,
+                             held: controller.heldByAnotherApp, noMouse: noMouse)
     }
 
     private var heldByAnotherAppNotice: some View {
@@ -696,8 +700,8 @@ struct PopoverView: View {
                 .foregroundStyle(Color.batteryMid)
                 .font(.system(size: 13, weight: .semibold))
             VStack(alignment: .leading, spacing: 2) {
-                Text("Another app is using this mouse").font(.system(size: 12, weight: .semibold))
-                Text("An app has taken the mouse for itself, so MacRazer can't reach it. Apps that remap keys or mice can do this, like Karabiner-Elements, SteerMouse or USB Overdrive. Turn off that app's control of this mouse, and MacRazer finds it again on its own.")
+                Text(HeldByAnotherApp.title).font(.system(size: 12, weight: .semibold))
+                Text(HeldByAnotherApp.popoverDetail)
                     .font(.system(size: 11)).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
