@@ -56,6 +56,8 @@ jobs:
       - name: Build universal release
         run: |
           swift build -c release --arch arm64 --arch x86_64
-          lipo "$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)/MacRazer" -verify_arch arm64 x86_64
+          # One arch per call: newer lipo rejects "-verify_arch arm64 x86_64" as two input files.
+          bin="$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)/MacRazer"
+          for arch in arm64 x86_64; do lipo "$bin" -verify_arch "$arch"; done
       - name: Test
         run: swift test

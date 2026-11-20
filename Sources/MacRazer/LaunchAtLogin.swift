@@ -45,6 +45,7 @@ final class LaunchAtLogin: ObservableObject {
     /// foreground — the user may have just toggled MacRazer in System Settings and switched
     /// back, exactly as with the permission rechecks.
     func refresh() {
+        guard !RenderOptions.isActive else { return }
         guard isSupported else {
             isEnabled = false
             needsApproval = false

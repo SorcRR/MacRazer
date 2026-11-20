@@ -938,9 +938,11 @@ enum DeviceTestSteps {
     /// turns red at full brightness for `seconds` and goes back to `restoreEffect` (the app's
     /// own setting: an effect can't be read back) and to each group's brightness. The
     /// questions come afterwards, so nothing is held waiting on the person.
+    /// `red` and `restoreEffect` hold one report per effect zone (`RazerDevices.effectLeds`).
+    /// Red counts as shown when any zone took it, as in `MouseController.writeLighting`.
     static func lighting(_ channel: DeviceProbeChannel, sweep: [DeviceProbe.LEDAnswer]?,
-                         restoreEffect: RazerReport?,
-                         red: RazerReport = RazerCommands.setStatic(rgb: RGB(r: 255, g: 0, b: 0)),
+                         restoreEffect: [RazerReport]?,
+                         red: [RazerReport] = [RazerCommands.setStatic(rgb: RGB(r: 255, g: 0, b: 0))],
                          seconds: Double,
                          wait: (Double) -> Void = { Thread.sleep(forTimeInterval: $0) })
         -> DeviceReport.StepRecord<DeviceReport.LightingData> {
@@ -969,9 +971,9 @@ enum DeviceTestSteps {
 
         if let restoreEffect {
             for (_, led, _) in answering { _ = try? DeviceProbe.writeBrightness(channel, raw: 255, led: led) }
-            data.redShown = (try? DeviceProbe.applyLighting(channel, red)) != nil
+            data.redShown = applyLighting(channel, red)
             if data.redShown { wait(seconds) }
-            let effectBack = (try? DeviceProbe.applyLighting(channel, restoreEffect)) != nil
+            let effectBack = applyLighting(channel, restoreEffect)
             allBack = restoreBrightness(channel, answering) && effectBack && allBack
         }
         data.restored = allBack
@@ -980,6 +982,13 @@ enum DeviceTestSteps {
         record.outcome = data.dimShown ? .skipped : .failed
         record.data = data
         return record
+    }
+
+    /// Sends every zone's report, all of them even after a refusal. True when any took it.
+    private static func applyLighting(_ channel: DeviceProbeChannel, _ reports: [RazerReport]) -> Bool {
+        reports.reduce(false) { took, report in
+            (try? DeviceProbe.applyLighting(channel, report)) != nil || took
+        }
     }
 
     private static func restoreBrightness(_ channel: DeviceProbeChannel, _ groups: [(String, UInt8, UInt8)]) -> Bool {
@@ -1024,7 +1033,8 @@ extension DeviceTestSteps {
         let matrix = identify.data?.lightingId ?? info.transactionId
         let red = RazerCommands.effect(.staticColor, color: RGB(r: 255, g: 0, b: 0), led: info.effectLed)
         let lighting = recorded(device, standard: standard, matrix: matrix) {
-            Self.lighting($0, sweep: sweep, restoreEffect: restoreEffect, red: red, seconds: seconds, wait: wait)
+            Self.lighting($0, sweep: sweep, restoreEffect: restoreEffect.map { [$0] }, red: [red],
+                          seconds: seconds, wait: wait)
         }
         return (identify, lighting)
     }

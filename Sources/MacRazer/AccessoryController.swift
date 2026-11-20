@@ -44,13 +44,31 @@ final class Accessories: ObservableObject, @unchecked Sendable {
                 self?.refreshSynapse()
             })
         }
-        // Synapse may put its own colours back on a wake; ours go back on after it.
+        // Synapse may put its own colours back on a wake; ours go back on after it. Not for a
+        // wake with the screens still off (a scheduled or Power Nap wake): macOS counts each
+        // write as user activity and would light the display (#142). The screens waking does
+        // it then. The input counters can't tell those wakes apart, since they may not count
+        // the time asleep.
         observers.append(center.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                for accessory in self?.connected ?? [] { accessory.reapplyOverSynapse() }
-            }
+            self?.reapplyAfterWakePending = true
+            self?.reapplyAfterWake()
+        })
+        observers.append(center.addObserver(forName: NSWorkspace.screensDidWakeNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.reapplyAfterWake()
         })
         rescan()
+    }
+
+    /// Main thread. The Mac woke and our lighting hasn't gone back on over Synapse's yet.
+    private var reapplyAfterWakePending = false
+
+    private func reapplyAfterWake() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+            guard let self, self.reapplyAfterWakePending,
+                  CGDisplayIsAsleep(CGMainDisplayID()) == 0 else { return }
+            self.reapplyAfterWakePending = false
+            for accessory in self.connected { accessory.reapplyOverSynapse() }
+        }
     }
 
     /// Look for accessories again: on launch, after each Razer plug event, and each time the
