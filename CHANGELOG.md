@@ -12,9 +12,13 @@ expect rough edges until 1.0.
     links and the Mouse Dock Pro, which goes up to 8000 Hz.
   - **DeathAdder Essential (2018):** DPI and polling work, and its green light dims.
   - **Mamba Elite:** DPI and polling work. Lighting waits on a test.
-  - **Basilisk Essential:** polling and lighting work. DPI is offered, but its read-back
-    isn't confirmed yet.
+  - **Basilisk Essential:** DPI, polling and lighting work.
+  - **Naga Left Handed Edition:** DPI, polling and lighting all passed.
 - **Cynosa Lite tested.** It lost its UNTESTED tag after passing the lighting test.
+
+### Fixed
+- **Test This Mouse on single-axis mice.** Some mice answer a DPI read with 0 for the second
+  axis. The DPI test failed them even when the DPI took. Now a 0 there passes.
 
 ## [0.10.0] — 2026-11-19
 

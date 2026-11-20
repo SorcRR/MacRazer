@@ -200,3 +200,13 @@ extension DeviceProbe.WriteCheck where Value: Equatable {
     /// ceiling) or quietly ignores a write reads back something else.
     var confirmed: Bool { readBack.value == requested }
 }
+
+extension DeviceProbe.WriteCheck where Value == DeviceProbe.DPI {
+    /// A DPI write took when X reads back as written, and Y either does too or reads 0. Some
+    /// mice keep a single axis and answer Y with 0 (the Basilisk Essential); the app only
+    /// sets and shows X, so a 0 there isn't a refusal. A Y that reads back as some other
+    /// number still fails: the mouse changed it.
+    var confirmed: Bool {
+        readBack.value.x == requested.x && (readBack.value.y == requested.y || readBack.value.y == 0)
+    }
+}

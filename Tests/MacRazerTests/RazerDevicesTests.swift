@@ -590,8 +590,8 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(RazerDevices.notOnMouse(pid: 0x00BE), [.lighting])
     }
 
-    /// The reports of 2026-11-18 and 11-19, most from 0.10.0.
-    func testMiceFromTheNovemberNineteenReports() {
+    /// The reports of 2026-11-18 to 11-20, most from 0.10.0.
+    func testMiceFromTheMidNovemberReports() {
         // Polling confirmed with polling_rate2.
         for pid in [0x0091, 0x00E2, 0x00E3, 0x00A4] {
             XCTAssertEqual(RazerDevices.support(pid: pid), .full, String(format: "0x%04X", pid))
@@ -606,9 +606,13 @@ final class RazerDevicesTests: XCTestCase {
         // Mamba Elite and Basilisk Essential.
         XCTAssertEqual(RazerDevices.unverified(pid: 0x006C), [.lighting])
         XCTAssertFalse(RazerDevices.hasLighting(pid: 0x006C))
-        XCTAssertEqual(RazerDevices.unverified(pid: 0x0065), [.dpi])
-        XCTAssertTrue(RazerDevices.writesDPI(pid: 0x0065), "over USB an unverified DPI is still offered")
+        XCTAssertEqual(RazerDevices.support(pid: 0x0065), .full, "X read back every write; Y is always 0")
         XCTAssertTrue(RazerDevices.hasLighting(pid: 0x0065))
+        // Naga Left Handed Edition: everything passed.
+        XCTAssertEqual(RazerDevices.support(pid: 0x008D), .full)
+        XCTAssertFalse(RazerDevices.usesPollingRate2(pid: 0x008D))
+        XCTAssertEqual(RazerDevices.brightnessLeds(pid: 0x008D), [Razer.logoLed, Razer.scrollLed])
+        XCTAssertEqual(RazerDevices.maxDPI(pid: 0x008D), 20000)
         XCTAssertEqual(RazerDevices.unverified(pid: 0x0088), [.lighting], "Basilisk Ultimate: colour didn't show")
     }
 

@@ -637,11 +637,17 @@ enum RazerDevices {
         .init(pid: 0x006C, name: "Razer Mamba Elite", unverified: [.lighting], hasBattery: false, hasLighting: false, maxDPI: 16000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
         // Basilisk Essential (two 0.10.0 reports on firmware v1.2, no credit given): polling
         // and lighting passed with 0x1f, LOGO and SCROLL dimming and turning red. No battery.
-        // Its DPI read answers X with Y always 0, so the test's X-and-Y check failed although
-        // X read back every write. The app sets and reads X, so DPI is offered but stays
-        // unverified. The button step saw its DPI button change DPI inside the mouse (6400,
-        // 800, 1800, 3600). 6400 is the vendor spec.
-        .init(pid: 0x0065, name: "Razer Basilisk Essential", unverified: [.dpi], hasBattery: false, hasLighting: true, maxDPI: 6400, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
+        // Its DPI read answers X with Y always 0. X read back every write, so DPI counts as
+        // verified, and the test now accepts a 0 Y (`WriteCheck.confirmed` for DPI). Its stage
+        // table read [800, 4100] while the button step saw the DPI button cycle 6400, 800,
+        // 1800 and 3600: the table the mouse answers with isn't the one its button uses, so
+        // the stage editor may not match the button. 6400 is the vendor spec.
+        .init(pid: 0x0065, name: "Razer Basilisk Essential", unverified: [], hasBattery: false, hasLighting: true, maxDPI: 6400, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
+        // Naga Left Handed Edition (0.10.0 report on firmware v1.0, no credit given): DPI,
+        // stages, polling and lighting all passed with 0x1f, LOGO and SCROLL dimming and
+        // turning red. No battery, and no polling_rate2. Its twelve side keys type 1 to 0, -
+        // and =, like the other Nagas. 20000 is OpenRazer's DPI_MAX.
+        .init(pid: 0x008D, name: "Razer Naga Left Handed Edition", unverified: [], hasBattery: false, hasLighting: true, maxDPI: 20000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
         // Lancehead Tournament Edition (#139): wired only. The first row came from OpenRazer
         // alone, with 0x3f and 0xFF for the DPI-stages pair. Then an in-app report (0.9.0,
         // firmware v1.1, no credit given) ran it as an unknown mouse on 0x1f, and DPI, the stages
