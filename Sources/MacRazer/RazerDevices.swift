@@ -381,6 +381,9 @@ enum RazerDevices {
         // polling with polling_rate2: it read 8000 Hz, set 500 Hz and put 8000 back, so the top
         // rate is 8000. Identify failed there only because that mouse has no lights: the
         // dock's lighting is the mouse's, and this row's comes from a Naga V3 Pro.
+        // A second 0.10.0 report (firmware v1.1, credit Kartas), with a Naga V3 Pro on it,
+        // passed everything: polling 8000 Hz to 500 and back, and LOGO, SCROLL and BACKLIGHT
+        // dimmed and turned red.
         .init(pid: 0x00A4, name: "Razer Mouse Dock Pro", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, hasCableLink: false, usesPollingRate2: true, maxPollingRate: 8000),
         // Mouse Dock V2 Pro: like the Mouse Dock Pro, a charging dock that is the receiver for
         // the mouse on it. One report (credited to cparedes) with a Basilisk V4 Pro on it:
@@ -463,13 +466,18 @@ enum RazerDevices {
         // passed with 0x1f (every id tried answers on the cable). It has no lighting: every group
         // answers 0x05. The classic polling command answers "not supported" (0x05), as on the
         // Basilisk V4 models, so it takes polling_rate2. Its read answered `00 01`, 8000 Hz,
-        // and polling stays unverified until a test passes it. Its control interface is the fourth one. Its sensor is the Focus Pro 50K,
-        // but 45000 is as high as the app writes (the driver's clamp), and the firmware echoed it.
-        .init(pid: 0x00E5, name: "Razer Viper V4 Pro (Wired)", unverified: [.polling], hasBattery: true, hasLighting: false, maxDPI: 45000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, usesPollingRate2: true, maxPollingRate: 8000, notOnMouse: [.lighting]),
+        // Its control interface is the fourth one. Its sensor is the Focus Pro 50K, but 45000
+        // is as high as the app writes (the driver's clamp), and the firmware echoed it.
+        // A 0.10.0 report (firmware v1.4, credit Kartas) passed polling with polling_rate2: it
+        // read 8000 Hz, set 500 Hz and put 8000 back.
+        .init(pid: 0x00E5, name: "Razer Viper V4 Pro (Wired)", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 45000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, usesPollingRate2: true, maxPollingRate: 8000, notOnMouse: [.lighting]),
         // Viper V4 Pro over the dongle (in-app report from Robotxm): battery and DPI and stages
         // passed with 0x1f, and every id tried answers. No lighting (every group answers 0x05),
         // and the classic polling command answers 0x05, as on its cable. Same 45000 ceiling.
-        // 8000 Hz is the vendor spec for its HyperPolling dongle. Only the cable has read it.
+        // 8000 Hz is the vendor spec for its HyperPolling dongle.
+        // Two 0.10.0 runs over the dongle (firmware v1.4, the same day the cable passed) failed
+        // polling: both polling_rate2 writes for 500 Hz answered 0x02, but the read stayed at
+        // 8000 Hz. So the dongle doesn't take the rate this way yet, and polling stays unverified.
         .init(pid: 0x00E6, name: "Razer Viper V4 Pro (Wireless)", unverified: [.polling], hasBattery: true, hasLighting: false, maxDPI: 45000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, usesPollingRate2: true, maxPollingRate: 8000, notOnMouse: [.lighting]),
         // Basilisk V4 HyperSpeed on the cable (two in-app reports, no credit given): battery and
         // DPI and stages passed with 0x1f, and every id answers. As over the dongle, every LED

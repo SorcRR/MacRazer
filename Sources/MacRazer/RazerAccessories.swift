@@ -81,6 +81,13 @@ enum RazerAccessories {
               effectLed: Razer.backlightLed, brightnessLed: Razer.backlightLed,
               untestedEffects: [.breathing, .spectrum, .wave, .off]),
         keyboard(0x02A3, "Razer Ornata V3 Tenkeyless", transactionId: 0x1F),
+        // Joro on its cable, from a 0.10.0 report (firmware v1.2, credit Kartas). Not in the
+        // table before, so the app tested it as a mouse: brightness answered on BACKLIGHT and
+        // ZERO and dimmed and came back, and a static red on ZERO_LED landed, all with 0x1F.
+        // The other effects haven't been seen yet.
+        .init(pid: 0x02CD, name: "Razer Joro", kind: .keyboard, verified: true, transactionId: 0x1F,
+              effectLed: Razer.zeroLed, brightnessLed: Razer.backlightLed,
+              untestedEffects: [.breathing, .spectrum, .wave, .off]),
 
         // Mousepads (OpenRazer `razeraccessory_driver.c`): effects on ZERO_LED.
         //

@@ -419,7 +419,7 @@ final class RazerDevicesTests: XCTestCase {
     /// A polling_rate2 mouse is asked about polling like any other: the test sends the newer
     /// command there, so a report can confirm it.
     func testPollingRate2MiceAreAskedAboutPolling() {
-        for pid in [0x00EA, 0x00EB, 0x00E5, 0x00E6] {
+        for pid in [0x00EA, 0x00EB, 0x00E6] {
             let ask = RazerDevices.ask(pid: pid)
             XCTAssertEqual(RazerDevices.unverified(pid: pid), [.polling], String(pid, radix: 16))
             XCTAssertEqual(ask.here, [.polling], String(pid, radix: 16))
@@ -469,10 +469,11 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00B8), [], "an AA-cell mouse has no cable mode")
     }
 
-    /// The Viper V4 Pro on its cable: no lighting, polling still to verify, and the classic
-    /// polling command refused, so the picker stays hidden.
+    /// The Viper V4 Pro on its cable: no lighting, and polling verified with polling_rate2
+    /// (the classic command is refused).
     func testViperV4ProWiredCapabilities() {
-        XCTAssertEqual(RazerDevices.unverified(pid: 0x00E5), [.polling])
+        XCTAssertEqual(RazerDevices.unverified(pid: 0x00E5), [])
+        XCTAssertTrue(RazerDevices.usesPollingRate2(pid: 0x00E5))
         XCTAssertTrue(RazerDevices.hasBattery(pid: 0x00E5))
         XCTAssertFalse(RazerDevices.hasLighting(pid: 0x00E5))
         XCTAssertEqual(RazerDevices.maxDPI(pid: 0x00E5), 45000)
@@ -491,8 +492,9 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(RazerDevices.connection(pid: 0x00E6), .wirelessDongle)
         XCTAssertEqual(RazerDevices.connection(pid: 0x00EB), .wired)
         // Polling is all either link lacks, and the test checks it with polling_rate2, so
-        // each names the other.
-        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00E6), [.init(connection: .wired, missing: [.polling])])
+        // each names the other. The Viper V4 Pro's cable has passed it since, so its dongle
+        // names nothing.
+        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00E6), [])
         XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00EA), [.init(connection: .wired, missing: [.polling])])
 
         XCTAssertTrue(RazerDevices.fullySupported(pid: 0x00D1), "Pro Click V2")
@@ -617,6 +619,12 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertFalse(RazerDevices.usesPollingRate2(pid: 0x008D))
         XCTAssertEqual(RazerDevices.brightnessLeds(pid: 0x008D), [Razer.logoLed, Razer.scrollLed])
         XCTAssertEqual(RazerDevices.maxDPI(pid: 0x008D), 20000)
+        // Viper V4 Pro: the cable passed polling, the dongle didn't take the rate.
+        XCTAssertEqual(RazerDevices.support(pid: 0x00E5), .full)
+        XCTAssertEqual(RazerDevices.unverified(pid: 0x00E6), [.polling])
+        // The Joro is a keyboard, so it's never taken for the mouse.
+        XCTAssertEqual(RazerAccessories.info(pid: 0x02CD)?.kind, .keyboard)
+        XCTAssertNil(RazerDevices.info(pid: 0x02CD))
         XCTAssertEqual(RazerDevices.unverified(pid: 0x0088), [.lighting], "Basilisk Ultimate: colour didn't show")
     }
 

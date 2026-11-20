@@ -54,7 +54,7 @@ Razer mice that use the same HID protocol family, but those are untested, so tre
   product that is never a mouse is not taken for one.
 - **Keyboard and mousepad lighting.** Each Razer keyboard or mousepad next to the mouse gets
   its own card in the popover, with its own colour, effect and brightness. Each can also
-  follow the mouse's lighting. Tested on the Cynosa Chroma, Cynosa Lite, Ornata V3 and Ornata V3 X
+  follow the mouse's lighting. Tested on the Cynosa Chroma, Cynosa Lite, Joro, Ornata V3 and Ornata V3 X
   keyboards and the Firefly V2, Firefly V2 Pro, Goliathus Chroma and Goliathus Chroma Extended
   mousepads. The Cynosa Chroma Pro, the Ornata V3's other versions and the
   Goliathus Chroma 3XL use the same commands but are untested. An untested one's card has a
@@ -152,10 +152,10 @@ says so.
 | Razer Viper Ultimate (Wired) | Battery, DPI, polling, lighting | anonymous report |
 | Razer Taipan | DPI, polling; lighting not working yet | anonymous report |
 | Razer Basilisk V4 HyperSpeed (wired + wireless) | Battery, DPI, DPI stages; polling not confirmed yet | anonymous reports |
-| Razer Viper V4 Pro (wired + wireless) | Battery, DPI, DPI stages; polling not confirmed yet | Robotxm and an anonymous report |
+| Razer Viper V4 Pro (wired + wireless) | Battery, DPI, DPI stages; polling up to 8000 Hz on the cable, not over the dongle yet | Robotxm, Kartas and an anonymous report |
 | Razer Viper 8KHz | DPI, DPI stages, polling up to 8000 Hz, lighting, brightness (wired only) | anonymous reports |
 | Razer Basilisk V4 Pro (wired + wireless) | Battery, DPI, DPI stages, polling up to 8000 Hz, lighting, brightness | by_hlz, Maude and anonymous reports |
-| Razer Mouse Dock Pro (with a Naga V3 Pro or Basilisk V4 HyperSpeed) | Battery, DPI, polling up to 8000 Hz; lighting and brightness with a Naga V3 Pro (the dock lights only what the mouse has) | maesta2 and an anonymous report |
+| Razer Mouse Dock Pro (with a Naga V3 Pro or Basilisk V4 HyperSpeed) | Battery, DPI, polling up to 8000 Hz; lighting and brightness with a Naga V3 Pro (the dock lights only what the mouse has) | maesta2, Kartas and an anonymous report |
 | Razer Mouse Dock V2 Pro (with a Basilisk V4 Pro) | Battery, DPI, DPI stages, lighting, brightness; polling not confirmed yet | cparedes |
 | Razer DeathAdder V3 | DPI, DPI stages; polling not confirmed yet (it has no battery or lighting) | anonymous reports |
 | Razer HyperFlux V2 (with the mouse on it) | Battery, DPI, DPI stages, polling; lighting not confirmed yet | anonymous report |
