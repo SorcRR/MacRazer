@@ -21,6 +21,9 @@ expect rough edges until 1.0.
   tested. Before, the app took it for a mouse.
 
 ### Fixed
+- **Test This Mouse puts your own colour back.** The lighting test used to end on the app's
+  colour, so a mouse set to red elsewhere came back in MacRazer's colour. It now reads each
+  zone's effect first and puts that back. A zone that doesn't say still gets the app's.
 - **Mouse Dock Pro lighting follows the mouse on it.** The dock's lights are the docked
   mouse's lights. The app now asks that mouse which zones it has. A mouse without lights,
   like the Basilisk V4 HyperSpeed, no longer gets lighting controls that do nothing. Test
