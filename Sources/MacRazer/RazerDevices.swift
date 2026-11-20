@@ -674,13 +674,17 @@ enum RazerDevices {
         // firmware v1.1, no credit given) ran it as an unknown mouse on 0x1f, and DPI, the stages
         // read, polling and lighting all passed there; every id answers identify. LOGO and SCROLL
         // answer brightness, and both dimmed, turned red and came back. No battery (0x05).
-        // It holds a single DPI stage. 16000 is the daemon's DPI_MAX. The zone effect read also
+        // That unit held a single DPI stage; the second read five. 16000 is the daemon's DPI_MAX. The zone effect read also
         // answers on 0x10 and 0x11, its side strips, which the effect on ZERO_LED may not reach
         // (on the Basilisk Ultimate's cable only the scroll wheel changed), and brightness was
-        // tried on LOGO and SCROLL only. So lighting stays hidden until a test shows every zone.
+        // tried on LOGO and SCROLL only, so lighting stayed hidden. A second report (0.10.0,
+        // firmware v1.2, @fortinmike) passed everything again on 0x1f. The effect went to all
+        // five zones (`effectZones`) and every write answered, and the colour put back at the
+        // end turned the whole mouse, side strips too. So lighting is on. Brightness is
+        // confirmed on LOGO and SCROLL; the side strips get it best effort.
         // OpenRazer drives it with 0x3f, so a unit that stays silent on 0x1f still gets the
         // search for the id it answers.
-        .init(pid: 0x0060, name: "Razer Lancehead Tournament Edition", unverified: [.lighting], hasBattery: false, hasLighting: false, maxDPI: 16000, transactionId: 0x1f, matrixTransactionId: 0x1f, idMayDiffer: true, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
+        .init(pid: 0x0060, name: "Razer Lancehead Tournament Edition", unverified: [], hasBattery: false, hasLighting: true, maxDPI: 16000, transactionId: 0x1f, matrixTransactionId: 0x1f, idMayDiffer: true, extraBrightnessLeds: [Razer.scrollLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
     ]
 
     static func info(pid: Int) -> RazerDeviceInfo? { known.first { $0.pid == pid } }

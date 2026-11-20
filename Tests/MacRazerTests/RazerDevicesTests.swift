@@ -740,7 +740,7 @@ final class RazerDevicesTests: XCTestCase {
     }
 
     /// The Lancehead Tournament Edition (#139): first from OpenRazer, then a report on 0x1f
-    /// passed DPI and polling. Lighting stays hidden until every zone is shown working.
+    /// passed DPI and polling. A second report showed the effect reaching every zone.
     func testLanceheadTournamentEdition() {
         let pid = 0x0060
         XCTAssertEqual(RazerDevices.info(pid: pid)?.name, "Razer Lancehead Tournament Edition")
@@ -750,8 +750,9 @@ final class RazerDevicesTests: XCTestCase {
         }
         XCTAssertFalse(RazerDevices.hasBattery(pid: pid))
         XCTAssertEqual(RazerDevices.notOnMouse(pid: pid), [.battery])
-        XCTAssertFalse(RazerDevices.hasLighting(pid: pid), "its side strips may not take ZERO_LED")
-        XCTAssertEqual(RazerDevices.unverified(pid: pid), [.lighting])
+        XCTAssertTrue(RazerDevices.hasLighting(pid: pid), "the effect reached the side strips too")
+        XCTAssertEqual(RazerDevices.unverified(pid: pid), [])
+        XCTAssertEqual(RazerDevices.confirmedBrightnessLeds(pid: pid), [Razer.logoLed, Razer.scrollLed])
         XCTAssertEqual(RazerDevices.maxDPI(pid: pid), 16000)
         XCTAssertEqual(RazerDevices.connection(pid: pid), .wired)
         XCTAssertTrue(RazerDevices.guessesProtocol(pid: pid), "OpenRazer says 0x3f, so a silent one is still searched")
