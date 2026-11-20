@@ -66,7 +66,9 @@ enum RazerAccessories {
         // why mouse selection filters it out by name and by this table.
         keyboard(0x022A, "Razer Cynosa Chroma", verified: true, transactionId: 0x3F),
         keyboard(0x022C, "Razer Cynosa Chroma Pro", transactionId: 0x3F),
-        keyboard(0x023F, "Razer Cynosa Lite", transactionId: 0x3F),
+        // Tested from an in-app report on 0.10.0 (firmware v2.1): BACKLIGHT dimmed and came
+        // back, and a static colour landed.
+        keyboard(0x023F, "Razer Cynosa Lite", verified: true, transactionId: 0x3F),
         // #75 (MaxL34): an Ornata V3 next to a Naga V3 Pro.
         // Hardware-verified from in-app reports, 2026-11-10: brightness on BACKLIGHT dimmed and
         // came back, and a static colour landed. The other effects follow OpenRazer.
