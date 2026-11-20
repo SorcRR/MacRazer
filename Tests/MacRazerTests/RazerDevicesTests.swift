@@ -85,7 +85,7 @@ final class RazerDevicesTests: XCTestCase {
         // SCROLL_LED answers and LOGO, ZERO and BACKLIGHT all return 0x03.
         XCTAssertEqual(RazerDevices.brightnessLed(pid: 0x00B9), Razer.scrollLed)
         // From the in-app reports: the Trinity and the Basilisk V4 Pro answer on LOGO and
-        // SCROLL only. The Mouse Dock Pro stays on LOGO, whichever mouse is paired to it.
+        // SCROLL only. The Mouse Dock Pro is on LOGO until the mouse on it has answered.
         XCTAssertEqual(RazerDevices.brightnessLeds(pid: 0x0067), [Razer.logoLed, Razer.scrollLed])
         XCTAssertEqual(RazerDevices.brightnessLeds(pid: 0x00E3), [Razer.logoLed, Razer.scrollLed])
         XCTAssertEqual(RazerDevices.brightnessLeds(pid: 0x00A4), [Razer.logoLed])

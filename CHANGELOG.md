@@ -21,6 +21,10 @@ expect rough edges until 1.0.
   tested. Before, the app took it for a mouse.
 
 ### Fixed
+- **Mouse Dock Pro lighting follows the mouse on it.** The dock's lights are the docked
+  mouse's lights. The app now asks that mouse which zones it has. A mouse without lights,
+  like the Basilisk V4 HyperSpeed, no longer gets lighting controls that do nothing. Test
+  This Mouse no longer fails such a dock at the first step.
 - **Test This Mouse on single-axis mice.** The Basilisk Essential answers a DPI read with 0
   for the second axis, and the DPI test failed it even when the DPI took. On mice known to
   do that, a 0 there passes now.
