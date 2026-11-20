@@ -322,7 +322,11 @@ struct PopoverView: View {
             else if updateChecker.justUpdatedTo != nil { updatedCard }
             // A Razer mouse on Bluetooth can't be controlled (no control protocol over BT) —
             // explain it instead of just showing "offline".
-            if controller.bluetoothMouse != nil && !controller.connected { bluetoothNotice }
+            switch offlineNotice {
+            case .bluetooth?: bluetoothNotice
+            case .heldByAnotherApp?: heldByAnotherAppNotice
+            case nil: EmptyView()
+            }
             // Nothing to put beside the no-mouse card: it says what to do, across the page.
             if twoColumns && !(noMouse && accessories.available.isEmpty) {
                 // Status on the left, settings on the right. Accessories go under the status,
@@ -426,9 +430,11 @@ struct PopoverView: View {
                 Image(systemName: "computermouse")
                     .font(.system(size: 26, weight: .light))
                     .foregroundStyle(.tertiary)
-                Text(needsPermission ? "MacRazer can't see your mouse yet" : "No Razer mouse found")
+                Text(controller.heldByAnotherApp ? HeldByAnotherApp.title
+                     : needsPermission ? "MacRazer can't see your mouse yet" : "No Razer mouse found")
                     .font(.system(size: 12.5, weight: .semibold))
-                Text(needsPermission
+                Text(controller.heldByAnotherApp ? HeldByAnotherApp.popoverDetail
+                     : needsPermission
                      ? "It needs Input Monitoring permission to talk to the mouse."
                      : "Plug in the wireless dongle or a USB cable, or move the mouse to wake it.")
                     .font(.system(size: 11)).foregroundStyle(.secondary)
@@ -593,14 +599,14 @@ struct PopoverView: View {
     }
 
     private var headerSubtitle: String {
-        switch controller.bluetoothRecoveryState {
-        case .reconnecting where !controller.connected: return "Reconnecting…"
-        default: break
-        }
-        if controller.connected { return controller.deviceSupported ? "Connected" : "Connected · limited support" }
-        if controller.bluetoothMouse != nil { return "On Bluetooth" }
-        if controller.deviceName != nil { return "Offline" }
-        return "Connect a Razer mouse"
+        let reconnecting: Bool = {
+            if case .reconnecting = controller.bluetoothRecoveryState { return true }
+            return false
+        }()
+        return PopoverStatus.headerSubtitle(connected: controller.connected, supported: controller.deviceSupported,
+                                            reconnecting: reconnecting, onBluetooth: controller.bluetoothMouse != nil,
+                                            deviceKnown: controller.deviceName != nil,
+                                            held: controller.heldByAnotherApp)
     }
 
     /// The active control transport, shown as a small chip beside "Connected". Resolved from
@@ -673,6 +679,29 @@ struct PopoverView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Connected via Bluetooth").font(.system(size: 12, weight: .semibold))
                 Text(bluetoothNoticeText)
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.batteryMid.opacity(0.12), in: RoundedRectangle(cornerRadius: 13))
+    }
+
+    private var offlineNotice: PopoverStatus.Notice? {
+        PopoverStatus.notice(connected: controller.connected, onBluetooth: controller.bluetoothMouse != nil,
+                             held: controller.heldByAnotherApp, noMouse: noMouse)
+    }
+
+    private var heldByAnotherAppNotice: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "lock")
+                .foregroundStyle(Color.batteryMid)
+                .font(.system(size: 13, weight: .semibold))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(HeldByAnotherApp.title).font(.system(size: 12, weight: .semibold))
+                Text(HeldByAnotherApp.popoverDetail)
                     .font(.system(size: 11)).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }

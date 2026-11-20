@@ -28,6 +28,10 @@ expect rough edges until 1.0.
 - **Test This Mouse on single-axis mice.** The Basilisk Essential answers a DPI read with 0
   for the second axis, and the DPI test failed it even when the DPI took. On mice known to
   do that, a 0 there passes now.
+- **A mouse another app holds says so.** Some apps that remap keys or mice take a mouse for
+  themselves, and then MacRazer can't reach it. The popover only said Offline, and the device
+  test said no mouse was connected. Both now say another app is using the mouse and name a
+  few that can do it. Thanks to fortinmike for the log that showed it (#139).
 - **Mission Control and the Space shortcuts open from a button.** A button set to Mission
   Control, Space Left or Space Right did nothing: macOS stores those shortcuts with the Fn
   flag a real arrow key carries, and MacRazer saved the arrow without it. The three are now

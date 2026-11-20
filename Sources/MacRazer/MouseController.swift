@@ -102,6 +102,10 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     @Published private(set) var averageCycleHours: Double?
     @Published private(set) var statusText = "…"
     @Published private(set) var lastError: String?
+    /// The last poll failed because another app holds the mouse exclusively (#139). Set even
+    /// when the mouse was never opened, so `deviceName` is still nil: a mouse already held
+    /// when MacRazer starts.
+    @Published private(set) var heldByAnotherApp = false
     @Published private(set) var isRefreshing = false
     /// Name of the connected Razer mouse (from its USB product string), or nil if none present.
     @Published private(set) var deviceName: String?
@@ -798,6 +802,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         defer { readEnded() }
         let outcome: BatteryPollStateMachine.ReadOutcome
         var errText: String?
+        var held = false
         /// The charging flag as the device reported it this tick, or nil when the charging
         /// read itself failed. The verdict's `isCharging` is the two-poll-*confirmed* one,
         /// which resets on any transient read failure — so a docked mouse looks "not
@@ -852,6 +857,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         } catch {
             releaseDeviceIfNeeded(after: error)
             errText = String(describing: error)
+            held = HIDDevice.isHeldByAnotherApp(error)
             // No Razer mouse present at all (vs. present-but-asleep timeout).
             let gone: Bool = { if case HIDDevice.HIDError.notFound = error { return true }; return false }()
             outcome = .failure(deviceGone: gone)
@@ -926,6 +932,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 BluetoothMouseStatus($0, authorization: CBManager.authorization)
             }
             let err = errText
+            let isHeld = held
             publish {
                 let wasConnected = self.connected
                 self.update(\.connected, false)
@@ -936,6 +943,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 // strands the menu bar bolt on (dimmed) indefinitely after a disconnect.
                 self.update(\.charging, false)
                 self.update(\.lastError, err)
+                self.update(\.heldByAnotherApp, isHeld)
                 self.update(\.bluetoothMouse, btStatus)
                 // The DPI Cycle assignment read before the mouse went away says nothing about
                 // what it holds when it comes back (firmware can reset it). Forget it, so the F20
@@ -970,6 +978,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             self.update(\.connected, true)
             self.update(\.bluetoothRecoveryState, .idle)
             self.update(\.lastError, nil)
+            self.update(\.heldByAnotherApp, false)
             self.inputWatcher.stop() // in use again: its reports would be a wake-up per movement
             alsoSet()
             self.updateStatusText()
@@ -1922,6 +1931,26 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             deviceName: deviceName ?? "Razer Mouse", percent: batteryPercent ?? 72,
             observedAt: readingDate, estimatedHoursRemaining: 39, wasCharging: false
         )
+        updateStatusText()
+    }
+
+    /// For the `render-ui held` preview: a wired mouse another app holds exclusively (#139).
+    func setPreviewHeldByAnotherApp() {
+        deviceID = 0x0060
+        deviceName = "Razer Lancehead Tournament Edition"
+        deviceHasBattery = false
+        connected = false
+        lastError = String(describing: HIDDevice.HIDError.openFailed(kIOReturnExclusiveAccess))
+        heldByAnotherApp = true
+        updateStatusText()
+    }
+
+    /// For the `render-ui held-at-launch` preview: held before MacRazer ever opened it, so
+    /// the app never learned its name.
+    func setPreviewHeldAtLaunch() {
+        setPreviewHeldByAnotherApp()
+        deviceID = nil
+        deviceName = nil
         updateStatusText()
     }
 
