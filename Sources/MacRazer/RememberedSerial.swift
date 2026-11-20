@@ -43,6 +43,10 @@ struct RememberedSerialStore {
 enum DeviceIdentity {
     /// How often an open link whose serial read failed is asked for it again.
     static let serialRetryInterval: TimeInterval = 10
+    /// How often a link whose mouse answered without a usable serial is asked again. Rarely,
+    /// not never: a mouse waking up can refuse commands or answer with zeros (the battery
+    /// read sees both), and that is the very case remembered serials exist for.
+    static let absentSerialRetryInterval: TimeInterval = 300
 
     /// The serial the mouse reported wins. Then the key this session already uses (a failed
     /// read on a reconnect is not a new mouse). Then the serial last seen on this link. The
@@ -51,12 +55,21 @@ enum DeviceIdentity {
         probed ?? sessionKey ?? remembered ?? pidKey
     }
 
+    /// Whether a serial read late on an open link means reopening it. Only when it changes the
+    /// key the settings are under: a reopen costs a teardown, and on Bluetooth a reconnect.
+    static func reopensAfterRetry(probed: String, sessionKey: String?) -> Bool {
+        probed != sessionKey
+    }
+
     /// Whether to ask an open link for its serial again. Only while it is unknown: a link
     /// kept open because the mouse answers its battery reads otherwise stays on the fallback
-    /// key for the whole session.
-    static func serialRetryDue(serialKnown: Bool, lastAttempt: Date?, now: Date,
-                               interval: TimeInterval = serialRetryInterval) -> Bool {
+    /// key for the whole session. Only every `absentSerialRetryInterval` when the mouse
+    /// answered without a usable serial (`serialAbsent`): most such mice say the same each time.
+    static func serialRetryDue(serialKnown: Bool, serialAbsent: Bool = false, lastAttempt: Date?, now: Date,
+                               interval: TimeInterval = serialRetryInterval,
+                               absentInterval: TimeInterval = absentSerialRetryInterval) -> Bool {
         guard !serialKnown else { return false }
+        let interval = serialAbsent ? absentInterval : interval
         guard let lastAttempt else { return true }
         return now.timeIntervalSince(lastAttempt) >= interval
     }

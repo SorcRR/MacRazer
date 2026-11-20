@@ -82,4 +82,28 @@ final class RememberedSerialTests: XCTestCase {
         XCTAssertFalse(DeviceIdentity.serialRetryDue(serialKnown: true, lastAttempt: nil, now: Date()))
         XCTAssertFalse(DeviceIdentity.serialRetryDue(serialKnown: true, lastAttempt: .distantPast, now: Date()))
     }
+
+    func testAMouseThatAnsweredWithoutASerialIsAskedOnlyRarely() {
+        let now = Date()
+        XCTAssertFalse(DeviceIdentity.serialRetryDue(serialKnown: false, serialAbsent: true,
+                                                     lastAttempt: now.addingTimeInterval(-60), now: now,
+                                                     interval: 10, absentInterval: 300))
+        // Not never: a waking mouse can refuse the read or answer with zeros.
+        XCTAssertTrue(DeviceIdentity.serialRetryDue(serialKnown: false, serialAbsent: true,
+                                                    lastAttempt: now.addingTimeInterval(-300), now: now,
+                                                    interval: 10, absentInterval: 300))
+    }
+
+    // MARK: - Reopen
+
+    func testALateSerialThatMatchesTheKeyKeepsTheHandle() {
+        // The remembered serial was right, or a plug event only cleared the in-memory one.
+        XCTAssertFalse(DeviceIdentity.reopensAfterRetry(probed: "SERIAL-A", sessionKey: "SERIAL-A"))
+    }
+
+    func testALateSerialThatChangesTheKeyReopens() {
+        XCTAssertTrue(DeviceIdentity.reopensAfterRetry(probed: "SERIAL-A", sessionKey: "00ea"), "from the PID key")
+        XCTAssertTrue(DeviceIdentity.reopensAfterRetry(probed: "SERIAL-B", sessionKey: "SERIAL-A"), "another unit")
+        XCTAssertTrue(DeviceIdentity.reopensAfterRetry(probed: "SERIAL-A", sessionKey: nil))
+    }
 }

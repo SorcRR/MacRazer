@@ -681,6 +681,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             // A plug event is the only way a different unit can turn up on an interface we
             // already know, so the cached serial is no longer evidence of which mouse it is.
             self.knownSerial = nil
+            self.serialAbsent = nil
             // A cable plugged in may take a few seconds to answer (`scheduleCableRecheck`).
             self.cableRechecksLeft = Self.cableRechecks
             // Not mid-test: the steps must all talk to the device the test started on. Read
@@ -2032,11 +2033,28 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// asked again every `DeviceIdentity.serialRetryInterval`, not on every poll.
     private var lastSerialAttempt: Date?
 
+    /// io-queue only. A link whose mouse answered the serial read without a usable serial
+    /// (refused it, or sent blanks or zeros). Asked again only rarely
+    /// (`DeviceIdentity.absentSerialRetryInterval`), since most such mice never have one.
+    private var serialAbsent: (locationID: Int, pid: Int)?
+
     /// io-queue only. Reads the serial from the open link; remembers it when it answers.
     private func probeSerial(_ d: any RazerTransport) -> String? {
         lastSerialAttempt = Date()
-        guard let serial = (try? d.sendWithRetry(RazerCommands.getSerial())).flatMap({ RazerCommands.parseSerial($0) })
-        else { return nil }
+        let reply: RazerReport
+        do {
+            reply = try d.sendWithRetry(RazerCommands.getSerial())
+        } catch HIDDevice.HIDError.commandFailed, HIDDevice.HIDError.notSupported {
+            serialAbsent = (d.locationID, d.productID)
+            return nil
+        } catch {
+            return nil // no answer: likely asleep, so worth asking again
+        }
+        guard let serial = RazerCommands.parseSerial(reply) else {
+            serialAbsent = (d.locationID, d.productID)
+            return nil
+        }
+        serialAbsent = nil
         knownSerial = (d.locationID, d.productID, serial)
         rememberedSerials.remember(serial, pid: d.productID, locationID: d.locationID)
         return serial
@@ -2045,6 +2063,11 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// io-queue only. Whether the open link's serial is known.
     private func serialKnown(for d: any RazerTransport) -> Bool {
         knownSerial.map { $0.locationID == d.locationID && $0.pid == d.productID } ?? false
+    }
+
+    /// io-queue only. Whether the open link answered the serial read without a usable serial.
+    private func serialAbsent(for d: any RazerTransport) -> Bool {
+        serialAbsent.map { $0.locationID == d.locationID && $0.pid == d.productID } ?? false
     }
 
     /// io-queue only. Decides what a failed battery read does to the open handle.
@@ -2185,12 +2208,19 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     private func ensureDevice() throws -> any RazerTransport {
         if let d = device {
             // A link whose serial read failed stays open while the mouse answers its battery
-            // reads, so the open below never asks again. Ask here instead; once it answers,
-            // reopen so the key, the settings and the onboard remaps follow the real serial.
-            guard DeviceIdentity.serialRetryDue(serialKnown: serialKnown(for: d),
+            // reads, so the open below never asks again. Ask here instead. Not mid-test: the
+            // steps must all talk to the handle identify chose.
+            guard !deviceTestActiveForIO,
+                  DeviceIdentity.serialRetryDue(serialKnown: serialKnown(for: d), serialAbsent: serialAbsent(for: d),
                                                 lastAttempt: lastSerialAttempt, now: Date()),
-                  probeSerial(d) != nil else { return d }
-            d.close()
+                  let serial = probeSerial(d),
+                  // The usual answer is the key already in use (the remembered serial was
+                  // right, or a plug event only cleared `knownSerial`): keep the handle.
+                  DeviceIdentity.reopensAfterRetry(probed: serial, sessionKey: historyKey)
+            else { return d }
+            // Another serial: reopen so the key and the settings follow it. Bluetooth tears down
+            // on its own queue, so wait for it, or the cancel could land on the new connection.
+            if let bluetooth = d as? BluetoothDevice { bluetooth.closeAndWait() } else { d.close() }
             device = nil
             return try ensureDevice()
         }
