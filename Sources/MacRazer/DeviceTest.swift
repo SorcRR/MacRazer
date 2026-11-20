@@ -944,9 +944,11 @@ enum DeviceTestSteps {
 
     /// Two checks a person can see. First every group that answered goes dark for `seconds`
     /// and comes back to its exact brightness. Then, if `restoreEffect` is given, the mouse
-    /// turns red at full brightness for `seconds` and goes back to `restoreEffect` (the app's
-    /// own setting: an effect can't be read back) and to each group's brightness. The
-    /// questions come afterwards, so nothing is held waiting on the person.
+    /// turns red at full brightness for `seconds` and goes back to the effect each zone had,
+    /// read before anything changes (`RazerCommands.effectRestore`), and to each group's
+    /// brightness. A zone that doesn't answer that read, or refuses its own effect back, gets
+    /// its `restoreEffect` report instead (the app's own setting). The questions come
+    /// afterwards, so nothing is held waiting on the person.
     /// `red` and `restoreEffect` hold one report per effect zone (`RazerDevices.effectLeds`).
     /// Red counts as shown when any zone took it, as in `MouseController.writeLighting`.
     static func lighting(_ channel: DeviceProbeChannel, sweep: [DeviceProbe.LEDAnswer]?,
@@ -967,6 +969,14 @@ enum DeviceTestSteps {
             return record
         }
         for (name, _, raw) in answering { data.groups[name] = raw }
+        // Each zone's own effect, read before anything is written.
+        let ownEffect: [UInt8: RazerReport] = Dictionary(
+            (restoreEffect ?? []).compactMap { fallback -> (UInt8, RazerReport)? in
+                let led = fallback.arguments[1]
+                guard let reply = try? channel.send(RazerCommands.getEffect(led: led)),
+                      let own = RazerCommands.effectRestore(from: reply, led: led) else { return nil }
+                return (led, own)
+            }, uniquingKeysWith: { first, _ in first })
 
         // Nothing from here to the restore can leave early (every call is `try?`), so the
         // restore always runs once anything has been changed.
@@ -982,7 +992,12 @@ enum DeviceTestSteps {
             for (_, led, _) in answering { _ = try? DeviceProbe.writeBrightness(channel, raw: 255, led: led) }
             data.redShown = applyLighting(channel, red)
             if data.redShown { wait(seconds) }
-            let effectBack = applyLighting(channel, restoreEffect)
+            let effectBack = restoreEffect.reduce(false) { took, fallback in
+                let own = ownEffect[fallback.arguments[1]]
+                let back = own.flatMap { try? DeviceProbe.applyLighting(channel, $0) } != nil
+                    || (try? DeviceProbe.applyLighting(channel, fallback)) != nil
+                return back || took
+            }
             allBack = restoreBrightness(channel, answering) && effectBack && allBack
         }
         data.restored = allBack
