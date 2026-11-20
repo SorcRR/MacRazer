@@ -27,8 +27,9 @@ expect rough edges until 1.0.
 - **Mission Control and the Space shortcuts open from a button.** A button set to Mission
   Control, Space Left or Space Right did nothing: macOS stores those shortcuts with the Fn
   flag a real arrow key carries, and MacRazer saved the arrow without it. The three are now
-  saved with it, and a recorded shortcut keeps it too. A button already set to one of them
-  needs it chosen again.
+  saved with it, and a recorded shortcut keeps it too. A button set before this update works
+  too, without setting it again: arrows, F-keys and keys like Home and End now always go out
+  with the flags a real press carries.
 
 ## [0.10.0] — 2026-11-19
 
