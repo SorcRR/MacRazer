@@ -1049,6 +1049,15 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         let b = RazerDevices.hasBrightness(pid: dev.productID)
             ? read(RazerCommands.getBrightness(led: RazerDevices.brightnessLed(pid: dev.productID))) { RazerCommands.brightnessPercent(fromRaw: $0.arguments[2]) }
             : nil
+        // On a dock, a brightness read that no longer matches what the mouse on it said
+        // (an answer where it had no lights, or a refusal where it had) means a different
+        // mouse may be there now. Ask again, while the link is up and nothing is waiting.
+        if let docked = RazerDevices.dockedLightingLeds(pid: dev.productID),
+           !linkDead, !self.userWorkPending, (b != nil) != !docked.isEmpty {
+            probeDockedLighting(dev, keepingWhatWasKnown: true)
+            let lit = RazerDevices.hasLighting(pid: dev.productID)
+            publish { self.update(\.deviceHasLighting, lit) }
+        }
         let sleep: Int? = {
             guard RazerDevices.supportsSleepTimeout(pid: dev.productID),
                   let bluetooth = dev as? BluetoothDevice,
@@ -2104,6 +2113,17 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         }
     }
 
+    /// Must be called on `io`. Asks the mouse on a dock which lights it has
+    /// (`RazerDevices.lightingFollowsDockedMouse`). Nothing heard either keeps what was known
+    /// (a later read) or forgets it (a fresh open, which may be another mouse).
+    private func probeDockedLighting(_ dev: any RazerTransport, keepingWhatWasKnown: Bool) {
+        guard RazerDevices.lightingFollowsDockedMouse.contains(dev.productID),
+              let channel = dev as? DeviceProbeChannel else { return }
+        let found = DeviceProbe.dockedLighting(channel)
+        if found == .unknown, keepingWhatWasKnown { return }
+        RazerDevices.learnDockedLighting(found, pid: dev.productID)
+    }
+
     /// Must be called on `io`.
     private func ensureDevice() throws -> any RazerTransport {
         if let d = device { return d }
@@ -2214,6 +2234,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 if !isSameUnitKeyUpgrade { self.lowBatteryNotifier.deviceChanged() }
             }
         }
+        // A dock's lighting is the mouse's on it, so ask that mouse on every open. A mouse
+        // that isn't heard leaves the row's values until a later read hears it.
+        probeDockedLighting(d, keepingWhatWasKnown: false)
         let name = d.productName
         let battery = RazerDevices.hasBattery(pid: pid)
         let bluetooth = d.isBluetooth

@@ -774,6 +774,39 @@ enum RazerDevices {
     /// For tests.
     static func forgetLearnedTransactionIds() { learned.withLock { $0 = [:] } }
 
+    // MARK: - Lighting of the mouse on a dock
+
+    /// Receivers whose lighting is the lighting of the mouse on them. The dock doesn't say
+    /// which mouse that is, so its row can't know. The Mouse Dock Pro's row came from a Naga
+    /// V3 Pro report. A later one with a Basilisk V4 HyperSpeed on it, which has no lights,
+    /// refused every brightness read. So the app asks the mouse (`DeviceProbe.dockedLighting`)
+    /// and what it answers decides `hasLighting` and the brightness zones.
+    static let lightingFollowsDockedMouse: Set<Int> = [0x00A4]
+
+    /// Per pid, the groups the docked mouse answered on. Empty: it has no lights. Missing: not
+    /// asked yet, or nothing heard, so the row's values stand. Per pid, since one dock at a
+    /// time is what anyone has. In memory only: the mouse on the dock can change.
+    private static let dockedLighting = OSAllocatedUnfairLock<[Int: [UInt8]]>(initialState: [:])
+
+    /// Records what the mouse on dock `pid` answered. nil forgets it. Ignored on other pids.
+    static func learnDockedLighting(_ found: DeviceProbe.DockedLighting, pid: Int) {
+        guard lightingFollowsDockedMouse.contains(pid) else { return }
+        dockedLighting.withLock {
+            switch found {
+            case .lit(let leds): $0[pid] = leds
+            case .unlit: $0[pid] = []
+            case .unknown: $0[pid] = nil
+            }
+        }
+    }
+    /// The groups the mouse on dock `pid` answered on, nil when not known.
+    static func dockedLightingLeds(pid: Int?) -> [UInt8]? {
+        guard let pid, lightingFollowsDockedMouse.contains(pid) else { return nil }
+        return dockedLighting.withLock { $0[pid] }
+    }
+    /// For tests.
+    static func forgetDockedLighting() { dockedLighting.withLock { $0 = [:] } }
+
     // MARK: - The online support list
 
     /// Posted on the main thread when the online support list changes what a row still needs.
@@ -932,7 +965,11 @@ enum RazerDevices {
 
     /// Defaults assume a full-featured mouse for unknown models (so we still attempt controls).
     static func hasBattery(pid: Int) -> Bool { info(pid: pid)?.hasBattery ?? true }
-    static func hasLighting(pid: Int) -> Bool { info(pid: pid)?.hasLighting ?? true }
+    /// On a dock, what the mouse on it answered, once known (`dockedLightingLeds`).
+    static func hasLighting(pid: Int) -> Bool {
+        if let docked = dockedLightingLeds(pid: pid) { return !docked.isEmpty }
+        return info(pid: pid)?.hasLighting ?? true
+    }
     /// False for an AA-cell mouse, which has nothing to charge.
     static func canCharge(pid: Int) -> Bool { info(pid: pid)?.canCharge ?? true }
     static func maxDPI(pid: Int) -> Int { info(pid: pid)?.maxDPI ?? 26000 }
@@ -1000,20 +1037,26 @@ enum RazerDevices {
     static func dischargeCurveModelKey(pid: Int) -> String? { info(pid: pid)?.dischargeCurveModelKey }
     /// LED group for brightness get/set. Unknown models fall back to LOGO_LED, the id the
     /// Cobra family answers on.
+    /// On a dock, the first group the mouse on it answered on.
     static func brightnessLed(pid: Int?) -> UInt8 {
-        pid.flatMap { info(pid: $0)?.brightnessLed } ?? Razer.logoLed
+        if let first = dockedLightingLeds(pid: pid)?.first { return first }
+        return pid.flatMap { info(pid: $0)?.brightnessLed } ?? Razer.logoLed
     }
     /// The zones the row confirms for brightness: `brightnessLed`, then `extraBrightnessLeds`.
+    /// On a dock, the first answering group alone. The others are best effort
+    /// (`brightnessLeds`), since a zone can answer a read and still not be a light.
     static func confirmedBrightnessLeds(pid: Int?) -> [UInt8] {
-        [brightnessLed(pid: pid)] + (pid.flatMap { info(pid: $0)?.extraBrightnessLeds } ?? [])
+        if let first = dockedLightingLeds(pid: pid)?.first { return [first] }
+        return [brightnessLed(pid: pid)] + (pid.flatMap { info(pid: $0)?.extraBrightnessLeds } ?? [])
     }
     /// Every LED group a brightness write goes to, `brightnessLed` first. The confirmed
     /// zones, then each effect zone (`effectZones`) not already listed, so the slider dims
     /// every zone an effect lights. ZERO_LED is left out: it is the all-zones id for
-    /// effects, not a zone of its own. Unlisted mice keep their confirmed zones alone.
+    /// effects, not a zone of its own. Unlisted mice keep their confirmed zones alone. On a
+    /// dock, every other group the mouse on it answered on comes before the effect zones.
     static func brightnessLeds(pid: Int?) -> [UInt8] {
         var leds = confirmedBrightnessLeds(pid: pid)
-        for led in effectLeds(pid: pid) where led != Razer.zeroLed && !leds.contains(led) {
+        for led in (dockedLightingLeds(pid: pid) ?? []) + effectLeds(pid: pid) where led != Razer.zeroLed && !leds.contains(led) {
             leds.append(led)
         }
         return leds

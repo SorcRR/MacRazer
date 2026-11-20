@@ -488,7 +488,12 @@ enum DeviceTestSteps {
             // Not on a light that takes effects but has no brightness (the Pro Click V2
             // Vertical Edition): it answers no brightness read, and that says nothing about
             // the id.
-            if registry.hasLighting, registry.hasBrightness,
+            // Nor on a dock whose mouse answers no lighting read at all: its lighting is that
+            // mouse's, and one without lights is the right answer (a Basilisk V4 HyperSpeed
+            // on the Mouse Dock Pro). An answer on another id still fails.
+            let dockedMouseUnlit = RazerDevices.lightingFollowsDockedMouse.contains(registry.pid)
+                && !data.lightingAttempts.contains(where: \.answered)
+            if registry.hasLighting, registry.hasBrightness, !dockedMouseUnlit,
                !data.lightingAttempts.contains(where: { $0.id == registry.matrixTransactionId && $0.answered }) {
                 record.outcome = .failed
             }

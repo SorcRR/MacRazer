@@ -179,6 +179,57 @@ enum DeviceProbe {
         }
     }
 
+    /// What a dock's brightness reads say about the mouse on it (`RazerDevices.lightingFollowsDockedMouse`).
+    enum DockedLighting: Equatable, Sendable {
+        /// These groups answered, in `dockedLightingLeds` order.
+        case lit([UInt8])
+        /// The mouse heard the reads and refused them all: it has no lights.
+        case unlit
+        /// Nothing was heard, so nothing is known. A mouse asleep on the dock does this.
+        case unknown
+    }
+
+    /// The groups the dock probe asks, ZERO last. The sweep's four plus the side strips and
+    /// underglow, since the dock may carry a mouse lit only there. ZERO is the all-zones id,
+    /// so it counts only when nothing else answers.
+    static let dockedLightingLeds: [UInt8] = [
+        Razer.logoLed, Razer.scrollLed, Razer.backlightLed,
+        Razer.leftSideLed, Razer.rightSideLed, Razer.underglowLed, Razer.zeroLed,
+    ]
+
+    /// Asks the mouse on a dock for each group's brightness, once each, as the sweep does.
+    /// Stops at the first timeout while nothing has been heard yet, so a sleeping mouse costs
+    /// one timeout, not seven.
+    static func dockedLighting(_ channel: DeviceProbeChannel) -> DockedLighting {
+        var answers: [(led: UInt8, result: Result<RazerReport, Error>)] = []
+        for led in dockedLightingLeds {
+            let result = Result { try channel.send(RazerCommands.getBrightness(led: led)) }
+            answers.append((led, result))
+            if case .failure(let error) = result, !isRefusal(error),
+               !answers.contains(where: { (try? $0.result.get()) != nil || isHeardRefusal($0.result) }) {
+                break
+            }
+        }
+        return dockedLighting(answers)
+    }
+
+    /// The rule, apart from the reads. Any answer means lit. A refusal with no answer means
+    /// unlit: the mouse heard and said no. A timeout on one group only means that group is
+    /// silent, but timeouts alone say nothing.
+    static func dockedLighting(_ answers: [(led: UInt8, result: Result<RazerReport, Error>)]) -> DockedLighting {
+        let lit = answers.compactMap { answer -> UInt8? in
+            guard let reply = try? answer.result.get(), reply.status == RazerStatus.successful.rawValue else { return nil }
+            return answer.led
+        }
+        if !lit.isEmpty { return .lit(lit) }
+        return answers.contains(where: { isHeardRefusal($0.result) }) ? .unlit : .unknown
+    }
+
+    private static func isHeardRefusal(_ result: Result<RazerReport, Error>) -> Bool {
+        if case .failure(let error) = result { return isRefusal(error) }
+        return false
+    }
+
     /// Writes a raw 0-255 brightness to one group and reads it back. Unlike the sweep, a
     /// refusal here is a real failure, so it throws.
     static func writeBrightness(_ channel: DeviceProbeChannel, raw: UInt8, led: UInt8) throws -> WriteCheck<UInt8> {
