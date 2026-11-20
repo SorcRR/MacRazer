@@ -491,10 +491,11 @@ enum DeviceTestSteps {
             // Nor on a dock whose mouse answers no lighting read at all: its lighting is that
             // mouse's, and one without lights is the right answer (a Basilisk V4 HyperSpeed
             // on the Mouse Dock Pro). It must have heard and refused: a mouse asleep on the
-            // dock times out on every id and still fails. An answer on another id fails too.
+            // dock times out on every id and still fails, and so does one that refuses some
+            // other id while its own stays silent. An answer on another id fails too.
             let dockedMouseUnlit = RazerDevices.lightingFollowsDockedMouse.contains(registry.pid)
                 && !data.lightingAttempts.contains(where: \.answered)
-                && data.lightingAttempts.contains(where: \.refused)
+                && data.lightingAttempts.contains(where: { $0.id == registry.matrixTransactionId && $0.refused })
             if registry.hasLighting, registry.hasBrightness, !dockedMouseUnlit,
                !data.lightingAttempts.contains(where: { $0.id == registry.matrixTransactionId && $0.answered }) {
                 record.outcome = .failed

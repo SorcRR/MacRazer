@@ -139,6 +139,16 @@ final class DockedLightingTests: XCTestCase {
         XCTAssertEqual(record.outcome, .failed)
     }
 
+    func testIdentifyStillFailsADockWhoseOwnIdIsSilent() {
+        // Another id refuses, but 0x1F, the one the row lights with, times out.
+        let mouse = FakeMouse()
+        mouse.acceptedIds = [0x0F: [0x3F]]
+        mouse.refuse = { $0.commandClass == 0x0F } // reached only by 0x3F
+        let (record, _) = DeviceTestSteps.identify(mouse, registry: RazerDevices.info(pid: dock))
+        XCTAssertEqual(record.outcome, .failed)
+        XCTAssertNil(record.data?.lightingAttempts.first(where: \.answered))
+    }
+
     func testTheProbeGivesUpWhenATapIsWaiting() {
         let dock = Dock()
         dock.otherwise = .refuse
