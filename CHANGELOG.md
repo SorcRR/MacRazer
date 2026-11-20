@@ -14,6 +14,8 @@ expect rough edges until 1.0.
   - **Mamba Elite:** DPI and polling work. Lighting waits on a test.
   - **Basilisk Essential:** DPI, polling and lighting work.
   - **Naga Left Handed Edition:** DPI, polling and lighting all passed.
+  - **Lancehead Tournament Edition:** lighting works now, side strips included, so the
+    popover shows its lighting controls.
   - **Viper V4 Pro on the cable:** polling confirmed, up to 8000 Hz. Over the dongle the rate
     doesn't change yet, so the popover hides the picker there.
 - **Cynosa Lite tested.** It lost its UNTESTED tag after passing the lighting test.
