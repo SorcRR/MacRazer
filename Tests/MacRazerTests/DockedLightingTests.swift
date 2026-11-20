@@ -73,6 +73,12 @@ final class DockedLightingTests: XCTestCase {
         XCTAssertEqual(DeviceProbe.dockedLighting(channel), .lit([Razer.backlightLed]))
     }
 
+    func testAStaleStatusIsNeitherAnAnswerNorARefusal() {
+        var stale = RazerCommands.getBrightness(led: Razer.logoLed)
+        stale.status = 0x00
+        XCTAssertEqual(DeviceProbe.dockedLighting([(Razer.logoLed, .success(stale))]), .unknown)
+    }
+
     // MARK: What the registry hands out
 
     func testTheRowStandsUntilTheMouseHasAnswered() {

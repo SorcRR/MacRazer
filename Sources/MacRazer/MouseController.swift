@@ -1049,11 +1049,12 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         let b = RazerDevices.hasBrightness(pid: dev.productID)
             ? read(RazerCommands.getBrightness(led: RazerDevices.brightnessLed(pid: dev.productID))) { RazerCommands.brightnessPercent(fromRaw: $0.arguments[2]) }
             : nil
-        // On a dock, a brightness read that no longer matches what the mouse on it said
-        // (an answer where it had no lights, or a refusal where it had) means a different
-        // mouse may be there now. Ask again, while the link is up and nothing is waiting.
-        if let docked = RazerDevices.dockedLightingLeds(pid: dev.productID),
-           !linkDead, !self.userWorkPending, (b != nil) != !docked.isEmpty {
+        // On a dock, ask the mouse on it again when nothing is known yet (it was silent when
+        // the dock opened), or when this read no longer matches what it said: an answer
+        // where it had no lights, or a refusal where it had. A different mouse may be there
+        // now. Only while the link is up, so this read was heard, and nothing is waiting.
+        if RazerDevices.lightingFollowsDockedMouse.contains(dev.productID), !linkDead, !self.userWorkPending,
+           RazerDevices.dockedLightingLeds(pid: dev.productID).map({ (b != nil) != !$0.isEmpty }) ?? true {
             probeDockedLighting(dev, keepingWhatWasKnown: true)
             let lit = RazerDevices.hasLighting(pid: dev.productID)
             publish { self.update(\.deviceHasLighting, lit) }

@@ -206,7 +206,7 @@ enum DeviceProbe {
             let result = Result { try channel.send(RazerCommands.getBrightness(led: led)) }
             answers.append((led, result))
             if case .failure(let error) = result, !isRefusal(error),
-               !answers.contains(where: { (try? $0.result.get()) != nil || isHeardRefusal($0.result) }) {
+               !answers.contains(where: { isAnswer($0.result) || isHeardRefusal($0.result) }) {
                 break
             }
         }
@@ -217,12 +217,13 @@ enum DeviceProbe {
     /// unlit: the mouse heard and said no. A timeout on one group only means that group is
     /// silent, but timeouts alone say nothing.
     static func dockedLighting(_ answers: [(led: UInt8, result: Result<RazerReport, Error>)]) -> DockedLighting {
-        let lit = answers.compactMap { answer -> UInt8? in
-            guard let reply = try? answer.result.get(), reply.status == RazerStatus.successful.rawValue else { return nil }
-            return answer.led
-        }
+        let lit = answers.filter { isAnswer($0.result) }.map(\.led)
         if !lit.isEmpty { return .lit(lit) }
         return answers.contains(where: { isHeardRefusal($0.result) }) ? .unlit : .unknown
+    }
+
+    private static func isAnswer(_ result: Result<RazerReport, Error>) -> Bool {
+        (try? result.get())?.status == RazerStatus.successful.rawValue
     }
 
     private static func isHeardRefusal(_ result: Result<RazerReport, Error>) -> Bool {
