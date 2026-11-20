@@ -277,4 +277,30 @@ final class VersionCompareTests: XCTestCase {
         XCTAssertFalse(VersionCompare.isNewer("0.2.0-beta", than: "0.2.0"))
         XCTAssertTrue(VersionCompare.isNewer("0.3.0-beta", than: "0.2.9"))
     }
+
+    // MARK: - Button function table
+
+    func testGetButtonFunctionWireLayout() {
+        let report = RazerCommands.getButtonFunction(id: 0x04)
+        XCTAssertEqual(report.commandClass, 0x02)
+        XCTAssertEqual(report.commandId, 0x8C)
+        XCTAssertEqual(report.dataSize, 0x0A)
+        XCTAssertEqual(report.arguments[0], Razer.varstore)
+        XCTAssertEqual(report.arguments[1], 0x04)
+        XCTAssertEqual(report.arguments[2], 0)
+    }
+
+    func testSetButtonFunctionWireLayout() {
+        let report = RazerCommands.setButtonFunction(id: 0x04, block: [1, 1, 4, 0, 0, 0, 0])
+        XCTAssertEqual(report.commandClass, 0x02)
+        XCTAssertEqual(report.commandId, 0x0C)
+        XCTAssertEqual(report.dataSize, 0x0A)
+        XCTAssertEqual(Array(report.arguments[3..<10]), [1, 1, 4, 0, 0, 0, 0])
+    }
+
+    func testSetButtonFunctionKeepsOnlySevenBytes() {
+        let report = RazerCommands.setButtonFunction(id: 0x05, block: [1, 1, 5, 0, 0, 0, 0, 9, 9])
+        XCTAssertEqual(Array(report.arguments[3..<10]), [1, 1, 5, 0, 0, 0, 0])
+        XCTAssertEqual(report.arguments[10], 0)
+    }
 }

@@ -7,6 +7,11 @@ expect rough edges until 1.0.
 ## [Unreleased]
 
 ### Added
+- **Reset side buttons over USB.** The Viper Ultimate (wireless dongle and cable) joins the
+  Cobra HyperSpeed's Bluetooth reset: when Synapse has put Ctrl+arrows or a macro on Back and
+  Forward, Configure Buttons now says so and offers to write the factory blocks back, with a
+  read-back. The USB write lands in the active profile only, so the notice says that rather
+  than counting slots.
 - **More mice from test reports.**
   - **Polling confirmed with the newer command** on the Viper 8KHz, both Basilisk V4 Pro
     links and the Mouse Dock Pro, which goes up to 8000 Hz.

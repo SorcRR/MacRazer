@@ -120,6 +120,10 @@ struct RazerDeviceInfo {
     /// put them back when something (Razer Synapse) saved other functions there
     /// (`SideButtonReset`). Off for any mouse whose remaps MacRazer writes to that table itself.
     var detectsOnboardSideButtonRemaps = false
+    /// The same reset over USB (read class 0x02/0x8C, write class 0x02/0x0C). Only models whose
+    /// table answered both and whose write was confirmed by read-back; the write lands in the
+    /// active profile only, so `SideButtonReset` never offers it where slot handling matters.
+    var resetsOnboardSideButtonsOverUSB = false
     var supportsStageEditing = false
     /// Read brightness back after setting it, and treat a mismatch as a failed write.
     var verifiesBrightnessWrite = false
@@ -325,10 +329,10 @@ enum RazerDevices {
         // battery, DPI and polling, and LOGO dimmed, but the owner saw no red. Its zone effect
         // read answers on LOGO (0x04) only, not on ZERO_LED, where the effect goes. One report
         // against the earlier passes, so the row stays as it is.
-        .init(pid: 0x007b, name: "Razer Viper Ultimate (Wireless)", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 20000, transactionId: 0xff, matrixTransactionId: 0x3f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
+        .init(pid: 0x007b, name: "Razer Viper Ultimate (Wireless)", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 20000, transactionId: 0xff, matrixTransactionId: 0x3f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, resetsOnboardSideButtonsOverUSB: true),
         // Viper Ultimate (Wired): an in-app report over the cable passed battery, DPI, polling
         // and lighting with the same ids as the wireless side.
-        .init(pid: 0x007a, name: "Razer Viper Ultimate (Wired)", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 20000, transactionId: 0xff, matrixTransactionId: 0x3f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
+        .init(pid: 0x007a, name: "Razer Viper Ultimate (Wired)", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 20000, transactionId: 0xff, matrixTransactionId: 0x3f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, resetsOnboardSideButtonsOverUSB: true),
         // Pro Click V2 Vertical Edition on the cable (#35, from k6n7frbrtc-hub): battery and a
         // static color (status 0x02, the mouse visibly changed) worked with 0x1f. DPI, polling
         // and brightness weren't tried here. OpenRazer drives its brightness, static, spectrum
@@ -976,6 +980,7 @@ enum RazerDevices {
     static func supportsDpiButtonBinding(pid: Int) -> Bool { info(pid: pid)?.supportsDpiButtonBinding ?? false }
     static func supportsSleepTimeout(pid: Int) -> Bool { info(pid: pid)?.supportsSleepTimeout ?? false }
     static func detectsOnboardSideButtonRemaps(pid: Int) -> Bool { info(pid: pid)?.detectsOnboardSideButtonRemaps ?? false }
+    static func resetsOnboardSideButtonsOverUSB(pid: Int) -> Bool { info(pid: pid)?.resetsOnboardSideButtonsOverUSB ?? false }
     static func supportsStageEditing(pid: Int) -> Bool { info(pid: pid)?.supportsStageEditing ?? false }
     /// Editing a stage over the dongle or cable: any USB row whose DPI is verified. The stage
     /// write itself isn't covered by the device test yet, so the controller reads the table

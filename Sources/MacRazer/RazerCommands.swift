@@ -124,6 +124,25 @@ enum RazerCommands {
         "v\(resp.arguments[0]).\(resp.arguments[1])"
     }
 
+    /// One entry of the button-function table, base layer. Read: class 0x02, id 0x8C,
+    /// args [VARSTORE, id, layer 0]; the reply's args 3–9 are the 7-byte block.
+    static func getButtonFunction(id: UInt8) -> RazerReport {
+        var r = RazerReport(commandClass: 0x02, commandId: 0x8C, dataSize: 0x0A)
+        r.arguments[0] = Razer.varstore
+        r.arguments[1] = id
+        return r
+    }
+
+    /// The same entry, written. Class 0x02, id 0x0C; args 3–9 the block. Nothing else in the
+    /// table, and no other profile slot, is touched.
+    static func setButtonFunction(id: UInt8, block: [UInt8]) -> RazerReport {
+        var r = RazerReport(commandClass: 0x02, commandId: 0x0C, dataSize: 0x0A)
+        r.arguments[0] = Razer.varstore
+        r.arguments[1] = id
+        for (i, byte) in block.prefix(7).enumerated() { r.arguments[3 + i] = byte }
+        return r
+    }
+
     /// razer_chroma_misc_get_charging_status() — command_class 0x07, command_id 0x84
     /// (confirmed against razerchromacommon.c:1067).
     static func getChargingStatus() -> RazerReport {
