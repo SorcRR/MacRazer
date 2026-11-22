@@ -182,6 +182,10 @@ struct DeviceReport: Codable, Equatable {
         var dimmed: Bool?
         var turnedRed: Bool?
         var restored: Bool = false
+
+        /// Something was shown, so there are questions to ask. Red alone on a light without
+        /// brightness (`colourOnly`).
+        var anyShown: Bool { dimShown || redShown }
     }
 
     struct ButtonsData: Codable, Equatable {
@@ -951,9 +955,14 @@ enum DeviceTestSteps {
     /// afterwards, so nothing is held waiting on the person.
     /// `red` and `restoreEffect` hold one report per effect zone (`RazerDevices.effectLeds`).
     /// Red counts as shown when any zone took it, as in `MouseController.writeLighting`.
+    /// `colourOnly` is for a light that takes effects but has no brightness
+    /// (`RazerDeviceInfo.hasBrightness`): no group answers the sweep, so there is nothing to
+    /// dim, and the red check runs alone. Without it a sweep nobody answered means no lights,
+    /// and nothing is sent.
     static func lighting(_ channel: DeviceProbeChannel, sweep: [DeviceProbe.LEDAnswer]?,
                          restoreEffect: [RazerReport]?,
                          red: [RazerReport] = [RazerCommands.setStatic(rgb: RGB(r: 255, g: 0, b: 0))],
+                         colourOnly: Bool = false,
                          seconds: Double,
                          wait: (Double) -> Void = { Thread.sleep(forTimeInterval: $0) })
         -> DeviceReport.StepRecord<DeviceReport.LightingData> {
@@ -964,6 +973,18 @@ enum DeviceTestSteps {
             return (answer.name, answer.led, reading.value)
         }
         guard !answering.isEmpty else {
+            // Red alone, then back to the app's setting. A light that refuses red is still
+            // "not on this mouse", as before.
+            if colourOnly, let restoreEffect {
+                data.redShown = applyLighting(channel, red)
+                if data.redShown {
+                    wait(seconds)
+                    data.restored = applyLighting(channel, restoreEffect)
+                    record.outcome = .skipped
+                    record.data = data
+                    return record
+                }
+            }
             record.outcome = .notSupported
             record.data = data
             return record
@@ -1028,11 +1049,11 @@ enum DeviceTestSteps {
     /// untested, which is never a confirmation.
     static func answered(dimmed: Bool?, turnedRed: Bool?,
                          _ record: inout DeviceReport.StepRecord<DeviceReport.LightingData>) {
-        guard var data = record.data, data.dimShown else { return }
-        data.dimmed = dimmed
+        guard var data = record.data, data.anyShown else { return }
+        data.dimmed = data.dimShown ? dimmed : nil
         data.turnedRed = data.redShown ? turnedRed : nil
         record.data = data
-        let answers = data.redShown ? [dimmed, turnedRed] : [dimmed]
+        let answers = (data.dimShown ? [dimmed] : []) + (data.redShown ? [turnedRed] : [])
         if answers.contains(false) { record.outcome = .failed }
         else if answers.contains(where: { $0 == nil }) { record.outcome = .skipped }
         else { record.outcome = data.restored ? .passed : .failed }

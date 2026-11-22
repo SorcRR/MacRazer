@@ -23,6 +23,9 @@ expect rough edges until 1.0.
   tested. Before, the app took it for a mouse.
 
 ### Fixed
+- **The device test can now confirm lighting on mice without brightness.** The Pro Click V2
+  Vertical Edition takes colours but has no brightness to dim. The test used to stop there and
+  say it had no lights. Now it turns the mouse red and asks if you saw it.
 - **Test This Mouse puts your own colour back.** The lighting test used to end on the app's
   colour, so a mouse set to red elsewhere came back in MacRazer's colour. It now reads each
   zone's effect first and puts that back. A zone that doesn't say still gets the app's.

@@ -624,16 +624,24 @@ final class DeviceTestModel: ObservableObject {
         await run(\.polling) { DeviceTestSteps.polling($0, usesPollingRate2: rate2) }
     }
 
+    /// A light with effects but no brightness (the Pro Click V2 Vertical Edition) gets the
+    /// red check alone: there is nothing to dim.
+    var colourOnlyLighting: Bool {
+        testedPID.map { RazerDevices.info(pid: $0)?.hasLighting == true && !RazerDevices.hasBrightness(pid: $0) } ?? false
+    }
+
     func runLighting() async {
         let sweep = lightSweep
         let restore = controller.lightingRestoreReports(pid: testedPID)
         // Red on every zone the tested mouse takes effects on, as the popover sends them.
         let red = RazerCommands.effect(.staticColor, color: RGB(r: 255, g: 0, b: 0),
                                        leds: RazerDevices.effectLeds(pid: testedPID))
+        let colourOnly = colourOnlyLighting
         dimmed = nil
         turnedRed = nil
         await run(\.lighting) {
-            DeviceTestSteps.lighting($0, sweep: sweep, restoreEffect: restore, red: red, seconds: 3)
+            DeviceTestSteps.lighting($0, sweep: sweep, restoreEffect: restore, red: red,
+                                     colourOnly: colourOnly, seconds: 3)
         }
     }
 
@@ -646,8 +654,8 @@ final class DeviceTestModel: ObservableObject {
     /// The lighting step can move on once every check that ran has an answer, "not sure"
     /// included.
     var lightingAnswered: Bool {
-        guard let data = report?.lighting.data, data.dimShown else { return true }
-        return dimmed != nil && (!data.redShown || turnedRed != nil)
+        guard let data = report?.lighting.data, data.anyShown else { return true }
+        return (!data.dimShown || dimmed != nil) && (!data.redShown || turnedRed != nil)
     }
 
     // MARK: - Buttons

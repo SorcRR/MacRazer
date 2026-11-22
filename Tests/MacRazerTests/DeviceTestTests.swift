@@ -366,6 +366,58 @@ final class DeviceTestTests: XCTestCase {
         XCTAssertEqual(mouse.calls.count, before, "no writes at all")
     }
 
+    /// The Pro Click V2 Vertical Edition: effects, but no brightness to read or dim. The red
+    /// check runs alone, so its lighting can be confirmed.
+    func testAColourOnlyLightGetsTheRedCheckAlone() {
+        let mouse = FakeMouse()
+        mouse.refuse = { $0.commandClass == 0x0F && ($0.commandId == 0x84 || $0.commandId == 0x04) }
+        let s = sweep(mouse)
+        let red = [RazerCommands.setStatic(rgb: RGB(r: 255, g: 0, b: 0))]
+        let back = [RazerCommands.setStatic(rgb: RGB(r: 0x44, g: 0xD6, b: 0x2C))]
+        var waits: [Double] = []
+        var record = DeviceTestSteps.lighting(mouse, sweep: s, restoreEffect: back, red: red, colourOnly: true,
+                                              seconds: 3, wait: { waits.append($0) })
+        XCTAssertEqual(waits, [3], "red only")
+        XCTAssertEqual(record.data?.dimShown, false)
+        XCTAssertEqual(record.data?.redShown, true)
+        XCTAssertEqual(record.data?.restored, true)
+        XCTAssertTrue(record.data?.anyShown == true)
+        XCTAssertEqual(record.outcome, .skipped, "undecided until the person answers")
+        XCTAssertFalse(mouse.sent.contains { $0.commandClass == 0x0F && $0.commandId == 0x04 }, "no brightness writes")
+        let effects = mouse.sent.filter { $0.commandClass == 0x0F && $0.commandId == 0x02 }
+        XCTAssertEqual(effects.count, 2, "red, then the app's setting back")
+
+        DeviceTestSteps.answered(dimmed: nil, turnedRed: true, &record)
+        XCTAssertEqual(record.outcome, .passed, "the dim question doesn't apply")
+        XCTAssertNil(record.data?.dimmed)
+        DeviceTestSteps.answered(dimmed: nil, turnedRed: false, &record)
+        XCTAssertEqual(record.outcome, .failed)
+        DeviceTestSteps.answered(dimmed: nil, turnedRed: nil, &record)
+        XCTAssertEqual(record.outcome, .skipped)
+    }
+
+    func testAColourOnlyLightThatRefusesRedIsNotOnTheMouse() {
+        let mouse = FakeMouse()
+        mouse.refuse = { $0.commandClass == 0x0F }
+        let s = sweep(mouse)
+        let record = DeviceTestSteps.lighting(mouse, sweep: s, restoreEffect: [RazerCommands.setNone()], colourOnly: true,
+                                              seconds: 3, wait: { _ in XCTFail("nothing to show") })
+        XCTAssertEqual(record.outcome, .notSupported)
+        XCTAssertEqual(record.data?.redShown, false)
+    }
+
+    func testColourOnlyNeedsTheAppSettingToGoBackTo() {
+        // The CLI has no setting to restore, so it doesn't change the colour.
+        let mouse = FakeMouse()
+        mouse.refuse = { $0.commandClass == 0x0F && $0.commandId == 0x84 }
+        let s = sweep(mouse)
+        let before = mouse.calls.count
+        let record = DeviceTestSteps.lighting(mouse, sweep: s, restoreEffect: nil, colourOnly: true,
+                                              seconds: 3, wait: { _ in XCTFail("nothing to show") })
+        XCTAssertEqual(record.outcome, .notSupported)
+        XCTAssertEqual(mouse.calls.count, before, "no writes at all")
+    }
+
     func testAYesDoesNotPassLightingThatWasNotPutBack() {
         let mouse = logoOnlyMouse()
         let s = sweep(mouse)
