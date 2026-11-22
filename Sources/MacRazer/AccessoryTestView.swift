@@ -67,9 +67,12 @@ struct AccessoryTestView: View {
             if model.running {
                 reportRunning(model.canShowRed ? "Watch your \(model.noun): dark, then red…" : "Watch your \(model.noun): dark for a moment…")
             } else if let record = model.report?.lighting {
-                if let data = record.data, data.dimShown {
-                    reportQuestion("Did the lights go dark for a moment?", $model.dimmed)
-                    if data.redShown { reportQuestion("Then did they turn red?", $model.turnedRed) }
+                if let data = record.data, data.anyShown {
+                    if data.dimShown { reportQuestion("Did the lights go dark for a moment?", $model.dimmed) }
+                    if data.redShown {
+                        reportQuestion(data.dimShown ? "Then did they turn red?" : "Did the lights turn red for a moment?",
+                                       $model.turnedRed)
+                    }
                     reportNote(data.restored
                                ? "Everything has been put back."
                                : "Something couldn't be put back. Check its lighting in the popover.")

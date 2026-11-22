@@ -972,14 +972,24 @@ enum DeviceTestSteps {
             guard let reading = try? answer.result.get() else { return nil }
             return (answer.name, answer.led, reading.value)
         }
+        // Each zone's own effect, read before anything is written.
+        func readOwnEffects() -> [UInt8: RazerReport] {
+            Dictionary((restoreEffect ?? []).compactMap { fallback -> (UInt8, RazerReport)? in
+                let led = fallback.arguments[1]
+                guard let reply = try? channel.send(RazerCommands.getEffect(led: led)),
+                      let own = RazerCommands.effectRestore(from: reply, led: led) else { return nil }
+                return (led, own)
+            }, uniquingKeysWith: { first, _ in first })
+        }
         guard !answering.isEmpty else {
-            // Red alone, then back to the app's setting. A light that refuses red is still
-            // "not on this mouse", as before.
+            // Red alone, then back to each zone's own effect. A light that refuses red is
+            // still "not on this mouse", as before.
             if colourOnly, let restoreEffect {
+                let ownEffect = readOwnEffects()
                 data.redShown = applyLighting(channel, red)
                 if data.redShown {
                     wait(seconds)
-                    data.restored = applyLighting(channel, restoreEffect)
+                    data.restored = restoreEffects(channel, restoreEffect, own: ownEffect)
                     record.outcome = .skipped
                     record.data = data
                     return record
@@ -990,14 +1000,7 @@ enum DeviceTestSteps {
             return record
         }
         for (name, _, raw) in answering { data.groups[name] = raw }
-        // Each zone's own effect, read before anything is written.
-        let ownEffect: [UInt8: RazerReport] = Dictionary(
-            (restoreEffect ?? []).compactMap { fallback -> (UInt8, RazerReport)? in
-                let led = fallback.arguments[1]
-                guard let reply = try? channel.send(RazerCommands.getEffect(led: led)),
-                      let own = RazerCommands.effectRestore(from: reply, led: led) else { return nil }
-                return (led, own)
-            }, uniquingKeysWith: { first, _ in first })
+        let ownEffect = readOwnEffects()
 
         // Nothing from here to the restore can leave early (every call is `try?`), so the
         // restore always runs once anything has been changed.
@@ -1013,12 +1016,7 @@ enum DeviceTestSteps {
             for (_, led, _) in answering { _ = try? DeviceProbe.writeBrightness(channel, raw: 255, led: led) }
             data.redShown = applyLighting(channel, red)
             if data.redShown { wait(seconds) }
-            let effectBack = restoreEffect.reduce(false) { took, fallback in
-                let own = ownEffect[fallback.arguments[1]]
-                let back = own.flatMap { try? DeviceProbe.applyLighting(channel, $0) } != nil
-                    || (try? DeviceProbe.applyLighting(channel, fallback)) != nil
-                return back || took
-            }
+            let effectBack = restoreEffects(channel, restoreEffect, own: ownEffect)
             allBack = restoreBrightness(channel, answering) && effectBack && allBack
         }
         data.restored = allBack
@@ -1027,6 +1025,17 @@ enum DeviceTestSteps {
         record.outcome = data.dimShown ? .skipped : .failed
         record.data = data
         return record
+    }
+
+    /// Puts each zone's own effect back, or the app's setting where the zone didn't say or
+    /// refuses its own. True when any zone took one.
+    private static func restoreEffects(_ channel: DeviceProbeChannel, _ fallbacks: [RazerReport],
+                                       own: [UInt8: RazerReport]) -> Bool {
+        fallbacks.reduce(false) { took, fallback in
+            let back = own[fallback.arguments[1]].flatMap { try? DeviceProbe.applyLighting(channel, $0) } != nil
+                || (try? DeviceProbe.applyLighting(channel, fallback)) != nil
+            return back || took
+        }
     }
 
     /// Sends every zone's report, all of them even after a refusal. True when any took it.
