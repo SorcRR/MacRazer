@@ -16,6 +16,13 @@ expect rough edges until 1.0.
   - **Naga Left Handed Edition:** DPI, polling and lighting all passed.
   - **Viper V4 Pro on the cable:** polling confirmed, up to 8000 Hz. Over the dongle the rate
     doesn't change yet, so the popover hides the picker there.
+  - **Naga Classic Edition:** DPI, polling and lighting all passed. Thanks to spellbook.
+  - **DeathAdder Elite:** lighting works now, so it's fully supported.
+  - **DeathAdder V3** and the **Pro Click V2 Vertical Edition on its cable:** polling
+    confirmed.
+  - **DeathAdder Essential White Edition:** DPI and polling work, and its white light dims.
+  - **Basilisk V3 Pro 35K Phantom Green Edition on its cable:** battery, DPI and polling
+    work. Lighting waits on a test.
 - **Cynosa Lite tested.** It lost its UNTESTED tag after passing the lighting test.
 - **Joro keyboard.** It gets its own lighting card, with brightness and a static colour
   tested. Before, the app took it for a mouse.

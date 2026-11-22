@@ -124,6 +124,7 @@ says so.
 | Razer Naga V3 Pro (Wired) | Battery, DPI, DPI stages, polling, lighting, brightness | [@chris-agnew](https://github.com/chris-agnew) |
 | Razer Naga Trinity | DPI, DPI stages, polling, lighting, brightness | anonymous report |
 | Razer Naga Left Handed Edition | DPI, DPI stages, polling, lighting, brightness | anonymous report |
+| Razer Naga Classic Edition | DPI, DPI stages, polling, lighting, brightness | spellbook |
 | Razer Viper V3 HyperSpeed | Battery, DPI, DPI stages, polling | anonymous report |
 | Razer Basilisk V3 | DPI, DPI stages, polling, lighting, brightness | SuperSpacer54376 |
 | Razer Basilisk V3 Pro (wired + wireless) | Battery, DPI, DPI stages, polling, lighting, brightness | anonymous reports |
@@ -132,6 +133,8 @@ says so.
 | Razer DeathAdder V2 X HyperSpeed | Battery, DPI, DPI stages, polling (it has no lighting) | anonymous report |
 | Razer Basilisk V2 | DPI, DPI stages, polling, lighting, brightness | anonymous report |
 | Razer DeathAdder Essential | DPI, DPI stages, polling, brightness (its one light is green only) | anonymous report |
+| Razer DeathAdder Elite | DPI, polling, lighting, brightness | anonymous reports |
+| Razer DeathAdder V3 | DPI, DPI stages, polling (it has no battery or lighting) | anonymous reports |
 | Razer Naga V2 Pro (Wired) | Battery, DPI, DPI stages, polling, lighting, brightness | anonymous report |
 | Razer Pro Click V2 (wired + wireless) | Battery, DPI, DPI stages, polling | anonymous reports |
 | Razer Pro Click (wired + wireless) | Battery, DPI, DPI stages, polling (it has no lighting) | anonymous reports |
@@ -157,7 +160,6 @@ says so.
 | Razer Basilisk V4 Pro (wired + wireless) | Battery, DPI, DPI stages, polling up to 8000 Hz, lighting, brightness | by_hlz, Maude and anonymous reports |
 | Razer Mouse Dock Pro (with a Naga V3 Pro or Basilisk V4 HyperSpeed) | Battery, DPI, polling up to 8000 Hz; lighting and brightness with a Naga V3 Pro (the dock lights only what the mouse has) | maesta2, Kartas and an anonymous report |
 | Razer Mouse Dock V2 Pro (with a Basilisk V4 Pro) | Battery, DPI, DPI stages, lighting, brightness; polling not confirmed yet | cparedes |
-| Razer DeathAdder V3 | DPI, DPI stages; polling not confirmed yet (it has no battery or lighting) | anonymous reports |
 | Razer HyperFlux V2 (with the mouse on it) | Battery, DPI, DPI stages, polling; lighting not confirmed yet | anonymous report |
 | Razer Naga Chroma | DPI, polling; lighting not working yet | anonymous report |
 | Razer Naga Hex V2 | DPI, polling; lighting not working yet | foivos92 |
@@ -168,14 +170,14 @@ says so.
 | Razer Lancehead Tournament Edition | DPI, polling; lighting not confirmed yet | anonymous report |
 | Razer DeathAdder V2 Mini | DPI, DPI stages, polling; lighting not confirmed yet | anonymous reports |
 | Razer Basilisk V3 Pro 35K (wired + wireless) | Battery, DPI, DPI stages, polling; lighting not confirmed yet | anonymous reports |
-| Razer DeathAdder Elite | DPI, polling; lighting not tried yet | anonymous report |
+| Razer Basilisk V3 Pro 35K Phantom Green Edition (Wired) | Battery, DPI, DPI stages, polling; lighting not tried yet | anonymous report |
 | Razer Mamba Elite | DPI, DPI stages, polling; lighting not tried yet | anonymous report |
 | Razer Basilisk Essential | DPI, polling, lighting, brightness; its DPI button keeps its own stages | anonymous reports |
 | Razer Basilisk V3 Pro 35K (Bluetooth) | Battery; DPI and lighting not tried yet | anonymous reports |
 | Razer Basilisk V4 HyperSpeed (Bluetooth) | Battery; DPI and lighting not tried yet | anonymous report |
-| Razer Pro Click V2 Vertical Edition (wired + wireless) | Battery, DPI, DPI stages, a static color, effects; polling on the cable not confirmed yet (it has no brightness) | [@k6n7frbrtc-hub](https://github.com/k6n7frbrtc-hub), tekumara and an anonymous report |
+| Razer Pro Click V2 Vertical Edition (wired + wireless) | Battery, DPI, DPI stages, polling, a static color, effects (it has no brightness) | [@k6n7frbrtc-hub](https://github.com/k6n7frbrtc-hub), tekumara and an anonymous report |
 | Razer DeathAdder Essential (2018) | DPI, polling, brightness (its one light is green only) | anonymous report |
-| Razer DeathAdder Essential (White Edition) | Nothing; values from OpenRazer | — |
+| Razer DeathAdder Essential (White Edition) | DPI, polling, brightness (its one light is white only) | anonymous report |
 | Razer Cobra, Cobra Pro (wired + wireless) | Nothing; same protocol family, values from OpenRazer | — |
 | Any other Razer mouse | Nothing; detected and named, controls attempted | — |
 
