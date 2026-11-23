@@ -21,6 +21,10 @@ expect rough edges until 1.0.
 - **Cynosa Lite tested.** It lost its UNTESTED tag after passing the lighting test.
 - **Joro keyboard.** It gets its own lighting card, with brightness and a static colour
   tested. Before, the app took it for a mouse.
+- **Hide the menu bar icon when no mouse is connected.** A new switch in Settings › General,
+  off by default. The icon comes back when a mouse connects. A sleeping or out-of-range mouse
+  keeps the icon, and so does a connected keyboard or mousepad. Open MacRazer again from Finder or Spotlight to get to Settings while the
+  icon is hidden.
 
 ### Fixed
 - **Test This Mouse puts your own colour back.** The lighting test used to end on the app's

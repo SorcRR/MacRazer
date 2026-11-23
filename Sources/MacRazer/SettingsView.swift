@@ -332,6 +332,8 @@ struct SettingsView: View {
                 rowDivider
             }
             connectionSoundsRow
+            rowDivider
+            hideIconRow
         }
         settingsGroup("Helping out") {
             // Hidden while there's nowhere to send a report; see `CrashReporting`.
@@ -428,6 +430,16 @@ struct SettingsView: View {
             detail: "Play a sound when the mouse connects or disconnects.",
             isOn: Binding(get: { controller.connectionSoundsEnabled },
                           set: { controller.connectionSoundsEnabled = $0 })
+        )
+    }
+
+    private var hideIconRow: some View {
+        settingRow(
+            symbol: "menubar.rectangle", tint: Color(nsColor: .systemGray),
+            title: "Hide icon when no mouse is connected",
+            detail: "Open MacRazer again from Finder or Spotlight to see Settings.",
+            isOn: Binding(get: { controller.hideIconWithoutMouse },
+                          set: { controller.hideIconWithoutMouse = $0 })
         )
     }
 

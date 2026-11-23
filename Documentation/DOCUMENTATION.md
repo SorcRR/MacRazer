@@ -612,11 +612,20 @@ come from GitHub Releases.
  gear. One fixed size, with a sidebar of pages, the version and update status at its foot.
  Escape and ⌘W close it. Pages:
  - **General**: Start at login, connection sounds (`connectionSoundsEnabled`), battery % in the
- menu bar (hidden for mice without a battery), crash reports (hidden while crash reporting is
+ menu bar (hidden for mice without a battery), hide the icon when no mouse is connected
+ (`hideIconWithoutMouse`, off by default), crash reports (hidden while crash reporting is
  off, §6.9), Ask me to help test my mouse (§6.5).
  - **Privacy** (only in a build with the Worker): usage stats and deleting what's stored (§6.6).
  - **Appearance**: Theme, Glass effect and Two-column popover (§6.2).
  - **Updates**: Install updates automatically, the version, and Check Now.
+- **Hide icon when no mouse is connected**: `AppDelegate` sets `statusItem.isVisible` from
+ `MouseController.iconVisible`, the same rule as `noMouseKnown`. A sleeping or out-of-range
+ mouse keeps its name, so the icon stays. A connected keyboard or mousepad
+ (`Accessories.connected`) also keeps it. An open popover closes when the icon hides. The rule
+ reads the values the publishers send, not the properties: `@Published` emits before it
+ stores. The app has no Dock icon, so `applicationShouldHandleReopen` opens Settings when the
+ app is opened again from Finder or Spotlight while the icon is hidden. While the icon shows,
+ reopening does nothing new. Tests: `HideIconWithoutMouseTests.swift`.
 - **Start at login**, `LaunchAtLogin.swift`: `SMAppService.mainApp`, which also lists MacRazer
  in System Settings › General › Login Items. On by default, applied once, on the first launch
  from a real installed location. After that the person's choice stands, including one made in

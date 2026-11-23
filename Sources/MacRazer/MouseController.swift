@@ -211,6 +211,25 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         }
     }
 
+    static let hideIconWithoutMouseKey = "hideIconWithoutMouse"
+
+    /// User preference: hide the menu bar icon while no mouse is known (persisted, off by default).
+    @Published var hideIconWithoutMouse: Bool =
+        UserDefaults.standard.bool(forKey: MouseController.hideIconWithoutMouseKey) {
+        didSet {
+            UserDefaults.standard.set(hideIconWithoutMouse, forKey: MouseController.hideIconWithoutMouseKey)
+        }
+    }
+
+    /// Whether the menu bar icon shows. Same rule as `noMouseKnown`, but on the values a
+    /// publisher sends: `@Published` emits before it stores, so the property can read stale.
+    /// A connected keyboard or mousepad keeps the icon, because its controls are in the popover.
+    static func iconVisible(connected: Bool, deviceName: String?, bluetoothMouse: BluetoothMouseStatus?,
+                            accessoryConnected: Bool, hideWithoutMouse: Bool) -> Bool {
+        let noMouse = !connected && deviceName == nil && bluetoothMouse == nil
+        return !(hideWithoutMouse && noMouse && !accessoryConnected)
+    }
+
     private let io = DispatchQueue(label: "com.macrazer.hid")
 
     /// How many user-initiated commands are waiting on `io`.
