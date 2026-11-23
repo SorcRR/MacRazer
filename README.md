@@ -169,7 +169,8 @@ says so.
 | Razer Basilisk | DPI, DPI stages, polling; lighting not confirmed yet | anonymous report |
 | Razer Lancehead Tournament Edition | DPI, polling; lighting not confirmed yet | anonymous report |
 | Razer DeathAdder V2 Mini | DPI, DPI stages, polling; lighting not confirmed yet | anonymous reports |
-| Razer Basilisk V3 Pro 35K (wired + wireless) | Battery, DPI, DPI stages, polling; lighting not confirmed yet | anonymous reports |
+| Razer Basilisk V3 Pro 35K (Wireless) | Battery, DPI, DPI stages, polling, lighting | anonymous reports |
+| Razer Basilisk V3 Pro 35K (Wired) | Battery, DPI, DPI stages, polling; lighting not confirmed yet | anonymous reports |
 | Razer Basilisk V3 Pro 35K Phantom Green Edition (Wired) | Battery, DPI, DPI stages, polling; lighting not tried yet | anonymous report |
 | Razer Mamba Elite | DPI, DPI stages, polling; lighting not tried yet | anonymous report |
 | Razer Basilisk Essential | DPI, polling, lighting, brightness; its DPI button keeps its own stages | anonymous reports |

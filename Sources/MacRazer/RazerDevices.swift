@@ -438,6 +438,9 @@ enum RazerDevices {
         // unverified. 35000 is the vendor spec (its Focus Pro 35K sensor).
         // A 0.10.0 report (firmware v1.2) passed polling with polling_rate2, 1000 Hz to 500
         // and back. 8000 Hz is from fn-milans's work on this mouse (#55).
+        // A later one (firmware v1.1, 2026-11-23) saw the red but not the dim. The dim reaches
+        // LOGO and SCROLL only, and the zone read lists 0x0A too, so the underglow may have
+        // stayed lit. One report against earlier passes: the row stands.
         .init(pid: 0x00E3, name: "Razer Basilisk V4 Pro (Wireless)", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 35000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, usesPollingRate2: true, maxPollingRate: 8000),
         // Basilisk V4 Pro on the cable (in-app report on firmware v1.1 from by_hlz): battery,
         // DPI and stages, static color and brightness passed with 0x1f, and every id answers.
@@ -594,12 +597,18 @@ enum RazerDevices {
         // so the lighting controls stay hidden until a third report settles it. Both zones are
         // recorded for the slider for when they are. 35000 is the spec. Two more reports on
         // 0.9.0 and firmware v3.0 (2026-11-13) split the same way, one pass and one fail.
+        // A 0.10.0 report (firmware v3.0, 2026-11-22), the first with red sent to each zone:
+        // the red showed, the dim didn't. The dim only reaches LOGO and SCROLL, the groups the
+        // sweep asks; the underglow (0x0A) took the red but may have stayed lit. Still hidden.
         .init(pid: 0x00CC, name: "Razer Basilisk V3 Pro 35K (Wired)", unverified: [.lighting], hasBattery: true, hasLighting: false, maxDPI: 35000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
         // Its dongle (in-app report on firmware v2.50, no credit given): battery, DPI and
         // stages, and polling passed. Lighting failed, as on the cable's first report. No
         // extra zones recorded: a report that shows lighting working says which answer. A
         // second report (0.9.0, 2026-11-13) passed lighting, so it stands one each way.
-        .init(pid: 0x00CD, name: "Razer Basilisk V3 Pro 35K (Wireless)", unverified: [.lighting], hasBattery: true, hasLighting: false, maxDPI: 35000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
+        // A third (0.10.0, firmware v2.52, 2026-11-23), with red sent to each zone, passed:
+        // the lights dimmed and turned red, and LOGO and SCROLL answered brightness. Two
+        // passes to one, and the fail came before 0.10.0's per-zone writes.
+        .init(pid: 0x00CD, name: "Razer Basilisk V3 Pro 35K (Wireless)", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 35000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
         // Basilisk V3 Pro 35K Phantom Green Edition (in-app report on 0.10.0, firmware v2.53,
         // no credit given): battery, DPI and stages, and polling passed with 0x1f. Lighting
         // was skipped. The owner picked "dongle", but OpenRazer (PR 2583) lists 0x00D6 as the
@@ -1110,6 +1119,8 @@ enum RazerDevices {
         // Basilisk V3 Pro 35K: logo and scroll wheel per OpenRazer, and 0x0A answers too.
         0x00CC: [Razer.zeroLed, Razer.logoLed, Razer.scrollLed, Razer.underglowLed],
         0x00CD: [Razer.zeroLed, Razer.logoLed, Razer.scrollLed, Razer.underglowLed],
+        // Its Phantom Green Edition, taken to have the same zones until a report says.
+        0x00D6: [Razer.zeroLed, Razer.logoLed, Razer.scrollLed, Razer.underglowLed],
         // Lancehead Tournament Edition: logo, scroll wheel and both sides.
         0x0060: [Razer.zeroLed, Razer.logoLed, Razer.scrollLed, Razer.leftSideLed, Razer.rightSideLed],
     ]

@@ -23,6 +23,8 @@ expect rough edges until 1.0.
   - **DeathAdder Essential White Edition:** DPI and polling work, and its white light dims.
   - **Basilisk V3 Pro 35K Phantom Green Edition on its cable:** battery, DPI and polling
     work. Lighting waits on a test.
+  - **Basilisk V3 Pro 35K over its dongle:** lighting works now, so the popover shows its
+    lighting controls. On the cable it still waits on a clear result.
 - **Cynosa Lite tested.** It lost its UNTESTED tag after passing the lighting test.
 - **Joro keyboard.** It gets its own lighting card, with brightness and a static colour
   tested. Before, the app took it for a mouse.
