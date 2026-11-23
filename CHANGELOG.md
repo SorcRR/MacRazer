@@ -14,6 +14,8 @@ expect rough edges until 1.0.
   - **Mamba Elite:** DPI and polling work. Lighting waits on a test.
   - **Basilisk Essential:** DPI, polling and lighting work.
   - **Naga Left Handed Edition:** DPI, polling and lighting all passed.
+  - **Lancehead Tournament Edition:** lighting works now, side strips included, so the
+    popover shows its lighting controls.
   - **Viper V4 Pro on the cable:** polling confirmed, up to 8000 Hz. Over the dongle the rate
     doesn't change yet, so the popover hides the picker there.
   - **Naga Classic Edition:** DPI, polling and lighting all passed. Thanks to spellbook.
@@ -30,6 +32,9 @@ expect rough edges until 1.0.
   tested. Before, the app took it for a mouse.
 
 ### Fixed
+- **Test This Mouse puts your own colour back.** The lighting test used to end on the app's
+  colour, so a mouse set to red elsewhere came back in MacRazer's colour. It now reads each
+  zone's effect first and puts that back. A zone that doesn't say still gets the app's.
 - **Mouse Dock Pro lighting follows the mouse on it.** The dock's lights are the docked
   mouse's lights. The app now asks that mouse which zones it has. A mouse without lights,
   like the Basilisk V4 HyperSpeed, no longer gets lighting controls that do nothing. Test

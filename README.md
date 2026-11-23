@@ -125,6 +125,7 @@ says so.
 | Razer Naga Trinity | DPI, DPI stages, polling, lighting, brightness | anonymous report |
 | Razer Naga Left Handed Edition | DPI, DPI stages, polling, lighting, brightness | anonymous report |
 | Razer Naga Classic Edition | DPI, DPI stages, polling, lighting, brightness | spellbook |
+| Razer Lancehead Tournament Edition | DPI, polling, lighting (side strips too), brightness | fortinmike and an anonymous report |
 | Razer Viper V3 HyperSpeed | Battery, DPI, DPI stages, polling | anonymous report |
 | Razer Basilisk V3 | DPI, DPI stages, polling, lighting, brightness | SuperSpacer54376 |
 | Razer Basilisk V3 Pro (wired + wireless) | Battery, DPI, DPI stages, polling, lighting, brightness | anonymous reports |
@@ -167,9 +168,8 @@ says so.
 | Razer Naga X | DPI, DPI stages, polling; lighting not working yet | anonymous report |
 | Razer Basilisk Ultimate (wired + wireless) | Battery, DPI, DPI stages, polling; lighting hidden for now (it dims over the dongle, but colours didn't show) | anonymous reports |
 | Razer Basilisk | DPI, DPI stages, polling; lighting not confirmed yet | anonymous report |
-| Razer Lancehead Tournament Edition | DPI, polling; lighting not confirmed yet | anonymous report |
 | Razer DeathAdder V2 Mini | DPI, DPI stages, polling; lighting not confirmed yet | anonymous reports |
-| Razer Basilisk V3 Pro 35K (Wireless) | Battery, DPI, DPI stages, polling, lighting | anonymous reports |
+| Razer Basilisk V3 Pro 35K (Wireless) | Battery, DPI, DPI stages, polling, lighting, brightness | anonymous reports |
 | Razer Basilisk V3 Pro 35K (Wired) | Battery, DPI, DPI stages, polling; lighting not confirmed yet | anonymous reports |
 | Razer Basilisk V3 Pro 35K Phantom Green Edition (Wired) | Battery, DPI, DPI stages, polling; lighting not tried yet | anonymous report |
 | Razer Mamba Elite | DPI, DPI stages, polling; lighting not tried yet | anonymous report |
