@@ -77,6 +77,19 @@ enum DeviceProbe {
         ("ZERO", Razer.zeroLed), ("BACKLIGHT", Razer.backlightLed),
     ]
 
+    /// Lights the sweep doesn't ask that the lighting test also dims, on a model whose effects
+    /// go there (`RazerDevices.effectLeds`). Without them the red reaches the underglow but the
+    /// dim doesn't, and the person sees a light that stayed on. The Worker takes exactly these
+    /// names.
+    static let effectZoneGroups: [(name: String, led: UInt8)] = [
+        ("UNDERGLOW", Razer.underglowLed), ("RIGHT_SIDE", Razer.rightSideLed), ("LEFT_SIDE", Razer.leftSideLed),
+    ]
+
+    /// The `effectZoneGroups` among a model's effect zones. None for a model not on record.
+    static func effectZoneGroups(effectLeds: [UInt8]) -> [(name: String, led: UInt8)] {
+        effectZoneGroups.filter { effectLeds.contains($0.led) }
+    }
+
     /// One HID interface a device exposes, as the device test reports it. No location or
     /// serial: nothing here identifies a particular unit or Mac.
     struct Interface: Codable, Equatable {

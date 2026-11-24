@@ -959,18 +959,33 @@ enum DeviceTestSteps {
     /// (`RazerDeviceInfo.hasBrightness`): no group answers the sweep, so there is nothing to
     /// dim, and the red check runs alone. Without it a sweep nobody answered means no lights,
     /// and nothing is sent.
+    /// `zoneGroups` are the model's effect zones past the sweep's four
+    /// (`DeviceProbe.effectZoneGroups(effectLeds:)`). Once the sweep found a group, each is
+    /// asked for its brightness and, if it answers, dimmed and restored with the rest. A zero
+    /// answer is left alone: the Lancehead's 0x0A echoes a read back as zero, and a restore to
+    /// that would turn a lit underglow off.
     static func lighting(_ channel: DeviceProbeChannel, sweep: [DeviceProbe.LEDAnswer]?,
                          restoreEffect: [RazerReport]?,
                          red: [RazerReport] = [RazerCommands.setStatic(rgb: RGB(r: 255, g: 0, b: 0))],
+                         zoneGroups: [(name: String, led: UInt8)] = [],
                          colourOnly: Bool = false,
                          seconds: Double,
                          wait: (Double) -> Void = { Thread.sleep(forTimeInterval: $0) })
         -> DeviceReport.StepRecord<DeviceReport.LightingData> {
         var record = DeviceReport.StepRecord<DeviceReport.LightingData>()
         var data = DeviceReport.LightingData()
-        let answering = (sweep ?? []).compactMap { answer -> (String, UInt8, UInt8)? in
+        var answering = (sweep ?? []).compactMap { answer -> (String, UInt8, UInt8)? in
             guard let reading = try? answer.result.get() else { return nil }
             return (answer.name, answer.led, reading.value)
+        }
+        // Only past a sweep that found a light: an effects-only mouse keeps the red alone.
+        if !answering.isEmpty {
+            let swept = Set(answering.map(\.1))
+            answering += zoneGroups.filter { !swept.contains($0.led) }.compactMap { group -> (String, UInt8, UInt8)? in
+                guard let reply = try? channel.send(RazerCommands.getBrightness(led: group.led)),
+                      reply.arguments[2] > 0 else { return nil }
+                return (group.name, group.led, reply.arguments[2])
+            }
         }
         // Each zone's own effect, read before anything is written.
         func readOwnEffects() -> [UInt8: RazerReport] {

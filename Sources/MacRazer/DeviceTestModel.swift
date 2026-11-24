@@ -636,12 +636,14 @@ final class DeviceTestModel: ObservableObject {
         // Red on every zone the tested mouse takes effects on, as the popover sends them.
         let red = RazerCommands.effect(.staticColor, color: RGB(r: 255, g: 0, b: 0),
                                        leds: RazerDevices.effectLeds(pid: testedPID))
+        // The dim reaches the same zones: the underglow and side strips the sweep doesn't ask.
+        let zoneGroups = DeviceProbe.effectZoneGroups(effectLeds: RazerDevices.effectLeds(pid: testedPID))
         let colourOnly = colourOnlyLighting
         dimmed = nil
         turnedRed = nil
         await run(\.lighting) {
             DeviceTestSteps.lighting($0, sweep: sweep, restoreEffect: restore, red: red,
-                                     colourOnly: colourOnly, seconds: 3)
+                                     zoneGroups: zoneGroups, colourOnly: colourOnly, seconds: 3)
         }
     }
 

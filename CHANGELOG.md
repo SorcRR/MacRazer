@@ -35,6 +35,10 @@ expect rough edges until 1.0.
 - **The device test can now confirm lighting on mice without brightness.** The Pro Click V2
   Vertical Edition takes colours but has no brightness to dim. The test used to stop there and
   say it had no lights. Now it turns the mouse red and asks if you saw it.
+- **The device test's dim reaches the underglow and side strips.** The red went to every
+  light, but the dim only reached the logo and scroll wheel. On a Basilisk V3 Pro 35K the
+  underglow stayed lit, so the dim looked like it failed. Now those lights dim too, and come
+  back to their own brightness.
 - **Test This Mouse puts your own colour back.** The lighting test used to end on the app's
   colour, so a mouse set to red elsewhere came back in MacRazer's colour. It now reads each
   zone's effect first and puts that back. A zone that doesn't say still gets the app's.
