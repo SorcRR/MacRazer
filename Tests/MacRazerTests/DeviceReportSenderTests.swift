@@ -46,7 +46,9 @@ final class DeviceReportSenderTests: XCTestCase {
                        exchanges: [exchange]),
             polling: .init(outcome: .passed, data: .init(original: 500, test: 1000, readBack: 1000, restored: true)),
             lighting: .init(outcome: .passed,
-                            data: .init(groups: ["LOGO": 10], dimShown: true, redShown: true, dimmed: true,
+                            // Every group name the app sends, so the Worker's schema sees them all.
+                            data: .init(groups: Dictionary(uniqueKeysWithValues: (DeviceProbe.ledGroups + DeviceProbe.effectZoneGroups)
+                                            .enumerated().map { i, g in (g.name, UInt8(10 + i)) }), dimShown: true, redShown: true, dimmed: true,
                                         turnedRed: true, restored: true)),
             // 0c:223 is AC Home: consumer usages run past two hex digits.
             // The keys: a ⌃V from hardware, a ⌘C a remapper posted, and Shift pressed alone.
