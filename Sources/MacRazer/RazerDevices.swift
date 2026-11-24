@@ -252,6 +252,13 @@ enum RazerDevices {
         // 0x05, as a wired-only mouse should. LOGO and SCROLL answer brightness; ZERO and
         // BACKLIGHT return 0x03. The firmware echoed a 45000 DPI write; 26000 is its sensor's.
         .init(pid: 0x0099, name: "Razer Basilisk V3", unverified: [], hasBattery: false, hasLighting: true, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, transactionOverrides: [0x0406: 0xff, 0x0486: 0xff], extraBrightnessLeds: [Razer.scrollLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
+        // Basilisk V3 35K (in-app report on 0.10.0, firmware v1.0, no credit given): wired only,
+        // so no battery (0x05). DPI and stages, polling and lighting passed with 0x1f, and every
+        // id answers. Unlike the Basilisk V3, its stage table answers on 0x1f too. LOGO and
+        // SCROLL answer brightness, both dimmed and came back, and the red showed. The zone
+        // effect read answers on 0x00, 0x01, 0x04 and 0x0A, as on the V3 Pro 35K, so it gets
+        // the same zones. 35000 is the vendor spec (its Focus Pro 35K sensor).
+        .init(pid: 0x00CB, name: "Razer Basilisk V3 35K", unverified: [], hasBattery: false, hasLighting: true, maxDPI: 35000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
         // Basilisk V2 (in-app report on firmware v1.4, no credit given): DPI and stages, polling
         // and lighting all passed with 0x1f, and every id answers. LOGO and SCROLL answer
         // brightness, and both dimmed and went back. The battery read answers 0x05. 20000 is the
@@ -273,6 +280,9 @@ enum RazerDevices {
         // A 0.10.0 report (firmware v1.8, through a Mouse Dock) dimmed LOGO and SCROLL and
         // brought them back, but the red didn't show, though every zone took the static
         // write. So brightness works and colour doesn't yet, and lighting stays hidden.
+        // Another 0.10.0 report (firmware v1.7, 2026-11-23, also through a Mouse Dock) passed:
+        // every zone took the red and the owner saw it. One each way on 0.10.0, so it still
+        // waits.
         .init(pid: 0x0088, name: "Razer Basilisk Ultimate (Wireless)", unverified: [.lighting], hasBattery: true, hasLighting: false, maxDPI: 20000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
         // Its cable (two in-app reports on 0.9.0, firmware v1.3 and v1.8, no credit given):
         // battery (charging), DPI and stages, and polling passed with 0x1f, and every id
@@ -288,7 +298,10 @@ enum RazerDevices {
         // lighting stays hidden until a test shows it. Its zones read as spectrum. The vendor spec
         // is 16000, but it was running at 26000 and took a 25950 write, so the slider goes to
         // 26000. It holds two DPI stages.
-        .init(pid: 0x0064, name: "Razer Basilisk", unverified: [.lighting], hasBattery: false, hasLighting: false, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
+        // Two 0.10.0 reports (firmware v1.0, 2026-11-23, four minutes apart, likely one owner),
+        // with red sent to each zone, passed lighting: LOGO and SCROLL dimmed, turned red and
+        // came back. The one fail came before 0.10.0's per-zone writes, with the lights off.
+        .init(pid: 0x0064, name: "Razer Basilisk", unverified: [], hasBattery: false, hasLighting: true, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
         // Naga Hex V2 (in-app report on firmware v1.0, credited to foivos92): DPI and polling
         // passed with 0x1f. It has no battery: the read answers with zeros. Every LED group
         // answers brightness with 0 and ignores writes: OpenRazer drives this model with the
@@ -409,7 +422,9 @@ enum RazerDevices {
         // dock. 35000 covers the V4 Pro. The dock doesn't say which mouse is on it, so the
         // slider goes that high for any mouse, and one with a lower ceiling holds its own top.
         // No cable test, as on the first dock.
-        .init(pid: 0x00F1, name: "Razer Mouse Dock V2 Pro", unverified: [.polling], hasBattery: true, hasLighting: true, maxDPI: 35000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, hasCableLink: false, usesPollingRate2: true),
+        // A 0.10.0 report (2026-11-24) passed polling with polling_rate2: it read 8000 Hz, set
+        // 500 Hz and went back, so the picker goes to 8000 as on the first dock.
+        .init(pid: 0x00F1, name: "Razer Mouse Dock V2 Pro", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 35000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, hasCableLink: false, usesPollingRate2: true, maxPollingRate: 8000),
         // HyperFlux V2 charging mat: like the Mouse Dock Pro, the mat is the receiver for the
         // mouse on it, so what answers is that mouse. The one report (no credit given) passed
         // battery, DPI and stages, and polling with 0x1f. 0x80 times out, and 0xFF answers with
@@ -506,7 +521,10 @@ enum RazerDevices {
         // interface is the fourth one. The owner found 2 of its 4 thumb buttons and one wheel
         // tilt unusable for remapping: the tilt sends horizontal scroll (consumer page 0x238),
         // and the other two thumb buttons sent nothing standard during the button step.
-        .init(pid: 0x00EB, name: "Razer Basilisk V4 HyperSpeed (Wired)", unverified: [.polling], hasBattery: true, hasLighting: false, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, usesPollingRate2: true),
+        // Two 0.10.0 reports (firmware v1.0, 2026-11-23) passed polling with polling_rate2:
+        // 1000 Hz to 500 and back. Lighting stays off: no group answers brightness, though the
+        // zone effect read answers on 0x00 and 0x0A.
+        .init(pid: 0x00EB, name: "Razer Basilisk V4 HyperSpeed (Wired)", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, usesPollingRate2: true),
         // Pro Click V2 over the dongle (in-app report, no credit given): battery, DPI and stages,
         // and polling passed with 0x1f. 0xFF and 0x80 time out. No lighting (every group
         // returns 0x03). 30000 is the vendor spec, as for the Vertical Edition. Its zone effect
@@ -676,6 +694,9 @@ enum RazerDevices {
         // dim unanswered, so lighting still waits. Its side grid types 1 to 0, minus and
         // equals, and it has no button table: the read fails. 18000 is the vendor spec.
         // A third report (0.10.0, 2026-11-21) went the same way: red shown, dim not.
+        // A fourth (0.10.0, 2026-11-23) went the other way: SCROLL dimmed, but the red, sent to
+        // ZERO_LED alone, didn't show. Its zones are recorded below, so the next test sends the
+        // red to each and dims the side grid too.
         .init(pid: 0x0096, name: "Razer Naga X", unverified: [.lighting], hasBattery: false, hasLighting: false, maxDPI: 18000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
         // Mamba Tournament Edition (in-app report on firmware v1.3, no credit given): DPI and
         // polling passed with 0x1f. It's wired only: the battery read answers with zeros. Every
@@ -687,6 +708,11 @@ enum RazerDevices {
         // Mamba Elite (in-app report on firmware v1.1, no credit given): DPI and stages, and
         // polling passed with 0x1f. No battery. LOGO and SCROLL answer brightness, but the
         // lighting step was skipped, so lighting waits. 16000 is the vendor spec.
+        // Two 0.10.0 reports (firmware v1.0, 2026-11-23, one credited to mikey-vivedia) saw the
+        // red but not the dim: once "not sure", once "no". The zone effect read answers on
+        // 0x10 and 0x11 too, the side strips the dim doesn't reach, so its zones are recorded
+        // below and the next test dims them. Its side buttons are set on the mouse to type
+        // Alt+Left and Alt+Right, so the button step saw keys, not buttons 4 and 5.
         .init(pid: 0x006C, name: "Razer Mamba Elite", unverified: [.lighting], hasBattery: false, hasLighting: false, maxDPI: 16000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
         // Basilisk Essential (two 0.10.0 reports on firmware v1.2, no credit given): polling
         // and lighting passed with 0x1f, LOGO and SCROLL dimming and turning red. No battery.
@@ -1127,6 +1153,12 @@ enum RazerDevices {
         0x00D6: [Razer.zeroLed, Razer.logoLed, Razer.scrollLed, Razer.underglowLed],
         // Lancehead Tournament Edition: logo, scroll wheel and both sides.
         0x0060: [Razer.zeroLed, Razer.logoLed, Razer.scrollLed, Razer.leftSideLed, Razer.rightSideLed],
+        // Basilisk V3 35K: as the V3 Pro 35K, from its report's zone read.
+        0x00CB: [Razer.zeroLed, Razer.logoLed, Razer.scrollLed, Razer.underglowLed],
+        // Mamba Elite: logo, scroll wheel and both side strips, from its reports' zone reads.
+        0x006C: [Razer.zeroLed, Razer.logoLed, Razer.scrollLed, Razer.leftSideLed, Razer.rightSideLed],
+        // Naga X: scroll wheel and side grid (0x01 and 0x11 answer; 0x00 answers as 0x01).
+        0x0096: [Razer.zeroLed, Razer.scrollLed, Razer.leftSideLed],
     ]
 
     /// Every LED group an effect write goes to. ZERO_LED alone unless `effectZones` lists

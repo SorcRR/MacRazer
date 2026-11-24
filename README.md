@@ -128,6 +128,7 @@ says so.
 | Razer Lancehead Tournament Edition | DPI, polling, lighting (side strips too), brightness | fortinmike and an anonymous report |
 | Razer Viper V3 HyperSpeed | Battery, DPI, DPI stages, polling | anonymous report |
 | Razer Basilisk V3 | DPI, DPI stages, polling, lighting, brightness | SuperSpacer54376 |
+| Razer Basilisk V3 35K | DPI, DPI stages, polling, lighting, brightness | anonymous report |
 | Razer Basilisk V3 Pro (wired + wireless) | Battery, DPI, DPI stages, polling, lighting, brightness | anonymous reports |
 | Razer Viper V3 Pro (Wireless) | Battery, DPI, DPI stages, polling (it has no lighting) | anonymous report |
 | Razer DeathAdder V2 | DPI, DPI stages, polling, lighting, brightness (wired only) | anonymous reports |
@@ -155,24 +156,24 @@ says so.
 | Razer DeathAdder V2 Pro (Wired) | Battery, DPI, DPI stages, polling, lighting, brightness | anonymous reports |
 | Razer Viper Ultimate (Wired) | Battery, DPI, polling, lighting | anonymous report |
 | Razer Taipan | DPI, polling; lighting not working yet | anonymous report |
-| Razer Basilisk V4 HyperSpeed (wired + wireless) | Battery, DPI, DPI stages; polling not confirmed yet | anonymous reports |
+| Razer Basilisk V4 HyperSpeed (wired + wireless) | Battery, DPI, DPI stages; polling confirmed on the cable, not yet over the dongle | anonymous reports |
 | Razer Viper V4 Pro (wired + wireless) | Battery, DPI, DPI stages; polling up to 8000 Hz on the cable; over the dongle the rate doesn't change yet, so the picker is hidden there | Robotxm, Kartas and an anonymous report |
 | Razer Viper 8KHz | DPI, DPI stages, polling up to 8000 Hz, lighting, brightness (wired only) | anonymous reports |
 | Razer Basilisk V4 Pro (wired + wireless) | Battery, DPI, DPI stages, polling up to 8000 Hz, lighting, brightness | by_hlz, Maude and anonymous reports |
 | Razer Mouse Dock Pro (with a Naga V3 Pro or Basilisk V4 HyperSpeed) | Battery, DPI, polling up to 8000 Hz; lighting and brightness with a Naga V3 Pro (the dock lights only what the mouse has) | maesta2, Kartas and an anonymous report |
-| Razer Mouse Dock V2 Pro (with a Basilisk V4 Pro) | Battery, DPI, DPI stages, lighting, brightness; polling not confirmed yet | cparedes |
+| Razer Mouse Dock V2 Pro (with a Basilisk V4 Pro) | Battery, DPI, DPI stages, polling up to 8000 Hz, lighting, brightness | cparedes and an anonymous report |
 | Razer HyperFlux V2 (with the mouse on it) | Battery, DPI, DPI stages, polling; lighting not confirmed yet | anonymous report |
 | Razer Naga Chroma | DPI, polling; lighting not working yet | anonymous report |
 | Razer Naga Hex V2 | DPI, polling; lighting not working yet | foivos92 |
 | Razer Mamba Tournament Edition | DPI, polling; lighting not working yet | anonymous report |
 | Razer Naga X | DPI, DPI stages, polling; lighting not working yet | anonymous report |
 | Razer Basilisk Ultimate (wired + wireless) | Battery, DPI, DPI stages, polling; lighting hidden for now (it dims over the dongle, but colours didn't show) | anonymous reports |
-| Razer Basilisk | DPI, DPI stages, polling; lighting not confirmed yet | anonymous report |
+| Razer Basilisk | DPI, DPI stages, polling, lighting, brightness | anonymous reports |
 | Razer DeathAdder V2 Mini | DPI, DPI stages, polling; lighting not confirmed yet | anonymous reports |
 | Razer Basilisk V3 Pro 35K (Wireless) | Battery, DPI, DPI stages, polling, lighting, brightness | anonymous reports |
 | Razer Basilisk V3 Pro 35K (Wired) | Battery, DPI, DPI stages, polling; lighting not confirmed yet | anonymous reports |
 | Razer Basilisk V3 Pro 35K Phantom Green Edition (Wired) | Battery, DPI, DPI stages, polling; lighting not tried yet | anonymous report |
-| Razer Mamba Elite | DPI, DPI stages, polling; lighting not tried yet | anonymous report |
+| Razer Mamba Elite | DPI, DPI stages, polling; lighting not confirmed yet | mikey-vivedia and anonymous reports |
 | Razer Basilisk Essential | DPI, polling, lighting, brightness; its DPI button keeps its own stages | anonymous reports |
 | Razer Basilisk V3 Pro 35K (Bluetooth) | Battery; DPI and lighting not tried yet | anonymous reports |
 | Razer Basilisk V4 HyperSpeed (Bluetooth) | Battery; DPI and lighting not tried yet | anonymous report |

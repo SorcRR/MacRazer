@@ -27,6 +27,10 @@ expect rough edges until 1.0.
     work. Lighting waits on a test.
   - **Basilisk V3 Pro 35K over its dongle:** lighting works now, so the popover shows its
     lighting controls. On the cable it still waits on a clear result.
+  - **Basilisk V3 35K:** DPI, polling and lighting all passed.
+  - **Basilisk:** lighting works now, so it's fully supported.
+  - **Mouse Dock V2 Pro** and the **Basilisk V4 HyperSpeed on its cable:** polling
+    confirmed. The dock goes up to 8000 Hz.
 - **Cynosa Lite tested.** It lost its UNTESTED tag after passing the lighting test.
 - **Joro keyboard.** It gets its own lighting card, with brightness and a static colour
   tested. Before, the app took it for a mouse.
