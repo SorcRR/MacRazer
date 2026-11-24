@@ -961,7 +961,8 @@ enum DeviceTestSteps {
     /// and nothing is sent.
     /// `zoneGroups` are the model's effect zones past the sweep's four
     /// (`DeviceProbe.effectZoneGroups(effectLeds:)`). Once the sweep found a group, each is
-    /// asked for its brightness and, if it answers, dimmed and restored with the rest. A zero
+    /// asked for its brightness and, if it answers, dimmed and restored with the rest, though
+    /// only the sweep's groups count toward `restored`. A zero
     /// answer is left alone: the Lancehead's 0x0A echoes a read back as zero, and a restore to
     /// that would turn a lit underglow off.
     static func lighting(_ channel: DeviceProbeChannel, sweep: [DeviceProbe.LEDAnswer]?,
@@ -974,19 +975,22 @@ enum DeviceTestSteps {
         -> DeviceReport.StepRecord<DeviceReport.LightingData> {
         var record = DeviceReport.StepRecord<DeviceReport.LightingData>()
         var data = DeviceReport.LightingData()
-        var answering = (sweep ?? []).compactMap { answer -> (String, UInt8, UInt8)? in
+        let answering = (sweep ?? []).compactMap { answer -> (String, UInt8, UInt8)? in
             guard let reading = try? answer.result.get() else { return nil }
             return (answer.name, answer.led, reading.value)
         }
-        // Only past a sweep that found a light: an effects-only mouse keeps the red alone.
-        if !answering.isEmpty {
-            let swept = Set(answering.map(\.1))
-            answering += zoneGroups.filter { !swept.contains($0.led) }.compactMap { group -> (String, UInt8, UInt8)? in
-                guard let reply = try? channel.send(RazerCommands.getBrightness(led: group.led)),
-                      reply.arguments[2] > 0 else { return nil }
-                return (group.name, group.led, reply.arguments[2])
-            }
+        // Only past a sweep that found a light: an effects-only mouse keeps the red alone. The
+        // answer must name the zone asked, as a ZERO read can answer for another.
+        let swept = Set(answering.map(\.1))
+        let zones = answering.isEmpty ? [] : zoneGroups.filter { !swept.contains($0.led) }.compactMap { group -> (String, UInt8, UInt8)? in
+            guard let reply = try? channel.send(RazerCommands.getBrightness(led: group.led)),
+                  reply.arguments[1] == group.led, reply.arguments[2] > 0 else { return nil }
+            return (group.name, group.led, reply.arguments[2])
         }
+        // Everything dimmed. Only the sweep's groups decide `restored`: a zone added here
+        // that reads back differently is put back as well as it can be, but can't fail a
+        // check that passed without it.
+        let lit = answering + zones
         // Each zone's own effect, read before anything is written.
         func readOwnEffects() -> [UInt8: RazerReport] {
             Dictionary((restoreEffect ?? []).compactMap { fallback -> (UInt8, RazerReport)? in
@@ -1014,25 +1018,27 @@ enum DeviceTestSteps {
             record.data = data
             return record
         }
-        for (name, _, raw) in answering { data.groups[name] = raw }
+        for (name, _, raw) in lit { data.groups[name] = raw }
         let ownEffect = readOwnEffects()
 
         // Nothing from here to the restore can leave early (every call is `try?`), so the
         // restore always runs once anything has been changed.
         var dimmedAny = false
-        for (_, led, _) in answering {
+        for (_, led, _) in lit {
             dimmedAny = (try? DeviceProbe.writeBrightness(channel, raw: 0, led: led)) != nil || dimmedAny
         }
         data.dimShown = dimmedAny
         if dimmedAny { wait(seconds) }
         var allBack = restoreBrightness(channel, answering)
+        _ = restoreBrightness(channel, zones)
 
         if let restoreEffect {
-            for (_, led, _) in answering { _ = try? DeviceProbe.writeBrightness(channel, raw: 255, led: led) }
+            for (_, led, _) in lit { _ = try? DeviceProbe.writeBrightness(channel, raw: 255, led: led) }
             data.redShown = applyLighting(channel, red)
             if data.redShown { wait(seconds) }
             let effectBack = restoreEffects(channel, restoreEffect, own: ownEffect)
             allBack = restoreBrightness(channel, answering) && effectBack && allBack
+            _ = restoreBrightness(channel, zones)
         }
         data.restored = allBack
 

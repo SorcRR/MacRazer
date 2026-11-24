@@ -57,6 +57,46 @@ final class LightingZoneDimTests: XCTestCase {
         XCTAssertEqual(brightnessWrites(mouse, led: Razer.underglowLed), [])
     }
 
+    func testAZoneThatKeepsItsBrightnessCantFailTheStep() {
+        // 0x0A answers 180, but every write lands as 255: the restore never reads back 180.
+        let mouse = mouse(underglowAt: 180)
+        mouse.clamp = { report in
+            guard report.commandClass == 0x0F, report.commandId == 0x04, report.arguments[1] == Razer.underglowLed else { return report }
+            var kept = report
+            kept.arguments[2] = 255
+            return kept
+        }
+        let record = run(mouse, zoneGroups: underglow)
+        XCTAssertEqual(record.data?.groups["UNDERGLOW"], 180)
+        XCTAssertEqual(record.data?.restored, true, "as it would be without the zone")
+        var answered = record
+        DeviceTestSteps.answered(dimmed: true, turnedRed: true, &answered)
+        XCTAssertEqual(answered.outcome, .passed)
+    }
+
+    func testAnAnswerForAnotherZoneIsNotThisOnes() {
+        let mouse = mouse(underglowAt: nil)
+        mouse.answers(RazerCommands.getBrightness(led: Razer.rightSideLed)) { args in
+            args[1] = Razer.logoLed
+            args[2] = 200
+        }
+        let record = run(mouse, zoneGroups: DeviceProbe.effectZoneGroups(effectLeds: [Razer.rightSideLed]))
+        XCTAssertNil(record.data?.groups["RIGHT_SIDE"])
+        XCTAssertEqual(brightnessWrites(mouse, led: Razer.rightSideLed), [])
+    }
+
+    func testTheSideStripsDimToo() {
+        let mouse = mouse(underglowAt: nil)
+        mouse.holds(RazerCommands.setBrightness(90, led: Razer.rightSideLed))
+        mouse.holds(RazerCommands.setBrightness(120, led: Razer.leftSideLed))
+        let sides: Set<UInt8> = [Razer.logoLed, Razer.rightSideLed, Razer.leftSideLed]
+        mouse.refuse = { $0.commandClass == 0x0F && ($0.commandId & 0x7F) == 0x04 && !sides.contains($0.arguments[1]) }
+        let record = run(mouse, zoneGroups: DeviceProbe.effectZoneGroups(effectLeds: RazerDevices.effectLeds(pid: 0x0060)))
+        XCTAssertEqual(record.data?.groups, ["LOGO": 200, "RIGHT_SIDE": 90, "LEFT_SIDE": 120])
+        XCTAssertEqual(brightnessWrites(mouse, led: Razer.rightSideLed).first, 0)
+        XCTAssertEqual(brightnessWrites(mouse, led: Razer.leftSideLed).last, 120)
+    }
+
     func testAColourOnlyLightIsNotAskedForBrightness() {
         let mouse = FakeMouse()
         mouse.refuse = { $0.commandClass == 0x0F && ($0.commandId & 0x7F) == 0x04 }
