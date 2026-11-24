@@ -298,9 +298,9 @@ enum RazerDevices {
         // lighting stays hidden until a test shows it. Its zones read as spectrum. The vendor spec
         // is 16000, but it was running at 26000 and took a 25950 write, so the slider goes to
         // 26000. It holds two DPI stages.
-        // Two 0.10.0 reports (firmware v1.0, 2026-11-23), with red sent to each zone, passed
-        // lighting: LOGO and SCROLL dimmed, turned red and came back. Two passes to one, and the
-        // fail came before 0.10.0's per-zone writes.
+        // Two 0.10.0 reports (firmware v1.0, 2026-11-23, four minutes apart, likely one owner),
+        // with red sent to each zone, passed lighting: LOGO and SCROLL dimmed, turned red and
+        // came back. The one fail came before 0.10.0's per-zone writes, with the lights off.
         .init(pid: 0x0064, name: "Razer Basilisk", unverified: [], hasBattery: false, hasLighting: true, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
         // Naga Hex V2 (in-app report on firmware v1.0, credited to foivos92): DPI and polling
         // passed with 0x1f. It has no battery: the read answers with zeros. Every LED group
