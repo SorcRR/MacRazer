@@ -764,7 +764,7 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertTrue(RazerDevices.guessesProtocol(pid: pid), "OpenRazer says 0x3f, so a silent one is still searched")
     }
 
-    /// The reports of 2026-11-20 to 11-22.
+    /// The reports of 2026-11-20 to 11-23.
     func testMiceFromTheLateNovemberReports() {
         // Naga Classic Edition: everything passed, LOGO and SCROLL dim.
         XCTAssertEqual(RazerDevices.support(pid: 0x0093), .full)

@@ -602,12 +602,12 @@ enum RazerDevices {
         // sweep asks; the underglow (0x0A) took the red but may have stayed lit. Still hidden.
         .init(pid: 0x00CC, name: "Razer Basilisk V3 Pro 35K (Wired)", unverified: [.lighting], hasBattery: true, hasLighting: false, maxDPI: 35000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
         // Its dongle (in-app report on firmware v2.50, no credit given): battery, DPI and
-        // stages, and polling passed. Lighting failed, as on the cable's first report. No
-        // extra zones recorded: a report that shows lighting working says which answer. A
-        // second report (0.9.0, 2026-11-13) passed lighting, so it stands one each way.
+        // stages, and polling passed. Lighting failed, as on the cable's first report. A
+        // second report (0.9.0, 2026-11-13) passed lighting, so it stood one each way.
         // A third (0.10.0, firmware v2.52, 2026-11-23), with red sent to each zone, passed:
-        // the lights dimmed and turned red, and LOGO and SCROLL answered brightness. Two
-        // passes to one, and the fail came before 0.10.0's per-zone writes.
+        // the lights dimmed and turned red, and LOGO and SCROLL answered brightness, so
+        // SCROLL is recorded now. Two passes to one, and the fail came before 0.10.0's
+        // per-zone writes.
         .init(pid: 0x00CD, name: "Razer Basilisk V3 Pro 35K (Wireless)", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 35000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
         // Basilisk V3 Pro 35K Phantom Green Edition (in-app report on 0.10.0, firmware v2.53,
         // no credit given): battery, DPI and stages, and polling passed with 0x1f. Lighting
