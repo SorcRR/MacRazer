@@ -99,6 +99,26 @@ final class EffectRestoreTests: XCTestCase {
         XCTAssertEqual(record.data?.restored, true)
     }
 
+    /// The red-only check on a light without brightness puts the mouse's own colour back
+    /// too, read before the red.
+    func testAColourOnlyLightGetsItsOwnColourBack() {
+        let mouse = FakeMouse()
+        mouse.refuse = { $0.commandClass == 0x0F && ($0.commandId == 0x84 || $0.commandId == 0x04) }
+        primeEffect(mouse, led: Razer.zeroLed, [1, 0, 0, 1, 0, 0, 255]) // blue, as it was
+        let app = RazerCommands.setStatic(led: Razer.zeroLed, rgb: RGB(r: 0x44, g: 0xD6, b: 0x2C))
+        let red = [RazerCommands.setStatic(led: Razer.zeroLed, rgb: RGB(r: 255, g: 0, b: 0))]
+        let record = DeviceTestSteps.lighting(mouse, sweep: DeviceProbe.brightnessSweep(mouse), restoreEffect: [app],
+                                              red: red, colourOnly: true, seconds: 0, wait: { _ in })
+        XCTAssertEqual(record.data?.redShown, true)
+        XCTAssertEqual(bytes(lastEffect(mouse, led: Razer.zeroLed)),
+                       bytes(RazerCommands.setStatic(led: Razer.zeroLed, rgb: RGB(r: 0, g: 0, b: 255))), "blue again, not the app's")
+        XCTAssertEqual(record.data?.restored, true)
+        let read = mouse.sent.firstIndex { $0.commandClass == 0x0F && $0.commandId == 0x82 }
+        let firstWrite = mouse.sent.firstIndex { $0.commandClass == 0x0F && $0.commandId == 0x02 }
+        XCTAssertNotNil(read)
+        XCTAssertLessThan(read ?? .max, firstWrite ?? .min, "read before the red")
+    }
+
     func testAnEchoingMouseGetsTheAppsSetting() {
         // An unprimed FakeMouse answers the read with the request itself, like the 0x0A echo.
         let mouse = mouseLitAtLogo()

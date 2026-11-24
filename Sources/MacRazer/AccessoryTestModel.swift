@@ -128,8 +128,8 @@ final class AccessoryTestModel: ObservableObject {
 
     /// Every check that ran has an answer, "not sure" included, so Next can move on.
     var answered: Bool {
-        guard let data = report?.lighting.data, data.dimShown else { return report != nil }
-        return dimmed != nil && (!data.redShown || turnedRed != nil)
+        guard let data = report?.lighting.data, data.anyShown else { return report != nil }
+        return (!data.dimShown || dimmed != nil) && (!data.redShown || turnedRed != nil)
     }
 
     func next() {
