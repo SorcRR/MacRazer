@@ -2,6 +2,7 @@
 // Part of MacRazer, a control app for Razer mice on macOS. See LICENSE and NOTICE.md.
 
 import SwiftUI
+import MacRazerHoliday
 
 /// One page of the Settings window, picked in its sidebar.
 enum SettingsPane: String, CaseIterable, Identifiable {
@@ -63,6 +64,8 @@ struct SettingsView: View {
     @ObservedObject var scrolling: ScrollSettings = .shared
     @ObservedObject var usageStats: UsageStats = .shared
     @ObservedObject var supportPrompt: SupportPrompt = .shared
+    /// The December decorations' switch, shown in Appearance only in season.
+    @ObservedObject private var holiday: Holiday = .shared
     @State var pane: SettingsPane = .general
     @State private var confirmingDelete = false
     @State private var hoveredPane: SettingsPane?
@@ -85,6 +88,8 @@ struct SettingsView: View {
         .frame(width: Self.size.width, height: Self.size.height)
         .ignoresSafeArea()
         .background(closeShortcuts)
+        // The elves' game runs while this window is on screen.
+        .holidayGameSurface(.settings)
         // The login switch mirrors the system's registration, which the user can change in
         // System Settings while this window sits open in the background.
         .onAppear {
@@ -359,6 +364,14 @@ struct SettingsView: View {
             glassRow
             rowDivider
             twoColumnsRow
+        }
+        // Only in season: the switch for the December decorations.
+        if holiday.showsSettingsRow {
+            settingsGroup("Holidays") {
+                HolidaySettingsRow()
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+            }
         }
     }
 
@@ -674,6 +687,8 @@ struct SettingsView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
                 .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.primary.opacity(0.08)))
+                // Elves and Little Krampus peek out of the groups in December.
+                .holidayPeekSpot(.settings, cornerRadius: 10)
         }
     }
 

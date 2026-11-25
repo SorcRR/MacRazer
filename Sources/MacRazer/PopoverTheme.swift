@@ -3,6 +3,7 @@
 
 import AppKit
 import Combine
+import MacRazerHoliday
 
 /// The theme picked in Settings › Appearance.
 enum PopoverTheme: String, CaseIterable, Identifiable {
@@ -119,6 +120,8 @@ final class AppearanceSettings: ObservableObject {
         windows.add(window)
         let look = windowLook ?? look(systemIsDark: NSApplication.shared.effectiveAppearance.isDark)
         WindowBackdrop.apply(look, to: window)
+        // Candy canes and snow behind the content in December; nothing the rest of the year.
+        HolidayWindowDecor.attach(to: window)
     }
 
     /// Re-applies a look to every tracked window. Takes the look rather than working it out

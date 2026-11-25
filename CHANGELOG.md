@@ -7,6 +7,17 @@ expect rough edges until 1.0.
 ## [Unreleased]
 
 ### Added
+- **Holiday decorations, Dec 1 to Jan 6.** The popover gets pine branches with twinkling
+  lights, a little snow, a tree in the menu bar and a countdown to Christmas, with a star from
+  Christmas Day and fireworks on New Year's Day. The first time the popover opens, a card offers
+  to keep them or turn them off, and Settings › Appearance has a switch all season. Your own
+  theme never changes underneath, and on Jan 7 everything goes back on its own. Reduce Motion
+  and Low Power Mode keep it still.
+  - **Catch Santa:** he peeks out of a card now and then. Click him for a point. Rudolph is
+    worth two. Seven levels, each a little faster. In Settings it's elves, and now and then
+    Little Krampus for three.
+  - **An anonymous holiday count** for the reports page: whether the decorations are on, and
+    whether they were kept or turned off. No ID for the Mac, like the daily mouse count.
 - **More mice from test reports.**
   - **Polling confirmed with the newer command** on the Viper 8KHz, both Basilisk V4 Pro
     links and the Mouse Dock Pro, which goes up to 8000 Hz.

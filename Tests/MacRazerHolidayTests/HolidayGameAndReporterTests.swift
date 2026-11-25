@@ -1,0 +1,106 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Part of MacRazer, a control app for Razer mice on macOS. See LICENSE and NOTICE.md.
+
+import XCTest
+@testable import MacRazerHoliday
+
+@MainActor
+final class HolidayGameAndReporterTests: XCTestCase {
+    private var defaults: UserDefaults!
+    private var clock = Date()
+    private let calendar: Calendar = {
+        var c = Calendar(identifier: .gregorian)
+        c.timeZone = TimeZone(identifier: "UTC")!
+        return c
+    }()
+
+    override func setUp() async throws {
+        defaults = UserDefaults(suiteName: "HolidayGameTests.\(UUID().uuidString)")
+        clock = calendar.date(from: DateComponents(year: 2026, month: 12, day: 10, hour: 12))!
+    }
+
+    private func holiday() -> Holiday {
+        Holiday(defaults: defaults, calendar: calendar, now: { [unowned self] in clock }, watchSystem: false)
+    }
+
+    func testCatchingScoresAndPersistsPerSeason() {
+        let h = holiday()
+        let game = HolidayGame(holiday: h)
+        let spot = UUID()
+        game.register(spot, surface: .popover)
+        XCTAssertTrue(game.caught(game.forcePeek(.santa, spot: spot).id))
+        XCTAssertTrue(game.caught(game.forcePeek(.reindeer, spot: spot).id))
+        XCTAssertEqual(game.score, 3)
+        XCTAssertEqual(game.counts[.reindeer], 1)
+        XCTAssertNotNil(game.bubble)
+        XCTAssertEqual(h.pendingChanges, [.played], "The first catch is counted once")
+        // A new game on the same storage picks the score up again.
+        XCTAssertEqual(HolidayGame(holiday: h).score, 3)
+    }
+
+    func testAPeekThatLeftCanNotBeCaught() {
+        let game = HolidayGame(holiday: holiday())
+        let spot = UUID()
+        game.register(spot, surface: .settings)
+        let old = game.forcePeek(.elf, spot: spot)
+        _ = game.forcePeek(.krampus, spot: spot)
+        XCTAssertFalse(game.caught(old.id))
+        XCTAssertEqual(game.score, 0)
+    }
+
+    func testUnregisteringACardRemovesItsPeek() {
+        let game = HolidayGame(holiday: holiday())
+        let spot = UUID()
+        game.register(spot, surface: .popover)
+        _ = game.forcePeek(.santa, spot: spot)
+        game.unregister(spot)
+        XCTAssertNil(game.peek)
+    }
+
+    func testReporterURLAndReply() async throws {
+        let h = holiday()
+        h.keep()
+        let reporter = HolidayReporter(holiday: h)
+        var asked: [URL] = []
+        reporter.configure(base: URL(string: "https://reports.example")!, appVersion: "0.11.0") { url in
+            asked.append(url)
+            let reply = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (Data(#"{"enabled":false}"#.utf8), reply)
+        }
+        await reporter.reportIfNeeded()
+        let url = try XCTUnwrap(asked.first)
+        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        XCTAssertEqual(url.path, "/v1/holiday")
+        XCTAssertEqual(items.first { $0.name == "season" }?.value, "2026")
+        XCTAssertEqual(items.first { $0.name == "state" }?.value, "on")
+        XCTAssertEqual(items.first { $0.name == "changes" }?.value, "kept")
+        XCTAssertNil(items.first { $0.name == "id" }, "Anonymous: no ID for the Mac")
+        XCTAssertEqual(h.pendingChanges, [])
+        XCTAssertFalse(h.isFestive, "The reply switched the decorations off")
+        // Nothing new the same day: no second request.
+        await reporter.reportIfNeeded()
+        XCTAssertEqual(asked.count, 1)
+    }
+
+    func testReporterKeepsChangesWhenTheSendFails() async {
+        let h = holiday()
+        h.keep()
+        let reporter = HolidayReporter(holiday: h)
+        reporter.configure(base: URL(string: "https://reports.example")!, appVersion: nil) { _ in throw URLError(.notConnectedToInternet) }
+        await reporter.reportIfNeeded()
+        XCTAssertEqual(h.pendingChanges, [.kept])
+        XCTAssertTrue(h.isFestive)
+    }
+
+    func testReporterSendsNothingOffSeason() async {
+        clock = calendar.date(from: DateComponents(year: 2026, month: 8, day: 1))!
+        let reporter = HolidayReporter(holiday: holiday())
+        var asked = 0
+        reporter.configure(base: URL(string: "https://reports.example")!, appVersion: nil) { url in
+            asked += 1
+            return (Data(), HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }
+        await reporter.reportIfNeeded()
+        XCTAssertEqual(asked, 0)
+    }
+}
