@@ -242,6 +242,49 @@ final class BatteryHistoryTests: XCTestCase {
         XCTAssertNil(h.currentRatePerHour, "a finished cycle leaves nothing to fit and nothing learned")
     }
 
+    /// A poll every 4 seconds at the same percent keeps about one sample a minute, plus the
+    /// first of each run and the newest poll.
+    func testASteadyPercentIsThinnedToAboutOneSampleAMinute() {
+        let h = makeHistory()
+        var t = t0
+        for i in 0..<(30 * 60 / 4) { // 30 minutes of 4s polls
+            h.record(percent: i < 450 / 2 ? 80 : 79, charging: false, at: t)
+            t = t.addingTimeInterval(4)
+        }
+        XCTAssertLessThan(h.samples.count, 40, "30 minutes kept as ~30 samples, not 450")
+        XCTAssertGreaterThan(h.samples.count, 28)
+        XCTAssertEqual(h.samples.first?.t, t0)
+        XCTAssertEqual(h.samples.last?.t, t.addingTimeInterval(-4), "the newest poll is always kept")
+        let firstAt79 = h.samples.first { $0.pct == 79 }
+        XCTAssertEqual(firstAt79?.t, t0.addingTimeInterval(Double(450 / 2) * 4), "the moment it changed")
+        let gaps = zip(h.samples, h.samples.dropFirst()).map { $1.t.timeIntervalSince($0.t) }
+        XCTAssertLessThanOrEqual(gaps.max() ?? 0, BatteryHistory.sameRunSpacing + 4,
+                                 "never a gap the fit would take for time away")
+    }
+
+    /// Thinning keeps the fit's rate: a steady 1%/hr over 4s polls still reads as 1%/hr.
+    func testThinningKeepsTheRate() {
+        let h = makeHistory()
+        var t = t0
+        let end = t0.addingTimeInterval(4 * 3600)
+        while t <= end {
+            h.record(percent: 100 - Int(t.timeIntervalSince(t0) / 3600), charging: false, at: t)
+            t = t.addingTimeInterval(4)
+        }
+        XCTAssertEqual(h.currentRatePerHour ?? 0, 1.0, accuracy: 0.1)
+        XCTAssertLessThan(h.samples.count, 300)
+    }
+
+    /// The curve model still hears every poll, with the real time since the one before.
+    func testEveryPollStillReachesTheCurveModel() {
+        let h = makeHistory()
+        var intervals: [TimeInterval] = []
+        h.onInterval = { _, _, d in intervals.append(d) }
+        for i in 0..<20 { h.record(percent: 50, charging: false, at: t0.addingTimeInterval(Double(i) * 4)) }
+        XCTAssertEqual(intervals.count, 19)
+        XCTAssertTrue(intervals.allSatisfy { abs($0 - 4) < 0.001 })
+    }
+
     func testFormatDuration() {
         XCTAssertEqual(BatteryHistory.formatDuration(hours: 0.5), "30m")
         XCTAssertEqual(BatteryHistory.formatDuration(hours: 1.5), "1h 30m")

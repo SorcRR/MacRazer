@@ -30,10 +30,18 @@ final class BatteryHistory {
     private let previousStore: VersionedFileStore<[BatterySample]>
 
     /// Keep a bounded window so a single charge cycle dominates the fit, but generous enough
-    /// that the usage graph can show the *whole* cycle rather than just a recent slice — at the
-    /// 15s connected-poll interval this covers a bit over 100 hours (~4 days), comfortably past
-    /// any realistic single-charge duration for these mice.
+    /// that the usage graph can show the *whole* cycle rather than just a recent slice. With
+    /// `sameRunSpacing` thinning a steady percent to about one sample a minute, this covers
+    /// hundreds of hours of use. Unthinned, the 4s in-use poll filled it in about a day of use,
+    /// and a Cobra HyperSpeed's charge lasts longer than that.
     private let maxSamples = 25_000
+
+    /// While the percent stays the same, keep a sample about this often and move the newest
+    /// one up to each poll instead of adding one. Well under `maxIdleGap`, so the rate fit
+    /// still reads the time between kept samples as use, and evenly spaced, so the fit
+    /// weighs the time as it did one sample per poll. Each run keeps its first sample, the
+    /// moment the percent changed.
+    static let sameRunSpacing: TimeInterval = 60
     /// Per-device key (e.g. the PID hex) so each mouse keeps its own history + learned rate.
     private let deviceKey: String
 
@@ -145,7 +153,13 @@ final class BatteryHistory {
                 }
             }
         }
-        samples.append(BatterySample(t: now, pct: percent))
+        let n = samples.count
+        if n >= 2, samples[n - 1].pct == percent, samples[n - 2].pct == percent,
+           now.timeIntervalSince(samples[n - 2].t) < Self.sameRunSpacing {
+            samples[n - 1] = BatterySample(t: now, pct: percent)
+        } else {
+            samples.append(BatterySample(t: now, pct: percent))
+        }
         if samples.count > maxSamples { samples.removeFirst(samples.count - maxSamples) }
         // Throttled — see VersionedFileStore. The learned rate goes with it.
         if store.save(samples) { persistLearnedRate() }
