@@ -152,4 +152,76 @@ final class EffectRestoreTests: XCTestCase {
         XCTAssertLessThan(read ?? .max, firstWrite ?? .max)
         XCTAssertEqual(bytes(lastEffect(mouse, led: Razer.logoLed)), bytes(RazerCommands.setSpectrum(led: Razer.logoLed)))
     }
+
+    /// A zone that took the red and refuses every restore is left red, so nothing counts as
+    /// put back, even though another zone came back.
+    func testAZoneLeftRedIsNotPutBack() {
+        let mouse = mouseLitAtLogo()
+        let app = RGB(r: 0x44, g: 0xD6, b: 0x2C)
+        let leds = [Razer.logoLed, Razer.scrollLed]
+        let isScrollRestore: (RazerReport) -> Bool = {
+            $0.commandClass == 0x0F && $0.commandId == 0x02 && $0.arguments[1] == Razer.scrollLed && $0.arguments[6] != 255
+        }
+        let brightnessRefusal = mouse.refuse
+        mouse.refuse = { brightnessRefusal($0) || isScrollRestore($0) }
+        let record = DeviceTestSteps.lighting(mouse, sweep: DeviceProbe.brightnessSweep(mouse),
+                                              restoreEffect: RazerCommands.effect(.staticColor, color: app, leds: leds),
+                                              red: RazerCommands.effect(.staticColor, color: RGB(r: 255, g: 0, b: 0), leds: leds),
+                                              seconds: 0, wait: { _ in })
+        XCTAssertEqual(record.data?.redShown, true)
+        XCTAssertEqual(record.data?.restored, false)
+    }
+
+    /// A zone that refused the red was never changed, so its refused restore fails nothing.
+    func testAZoneThatRefusedRedDoesNotFailTheRestore() {
+        let mouse = mouseLitAtLogo()
+        let app = RGB(r: 0x44, g: 0xD6, b: 0x2C)
+        let leds = [Razer.logoLed, Razer.scrollLed]
+        let brightnessRefusal = mouse.refuse
+        mouse.refuse = { brightnessRefusal($0) || ($0.commandClass == 0x0F && $0.commandId == 0x02 && $0.arguments[1] == Razer.scrollLed) }
+        let record = DeviceTestSteps.lighting(mouse, sweep: DeviceProbe.brightnessSweep(mouse),
+                                              restoreEffect: RazerCommands.effect(.staticColor, color: app, leds: leds),
+                                              red: RazerCommands.effect(.staticColor, color: RGB(r: 255, g: 0, b: 0), leds: leds),
+                                              seconds: 0, wait: { _ in })
+        XCTAssertEqual(record.data?.restored, true)
+    }
+
+    private func mouseLitAtLogoAndScroll() -> FakeMouse {
+        let mouse = FakeMouse()
+        mouse.holds(RazerCommands.setBrightness(200, led: Razer.logoLed))
+        mouse.holds(RazerCommands.setBrightness(150, led: Razer.scrollLed))
+        mouse.refuse = { $0.commandClass == 0x0F && $0.commandId == 0x84
+            && $0.arguments[1] != Razer.logoLed && $0.arguments[1] != Razer.scrollLed }
+        return mouse
+    }
+
+    /// ZERO answering as LOGO on a mouse with two lights is the logo's effect alone: ZERO
+    /// gets the app's setting, not the logo's colour on every zone.
+    func testZeroAnsweringAsOneOfSeveralZonesGetsTheAppsSetting() {
+        let mouse = mouseLitAtLogoAndScroll()
+        mouse.answers(RazerCommands.getEffect(led: Razer.zeroLed)) { args in
+            args[0] = 0
+            for (i, b) in [UInt8](arrayLiteral: Razer.logoLed, 1, 0, 0, 1, 0, 0, 255).enumerated() { args[1 + i] = b }
+        }
+        let app = RazerCommands.setStatic(led: Razer.zeroLed, rgb: RGB(r: 0x44, g: 0xD6, b: 0x2C))
+        _ = DeviceTestSteps.lighting(mouse, sweep: DeviceProbe.brightnessSweep(mouse), restoreEffect: [app],
+                                     red: [RazerCommands.setStatic(led: Razer.zeroLed, rgb: RGB(r: 255, g: 0, b: 0))],
+                                     seconds: 0, wait: { _ in })
+        XCTAssertEqual(bytes(lastEffect(mouse, led: Razer.zeroLed)), bytes(app))
+    }
+
+    /// With the logo the only light, ZERO answering as LOGO is the whole mouse's effect.
+    func testZeroAnsweringAsTheOnlyZoneGetsItsOwnEffect() {
+        let mouse = mouseLitAtLogo()
+        mouse.answers(RazerCommands.getEffect(led: Razer.zeroLed)) { args in
+            args[0] = 0
+            for (i, b) in [UInt8](arrayLiteral: Razer.logoLed, 1, 0, 0, 1, 0, 0, 255).enumerated() { args[1 + i] = b }
+        }
+        let app = RazerCommands.setStatic(led: Razer.zeroLed, rgb: RGB(r: 0x44, g: 0xD6, b: 0x2C))
+        _ = DeviceTestSteps.lighting(mouse, sweep: DeviceProbe.brightnessSweep(mouse), restoreEffect: [app],
+                                     red: [RazerCommands.setStatic(led: Razer.zeroLed, rgb: RGB(r: 255, g: 0, b: 0))],
+                                     seconds: 0, wait: { _ in })
+        XCTAssertEqual(bytes(lastEffect(mouse, led: Razer.zeroLed)),
+                       bytes(RazerCommands.setStatic(led: Razer.zeroLed, rgb: RGB(r: 0, g: 0, b: 255))))
+    }
 }

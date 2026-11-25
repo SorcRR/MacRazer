@@ -880,6 +880,20 @@ enum RazerDevices {
     /// For tests.
     static func forgetDockedLighting() { dockedLighting.withLock { $0 = [:] } }
 
+    /// Polls between re-asks of an unlit mouse on a dock: about two minutes while it answers.
+    static let dockUnlitReprobePolls = 8
+
+    /// Whether a poll should ask the mouse on a dock for its lights again. Always while
+    /// nothing is known. A lit mouse when the brightness read failed, since an unlit one may
+    /// be there now. An unlit mouse when the read answered, and every
+    /// `dockUnlitReprobePolls` polls besides: the read asks one group, and a lit mouse put on
+    /// the dock may light only others.
+    static func shouldReprobeDock(known: [UInt8]?, brightnessAnswered: Bool, pollsSinceProbe: Int) -> Bool {
+        guard let known else { return true }
+        if !known.isEmpty { return !brightnessAnswered }
+        return brightnessAnswered || pollsSinceProbe >= dockUnlitReprobePolls
+    }
+
     // MARK: - The online support list
 
     /// Posted on the main thread when the online support list changes what a row still needs.
