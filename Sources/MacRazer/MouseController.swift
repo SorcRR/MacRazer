@@ -259,6 +259,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         userWorkLock.lock(); userWorkCount -= 1; userWorkLock.unlock()
     }
     private var device: (any RazerTransport)?
+    /// `io` queue only. Polls since the dock's mouse was last asked for its lights
+    /// (`RazerDevices.shouldReprobeDock`).
+    private var dockPollsSinceProbe = 0
     /// When opening a Bluetooth mouse last failed slowly (see `openTransport`).
     private var bluetoothOpenFailedAt: Date?
     /// `io` queue only. Wake/activity checks bypass the long-open cooldown and do not
@@ -1063,8 +1066,13 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         // the dock opened), or when this read no longer matches what it said: an answer
         // where it had no lights, or a refusal where it had. A different mouse may be there
         // now. Only while the link is up, so this read was heard, and nothing is waiting.
+        // An unlit mouse also gets asked now and then: the one read here is on a single
+        // group, and a lit mouse swapped in may answer only on others.
+        if RazerDevices.lightingFollowsDockedMouse.contains(dev.productID) { dockPollsSinceProbe += 1 }
         if RazerDevices.lightingFollowsDockedMouse.contains(dev.productID), !linkDead, !self.userWorkPending,
-           RazerDevices.dockedLightingLeds(pid: dev.productID).map({ (bRead != nil) != !$0.isEmpty }) ?? true {
+           RazerDevices.shouldReprobeDock(known: RazerDevices.dockedLightingLeds(pid: dev.productID),
+                                          brightnessAnswered: bRead != nil,
+                                          pollsSinceProbe: dockPollsSinceProbe) {
             probeDockedLighting(dev, keepingWhatWasKnown: true)
             let lit = RazerDevices.hasLighting(pid: dev.productID)
             publish { self.update(\.deviceHasLighting, lit) }
@@ -2154,6 +2162,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     private func probeDockedLighting(_ dev: any RazerTransport, keepingWhatWasKnown: Bool) {
         guard RazerDevices.lightingFollowsDockedMouse.contains(dev.productID),
               let channel = dev as? DeviceProbeChannel else { return }
+        dockPollsSinceProbe = 0
         let found = DeviceProbe.dockedLighting(channel, shouldStop: { self.userWorkPending })
         // A probe cut short by a tap says nothing new, so it keeps what was known even on
         // open: forgetting would bring back lights an unlit mouse doesn't have.

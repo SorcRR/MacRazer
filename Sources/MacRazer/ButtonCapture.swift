@@ -106,8 +106,11 @@ final class ButtonCapture: @unchecked Sendable {
     /// A relative control's value as a signed number, for `chip`'s tilt direction. One
     /// described with a range that starts at zero (0...255 for a byte) still means negative in
     /// its upper half: a tilt left sends 0xFF for -1. A range below zero is signed already.
+    /// Only for a range that fills two or more bits (0...3 and up, all ones): a one-bit
+    /// 0...1 has no room for a sign, so its 1 stays 1.
     static func signed(_ value: Int, logicalMin: Int, logicalMax: Int) -> Int {
-        guard logicalMin >= 0, logicalMax > 0, value > logicalMax / 2 else { return value }
+        guard logicalMin >= 0, logicalMax >= 3, logicalMax & (logicalMax + 1) == 0,
+              value > logicalMax / 2 else { return value }
         return value - (logicalMax + 1)
     }
 

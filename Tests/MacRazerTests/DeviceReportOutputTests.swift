@@ -202,6 +202,8 @@ final class DeviceReportOutputTests: XCTestCase {
         XCTAssertEqual(ButtonCapture.signed(0xFF, logicalMin: 0, logicalMax: 0xFF), -1)
         XCTAssertEqual(ButtonCapture.signed(1, logicalMin: 0, logicalMax: 0xFF), 1)
         XCTAssertEqual(ButtonCapture.signed(5, logicalMin: 0, logicalMax: 0), 5, "no range given")
+        XCTAssertEqual(ButtonCapture.signed(1, logicalMin: 0, logicalMax: 1), 1, "a one-bit field has no sign")
+        XCTAssertEqual(ButtonCapture.signed(3, logicalMin: 0, logicalMax: 3), -1, "two bits do")
     }
 
     /// Every label fits the Worker's check: two hex digits, a colon, two to four hex digits.

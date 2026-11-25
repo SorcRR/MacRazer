@@ -991,11 +991,15 @@ enum DeviceTestSteps {
         // that reads back differently is put back as well as it can be, but can't fail a
         // check that passed without it.
         let lit = answering + zones
-        // Each zone's own effect, read before anything is written.
+        // Each zone's own effect, read before anything is written. ZERO answering as another
+        // zone counts only when that zone is the one light found: on a mouse with more, it is
+        // one zone's effect, and writing it to ZERO would copy it to all of them.
+        let litLeds = lit.map(\.1)
         func readOwnEffects() -> [UInt8: RazerReport] {
             Dictionary((restoreEffect ?? []).compactMap { fallback -> (UInt8, RazerReport)? in
                 let led = fallback.arguments[1]
                 guard let reply = try? channel.send(RazerCommands.getEffect(led: led)),
+                      reply.arguments[1] == led || litLeds == [reply.arguments[1]],
                       let own = RazerCommands.effectRestore(from: reply, led: led) else { return nil }
                 return (led, own)
             }, uniquingKeysWith: { first, _ in first })
@@ -1005,10 +1009,11 @@ enum DeviceTestSteps {
             // still "not on this mouse", as before.
             if colourOnly, let restoreEffect {
                 let ownEffect = readOwnEffects()
-                data.redShown = applyLighting(channel, red)
+                let turnedRed = applyLighting(channel, red)
+                data.redShown = !turnedRed.isEmpty
                 if data.redShown {
                     wait(seconds)
-                    data.restored = restoreEffects(channel, restoreEffect, own: ownEffect)
+                    data.restored = restoreEffects(channel, restoreEffect, own: ownEffect, turnedRed: turnedRed)
                     record.outcome = .skipped
                     record.data = data
                     return record
@@ -1034,9 +1039,10 @@ enum DeviceTestSteps {
 
         if let restoreEffect {
             for (_, led, _) in lit { _ = try? DeviceProbe.writeBrightness(channel, raw: 255, led: led) }
-            data.redShown = applyLighting(channel, red)
+            let turnedRed = applyLighting(channel, red)
+            data.redShown = !turnedRed.isEmpty
             if data.redShown { wait(seconds) }
-            let effectBack = restoreEffects(channel, restoreEffect, own: ownEffect)
+            let effectBack = restoreEffects(channel, restoreEffect, own: ownEffect, turnedRed: turnedRed)
             allBack = restoreBrightness(channel, answering) && effectBack && allBack
             _ = restoreBrightness(channel, zones)
         }
@@ -1049,21 +1055,27 @@ enum DeviceTestSteps {
     }
 
     /// Puts each zone's own effect back, or the app's setting where the zone didn't say or
-    /// refuses its own. True when any zone took one.
+    /// refuses its own. True when some zone took one and every zone in `turnedRed` did: a
+    /// zone that refused the red was never changed, but one that took it and refuses both
+    /// restores is left red.
     private static func restoreEffects(_ channel: DeviceProbeChannel, _ fallbacks: [RazerReport],
-                                       own: [UInt8: RazerReport]) -> Bool {
-        fallbacks.reduce(false) { took, fallback in
-            let back = own[fallback.arguments[1]].flatMap { try? DeviceProbe.applyLighting(channel, $0) } != nil
+                                       own: [UInt8: RazerReport], turnedRed: Set<UInt8>) -> Bool {
+        var anyBack = false, redAllBack = true
+        for fallback in fallbacks {
+            let led = fallback.arguments[1]
+            let back = own[led].flatMap { try? DeviceProbe.applyLighting(channel, $0) } != nil
                 || (try? DeviceProbe.applyLighting(channel, fallback)) != nil
-            return back || took
+            anyBack = anyBack || back
+            if turnedRed.contains(led), !back { redAllBack = false }
         }
+        return anyBack && redAllBack
     }
 
-    /// Sends every zone's report, all of them even after a refusal. True when any took it.
-    private static func applyLighting(_ channel: DeviceProbeChannel, _ reports: [RazerReport]) -> Bool {
-        reports.reduce(false) { took, report in
-            (try? DeviceProbe.applyLighting(channel, report)) != nil || took
-        }
+    /// Sends every zone's report, all of them even after a refusal. The zones that took it.
+    private static func applyLighting(_ channel: DeviceProbeChannel, _ reports: [RazerReport]) -> Set<UInt8> {
+        Set(reports.compactMap { report in
+            (try? DeviceProbe.applyLighting(channel, report)) != nil ? report.arguments[1] : nil
+        })
     }
 
     private static func restoreBrightness(_ channel: DeviceProbeChannel, _ groups: [(String, UInt8, UInt8)]) -> Bool {
