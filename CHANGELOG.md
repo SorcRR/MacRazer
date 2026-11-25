@@ -94,8 +94,9 @@ expect rough edges until 1.0.
     Mac, so they could not be remapped before. Configure Buttons now saves remaps in the
     mouse, as on the Basilisk V4 Pro, and they keep working with MacRazer closed. Remaps
     you made before the update stay, and are written into the mouse.
-  - **Polling rate.** The mouse refuses both polling commands MacRazer knew, so profiles
-    failed on the polling step. It now gets its own command, with 125, 500 and 1000 Hz.
+  - **Polling rate over the dongle.** There the mouse refuses both polling commands MacRazer
+    knew, so profiles failed on the polling step. It now gets its own command, with 125, 500
+    and 1000 Hz. The cable keeps the one it passed with.
   - **Profiles are the mouse's onboard slots** over the dongle, as on the V4 Pro. Each keeps
     its own polling rate and remaps, and the Cycle Profile button switches them in the app
     too.
