@@ -130,10 +130,21 @@ enum SideButtonReset {
             if let what = describe(remap.current) { return "\(name(remap.id)) sends \(what)" }
             return "\(name(remap.id)) does something else"
         }
-        let list = ListFormatter.localizedString(byJoining: parts)
+        let list = ListFormatter.english(parts)
         let pronoun = remaps.count == 1 ? "it's" : "they're"
         return "Your mouse has its side buttons saved to other functions, probably by Razer Synapse: "
             + "\(list). Configure Buttons can't remap them as Back and Forward until \(pronoun) reset. "
             + "Resetting puts them back in the mouse itself, which removes what was saved there."
+    }
+}
+
+extension ListFormatter {
+    /// `items` joined as an English list ("A and B", "A, B, and C"). The sentences around it
+    /// are English whatever the Mac's language, as is the whole interface, so the list's
+    /// "and" must be too: the Mac's own locale would make it "A y B" in Spanish.
+    static func english(_ items: [String]) -> String {
+        let formatter = ListFormatter()
+        formatter.locale = Locale(identifier: "en")
+        return formatter.string(from: items) ?? items.joined(separator: ", ")
     }
 }

@@ -91,7 +91,7 @@ struct RemapView: View {
     }
 
     nonisolated static func competingAppsText(_ apps: [String]) -> String {
-        let list = ListFormatter.localizedString(byJoining: apps)
+        let list = ListFormatter.english(apps)
         let pronoun = apps.count == 1 ? "it" : "them"
         return "If a side button doesn't show up here when you press it, \(list) may be taking "
             + "its clicks. Quit \(pronoun) and try again."
