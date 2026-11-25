@@ -377,10 +377,23 @@ How driver mode is handled:
   sleeps, reconnects or is switched off and on. MacRazer sets it again on each new connection
   and after each wake (reading first), reads it about every 30 seconds to put it back if it
   fell out, and retries a failed change at most three times per connection.
+- **It is checked again as the mouse wakes.** Just after waking, the Cobra accepts driver mode
+  and reads it back, then resets itself to normal mode a few hundred milliseconds later as it
+  finishes starting up. Before this was known, gestures stopped working and the button cycled
+  DPI in the firmware until the next check, up to 30 seconds later. So after setting driver
+  mode on a new connection or after a wake, MacRazer reads it again 1 second and 3 seconds
+  later and puts it back if it went (and then checks 1 and 3 seconds after that, up to three
+  rounds). While driver mode is on, the mouse's own notifications that it is starting up or
+  going to sleep, or that its firmware changed the DPI, also make MacRazer read the mode at
+  once, at most once a second. A DPI change MacRazer made itself in the last 2 seconds (its DPI
+  cycle, a DPI picked in the app) doesn't count. These are single reads, not a timer, and stop
+  when the mouse disconnects or the action is cleared.
 - **It is given back.** Normal mode is written back when the DPI button's action is cleared
-  (DPI Cycle) and when MacRazer quits (waiting at most 3 seconds). If MacRazer crashes or is
-  killed, the DPI button **does nothing** until the mouse sleeps, reconnects or is switched off
-  and on, or until MacRazer runs again, reads the mode once and writes normal mode back.
+  (DPI Cycle) and when MacRazer quits (waiting at most 3 seconds), while the mouse is
+  connected. When the mouse disconnects, driver mode goes with it, so nothing is written to it
+  when it comes back. If MacRazer crashes or is killed, the DPI button **does nothing** until
+  the mouse sleeps, reconnects or is switched off and on, or until MacRazer runs again, reads
+  the mode once and writes normal mode back.
 
 Both mice:
 
@@ -397,14 +410,18 @@ Both mice:
   the link staying stable, the two keys behaving as described and normal mode restored on quit.
   The finished feature was then used on that mouse: hold and swipe on the DPI button, the short
   press doing Click, the software DPI cycle stepping one stage per press, and the periodic
-  check finding the mouse still in driver mode over a session of about an hour. Not yet tried:
-  re-arming after the mouse sleeps or the Mac wakes, and the Hold slot.
+  check finding the mouse still in driver mode over a session of about an hour. A trace of the
+  mouse sleeping and waking then showed driver mode lost for up to 30 seconds after a wake.
+  Re-arming after sleep was fixed from that trace (see *It is checked again as the mouse
+  wakes* above), and the fix itself has not been tried on the mouse yet. Not yet tried: the
+  Hold slot.
 - **Gesture trace.** If the DPI button or a gesture misbehaves, run
   `defaults write com.macrazer.menubar gestureDebugLog -bool true` and relaunch. MacRazer then
   writes a trace to `~/Library/Logs/MacRazer/gesture.log`: gesture holds and pointer movement,
   F20 timing, the mouse's raw HID reports (never keyboard keys other than F13 to F20), Razer's
   Bluetooth characteristics, read-only probes once per connection, each read and write of the
-  device mode, and the private keys. The trace itself only reads from the mouse; its HID part
+  device mode and why (with the re-checks as the mouse settles and the notifications that call
+  for one), and the private keys. The trace itself only reads from the mouse; its HID part
   needs Input Monitoring. Turn it off with `defaults delete com.macrazer.menubar gestureDebugLog`.
 - The device-mode key and the private-key report format were learned from other open-source
   projects (credited in [NOTICE.md](NOTICE.md)); no code from them is used.

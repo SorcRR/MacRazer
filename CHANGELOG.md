@@ -64,11 +64,20 @@ expect rough edges until 1.0.
   reopen on macOS 26.3, so the Buttons page says so and has a Reopen MacRazer button, which
   quits the way Quit does. Driver mode doesn't survive the mouse sleeping or reconnecting, so
   MacRazer sets it on each connection and after a wake, checks it about every 30 seconds, and
-  tries a failed change at most 3 times per connection. Normal mode is written back when the
-  action is cleared and when MacRazer quits. After a crash the button does nothing until the
-  mouse sleeps or MacRazer runs again and gives the mode back. On a real Cobra a trace
-  captured the mode write taken and read back, the link staying up, the two keys as described
-  and normal mode restored on quit. The device-mode key and the key report were learned from
+  tries a failed change at most 3 times per connection. After waking, the Cobra accepts driver
+  mode and reads it back, then resets itself to normal mode as it finishes starting, which left
+  gestures dead and the button cycling DPI for up to 30 seconds. So MacRazer reads the mode
+  again 1 second and 3 seconds after setting it on a new connection or after a wake, and puts
+  it back if it went. While it is on, the mouse's own notifications that it is starting up or
+  going to sleep, or that its firmware changed the DPI, have it read at once, at most once a
+  second; a DPI change MacRazer made in the last 2 seconds doesn't count. Normal mode is
+  written back when the action is cleared and when MacRazer quits, while the mouse is
+  connected, and no longer to a mouse that just reconnected: the mode doesn't outlast a
+  disconnect. After a crash the button does nothing until the mouse sleeps or MacRazer runs
+  again and gives the mode back. On a real Cobra a trace captured the mode write taken and
+  read back, the link staying up, the two keys as described and normal mode restored on quit,
+  and the finished feature was then used on it. The fix for the wake came from a trace and
+  hasn't been tried on the mouse yet. The device-mode key and the key report were learned from
   OpenRazer, OpenSnek, OpenSynapse and ergo-control (credited in NOTICE.md); no code from them
   is used.
 - **A gesture trace for bug reports.** The hidden `gestureDebugLog` default writes a trace to
