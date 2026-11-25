@@ -62,12 +62,47 @@ final class BasiliskV4HyperSpeedTests: XCTestCase {
         var record = DeviceTestSteps.lighting(mouse, sweep: sweep, splitRead: RazerDevices.brightnessSplitRead(pid: dongle),
                                               restoreEffect: nil, seconds: 2, wait: { waits.append($0) })
         XCTAssertEqual(waits, [2])
-        XCTAssertEqual(record.data?.groups, ["ZERO (read on 0x0A)": 77])
+        XCTAssertEqual(record.data?.groups, ["ZERO": 77], "a name the Worker takes")
         XCTAssertEqual(record.data?.dimShown, true)
         XCTAssertEqual(record.data?.restored, true)
         XCTAssertEqual(try mouse.send(RazerCommands.getBrightness(led: 0x0A)).arguments[2], 77)
         DeviceTestSteps.answered(dimmed: true, turnedRed: nil, &record)
         XCTAssertEqual(record.outcome, .passed)
+    }
+
+    /// The identify sweep never asks 0x0A, so on its own it finds no lighting id. k4ton's
+    /// dongle report (#55) failed identify this way while every other step passed.
+    func testIdentifyAsksTheReadLed() throws {
+        let mouse = splitReadMouse(raw: 77)
+        let (record, sweep) = DeviceTestSteps.identify(mouse, registry: RazerDevices.info(pid: dongle))
+        XCTAssertEqual(record.outcome, .passed)
+        let data = try XCTUnwrap(record.data)
+        XCTAssertEqual(data.lightingId, 0x1F)
+        let attempt = try XCTUnwrap(data.lightingAttempts.first { $0.id == 0x1F })
+        XCTAssertTrue(attempt.answered)
+        XCTAssertFalse(attempt.refused)
+        XCTAssertEqual(attempt.groups, ["ZERO"])
+        XCTAssertTrue(record.exchanges.contains { $0.commandClass == 0x0F && $0.commandId == 0x84 && $0.transactionId == 0x1F })
+        // The sweep handed to the lighting step is untouched: it asks 0x0A itself.
+        XCTAssertFalse(try XCTUnwrap(sweep).contains { (try? $0.result.get()) != nil })
+    }
+
+    /// A mouse that answers neither the sweep nor the read LED still fails identify.
+    func testIdentifyStillFailsWhenTheReadLedIsSilentToo() {
+        let mouse = splitReadMouse(raw: 77)
+        let refuse = mouse.refuse
+        mouse.refuse = { r in (r.commandClass == 0x0F && r.commandId == 0x84) || refuse(r) }
+        XCTAssertEqual(DeviceTestSteps.identify(mouse, registry: RazerDevices.info(pid: dongle)).record.outcome, .failed)
+    }
+
+    /// Every split-read model's write LED has a name the Worker takes, so its lighting
+    /// report isn't turned down.
+    func testSplitReadGroupsAreNamesTheWorkerTakes() {
+        let workerNames: Set = ["LOGO", "SCROLL", "ZERO", "BACKLIGHT", "UNDERGLOW", "RIGHT_SIDE", "LEFT_SIDE"]
+        for row in RazerDevices.known {
+            guard let split = RazerDevices.brightnessSplitRead(pid: row.pid) else { continue }
+            XCTAssertTrue(workerNames.contains(DeviceProbe.groupName(led: split.led)), String(row.pid, radix: 16))
+        }
     }
 
     func testWithoutTheSplitReadTheStepStillSaysNotSupported() {

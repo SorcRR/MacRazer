@@ -90,6 +90,13 @@ enum DeviceProbe {
         effectZoneGroups.filter { effectLeds.contains($0.led) }
     }
 
+    /// The report's name for an LED: one of `ledGroups` or `effectZoneGroups`, the names the
+    /// Worker takes. Hex for any other, which the Worker would turn down, so every LED a
+    /// model's row names must be one of them (BasiliskV4HyperSpeedTests).
+    static func groupName(led: UInt8) -> String {
+        (ledGroups + effectZoneGroups).first { $0.led == led }?.name ?? String(format: "0x%02X", led)
+    }
+
     /// One HID interface a device exposes, as the device test reports it. No location or
     /// serial: nothing here identifies a particular unit or Mac.
     struct Interface: Codable, Equatable {

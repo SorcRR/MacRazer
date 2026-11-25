@@ -483,6 +483,7 @@ enum DeviceTestSteps {
         let found = identify(device, preferredStandard: registry?.transactionId,
                              preferredMatrix: registry?.matrixTransactionId, others: others)
         var record = found.record
+        if let registry { askSplitRead(device, registry: registry, &record) }
         // On a known model, the ids on record must be ones the mouse answers to: that is the
         // regression a confirmation exists to catch, and lighting's id counts only where the
         // model has lighting at all.
@@ -506,6 +507,31 @@ enum DeviceTestSteps {
             }
         }
         return (record, found.sweep)
+    }
+
+    /// A model that writes brightness on one LED and answers its read only on another
+    /// (`RazerDevices.brightnessSplitRead`) refuses every read the sweep makes, so its id looks
+    /// unanswered. Asks the read LED with the model's lighting id, and counts an answer as
+    /// that id answering, under the write LED's name. The sweep itself stays as it was: the
+    /// lighting step asks the read LED again on its own (`lighting(splitRead:)`).
+    private static func askSplitRead(_ device: TransactionChannel, registry: RazerDeviceInfo,
+                                     _ record: inout DeviceReport.StepRecord<DeviceReport.IdentifyData>) {
+        guard registry.hasLighting, registry.hasBrightness, var data = record.data,
+              let split = RazerDevices.brightnessSplitRead(pid: registry.pid),
+              let index = data.lightingAttempts.firstIndex(where: { $0.id == registry.matrixTransactionId }),
+              !data.lightingAttempts[index].answered else { return }
+        let recording = RecordingChannel(base: device)
+        let answer = try? recording.sendWithRetry(RazerCommands.getBrightness(led: split.readLed),
+                                                  attempts: DeviceProbe.attempts,
+                                                  transactionId: registry.matrixTransactionId)
+        record.exchanges += recording.exchanges
+        guard answer != nil else { return }
+        data.lightingAttempts[index].answered = true
+        data.lightingAttempts[index].refused = false
+        data.lightingAttempts[index].groups = (data.lightingAttempts[index].groups ?? [])
+            + [DeviceProbe.groupName(led: split.led)]
+        data.lightingId = registry.matrixTransactionId
+        record.data = data
     }
 
     /// `identify` on a keyboard or mousepad. It fails when the id MacRazer stamps on its
@@ -992,11 +1018,9 @@ enum DeviceTestSteps {
         if let splitRead, !answering.contains(where: { $0.led == splitRead.led }),
            let reading = try? channel.sendWithRetry(RazerCommands.getBrightness(led: splitRead.readLed),
                                                     attempts: DeviceProbe.attempts) {
-            // Named for both LEDs: the sweep above shows the write LED refusing a read.
-            let ledName = DeviceProbe.ledGroups.first { $0.led == splitRead.led }?.name
-                ?? String(format: "0x%02X", splitRead.led)
-            let name = ledName + String(format: " (read on 0x%02X)", splitRead.readLed)
-            answering.append(LitGroup(name: name, led: splitRead.led, readLed: splitRead.readLed,
+            // Named for the write LED alone: the report's groups take only the names the
+            // Worker knows (`LED_GROUPS`), and a report with any other is turned down.
+            answering.append(LitGroup(name: DeviceProbe.groupName(led: splitRead.led), led: splitRead.led, readLed: splitRead.readLed,
                                       raw: reading.arguments[2]))
         }
         // Only past a sweep that found a light: an effects-only mouse keeps the red alone. The
