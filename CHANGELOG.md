@@ -38,6 +38,14 @@ expect rough edges until 1.0.
   tested. Before, the app took it for a mouse.
 
 ### Fixed
+- **Battery history keeps a whole long charge.** It saved a reading every 4 seconds, even
+  when nothing changed, and hit its limit after about a day of use. A long-lasting mouse lost
+  the start of its charge from the usage chart and the estimate. A steady reading is now kept
+  about once a minute, so the file is far smaller too.
+- **Mouse Dock Pro: a mouse with lights put on after one without is found.** The dock now
+  asks again every couple of minutes, so its lighting controls come back.
+- **Test This Mouse: a zone left red no longer counts as put back.** And on mice with several
+  lights, the test no longer copies the logo's effect onto every zone when it restores.
 - **Test This Mouse: tilting the wheel left and right shows two chips.** Both tilts send the
   same input, so they shared one chip, and a person could answer that a button didn't show up.
 - **Test This Mouse: no extra "Media key" chip.** Some mice send a blank input with every media

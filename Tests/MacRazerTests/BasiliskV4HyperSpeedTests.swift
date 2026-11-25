@@ -70,6 +70,26 @@ final class BasiliskV4HyperSpeedTests: XCTestCase {
         XCTAssertEqual(record.outcome, .passed)
     }
 
+    /// The mouse answers a ZERO effect read as 0x0A (k4ton's report on #55). That is its one
+    /// light, so the test puts its own effect back, not the app's setting.
+    func testItsOwnEffectComesBackThoughZeroAnswersAs0x0A() {
+        let mouse = splitReadMouse(raw: 77)
+        mouse.answers(RazerCommands.getEffect(led: Razer.zeroLed)) { args in
+            args[0] = 0
+            for (i, b) in [UInt8](arrayLiteral: 0x0A, 1, 0, 0, 1, 0, 0, 255).enumerated() { args[1 + i] = b }
+        }
+        let app = RazerCommands.setStatic(led: Razer.zeroLed, rgb: RGB(r: 0x44, g: 0xD6, b: 0x2C))
+        let record = DeviceTestSteps.lighting(mouse, sweep: DeviceProbe.brightnessSweep(mouse),
+                                              splitRead: RazerDevices.brightnessSplitRead(pid: dongle),
+                                              restoreEffect: [app],
+                                              red: [RazerCommands.setStatic(led: Razer.zeroLed, rgb: RGB(r: 255, g: 0, b: 0))],
+                                              seconds: 0, wait: { _ in })
+        XCTAssertEqual(record.data?.restored, true)
+        let last = mouse.sent.last { $0.commandClass == 0x0F && $0.commandId == 0x02 && $0.arguments[1] == Razer.zeroLed }
+        XCTAssertEqual(last.map { Array($0.arguments.prefix(9)) },
+                       Array(RazerCommands.setStatic(led: Razer.zeroLed, rgb: RGB(r: 0, g: 0, b: 255)).arguments.prefix(9)))
+    }
+
     /// The identify sweep never asks 0x0A, so on its own it finds no lighting id. k4ton's
     /// dongle report (#55) failed identify this way while every other step passed.
     func testIdentifyAsksTheReadLed() throws {

@@ -178,4 +178,24 @@ final class DockedLightingTests: XCTestCase {
         let (record, _) = DeviceTestSteps.identify(mouse, registry: RazerDevices.info(pid: 0x00DB))
         XCTAssertEqual(record.outcome, .failed)
     }
+
+    // MARK: When a poll asks again
+
+    func testAPollAsksWhileNothingIsKnown() {
+        XCTAssertTrue(RazerDevices.shouldReprobeDock(known: nil, brightnessAnswered: false, pollsSinceProbe: 1))
+    }
+
+    func testALitMouseIsAskedAgainOnlyWhenTheReadFails() {
+        XCTAssertFalse(RazerDevices.shouldReprobeDock(known: [Razer.logoLed], brightnessAnswered: true, pollsSinceProbe: 100))
+        XCTAssertTrue(RazerDevices.shouldReprobeDock(known: [Razer.logoLed], brightnessAnswered: false, pollsSinceProbe: 1))
+    }
+
+    /// A lit mouse swapped in may answer only on groups the poll's one read doesn't ask.
+    func testAnUnlitMouseIsAskedAgainNowAndThen() {
+        XCTAssertTrue(RazerDevices.shouldReprobeDock(known: [], brightnessAnswered: true, pollsSinceProbe: 1))
+        XCTAssertFalse(RazerDevices.shouldReprobeDock(known: [], brightnessAnswered: false,
+                                                      pollsSinceProbe: RazerDevices.dockUnlitReprobePolls - 1))
+        XCTAssertTrue(RazerDevices.shouldReprobeDock(known: [], brightnessAnswered: false,
+                                                     pollsSinceProbe: RazerDevices.dockUnlitReprobePolls))
+    }
 }
