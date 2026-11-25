@@ -101,9 +101,11 @@ final class RazerAccessoriesTests: XCTestCase {
         XCTAssertNil(RazerAccessories.info(pid: 0x0C00), "the original Firefly takes other commands")
     }
 
+    /// OpenRazer's keyboards take effects and brightness on BACKLIGHT_LED. The Joro is the
+    /// exception, from its report: its static colour was seen landing on ZERO_LED.
     func testKeyboardsLightTheBacklight() {
         for kb in RazerAccessories.known where kb.kind == .keyboard {
-            XCTAssertEqual(kb.effectLed, Razer.backlightLed, kb.name)
+            XCTAssertEqual(kb.effectLed, kb.pid == 0x02CD ? Razer.zeroLed : Razer.backlightLed, kb.name)
             XCTAssertEqual(kb.brightnessLed, Razer.backlightLed, kb.name)
             XCTAssertEqual(kb.effects, LightingEffect.classic, kb.name)
         }

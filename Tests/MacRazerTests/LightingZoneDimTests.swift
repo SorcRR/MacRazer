@@ -1,0 +1,124 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+// Part of MacRazer, a control app for Razer mice on macOS. See LICENSE and NOTICE.md.
+
+import XCTest
+@testable import MacRazer
+
+/// The lighting test dims the underglow and side strips too, on a model whose effects go
+/// there. Two 35K reports saw the red but not the dim: the underglow took the red and stayed lit.
+final class LightingZoneDimTests: XCTestCase {
+    private let underglow = DeviceProbe.effectZoneGroups(effectLeds: [Razer.underglowLed])
+
+    /// LOGO answers the sweep; the underglow answers too, at `underglowAt` unless refused.
+    private func mouse(underglowAt raw: UInt8?) -> FakeMouse {
+        let mouse = FakeMouse()
+        mouse.holds(RazerCommands.setBrightness(200, led: Razer.logoLed))
+        if let raw { mouse.holds(RazerCommands.setBrightness(raw, led: Razer.underglowLed)) }
+        let answers: Set<UInt8> = raw == nil ? [Razer.logoLed] : [Razer.logoLed, Razer.underglowLed]
+        mouse.refuse = { $0.commandClass == 0x0F && ($0.commandId & 0x7F) == 0x04 && !answers.contains($0.arguments[1]) }
+        return mouse
+    }
+
+    private func brightnessWrites(_ mouse: FakeMouse, led: UInt8) -> [UInt8] {
+        mouse.sent.filter { $0.commandClass == 0x0F && $0.commandId == 0x04 && $0.arguments[1] == led }.map { $0.arguments[2] }
+    }
+
+    private func run(_ mouse: FakeMouse, zoneGroups: [(name: String, led: UInt8)], colourOnly: Bool = false)
+        -> DeviceReport.StepRecord<DeviceReport.LightingData> {
+        let app = RazerCommands.setStatic(led: Razer.logoLed, rgb: RGB(r: 0x44, g: 0xD6, b: 0x2C))
+        return DeviceTestSteps.lighting(mouse, sweep: DeviceProbe.brightnessSweep(mouse), restoreEffect: [app],
+                                        zoneGroups: zoneGroups, colourOnly: colourOnly, seconds: 0, wait: { _ in })
+    }
+
+    func testAnUnderglowThatAnswersIsDimmedAndPutBack() {
+        let mouse = mouse(underglowAt: 180)
+        let record = run(mouse, zoneGroups: underglow)
+        XCTAssertEqual(record.data?.groups, ["LOGO": 200, "UNDERGLOW": 180])
+        let writes = brightnessWrites(mouse, led: Razer.underglowLed)
+        XCTAssertEqual(writes.first, 0, "dimmed with the rest")
+        XCTAssertEqual(writes.last, 180, "and back to its own brightness")
+        XCTAssertEqual(record.data?.restored, true)
+    }
+
+    func testAnUnderglowThatRefusesChangesNothing() {
+        let mouse = mouse(underglowAt: nil)
+        let record = run(mouse, zoneGroups: underglow)
+        XCTAssertEqual(record.data?.groups, ["LOGO": 200], "as before")
+        XCTAssertEqual(brightnessWrites(mouse, led: Razer.underglowLed), [])
+        XCTAssertEqual(record.data?.restored, true)
+    }
+
+    func testAZeroAnswerIsLeftAlone() {
+        // The Lancehead's 0x0A echoes the read, which reads as zero: putting that back would
+        // leave a lit underglow dark.
+        let mouse = mouse(underglowAt: 0)
+        let record = run(mouse, zoneGroups: underglow)
+        XCTAssertNil(record.data?.groups["UNDERGLOW"])
+        XCTAssertEqual(brightnessWrites(mouse, led: Razer.underglowLed), [])
+    }
+
+    func testAZoneThatKeepsItsBrightnessCantFailTheStep() {
+        // 0x0A answers 180, but every write lands as 255: the restore never reads back 180.
+        let mouse = mouse(underglowAt: 180)
+        mouse.clamp = { report in
+            guard report.commandClass == 0x0F, report.commandId == 0x04, report.arguments[1] == Razer.underglowLed else { return report }
+            var kept = report
+            kept.arguments[2] = 255
+            return kept
+        }
+        let record = run(mouse, zoneGroups: underglow)
+        XCTAssertEqual(record.data?.groups["UNDERGLOW"], 180)
+        XCTAssertEqual(record.data?.restored, true, "as it would be without the zone")
+        var answered = record
+        DeviceTestSteps.answered(dimmed: true, turnedRed: true, &answered)
+        XCTAssertEqual(answered.outcome, .passed)
+    }
+
+    func testAnAnswerForAnotherZoneIsNotThisOnes() {
+        let mouse = mouse(underglowAt: nil)
+        mouse.answers(RazerCommands.getBrightness(led: Razer.rightSideLed)) { args in
+            args[1] = Razer.logoLed
+            args[2] = 200
+        }
+        let record = run(mouse, zoneGroups: DeviceProbe.effectZoneGroups(effectLeds: [Razer.rightSideLed]))
+        XCTAssertNil(record.data?.groups["RIGHT_SIDE"])
+        XCTAssertEqual(brightnessWrites(mouse, led: Razer.rightSideLed), [])
+    }
+
+    func testTheSideStripsDimToo() {
+        let mouse = mouse(underglowAt: nil)
+        mouse.holds(RazerCommands.setBrightness(90, led: Razer.rightSideLed))
+        mouse.holds(RazerCommands.setBrightness(120, led: Razer.leftSideLed))
+        let sides: Set<UInt8> = [Razer.logoLed, Razer.rightSideLed, Razer.leftSideLed]
+        mouse.refuse = { $0.commandClass == 0x0F && ($0.commandId & 0x7F) == 0x04 && !sides.contains($0.arguments[1]) }
+        let record = run(mouse, zoneGroups: DeviceProbe.effectZoneGroups(effectLeds: RazerDevices.effectLeds(pid: 0x0060)))
+        XCTAssertEqual(record.data?.groups, ["LOGO": 200, "RIGHT_SIDE": 90, "LEFT_SIDE": 120])
+        XCTAssertEqual(brightnessWrites(mouse, led: Razer.rightSideLed).first, 0)
+        XCTAssertEqual(brightnessWrites(mouse, led: Razer.leftSideLed).last, 120)
+    }
+
+    func testAColourOnlyLightIsNotAskedForBrightness() {
+        let mouse = FakeMouse()
+        mouse.refuse = { $0.commandClass == 0x0F && ($0.commandId & 0x7F) == 0x04 }
+        let record = run(mouse, zoneGroups: underglow, colourOnly: true)
+        XCTAssertEqual(record.data?.redShown, true)
+        XCTAssertFalse(record.data?.dimShown ?? true)
+        let asked = mouse.sent.filter { $0.commandClass == 0x0F && $0.commandId == 0x84 }.map { $0.arguments[1] }
+        XCTAssertFalse(asked.contains(Razer.underglowLed), "the red check runs alone, as before")
+    }
+
+    func testWhichZonesAModelAdds() {
+        XCTAssertTrue(DeviceProbe.effectZoneGroups(effectLeds: RazerDevices.effectLeds(pid: 0x9999)).isEmpty,
+                      "a model not on record gets no extra reads")
+        XCTAssertEqual(DeviceProbe.effectZoneGroups(effectLeds: RazerDevices.effectLeds(pid: 0x00CC)).map(\.name),
+                       ["UNDERGLOW"], "Basilisk V3 Pro 35K")
+        XCTAssertEqual(DeviceProbe.effectZoneGroups(effectLeds: RazerDevices.effectLeds(pid: 0x0060)).map(\.name),
+                       ["RIGHT_SIDE", "LEFT_SIDE"], "Lancehead Tournament Edition")
+    }
+
+    func testTheNamesAreTheWorkers() {
+        // SorcRR/macrazer-worker's LED_GROUPS: a name it doesn't have gets the report refused.
+        XCTAssertEqual((DeviceProbe.ledGroups + DeviceProbe.effectZoneGroups).map(\.name),
+                       ["LOGO", "SCROLL", "ZERO", "BACKLIGHT", "UNDERGLOW", "RIGHT_SIDE", "LEFT_SIDE"])
+    }
+}

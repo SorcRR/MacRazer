@@ -665,6 +665,39 @@ enum RazerCommands {
         }
     }
 
+    /// razer_chroma_extended_matrix_get_effect-style read: get_razer_report(0x0F, 0x82, 0x0C);
+    /// args: store, led. The answer's args[2...] have the write's layout (effect id, then its
+    /// arguments). Seen on hardware: args[0] comes back 0, and ZERO_LED answers as LOGO.
+    static func getEffect(led: UInt8) -> RazerReport {
+        var r = RazerReport(commandClass: 0x0F, commandId: 0x82, dataSize: 0x0C)
+        r.arguments[0] = Razer.varstore
+        r.arguments[1] = led
+        return r
+    }
+
+    /// The write that puts back the effect `reply` (a `getEffect` answer) describes, on `led`
+    /// (the led asked, not the one the answer names). Built with the builders above, so only
+    /// shapes they make come back. nil for anything else, and for an answer whose args[0]
+    /// isn't 0: a mouse that only echoes the request (args[0] = VARSTORE, the rest 0) has said
+    /// nothing. Off is never put back either: an answer of all zeros looks the same as off,
+    /// and a mouse left dark is worse than one left in the app's colour. The answer must name
+    /// the led asked, except ZERO_LED, which answers as another zone (LOGO on the Lancehead
+    /// TE and the Basilisk V4 Pro). Another zone's effect is not this one's.
+    static func effectRestore(from reply: RazerReport, led: UInt8) -> RazerReport? {
+        let a = reply.arguments
+        guard reply.status == RazerStatus.successful.rawValue, a.count >= 12, a[0] == 0,
+              a[1] == led || led == zeroLed else { return nil }
+        func rgb(_ i: Int) -> RGB { RGB(r: a[i], g: a[i + 1], b: a[i + 2]) }
+        switch (a[2], a[3], a[5]) {
+        case (0x01, _, 0x01): return setStatic(led: led, rgb: rgb(6))
+        case (0x02, 0x01, 0x01): return setBreathingSingle(led: led, rgb: rgb(6))
+        case (0x02, 0x02, 0x02): return setBreathingDual(led: led, rgb1: rgb(6), rgb2: rgb(9))
+        case (0x03, _, _): return setSpectrum(led: led)
+        case (0x04, _, _) where a[3] <= 0x02: return setWave(led: led, direction: a[3], speed: a[4])
+        default: return nil
+        }
+    }
+
     /// The same effect for each zone in `leds`, in order: one report per zone
     /// (`RazerDevices.effectLeds`). The bytes per report are exactly `effect(…led:)`'s.
     static func effect(_ effect: LightingEffect, color: RGB, leds: [UInt8],

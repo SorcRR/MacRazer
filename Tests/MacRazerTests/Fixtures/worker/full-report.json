@@ -728,7 +728,13 @@
       "dimShown" : true,
       "dimmed" : true,
       "groups" : {
-        "LOGO" : 10
+        "BACKLIGHT" : 13,
+        "LEFT_SIDE" : 16,
+        "LOGO" : 10,
+        "RIGHT_SIDE" : 15,
+        "SCROLL" : 11,
+        "UNDERGLOW" : 14,
+        "ZERO" : 12
       },
       "redShown" : true,
       "restored" : true,

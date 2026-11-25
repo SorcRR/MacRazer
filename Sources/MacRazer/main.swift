@@ -26,6 +26,21 @@ if args.isEmpty {
 }
 
 let command = args.first!
+if command.hasPrefix("render") {
+    RenderOptions.isActive = true
+    AppInfo.renderVersion = args.first { $0.hasPrefix("version=") }.map { String($0.dropFirst("version=".count)) }
+    if let crop = args.first(where: { $0.hasPrefix("crop=") }) {
+        // Every part a number: dropping the ones that aren't could still leave four, of the wrong crop.
+        let parts = crop.dropFirst("crop=".count).split(separator: ",", omittingEmptySubsequences: false)
+            .map { Double($0) }
+        let n = parts.compactMap { $0 }
+        guard parts.count == 4, n.count == 4, n[0] >= 0, n[1] >= 0, n[2] > 0, n[3] > 0 else {
+            status("crop= takes four numbers in points, a size above zero: crop=x,y,width,height")
+            exit(1)
+        }
+        RenderOptions.crop = CGRect(x: n[0], y: n[1], width: n[2], height: n[3])
+    }
+}
 
 /// Status and diagnostics: which device opened, why it didn't, how to fix that. They go to
 /// stderr so stdout carries only a command's results, and `devicetest > report.json` (or
@@ -69,63 +84,189 @@ func openDevice() -> HIDDevice? {
     }
 }
 
-/// Shared by the render-* commands: draw a SwiftUI view at 2x on the app's dark backdrop
-/// and write it to a PNG.
-@MainActor func writeViewPNG<V: View>(_ view: V, to path: String) {
-    // Rendered in the Dark theme, to match the dark backdrop below. The app itself follows
-    // Settings › Appearance; without this `.secondary`/`.tertiary` resolve for light mode and
-    // render as near-black text on that backdrop, which made every preview look like it had
-    // a contrast bug it doesn't have.
+/// The look a `render-*` command draws in: `light` or `green` among its arguments picks the
+/// solid Light or Razer Green theme, otherwise solid Dark. Solid rather than glass, because a
+/// render has no desktop behind it to show through.
+func renderTheme(_ args: [String]) -> PopoverTheme {
+    args.contains("light") ? .light : args.contains("green") ? .razerGreen : .dark
+}
+
+func renderLook(_ args: [String]) -> PopoverLook {
+    PopoverLook.resolve(theme: renderTheme(args), glass: false, systemIsDark: true)
+}
+
+/// Shared by the render-* commands: draw a SwiftUI view at 2x on a theme's backdrop and write
+/// it to a PNG.
+///
+/// `ImageRenderer` is quick but draws every native control (menus, text fields, most buttons)
+/// as a yellow placeholder, so it only suits views made of shapes and text. Prefer
+/// `writeHostedPNG` for anything meant to be seen.
+@MainActor func writeViewPNG<V: View>(_ view: V, look: PopoverLook, to path: String) {
+    guard RenderOptions.crop == nil else {
+        renderFailed("crop= works on hosted renders only. Add `hosted`.")
+    }
+    // In the look's colour scheme, to match its backdrop. Without it `.secondary` and
+    // `.tertiary` resolve for the other scheme and read as a contrast bug that isn't there.
     let renderer = ImageRenderer(
-        content: view.environment(\.colorScheme, .dark).padding(1).background(Color(white: 0.13)))
+        content: view.environment(\.colorScheme, look.isDark ? .dark : .light).padding(1)
+            .background(Color(nsColor: look.backdropColor ?? .windowBackgroundColor)))
     renderer.scale = 2
     if let img = renderer.nsImage,
        let tiff = img.tiffRepresentation,
        let rep = NSBitmapImageRep(data: tiff),
        let png = rep.representation(using: .png, properties: [:]) {
-        try? png.write(to: URL(fileURLWithPath: path))
-        print("Wrote \(path)")
+        writeRender(png, to: path)
     } else {
-        print("Render failed")
+        renderFailed()
     }
 }
 
-/// Renders through a real `NSHostingView` instead of `ImageRenderer`.
+/// A render that didn't happen exits non-zero, so a caller can tell it from one that did.
+func renderFailed(_ why: String = "") -> Never {
+    status(why.isEmpty ? "Render failed" : "Render failed: \(why)")
+    exit(1)
+}
+
+/// Writes a render's PNG, or fails the render: a missing folder isn't a success.
+func writeRender(_ png: Data, to path: String) {
+    do { try png.write(to: URL(fileURLWithPath: path)) } catch { renderFailed("\(error.localizedDescription)") }
+    print("Wrote \(path)")
+}
+
+/// Runs AppKit's event loop for a while. `RunLoop.run` alone never hands AppKit its events,
+/// and activation and becoming key arrive as events. Keys and clicks are dropped: the render
+/// window takes focus for a moment, and whatever the person was typing elsewhere mustn't
+/// reach the view being captured.
+@MainActor func pumpEvents(for seconds: TimeInterval) {
+    let deadline = Date().addingTimeInterval(seconds)
+    let input: NSEvent.EventTypeMask = [.keyDown, .keyUp, .flagsChanged, .leftMouseDown, .leftMouseUp,
+                                        .rightMouseDown, .rightMouseUp, .otherMouseDown, .otherMouseUp,
+                                        .scrollWheel]
+    while Date() < deadline {
+        if let event = NSApp.nextEvent(matching: .any, until: deadline, inMode: .default, dequeue: true),
+           !input.contains(NSEvent.EventTypeMask(type: event.type)) {
+            NSApp.sendEvent(event)
+        }
+    }
+}
+
+/// The window a hosted render is drawn in. A borderless window can't become key on its own,
+/// and the popover is key while someone uses it, so this one can too.
+final class RenderWindow: NSWindow {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { true }
+}
+
+/// Renders through a real `NSHostingView` in a real window instead of `ImageRenderer`.
 ///
-/// `ImageRenderer` draws a `ScrollView` as an empty box — its content is laid out lazily and
-/// never makes it into the snapshot — so a page whose body is a scroll view has to be hosted
-/// in a view hierarchy and captured from there.
+/// `ImageRenderer` draws a `ScrollView` as an empty box, since its content is laid out lazily
+/// and never makes it into the snapshot, and it draws native controls as placeholders. A view
+/// hosted in a window draws both as the app does.
 ///
 /// `size` is optional: a view that sizes itself, like a window's content, is measured with
 /// `fittingSize`. Only a scroll view has to be told how much room it has, because it will
 /// take whatever it is given.
-@MainActor func writeHostedPNG<V: View>(_ view: V, size: CGSize? = nil, to path: String) {
-    // The dark backdrop every surface here stands in for. `cacheDisplay` captures no window
-    // background, and the dark scheme's primary text is white — without this the whole thing
-    // renders white on white.
-    let hosted = view.environment(\.colorScheme, .dark).background(Color(white: 0.13))
+@MainActor func writeHostedPNG<V: View>(_ view: V, size: CGSize? = nil, look: PopoverLook,
+                                        to path: String) {
+    // The backdrop the popover or window paints behind its content. `cacheDisplay` captures
+    // no window background, so without this the text would sit on nothing.
+    let hosted = view.environment(\.colorScheme, look.isDark ? .dark : .light)
+        .background(Color(nsColor: look.backdropColor ?? .windowBackgroundColor))
     let host = NSHostingView(rootView: AnyView(hosted))
-    host.appearance = NSAppearance(named: .darkAqua)
+    host.appearance = NSAppearance(named: look.appearanceName)
     let frameSize = size ?? host.fittingSize
     // A view with no intrinsic size measures as zero, and the capture below then fails with
     // nothing to say about why. Name the cause instead.
     guard frameSize.width > 0, frameSize.height > 0 else {
-        print("Render failed: the view has no size of its own. Pass an explicit size.")
-        return
+        renderFailed("the view has no size of its own. Pass an explicit size.")
     }
     host.frame = CGRect(origin: .zero, size: frameSize)
+    // Inside a window, ordered in far off screen. Outside one, a view resolves colours
+    // without the window's colour space (the swatches came out oversaturated) and
+    // `onAppear` never runs, so a preview state set there wouldn't show.
+    let window = RenderWindow(contentRect: CGRect(origin: CGPoint(x: -20_000, y: -20_000), size: frameSize),
+                          styleMask: .borderless, backing: .buffered, defer: false)
+    window.appearance = NSAppearance(named: look.appearanceName)
+    // sRGB whatever display the window lands on, so a render's colours don't depend on the
+    // Mac that made it (a P3 laptop panel and an sRGB monitor gave different swatches).
+    window.colorSpace = .sRGB
+    window.contentView = host
+    // Active and key, as the app is while its popover is open: only then do switches that are
+    // on draw green. macOS lets only a launched app activate itself, so this works when the
+    // render runs from an app bundle opened with `open` (Scripts/render-screenshots.sh). Run
+    // from a terminal, it's ignored and switches draw grey.
+    NSApp.finishLaunching()
+    // The deprecated call on purpose: `activate()` is cooperative, and a launched render that
+    // nobody handed focus to stays inactive with it, so the switches came out grey.
+    NSApp.activate(ignoringOtherApps: true)
+    window.makeKeyAndOrderFront(nil)
+    defer { window.orderOut(nil) }
+    // Long enough for `onAppear` and the layout pass it causes.
+    pumpEvents(for: 0.5)
     host.layoutSubtreeIfNeeded()
-    guard let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) else {
-        print("Render failed")
-        return
+    host.display()
+    guard var image = windowServerImage(window) ?? cachedDisplayImage(host) else { renderFailed() }
+    if let crop = RenderOptions.crop {
+        // Points to pixels; the window server's image is at the display's scale.
+        let scale = CGFloat(image.width) / host.bounds.width
+        // Whole pixels, as `cropping(to:)` would round it anyway; a crop that comes back
+        // smaller ran off the edge of the render.
+        let pixels = CGRect(x: crop.minX * scale, y: crop.minY * scale,
+                            width: crop.width * scale, height: crop.height * scale).integral
+        guard let cropped = image.cropping(to: pixels),
+              cropped.width == Int(pixels.width), cropped.height == Int(pixels.height) else {
+            renderFailed("crop \(crop) doesn't fit in the \(host.bounds.size) render.")
+        }
+        image = cropped
     }
-    host.cacheDisplay(in: host.bounds, to: rep)
-    guard let png = rep.representation(using: .png, properties: [:]) else {
-        print("Render failed")
-        return
+    // The window server hands back the main display's colour space (Display P3 on a MacBook,
+    // a monitor's own profile on another). Convert to sRGB so the same render comes out the
+    // same whichever display it ran on, and reads right where the profile is ignored.
+    if let srgb = CGColorSpace(name: CGColorSpace.sRGB), image.colorSpace?.name != srgb.name,
+       let ctx = CGContext(data: nil, width: image.width, height: image.height, bitsPerComponent: 8,
+                           bytesPerRow: 0, space: srgb,
+                           bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) {
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        if let converted = ctx.makeImage() { image = converted }
     }
-    try? png.write(to: URL(fileURLWithPath: path))
-    print("Wrote \(path)")
+    guard let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else {
+        renderFailed()
+    }
+    writeRender(png, to: path)
+}
+
+/// The window as the window server composited it: exactly what the app shows on screen. A
+/// process may capture its own windows without the Screen Recording permission.
+///
+/// Preferred over `cacheDisplay`, which redraws the views itself and gets some AppKit controls
+/// wrong: sliders with a step came out as solid white bars.
+///
+/// The capture is checked against the window's size: the hosting view resizes its window to
+/// fit the content after the first layout, and a capture taken mid-resize came out scaled and
+/// cropped. One that doesn't match is taken again.
+@MainActor private func windowServerImage(_ window: NSWindow) -> CGImage? {
+    if window.backingScaleFactor != 2 {
+        status("Note: the display is at \(window.backingScaleFactor)x, so this render is too, not 2x.")
+    }
+    for _ in 0..<10 {
+        let scale = window.backingScaleFactor
+        let expected = (Int((window.frame.width * scale).rounded()), Int((window.frame.height * scale).rounded()))
+        if let image = CGWindowListCreateImage(.null, .optionIncludingWindow, CGWindowID(window.windowNumber),
+                                               [.boundsIgnoreFraming, .bestResolution]),
+           (image.width, image.height) == expected {
+            return image
+        }
+        pumpEvents(for: 0.2)
+    }
+    status("The window server's capture never matched the window's size; drawing it directly instead.")
+    return nil
+}
+
+/// The fallback when the window server gives nothing back.
+@MainActor private func cachedDisplayImage(_ view: NSView) -> CGImage? {
+    guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return nil }
+    view.cacheDisplay(in: view.bounds, to: rep)
+    return rep.cgImage
 }
 
 /// The output path for a `render-*` command: the first argument that names a PNG.
@@ -190,6 +331,8 @@ case "render-ui":
     let controller = MouseController()
     controller.loadPreviewState()
     if args.contains("offline") { controller.setPreviewOffline() }
+    if args.contains("held") { controller.setPreviewHeldByAnotherApp() }
+    if args.contains("held-at-launch") { controller.setPreviewHeldAtLaunch() }
     if args.contains("bluetooth") { controller.setPreviewBluetooth() }
     if args.contains("bluetooth-connected") { controller.setPreviewBluetoothConnected() }
     if args.contains("dpi-stages") { controller.setPreviewDpiModes(single: false) }
@@ -239,13 +382,18 @@ case "render-ui":
                                                         : updateChecker.latestNotes,
                                     canInstallInPlace: updateChecker.canInstallInPlace,
                                     onBack: {}, onUpdate: installed ? nil : {}),
-                       size: CGSize(width: PopoverLayout.oneColumnWidth, height: 748), to: path)
+                       size: CGSize(width: PopoverLayout.oneColumnWidth, height: 748), look: renderLook(args), to: path)
         break
     }
     // `twocolumns`: the two-column layout with only the mouse. Scratch defaults, so a render
     // never changes the setting.
     let renderAppearance = AppearanceSettings(defaults: UserDefaults(suiteName: "MacRazer.render-ui") ?? .standard)
     renderAppearance.twoColumns = args.contains("twocolumns")
+    renderAppearance.glass = false
+    renderAppearance.theme = renderTheme(args)
+    // The same two remaps as `render-remap`, so the Buttons row reads "2 remapped" as it does in use.
+    let renderRemapper = ButtonRemapper()
+    renderRemapper.loadPreviewState()
     let rootView: AnyView = args.contains("color")
         ? AnyView(ColorPickerPage(color: .constant(.blue),
                                   device: accessoryPIDs.isEmpty ? nil
@@ -257,15 +405,16 @@ case "render-ui":
         : args.contains("profiles")
         ? AnyView(ProfilesView(controller: controller, remapper: ButtonRemapper(), onBack: {},
                                 width: PopoverLayout.oneColumnWidth))
-        : AnyView(PopoverView(controller: controller, remapper: ButtonRemapper(), updateChecker: updateChecker,
+        : AnyView(PopoverView(controller: controller, remapper: renderRemapper, updateChecker: updateChecker,
                               launchAtLogin: launchAtLogin, appearance: renderAppearance,
                               onOpenSettings: {},
-                              onOpenDeviceTest: {}, onTestAccessory: { _ in })) // no windows in a render
+                              onOpenDeviceTest: {}, onTestAccessory: { _ in }, // no windows in a render
+                              previewEditingStages: args.contains("stages")))
     // `hosted` draws native controls (segmented pickers, switches) instead of placeholders.
     // Segmented controls only draw when hosted, so the zone and DPI previews always are.
     if args.contains("hosted") || args.contains("zones") || args.contains("dpi-stages") || args.contains("dpi-single") {
-        writeHostedPNG(rootView, to: path)
-    } else { writeViewPNG(rootView, to: path) }
+        writeHostedPNG(rootView, look: renderLook(args), to: path)
+    } else { writeViewPNG(rootView, look: renderLook(args), to: path) }
 
 case "render-settings":
     _ = NSApplication.shared
@@ -273,8 +422,9 @@ case "render-settings":
     let renderDefaults = UserDefaults(suiteName: renderSuite)!
     renderDefaults.removePersistentDomain(forName: renderSuite)
     defer { renderDefaults.removePersistentDomain(forName: renderSuite) }
-    let renderScrolling = ScrollSettings(defaults: renderDefaults)
+    let renderScrolling = ScrollSettings(defaults: renderDefaults, sourceIdentificationAvailable: true)
     renderScrolling.setEnabled(args.contains("reversed"))
+    renderScrolling.loadPreviewState()
     let settingsPath = outputPath(args.dropFirst(), default: "settings-preview.png")
     let sc = MouseController()
     sc.loadPreviewState()
@@ -291,7 +441,7 @@ case "render-settings":
                                 scrolling: renderScrolling,
                                 usageStats: .preview(consent: args.contains("notsharing") ? .declined : .granted),
                                 pane: settingsPane),
-                   size: SettingsView.size, to: settingsPath)
+                   size: SettingsView.size, look: renderLook(args), to: settingsPath)
 
 case "render-updated":
     // The window shown on the first launch after an update. `nonotes` shows the fallback
@@ -310,13 +460,13 @@ case "render-updated":
     // `asked` leaves out the usage stats card, as for someone who already answered.
     writeHostedPNG(UpdatedView(updateChecker: uc, onDone: {},
                                usageStats: .preview(consent: args.contains("asked") ? .granted : .undecided)),
-                   to: updatedPath)
+                   look: renderLook(args), to: updatedPath)
 
 case "render-usage-consent":
     // The one-time usage stats question a new install gets.
     _ = NSApplication.shared
     writeHostedPNG(UsageStatsConsentView(stats: .preview(consent: .undecided), onDone: {}),
-                   to: outputPath(args.dropFirst(), default: "usage-consent-preview.png"))
+                   look: renderLook(args), to: outputPath(args.dropFirst(), default: "usage-consent-preview.png"))
 
 case "render-support-prompt":
     // The window asking to test a mouse. `noaccess` shows the Input Monitoring version, with a
@@ -329,7 +479,7 @@ case "render-support-prompt":
         ? UnsupportedMouse(pid: 0x0090, name: "Razer Naga Pro", canControl: true)
         : UnsupportedMouse(pid: 0xFFFE, name: "Razer DeathAdder V3 Pro", canControl: !args.contains("noaccess"))
     writeHostedPNG(SupportPromptView(mouse: mouse, onRunTest: {}, onNotNow: {}, onDontAsk: {}),
-                   to: outputPath(args.dropFirst(), default: "support-prompt-preview.png"))
+                   look: renderLook(args), to: outputPath(args.dropFirst(), default: "support-prompt-preview.png"))
 
 case "render-about":
     _ = NSApplication.shared
@@ -345,7 +495,7 @@ case "render-about":
                                  ? [VersionedNotes(version: AppInfo.displayVersion,
                                                    notes: ReleaseNotes.parse(PreviewNotes.releaseBody))]
                                  : []),
-                   to: aboutPath)
+                   look: renderLook(args), to: aboutPath)
 
 case "render-device-test":
     // One screen of the device test, for checking layout and wording without a mouse:
@@ -378,7 +528,7 @@ case "render-device-test":
     }
     if args.contains("sent") { model.previewSendState(.sent) }
     if args.contains("failed") { model.previewSendState(.failed(.tooMany)) }
-    writeViewPNG(DeviceTestView(model: model, onClose: {}), to: path)
+    writeHostedPNG(DeviceTestView(model: model, onClose: {}), look: renderLook(args), to: path)
 
 case "render-accessory-test":
     // The lighting test for a keyboard or mousepad, without one plugged in:
@@ -392,7 +542,7 @@ case "render-accessory-test":
     previewAccessory.loadPreviewState()
     let accessoryModel = AccessoryTestModel(reportEndpoint: URL(string: "https://reports.example/"))
     accessoryModel.loadPreview(accessoryStage, accessory: previewAccessory, sent: args.contains("sent"))
-    writeHostedPNG(AccessoryTestView(model: accessoryModel, onClose: {}), to: accessoryPath)
+    writeHostedPNG(AccessoryTestView(model: accessoryModel, onClose: {}), look: renderLook(args), to: accessoryPath)
 
 case "render-crash-report":
     // The window shown on the launch after a crash. `sent` shows the thank-you, `failed` a
@@ -404,7 +554,7 @@ case "render-crash-report":
     if args.contains("failed") {
         crashModel.loadPreviewFailed(args.contains("cap") ? .tooMany : args.contains("refused") ? .refused : .unavailable)
     }
-    writeHostedPNG(CrashReportView(model: crashModel, onDone: {}, onDontAskAgain: {}), to: crashPath)
+    writeHostedPNG(CrashReportView(model: crashModel, onDone: {}, onDontAskAgain: {}), look: renderLook(args), to: crashPath)
 
 case "render-issue-report":
     // "Report an Issue…". `sent` shows the thank-you, `failed` a send that didn't go.
@@ -416,7 +566,7 @@ case "render-issue-report":
         issueModel.description = "The battery reads 0% after waking from sleep, until I unplug the dongle."
         issueModel.loadPreviewFailed(args.contains("cap") ? .tooMany : .unavailable)
     }
-    writeHostedPNG(IssueReportView(model: issueModel, onClose: {}), to: issuePath)
+    writeHostedPNG(IssueReportView(model: issueModel, onClose: {}), look: renderLook(args), to: issuePath)
 
 case "render-remap":
     _ = NSApplication.shared
@@ -430,13 +580,14 @@ case "render-remap":
         let mouse = MouseController()
         mouse.loadPreviewState()
         mouse.setPreviewSideButtonsRemapped()
-        writeViewPNG(RemapView(remapper: r, controller: mouse), to: path)
+        writeHostedPNG(RemapView(remapper: r, controller: mouse), look: renderLook(args), to: path)
     } else if args.contains("wide") {
         let mouse = MouseController()
         mouse.loadPreviewState()
-        writeViewPNG(RemapView(remapper: r, controller: mouse, onBack: {}, width: PopoverLayout.twoColumnWidth, twoColumns: true), to: path)
+        writeHostedPNG(RemapView(remapper: r, controller: mouse, onBack: {}, width: PopoverLayout.twoColumnWidth, twoColumns: true),
+                       look: renderLook(args), to: path)
     } else {
-        writeViewPNG(RemapView(remapper: r), to: path)
+        writeHostedPNG(RemapView(remapper: r), look: renderLook(args), to: path)
     }
 
 case "render-permissions":
@@ -446,7 +597,7 @@ case "render-permissions":
     controller.loadPreviewState()
     let model = PermissionsModel()
     model.loadPreviewState()
-    writeViewPNG(PermissionsView(model: model, controller: controller), to: path)
+    writeHostedPNG(PermissionsView(model: model, controller: controller), look: renderLook(args), to: path)
 
 case "icon":
     // Render the menu bar mark to a PNG for visual inspection.
@@ -461,7 +612,7 @@ case "icon":
     guard MenuBarIcon.writePreview(to: path, size: size, razerCutout: !iconArgs.contains("nologo"),
                                    charging: iconArgs.contains("charging"),
                                    lightMenuBar: iconArgs.contains("light")) else {
-        print("Render failed")
+        status("Render failed")
         exit(1)
     }
     print("Wrote \(path)")
@@ -720,10 +871,14 @@ case "devicetest":
         registry: info.map(DeviceReport.Registry.init),
         identify: identify,
         battery: step { DeviceTestSteps.battery($0, expectsBattery: info?.hasBattery) },
-        dpi: step { DeviceTestSteps.dpi($0, maxProbe: false) },
+        dpi: step { DeviceTestSteps.dpi($0, maxProbe: false, singleAxis: RazerDevices.singleAxisDPI(pid: dev.productID)) },
         polling: step { DeviceTestSteps.polling($0, command: RazerDevices.pollingCommand(pid: dev.productID)) },
-        lighting: step { DeviceTestSteps.lighting($0, sweep: lightSweep, splitRead: RazerDevices.brightnessSplitRead(pid: dev.productID),
-                                                restoreEffect: nil, seconds: 2) },
+        lighting: step {
+            DeviceTestSteps.lighting($0, sweep: lightSweep, splitRead: RazerDevices.brightnessSplitRead(pid: dev.productID),
+                                     restoreEffect: nil,
+                                     zoneGroups: DeviceProbe.effectZoneGroups(effectLeds: RazerDevices.effectLeds(pid: dev.productID)),
+                                     seconds: 2)
+        },
         buttons: .init(),
         capabilities: DeviceTestSteps.capabilities(dev, identify: identify, registry: info))
     report.verdict = report.currentVerdict()

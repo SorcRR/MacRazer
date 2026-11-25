@@ -128,6 +128,8 @@ struct DeviceTestView: View {
                 reportWarning("No Razer mouse is connected by cable or dongle right now. Connect it and press Start again.")
             case .bluetoothOnly(let name)?:
                 reportWarning("\(name) is connected over Bluetooth. The full test needs the dongle or the cable: switch it over and press Start again. Or run the shorter Bluetooth test, which only reads.")
+            case .heldByAnotherApp?:
+                reportWarning(HeldByAnotherApp.deviceTestWarning)
             case nil:
                 EmptyView()
             }
@@ -367,17 +369,22 @@ struct DeviceTestView: View {
 
     @ViewBuilder private var lightingBody: some View {
         if model.running {
-            reportRunning("Watch your mouse: dark, then red…")
+            reportRunning(model.colourOnlyLighting ? "Watch your mouse: red for a moment…" : "Watch your mouse: dark, then red…")
         } else if let record = model.report?.lighting, record.data != nil {
-            if let data = record.data, data.dimShown {
-                reportQuestion("Did the lights go dark for a moment?", $model.dimmed)
-                if data.redShown { reportQuestion("Then did they turn red?", $model.turnedRed) }
+            if let data = record.data, data.anyShown {
+                if data.dimShown { reportQuestion("Did the lights go dark for a moment?", $model.dimmed) }
+                if data.redShown {
+                    reportQuestion(data.dimShown ? "Then did they turn red?" : "Did the lights turn red for a moment?",
+                                   $model.turnedRed)
+                }
                 reportNote(data.restored ? "Everything has been put back." : "Something couldn't be put back. Check the lighting in the popover.")
             } else {
                 outcomeRow("Lighting", record.outcome)
             }
         } else {
-            reportNote("Watch your mouse while this runs. Its lights go dark for three seconds, then turn red for three seconds. Afterwards they go back to your brightness and to MacRazer's current lighting setting.")
+            reportNote(model.colourOnlyLighting
+                       ? "Watch your mouse while this runs. Its lights turn red for three seconds, then go back to MacRazer's current lighting setting."
+                       : "Watch your mouse while this runs. Its lights go dark for three seconds, then turn red for three seconds. Afterwards they go back to your brightness and to MacRazer's current lighting setting.")
         }
     }
 

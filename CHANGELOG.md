@@ -7,6 +7,66 @@ expect rough edges until 1.0.
 ## [Unreleased]
 
 ### Added
+- **More mice from test reports.**
+  - **Polling confirmed with the newer command** on the Viper 8KHz, both Basilisk V4 Pro
+    links and the Mouse Dock Pro, which goes up to 8000 Hz.
+  - **DeathAdder Essential (2018):** DPI and polling work, and its green light dims.
+  - **Mamba Elite:** DPI and polling work. Lighting waits on a test.
+  - **Basilisk Essential:** DPI, polling and lighting work.
+  - **Naga Left Handed Edition:** DPI, polling and lighting all passed.
+  - **Lancehead Tournament Edition:** lighting works now, side strips included, so the
+    popover shows its lighting controls.
+  - **Viper V4 Pro on the cable:** polling confirmed, up to 8000 Hz. Over the dongle the rate
+    doesn't change yet, so the popover hides the picker there.
+  - **Naga Classic Edition:** DPI, polling and lighting all passed. Thanks to spellbook.
+  - **DeathAdder Elite:** lighting works now, so it's fully supported.
+  - **DeathAdder V3** and the **Pro Click V2 Vertical Edition on its cable:** polling
+    confirmed.
+  - **DeathAdder Essential White Edition:** DPI and polling work, and its white light dims.
+  - **Basilisk V3 Pro 35K Phantom Green Edition on its cable:** battery, DPI and polling
+    work. Lighting waits on a test.
+  - **Basilisk V3 Pro 35K over its dongle:** lighting works now, so the popover shows its
+    lighting controls. On the cable it still waits on a clear result.
+  - **Basilisk V3 35K:** DPI, polling and lighting all passed.
+  - **Basilisk:** lighting works now, so it's fully supported.
+  - **Mouse Dock V2 Pro** and the **Basilisk V4 HyperSpeed on its cable:** polling
+    confirmed. The dock goes up to 8000 Hz.
+- **Cynosa Lite tested.** It lost its UNTESTED tag after passing the lighting test.
+- **Joro keyboard.** It gets its own lighting card, with brightness and a static colour
+  tested. Before, the app took it for a mouse.
+
+### Fixed
+- **The device test can now confirm lighting on mice without brightness.** The Pro Click V2
+  Vertical Edition takes colours but has no brightness to dim. The test used to stop there and
+  say it had no lights. Now it turns the mouse red and asks if you saw it.
+- **The device test's dim reaches the underglow and side strips.** The red went to every
+  light, but the dim only reached the logo and scroll wheel. On a Basilisk V3 Pro 35K the
+  underglow stayed lit, so the dim looked like it failed. Now those lights dim too, and come
+  back to their own brightness.
+- **Test This Mouse puts your own colour back.** The lighting test used to end on the app's
+  colour, so a mouse set to red elsewhere came back in MacRazer's colour. It now reads each
+  zone's effect first and puts that back. A zone that doesn't say still gets the app's.
+- **Mouse Dock Pro lighting follows the mouse on it.** The dock's lights are the docked
+  mouse's lights. The app now asks that mouse which zones it has. A mouse without lights,
+  like the Basilisk V4 HyperSpeed, no longer gets lighting controls that do nothing. Test
+  This Mouse no longer fails such a dock at the first step.
+- **Test This Mouse on single-axis mice.** The Basilisk Essential answers a DPI read with 0
+  for the second axis, and the DPI test failed it even when the DPI took. On mice known to
+  do that, a 0 there passes now.
+- **A mouse another app holds says so.** Some apps that remap keys or mice take a mouse for
+  themselves, and then MacRazer can't reach it. The popover only said Offline, and the device
+  test said no mouse was connected. Both now say another app is using the mouse and name a
+  few that can do it. Thanks to fortinmike for the log that showed it (#139).
+- **Mission Control and the Space shortcuts open from a button.** A button set to Mission
+  Control, Space Left or Space Right did nothing: macOS stores those shortcuts with the Fn
+  flag a real arrow key carries, and MacRazer saved the arrow without it. The three are now
+  saved with it, and a recorded shortcut keeps it too. A button set before this update works
+  too, without setting it again: arrows, F-keys and keys like Home and End now always go out
+  with the flags a real press carries.
+
+## [0.10.0] — 2026-11-19
+
+### Added
 - **Reverse scrolling on Razer mice.** A switch under Settings › General reverses wheel
   and tilt scrolling on Razer mice while trackpads and other mice keep their directions.
   Off by default, saved once for the app, and active while MacRazer is running with

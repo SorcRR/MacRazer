@@ -182,6 +182,10 @@ struct DeviceReport: Codable, Equatable {
         var dimmed: Bool?
         var turnedRed: Bool?
         var restored: Bool = false
+
+        /// Something was shown, so there are questions to ask. Red alone on a light without
+        /// brightness (`colourOnly`).
+        var anyShown: Bool { dimShown || redShown }
     }
 
     struct ButtonsData: Codable, Equatable {
@@ -488,7 +492,15 @@ enum DeviceTestSteps {
             // Not on a light that takes effects but has no brightness (the Pro Click V2
             // Vertical Edition): it answers no brightness read, and that says nothing about
             // the id.
-            if registry.hasLighting, registry.hasBrightness,
+            // Nor on a dock whose mouse answers no lighting read at all: its lighting is that
+            // mouse's, and one without lights is the right answer (a Basilisk V4 HyperSpeed
+            // on the Mouse Dock Pro). It must have heard and refused: a mouse asleep on the
+            // dock times out on every id and still fails, and so does one that refuses some
+            // other id while its own stays silent. An answer on another id fails too.
+            let dockedMouseUnlit = RazerDevices.lightingFollowsDockedMouse.contains(registry.pid)
+                && !data.lightingAttempts.contains(where: \.answered)
+                && data.lightingAttempts.contains(where: { $0.id == registry.matrixTransactionId && $0.refused })
+            if registry.hasLighting, registry.hasBrightness, !dockedMouseUnlit,
                !data.lightingAttempts.contains(where: { $0.id == registry.matrixTransactionId && $0.answered }) {
                 record.outcome = .failed
             }
@@ -860,7 +872,8 @@ enum DeviceTestSteps {
     /// Writes a test DPI 50 away from the current one, reads it back, and restores. Reads the
     /// stage table. `maxProbe` also asks for the protocol's ceiling to see what the mouse
     /// keeps, then restores again.
-    static func dpi(_ channel: DeviceProbeChannel, maxProbe: Bool) -> DeviceReport.StepRecord<DeviceReport.DPIData> {
+    /// `singleAxis` confirms the writes on X alone (`RazerDeviceInfo.singleAxisDPI`).
+    static func dpi(_ channel: DeviceProbeChannel, maxProbe: Bool, singleAxis: Bool = false) -> DeviceReport.StepRecord<DeviceReport.DPIData> {
         var record = DeviceReport.StepRecord<DeviceReport.DPIData>()
         var data = DeviceReport.DPIData()
         do {
@@ -871,7 +884,7 @@ enum DeviceTestSteps {
             var wrote = false
             defer {
                 // On every path, including a failed read-back: the user's DPI goes back.
-                if wrote { data.restored = (try? DeviceProbe.writeDPI(channel, original).confirmed) ?? false }
+                if wrote { data.restored = (try? DeviceProbe.writeDPI(channel, original).confirmed(singleAxis: singleAxis)) ?? false }
             }
             wrote = true
             let check = try DeviceProbe.writeDPI(channel, .init(x: test, y: test))
@@ -885,7 +898,7 @@ enum DeviceTestSteps {
                 data.activeStageByte = table.value.activeByte
                 if !table.value.stages.isEmpty { data.firstStageNumber = Int(table.response.arguments[3]) }
             }
-            record.outcome = check.confirmed ? .passed : .failed
+            record.outcome = check.confirmed(singleAxis: singleAxis) ? .passed : .failed
         } catch {
             record.error = String(describing: error)
             record.outcome = .failed
@@ -939,9 +952,11 @@ enum DeviceTestSteps {
 
     /// Two checks a person can see. First every group that answered goes dark for `seconds`
     /// and comes back to its exact brightness. Then, if `restoreEffect` is given, the mouse
-    /// turns red at full brightness for `seconds` and goes back to `restoreEffect` (the app's
-    /// own setting: an effect can't be read back) and to each group's brightness. The
-    /// questions come afterwards, so nothing is held waiting on the person.
+    /// turns red at full brightness for `seconds` and goes back to the effect each zone had,
+    /// read before anything changes (`RazerCommands.effectRestore`), and to each group's
+    /// brightness. A zone that doesn't answer that read, or refuses its own effect back, gets
+    /// its `restoreEffect` report instead (the app's own setting). The questions come
+    /// afterwards, so nothing is held waiting on the person.
     ///
     /// `splitRead` is a model that reads brightness on another LED than it writes
     /// (`RazerDevices.brightnessSplitRead`). The sweep's reads all fail on it, so that one LED
@@ -949,10 +964,22 @@ enum DeviceTestSteps {
     ///
     /// `red` and `restoreEffect` hold one report per effect zone (`RazerDevices.effectLeds`).
     /// Red counts as shown when any zone took it, as in `MouseController.writeLighting`.
+    /// `colourOnly` is for a light that takes effects but has no brightness
+    /// (`RazerDeviceInfo.hasBrightness`): no group answers the sweep, so there is nothing to
+    /// dim, and the red check runs alone. Without it a sweep nobody answered means no lights,
+    /// and nothing is sent.
+    /// `zoneGroups` are the model's effect zones past the sweep's four
+    /// (`DeviceProbe.effectZoneGroups(effectLeds:)`). Once the sweep found a group, each is
+    /// asked for its brightness and, if it answers, dimmed and restored with the rest, though
+    /// only the sweep's groups count toward `restored`. A zero
+    /// answer is left alone: the Lancehead's 0x0A echoes a read back as zero, and a restore to
+    /// that would turn a lit underglow off.
     static func lighting(_ channel: DeviceProbeChannel, sweep: [DeviceProbe.LEDAnswer]?,
                          splitRead: (led: UInt8, readLed: UInt8)? = nil,
                          restoreEffect: [RazerReport]?,
                          red: [RazerReport] = [RazerCommands.setStatic(rgb: RGB(r: 255, g: 0, b: 0))],
+                         zoneGroups: [(name: String, led: UInt8)] = [],
+                         colourOnly: Bool = false,
                          seconds: Double,
                          wait: (Double) -> Void = { Thread.sleep(forTimeInterval: $0) })
         -> DeviceReport.StepRecord<DeviceReport.LightingData> {
@@ -972,29 +999,67 @@ enum DeviceTestSteps {
             answering.append(LitGroup(name: name, led: splitRead.led, readLed: splitRead.readLed,
                                       raw: reading.arguments[2]))
         }
+        // Only past a sweep that found a light: an effects-only mouse keeps the red alone. The
+        // answer must name the zone asked, as a ZERO read can answer for another. A split
+        // read's read LED counts as swept too: that light is already dimmed through `led`.
+        let swept = Set(answering.flatMap { [$0.led, $0.readLed] })
+        let zones = answering.isEmpty ? [] : zoneGroups.filter { !swept.contains($0.led) }.compactMap { group -> LitGroup? in
+            guard let reply = try? channel.send(RazerCommands.getBrightness(led: group.led)),
+                  reply.arguments[1] == group.led, reply.arguments[2] > 0 else { return nil }
+            return LitGroup(name: group.name, led: group.led, readLed: group.led, raw: reply.arguments[2])
+        }
+        // Everything dimmed. Only the sweep's groups decide `restored`: a zone added here
+        // that reads back differently is put back as well as it can be, but can't fail a
+        // check that passed without it.
+        let lit = answering + zones
+        // Each zone's own effect, read before anything is written.
+        func readOwnEffects() -> [UInt8: RazerReport] {
+            Dictionary((restoreEffect ?? []).compactMap { fallback -> (UInt8, RazerReport)? in
+                let led = fallback.arguments[1]
+                guard let reply = try? channel.send(RazerCommands.getEffect(led: led)),
+                      let own = RazerCommands.effectRestore(from: reply, led: led) else { return nil }
+                return (led, own)
+            }, uniquingKeysWith: { first, _ in first })
+        }
         guard !answering.isEmpty else {
+            // Red alone, then back to each zone's own effect. A light that refuses red is
+            // still "not on this mouse", as before.
+            if colourOnly, let restoreEffect {
+                let ownEffect = readOwnEffects()
+                data.redShown = applyLighting(channel, red)
+                if data.redShown {
+                    wait(seconds)
+                    data.restored = restoreEffects(channel, restoreEffect, own: ownEffect)
+                    record.outcome = .skipped
+                    record.data = data
+                    return record
+                }
+            }
             record.outcome = .notSupported
             record.data = data
             return record
         }
-        for group in answering { data.groups[group.name] = group.raw }
+        for group in lit { data.groups[group.name] = group.raw }
+        let ownEffect = readOwnEffects()
 
         // Nothing from here to the restore can leave early (every call is `try?`), so the
         // restore always runs once anything has been changed.
         var dimmedAny = false
-        for group in answering {
+        for group in lit {
             dimmedAny = (try? DeviceProbe.writeBrightness(channel, raw: 0, led: group.led, readLed: group.readLed)) != nil || dimmedAny
         }
         data.dimShown = dimmedAny
         if dimmedAny { wait(seconds) }
         var allBack = restoreBrightness(channel, answering)
+        _ = restoreBrightness(channel, zones)
 
         if let restoreEffect {
-            for group in answering { _ = try? DeviceProbe.writeBrightness(channel, raw: 255, led: group.led, readLed: group.readLed) }
+            for group in lit { _ = try? DeviceProbe.writeBrightness(channel, raw: 255, led: group.led, readLed: group.readLed) }
             data.redShown = applyLighting(channel, red)
             if data.redShown { wait(seconds) }
-            let effectBack = applyLighting(channel, restoreEffect)
+            let effectBack = restoreEffects(channel, restoreEffect, own: ownEffect)
             allBack = restoreBrightness(channel, answering) && effectBack && allBack
+            _ = restoreBrightness(channel, zones)
         }
         data.restored = allBack
 
@@ -1010,6 +1075,17 @@ enum DeviceTestSteps {
         let led: UInt8
         let readLed: UInt8
         let raw: UInt8
+    }
+
+    /// Puts each zone's own effect back, or the app's setting where the zone didn't say or
+    /// refuses its own. True when any zone took one.
+    private static func restoreEffects(_ channel: DeviceProbeChannel, _ fallbacks: [RazerReport],
+                                       own: [UInt8: RazerReport]) -> Bool {
+        fallbacks.reduce(false) { took, fallback in
+            let back = own[fallback.arguments[1]].flatMap { try? DeviceProbe.applyLighting(channel, $0) } != nil
+                || (try? DeviceProbe.applyLighting(channel, fallback)) != nil
+            return back || took
+        }
     }
 
     /// Sends every zone's report, all of them even after a refusal. True when any took it.
@@ -1033,11 +1109,11 @@ enum DeviceTestSteps {
     /// untested, which is never a confirmation.
     static func answered(dimmed: Bool?, turnedRed: Bool?,
                          _ record: inout DeviceReport.StepRecord<DeviceReport.LightingData>) {
-        guard var data = record.data, data.dimShown else { return }
-        data.dimmed = dimmed
+        guard var data = record.data, data.anyShown else { return }
+        data.dimmed = data.dimShown ? dimmed : nil
         data.turnedRed = data.redShown ? turnedRed : nil
         record.data = data
-        let answers = data.redShown ? [dimmed, turnedRed] : [dimmed]
+        let answers = (data.dimShown ? [dimmed] : []) + (data.redShown ? [turnedRed] : [])
         if answers.contains(false) { record.outcome = .failed }
         else if answers.contains(where: { $0 == nil }) { record.outcome = .skipped }
         else { record.outcome = data.restored ? .passed : .failed }

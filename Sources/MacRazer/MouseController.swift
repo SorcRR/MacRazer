@@ -123,6 +123,10 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     @Published private(set) var averageCycleHours: Double?
     @Published private(set) var statusText = "…"
     @Published private(set) var lastError: String?
+    /// The last poll failed because another app holds the mouse exclusively (#139). Set even
+    /// when the mouse was never opened, so `deviceName` is still nil: a mouse already held
+    /// when MacRazer starts.
+    @Published private(set) var heldByAnotherApp = false
     @Published private(set) var isRefreshing = false
     /// Name of the connected Razer mouse (from its USB product string), or nil if none present.
     @Published private(set) var deviceName: String?
@@ -169,7 +173,11 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     // except on a mouse with onboard slots: its profile lives in the mouse, and switching to
     // its slot brings back what Bluetooth can't set.
     // The HyperPolling models take the newer polling command (`usesPollingRate2`).
-    var supportsPollRate: Bool { !deviceIsBluetooth }
+    /// Not over Bluetooth, which has no polling command, nor on a link known to keep its rate
+    /// whatever it's sent (`RazerDevices.ignoresPollingWrites`).
+    var supportsPollRate: Bool {
+        !deviceIsBluetooth && !(deviceID.map(RazerDevices.ignoresPollingWrites(pid:)) ?? false)
+    }
     var supportsLightingEffects: Bool { (!deviceIsBluetooth || !lightingZones.isEmpty) && !lightHasFixedColor }
     /// The connected mouse's lighting zones (`ZonedLighting`); empty when it is lit as one.
     var lightingZones: [LightingZone] { ZonedLighting.zones(pid: deviceID) }
@@ -871,6 +879,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         defer { readEnded() }
         let outcome: BatteryPollStateMachine.ReadOutcome
         var errText: String?
+        var held = false
         /// The charging flag as the device reported it this tick, or nil when the charging
         /// read itself failed. The verdict's `isCharging` is the two-poll-*confirmed* one,
         /// which resets on any transient read failure — so a docked mouse looks "not
@@ -927,6 +936,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         } catch {
             releaseDeviceIfNeeded(after: error)
             errText = String(describing: error)
+            held = HIDDevice.isHeldByAnotherApp(error)
             // No Razer mouse present at all (vs. present-but-asleep timeout).
             let gone: Bool = { if case HIDDevice.HIDError.notFound = error { return true }; return false }()
             outcome = .failure(deviceGone: gone)
@@ -1001,6 +1011,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 BluetoothMouseStatus($0, authorization: CBManager.authorization)
             }
             let err = errText
+            let isHeld = held
             publish {
                 let wasConnected = self.connected
                 self.update(\.connected, false)
@@ -1011,6 +1022,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 // strands the menu bar bolt on (dimmed) indefinitely after a disconnect.
                 self.update(\.charging, false)
                 self.update(\.lastError, err)
+                self.update(\.heldByAnotherApp, isHeld)
                 self.update(\.bluetoothMouse, btStatus)
                 // The DPI Cycle assignment read before the mouse went away says nothing about
                 // what it holds when it comes back (firmware can reset it). Forget it, so the F20
@@ -1046,6 +1058,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             self.update(\.connected, true)
             self.update(\.bluetoothRecoveryState, .idle)
             self.update(\.lastError, nil)
+            self.update(\.heldByAnotherApp, false)
             self.inputWatcher.stop() // in use again: its reports would be a wake-up per movement
             alsoSet()
             self.updateStatusText()
@@ -1130,9 +1143,26 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         if !linkDead { dpiSignature = signature }
         let pollRead = RazerCommands.pollingRateRead(command: RazerDevices.pollingCommand(pid: dev.productID))
         let p = read(pollRead.report, pollRead.parse)
-        let b = RazerDevices.hasBrightness(pid: dev.productID)
+        // Asked on the read LED (`RazerDevices.brightnessReadLed`), which a split-read model
+        // keeps apart from the group it writes. `brightnessLedRead` names that group.
+        let brightnessLedRead = RazerDevices.brightnessLed(pid: dev.productID)
+        var bRead = RazerDevices.hasBrightness(pid: dev.productID)
             ? read(RazerCommands.getBrightness(led: RazerDevices.brightnessReadLed(pid: dev.productID))) { RazerCommands.brightnessPercent(fromRaw: $0.arguments[2]) }
             : nil
+        // On a dock, ask the mouse on it again when nothing is known yet (it was silent when
+        // the dock opened), or when this read no longer matches what it said: an answer
+        // where it had no lights, or a refusal where it had. A different mouse may be there
+        // now. Only while the link is up, so this read was heard, and nothing is waiting.
+        if RazerDevices.lightingFollowsDockedMouse.contains(dev.productID), !linkDead, !self.userWorkPending,
+           RazerDevices.dockedLightingLeds(pid: dev.productID).map({ (bRead != nil) != !$0.isEmpty }) ?? true {
+            probeDockedLighting(dev, keepingWhatWasKnown: true)
+            let lit = RazerDevices.hasLighting(pid: dev.productID)
+            publish { self.update(\.deviceHasLighting, lit) }
+            // A read on a group the mouse no longer leads with says nothing about its
+            // brightness, and would clear a profile that never drifted.
+            if RazerDevices.brightnessLed(pid: dev.productID) != brightnessLedRead { bRead = nil }
+        }
+        let b = bRead
         let sleep: Int? = {
             if !dev.isBluetooth, RazerDevices.supportsSleepTimeout(pid: dev.productID) {
                 return read(RazerCommands.getIdleTime(), RazerCommands.parseIdleTime) ?? nil
@@ -2052,6 +2082,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     }
 
     func refreshDpiCycleButtonBinding() {
+        guard !RenderOptions.isActive else { return }
         userCommand { [weak self] in
             guard let self else { return }
             self.publish {
@@ -2119,7 +2150,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// `checkSideButtons` when `checksSideButtons`. For the Configure Buttons page opening, so
     /// other mice queue nothing.
     func checkSideButtonsIfSupported() {
-        guard checksSideButtons else { return }
+        guard !RenderOptions.isActive, checksSideButtons else { return }
         checkSideButtons()
     }
 
@@ -2509,7 +2540,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             // Capped for the mouse this reaches, which may not be the one the profile was
             // applied on if they changed in between.
             let hz = min(savedHz, RazerDevices.maxPollingRate(pid: dev.productID))
-            let pollOK = slotKeepsRest || Self.sendPollingRate(hz, to: dev)
+            // Not sent where the rate never lands: it would only count as a failed apply.
+            let pollOK = slotKeepsRest || RazerDevices.ignoresPollingWrites(pid: dev.productID)
+                || Self.sendPollingRate(hz, to: dev)
             // Lighting commands only count on models that have lighting — the Atheris
             // (correctly) refuses them, and that must not block its profiles from applying.
             let hasLighting = RazerDevices.hasLighting(pid: dev.productID)
@@ -2728,26 +2761,41 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         batteryPercent = 72
         charging = false
         dpi = 1600
+        // The stages read from the mouse, as the real popover has them: their own chips, the
+        // custom chip after them, and the Edit button.
+        dpiStages = [400, 800, 1600, 3200, 6400]
+        activeDpiStage = 2 // 1600, zero-based
         pollRate = 1000
-        timeEstimate = "~3d 0h left (est.)" // matches BatteryHistory.estimateString's real format
+        timeEstimate = "~2d 19h left (est.)" // matches BatteryHistory.estimateString's real format
         let now = Date()
+        // Every number agrees at 1%/hr: 100% 28h ago, 72% now, 67h left to the 5% every charge
+        // ends at, and past charges of about 95h (100% to 5%). The screenshots show the chart
+        // and the figures side by side.
         batterySamples = stride(from: 0, through: 28, by: 1).map {
-            BatterySample(t: now.addingTimeInterval(Double($0) * -3600), pct: min(100, 2 + $0 * 4))
+            BatterySample(t: now.addingTimeInterval(Double($0) * -3600), pct: min(100, 72 + $0))
         }.reversed()
         // The charge before it (dimmed context on the usage chart), with a 2h charge gap.
         let previousEnd = now.addingTimeInterval(-30 * 3600)
-        previousCycleSamples = stride(from: 0, through: 24, by: 1).map {
-            BatterySample(t: previousEnd.addingTimeInterval(Double($0) * -3600), pct: min(100, 8 + $0 * 4))
+        previousCycleSamples = stride(from: 0, through: 95, by: 1).map {
+            BatterySample(t: previousEnd.addingTimeInterval(Double($0) * -3600), pct: min(100, 5 + $0))
         }.reversed()
         dischargeRatePerHour = 1.0
         cycleStartedAt = batterySamples.first?.t
         cycleStartedPercent = batterySamples.first?.pct
-        pastCycles = (1...6).map { i in
-            let end = now.addingTimeInterval(Double(-i) * 86400)
-            return ChargeCycleSummary(start: end.addingTimeInterval(-Double(20 + i) * 3600),
-                                       end: end, startPercent: 100, endPercent: 5)
+        let cycleHours: [Double] = [95, 94, 97, 95, 93, 96] // the first is previousCycleSamples
+        var cycleEnd = previousEnd
+        pastCycles = cycleHours.map { hours in
+            let cycle = ChargeCycleSummary(start: cycleEnd.addingTimeInterval(-hours * 3600),
+                                           end: cycleEnd, startPercent: 100, endPercent: 5)
+            cycleEnd = cycle.start.addingTimeInterval(-2 * 3600) // charging in between
+            return cycle
         }
-        averageCycleHours = 23
+        averageCycleHours = 95
+        // What the battery usage page reads its time remaining from, matching `timeEstimate`.
+        lastBatterySnapshot = LastBatterySnapshot(
+            deviceKey: "preview", productID: 0x00DB, deviceName: "Razer Cobra HyperSpeed", percent: 72,
+            observedAt: now, estimatedHoursRemaining: 67, wasCharging: false
+        )
         updateStatusText()
         let p1 = MouseProfile(name: "Work", dpi: 1600, pollRate: 1000, brightness: 60,
                                effect: LightingEffect.staticColor.rawValue, color: RGB(r: 0x44, g: 0xD6, b: 0x2C), buttonMappings: [:])
@@ -2775,6 +2823,26 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             deviceName: deviceName ?? "Razer Mouse", percent: batteryPercent ?? 72,
             observedAt: readingDate, estimatedHoursRemaining: 39, wasCharging: false
         )
+        updateStatusText()
+    }
+
+    /// For the `render-ui held` preview: a wired mouse another app holds exclusively (#139).
+    func setPreviewHeldByAnotherApp() {
+        deviceID = 0x0060
+        deviceName = "Razer Lancehead Tournament Edition"
+        deviceHasBattery = false
+        connected = false
+        lastError = String(describing: HIDDevice.HIDError.openFailed(kIOReturnExclusiveAccess))
+        heldByAnotherApp = true
+        updateStatusText()
+    }
+
+    /// For the `render-ui held-at-launch` preview: held before MacRazer ever opened it, so
+    /// the app never learned its name.
+    func setPreviewHeldAtLaunch() {
+        setPreviewHeldByAnotherApp()
+        deviceID = nil
+        deviceName = nil
         updateStatusText()
     }
 
@@ -2974,6 +3042,19 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         }
     }
 
+    /// Must be called on `io`. Asks the mouse on a dock which lights it has
+    /// (`RazerDevices.lightingFollowsDockedMouse`). Nothing heard either keeps what was known
+    /// (a later read) or forgets it (a fresh open, which may be another mouse).
+    private func probeDockedLighting(_ dev: any RazerTransport, keepingWhatWasKnown: Bool) {
+        guard RazerDevices.lightingFollowsDockedMouse.contains(dev.productID),
+              let channel = dev as? DeviceProbeChannel else { return }
+        let found = DeviceProbe.dockedLighting(channel, shouldStop: { self.userWorkPending })
+        // A probe cut short by a tap says nothing new, so it keeps what was known even on
+        // open: forgetting would bring back lights an unlit mouse doesn't have.
+        if found == .unknown, keepingWhatWasKnown || userWorkPending { return }
+        RazerDevices.learnDockedLighting(found, pid: dev.productID)
+    }
+
     /// Must be called on `io`.
     private func ensureDevice() throws -> any RazerTransport {
         if let d = device { return d }
@@ -3087,6 +3168,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 if !isSameUnitKeyUpgrade { self.lowBatteryNotifier.deviceChanged() }
             }
         }
+        // A dock's lighting is the mouse's on it, so ask that mouse on every open. A mouse
+        // that isn't heard leaves the row's values until a later read hears it.
+        probeDockedLighting(d, keepingWhatWasKnown: false)
         let name = d.productName
         let battery = RazerDevices.hasBattery(pid: pid)
         let bluetooth = d.isBluetooth

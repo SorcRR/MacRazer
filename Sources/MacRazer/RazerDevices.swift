@@ -154,6 +154,17 @@ struct RazerDeviceInfo {
     /// failed writes: each change is read back, so a rate the mouse can't take shows as a
     /// failure rather than landing as something else. Each row says where its top comes from.
     var maxPollingRate = 1000
+    /// True for a mouse that keeps one DPI axis and reads Y back as 0 (the Basilisk
+    /// Essential). The device test then confirms a DPI write on X alone. Only from a report.
+    var singleAxisDPI = false
+    /// True when the stage table the mouse answers with isn't the one its DPI button steps
+    /// through (the Basilisk Essential). The chips still show the table, but the popover
+    /// doesn't offer to edit it, since an edit wouldn't change what the button does.
+    var buttonIgnoresStageTable = false
+    /// True on a link whose reports show it acknowledging a polling write and keeping its old
+    /// rate (the Viper V4 Pro's dongle). The popover hides the picker there and a profile
+    /// doesn't write the rate. The device test still tries it, so a report can lift this.
+    var ignoresPollingWrites = false
     /// True for a mouse whose light has one colour of its own (the DeathAdder Essential's is
     /// green): only brightness changes it, so the popover hides colours and effects.
     var fixedColor = false
@@ -283,6 +294,13 @@ enum RazerDevices {
         // 0x05, as a wired-only mouse should. LOGO and SCROLL answer brightness; ZERO and
         // BACKLIGHT return 0x03. The firmware echoed a 45000 DPI write; 26000 is its sensor's.
         .init(pid: 0x0099, name: "Razer Basilisk V3", unverified: [], hasBattery: false, hasLighting: true, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, transactionOverrides: [0x0406: 0xff, 0x0486: 0xff], extraBrightnessLeds: [Razer.scrollLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
+        // Basilisk V3 35K (in-app report on 0.10.0, firmware v1.0, no credit given): wired only,
+        // so no battery (0x05). DPI and stages, polling and lighting passed with 0x1f, and every
+        // id answers. Unlike the Basilisk V3, its stage table answers on 0x1f too. LOGO and
+        // SCROLL answer brightness, both dimmed and came back, and the red showed. The zone
+        // effect read answers on 0x00, 0x01, 0x04 and 0x0A, as on the V3 Pro 35K, so it gets
+        // the same zones. 35000 is the vendor spec (its Focus Pro 35K sensor).
+        .init(pid: 0x00CB, name: "Razer Basilisk V3 35K", unverified: [], hasBattery: false, hasLighting: true, maxDPI: 35000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
         // Basilisk V2 (in-app report on firmware v1.4, no credit given): DPI and stages, polling
         // and lighting all passed with 0x1f, and every id answers. LOGO and SCROLL answer
         // brightness, and both dimmed and went back. The battery read answers 0x05. 20000 is the
@@ -301,6 +319,12 @@ enum RazerDevices {
         // that the mouse kept cycling colours while the effect read said static green. The zone
         // effect read answers on 0x00, 0x01, 0x04, 0x0A, 0x10 and 0x11, and the effect goes to
         // ZERO_LED, which may not reach every zone (see the cable row below).
+        // A 0.10.0 report (firmware v1.8, through a Mouse Dock) dimmed LOGO and SCROLL and
+        // brought them back, but the red didn't show, though every zone took the static
+        // write. So brightness works and colour doesn't yet, and lighting stays hidden.
+        // Another 0.10.0 report (firmware v1.7, 2026-11-23, also through a Mouse Dock) passed:
+        // every zone took the red and the owner saw it. One each way on 0.10.0, so it still
+        // waits.
         .init(pid: 0x0088, name: "Razer Basilisk Ultimate (Wireless)", unverified: [.lighting], hasBattery: true, hasLighting: false, maxDPI: 20000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
         // Its cable (two in-app reports on 0.9.0, firmware v1.3 and v1.8, no credit given):
         // battery (charging), DPI and stages, and polling passed with 0x1f, and every id
@@ -316,7 +340,10 @@ enum RazerDevices {
         // lighting stays hidden until a test shows it. Its zones read as spectrum. The vendor spec
         // is 16000, but it was running at 26000 and took a 25950 write, so the slider goes to
         // 26000. It holds two DPI stages.
-        .init(pid: 0x0064, name: "Razer Basilisk", unverified: [.lighting], hasBattery: false, hasLighting: false, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
+        // Two 0.10.0 reports (firmware v1.0, 2026-11-23, four minutes apart, likely one owner),
+        // with red sent to each zone, passed lighting: LOGO and SCROLL dimmed, turned red and
+        // came back. The one fail came before 0.10.0's per-zone writes, with the lights off.
+        .init(pid: 0x0064, name: "Razer Basilisk", unverified: [], hasBattery: false, hasLighting: true, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
         // Naga Hex V2 (in-app report on firmware v1.0, credited to foivos92): DPI and polling
         // passed with 0x1f. It has no battery: the read answers with zeros. Every LED group
         // answers brightness with 0 and ignores writes: OpenRazer drives this model with the
@@ -331,15 +358,23 @@ enum RazerDevices {
         // so lighting counts as verified rather than asking every owner for a test that can't
         // pass. 6400 is the vendor spec.
         .init(pid: 0x0098, name: "Razer DeathAdder Essential", unverified: [], hasBattery: false, hasLighting: true, maxDPI: 6400, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, fixedColor: true, notOnMouse: [.battery]),
-        // The older DeathAdder Essential and its White Edition (no reports yet): wired only,
-        // 6400 DPI. razermouse_driver.c gives them 0xFF for DPI and polling. Their light uses
-        // the older single-LED commands, not the extended matrix this app sends, so no
-        // lighting here until someone tries it. The 2018 one reports the same product string
+        // The older DeathAdder Essential and its White Edition: wired only, 6400 DPI.
+        // razermouse_driver.c gives them 0xFF for DPI and polling, and OpenRazer drives their
+        // light with the older single-LED commands. The White Edition has no report yet, so
+        // it has no lighting here. The 2018 one reports the same product string
         // as the 0x0098 row; its name here says the year so the two read apart in lists.
         // Nothing matches rows by name across the same link, so the difference is harmless,
         // but tell them apart by product id, not by name.
-        .init(pid: 0x006E, name: "Razer DeathAdder Essential (2018)", unverified: [.dpi, .polling], hasBattery: false, hasLighting: false, maxDPI: 6400, transactionId: 0xff, matrixTransactionId: 0xff, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
-        .init(pid: 0x0071, name: "Razer DeathAdder Essential White Edition", unverified: [.dpi, .polling], hasBattery: false, hasLighting: false, maxDPI: 6400, transactionId: 0xff, matrixTransactionId: 0xff, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
+        // A 0.9.0 report on the 2018 one (firmware v1.1) passed DPI and polling with 0xff, and
+        // the extended-matrix brightness this app sends dimmed LOGO and SCROLL and came back.
+        // The red didn't show, and the owner says its one light is green only, so it gets
+        // brightness and no colours, like the 0x0098 row.
+        .init(pid: 0x006E, name: "Razer DeathAdder Essential (2018)", unverified: [], hasBattery: false, hasLighting: true, maxDPI: 6400, transactionId: 0xff, matrixTransactionId: 0xff, extraBrightnessLeds: [Razer.scrollLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, fixedColor: true, notOnMouse: [.battery]),
+        // DeathAdder Essential White Edition (in-app report on 0.9.0, firmware v1.0, no credit
+        // given): DPI and polling passed with 0xff. LOGO and SCROLL answer brightness, and
+        // both dimmed and came back. The red didn't show, and the owner says its light is
+        // white only, so it gets brightness and no colours, like the 2018 row above.
+        .init(pid: 0x0071, name: "Razer DeathAdder Essential White Edition", unverified: [], hasBattery: false, hasLighting: true, maxDPI: 6400, transactionId: 0xff, matrixTransactionId: 0xff, extraBrightnessLeds: [Razer.scrollLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, fixedColor: true, notOnMouse: [.battery]),
         // Orochi 2013. A second in-app report (0.9.0, firmware v1.2, on the cable, no credit
         // given) passed polling with 0x1f: it read 125 Hz, set 500 Hz and went back. DPI passed
         // again; the stages read answers 0x03. The battery read answers with zeros and every
@@ -364,7 +399,10 @@ enum RazerDevices {
         // which is 250 Hz. No LED group answers brightness, on the cable or the dongle, but the
         // zone effect read answers on 0x00 and 0x0A, and the dongle's owner can switch effects:
         // its lighting is effects only. Lighting stays unverified until a test shows that.
-        .init(pid: 0x00C7, name: "Razer Pro Click V2 Vertical Edition (Wired)", unverified: [.polling, .lighting], hasBattery: true, hasLighting: true, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, brightnessLed: Razer.zeroLed, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, hasBrightness: false, model: RazerDevices.proClickV2Vertical),
+        // A 0.10.0 report on the cable (2026-11-22, sent twice) passed polling: it read
+        // 250 Hz, set 500 Hz and went back. Its lighting step marked lighting as not on this
+        // mouse, because the test only runs when some group answers brightness.
+        .init(pid: 0x00C7, name: "Razer Pro Click V2 Vertical Edition (Wired)", unverified: [.lighting], hasBattery: true, hasLighting: true, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, brightnessLed: Razer.zeroLed, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, hasBrightness: false, model: RazerDevices.proClickV2Vertical),
         // Its HyperSpeed dongle (in-app report on firmware v1.0, no credit given): battery, DPI
         // and stages, and polling passed with 0x1f. 0xFF and 0x80 time out, which is why the
         // first tries over it found nothing. Lighting as on the cable: effects, no brightness.
@@ -392,6 +430,12 @@ enum RazerDevices {
         // report from another owner saw neither the dim nor the red, though every write
         // succeeded; kept verified until a third report says which one is right.
         .init(pid: 0x0067, name: "Razer Naga Trinity", unverified: [], hasBattery: false, hasLighting: true, maxDPI: 16000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
+        // Naga Classic Edition (in-app report on 0.10.0, firmware v1.0, credit spellbook):
+        // wired only, so no battery (0x05). DPI and stages, polling and lighting passed with
+        // 0x1f. LOGO and SCROLL answer brightness, both dimmed and came back, and the red
+        // showed. The zone effect read also answers on 0x04, 0x0A and 0x11. Its 12-key side
+        // grid types 1 to 0, minus and equals. 16000 is the vendor spec, as on the Trinity.
+        .init(pid: 0x0093, name: "Razer Naga Classic Edition", unverified: [], hasBattery: false, hasLighting: true, maxDPI: 16000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
         // Naga Chroma (in-app report, no credit given): an older wired-only Naga. DPI and
         // polling passed with 0x1f. Its battery read answers zeros. The extended-matrix
         // brightness commands are acknowledged but every zone reads back 0 and nothing
@@ -405,7 +449,14 @@ enum RazerDevices {
         // other mice the dock pairs with may lack the Naga's side panel. The dock's own
         // lighting is not reachable here. Its cable is the mouse's own link, under the mouse's
         // own product id, so the test doesn't ask for one.
-        .init(pid: 0x00A4, name: "Razer Mouse Dock Pro", unverified: [.polling], hasBattery: true, hasLighting: true, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, hasCableLink: false, usesPollingRate2: true),
+        // A 0.10.0 report (credit maesta2), with a Basilisk V4 HyperSpeed on the dock, passed
+        // polling with polling_rate2: it read 8000 Hz, set 500 Hz and put 8000 back, so the top
+        // rate is 8000. Identify failed there only because that mouse has no lights: the
+        // dock's lighting is the mouse's, and this row's comes from a Naga V3 Pro.
+        // A second 0.10.0 report (firmware v1.1, credit Kartas), with a Naga V3 Pro on it,
+        // passed everything: polling 8000 Hz to 500 and back, and LOGO, SCROLL and BACKLIGHT
+        // dimmed and turned red.
+        .init(pid: 0x00A4, name: "Razer Mouse Dock Pro", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, hasCableLink: false, usesPollingRate2: true, maxPollingRate: 8000),
         // Mouse Dock V2 Pro: like the Mouse Dock Pro, a charging dock that is the receiver for
         // the mouse on it. One report (credited to cparedes) with a Basilisk V4 Pro on it:
         // battery, DPI and stages, and lighting passed with 0x1f. The classic polling command
@@ -413,7 +464,9 @@ enum RazerDevices {
         // dock. 35000 covers the V4 Pro. The dock doesn't say which mouse is on it, so the
         // slider goes that high for any mouse, and one with a lower ceiling holds its own top.
         // No cable test, as on the first dock.
-        .init(pid: 0x00F1, name: "Razer Mouse Dock V2 Pro", unverified: [.polling], hasBattery: true, hasLighting: true, maxDPI: 35000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, hasCableLink: false, usesPollingRate2: true),
+        // A 0.10.0 report (2026-11-24) passed polling with polling_rate2: it read 8000 Hz, set
+        // 500 Hz and went back, so the picker goes to 8000 as on the first dock.
+        .init(pid: 0x00F1, name: "Razer Mouse Dock V2 Pro", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 35000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, hasCableLink: false, usesPollingRate2: true, maxPollingRate: 8000),
         // HyperFlux V2 charging mat: like the Mouse Dock Pro, the mat is the receiver for the
         // mouse on it, so what answers is that mouse. The one report (no credit given) passed
         // battery, DPI and stages, and polling with 0x1f. 0x80 times out, and 0xFF answers with
@@ -446,19 +499,24 @@ enum RazerDevices {
         // Basilisk V4 Pro over the dongle (in-app report, no credit given): battery, DPI and
         // stages, static color and brightness passed with 0x1f. LOGO and SCROLL answer
         // brightness, ZERO and BACKLIGHT return 0x03. The classic polling command answers
-        // "not supported" (0x05), as on the V4 HyperSpeed, so it takes polling_rate2 and stays
-        // unverified. 50000 is the vendor spec (its Focus Pro 50K Gen-3 sensor).
-        // 8000 Hz is from fn-milans's work on this mouse (#55), not yet from a report.
+        // "not supported" (0x05), the same gap as the V4 HyperSpeed, so it takes polling_rate2.
+        // 50000 is the vendor spec (its Focus Pro 50K Gen-3 sensor).
+        // A 0.10.0 report (firmware v1.2) passed polling with polling_rate2, 1000 Hz to 500
+        // and back. 8000 Hz is from fn-milans's work on this mouse (#55).
         // fn-milans also confirmed on the mouse (#55, firmware v1.1, 2026-10-19): the sleep
         // timer, the wheel controls, the low-battery threshold, each lighting zone, the
         // onboard slots and remaps saved in its button table (`OnboardButtons`).
-        .init(pid: 0x00E3, name: "Razer Basilisk V4 Pro (Wireless)", unverified: [.polling], hasBattery: true, hasLighting: true, maxDPI: 50000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, supportsSleepTimeout: true, usesPollingRate2: true, maxPollingRate: 8000, hasWheelControls: true, hasSmartReelSensitivity: true, hasScrollAcceleration: true, supportsLowBatteryThreshold: true, hasOnboardSlots: true, supportsDpiModes: true, lightingZones: basiliskV4ProZones, buttonTable: .basiliskV4Pro, dpiStagesCountFromOne: true),
+        // A later report (firmware v1.1, 2026-11-23) saw the red but not the dim. The dim reached
+        // LOGO and SCROLL only, and the zone read lists 0x0A too, so the underglow may have
+        // stayed lit. One report against earlier passes: the row stands.
+        .init(pid: 0x00E3, name: "Razer Basilisk V4 Pro (Wireless)", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 50000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, supportsSleepTimeout: true, usesPollingRate2: true, maxPollingRate: 8000, hasWheelControls: true, hasSmartReelSensitivity: true, hasScrollAcceleration: true, supportsLowBatteryThreshold: true, hasOnboardSlots: true, supportsDpiModes: true, lightingZones: basiliskV4ProZones, buttonTable: .basiliskV4Pro, dpiStagesCountFromOne: true),
         // Basilisk V4 Pro on the cable (in-app report on firmware v1.1 from by_hlz): battery,
         // DPI and stages, static color and brightness passed with 0x1f, and every id answers.
         // LOGO and SCROLL answer brightness. The classic polling command answers 0x05, as over
         // the dongle. Its control interface is the fourth one. Same 50000 ceiling as the dongle.
-        // 8000 Hz is from fn-milans's work on this mouse (#55), not yet from a report.
-        .init(pid: 0x00E2, name: "Razer Basilisk V4 Pro (Wired)", unverified: [.polling], hasBattery: true, hasLighting: true, maxDPI: 50000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, supportsSleepTimeout: true, usesPollingRate2: true, maxPollingRate: 8000, hasWheelControls: true, hasSmartReelSensitivity: true, hasScrollAcceleration: true, supportsLowBatteryThreshold: true, hasOnboardSlots: true, supportsDpiModes: true, lightingZones: basiliskV4ProZones, buttonTable: .basiliskV4Pro, dpiStagesCountFromOne: true),
+        // A 0.10.0 report (firmware v1.2, credit Maude) passed polling with polling_rate2,
+        // 1000 Hz to 500 and back. 8000 Hz is from fn-milans's work on this mouse (#55).
+        .init(pid: 0x00E2, name: "Razer Basilisk V4 Pro (Wired)", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 50000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, supportsSleepTimeout: true, usesPollingRate2: true, maxPollingRate: 8000, hasWheelControls: true, hasSmartReelSensitivity: true, hasScrollAcceleration: true, supportsLowBatteryThreshold: true, hasOnboardSlots: true, supportsDpiModes: true, lightingZones: basiliskV4ProZones, buttonTable: .basiliskV4Pro, dpiStagesCountFromOne: true),
         // Basilisk V4 Pro over Bluetooth (#55, fn-milans, firmware v1.1). It names itself
         // "BSK V4 PRO" (vendor 0x068E). Battery, serial, DPI stages, LOGO brightness and the
         // sleep timer answered, and DPI and brightness changes worked. Remaps go to the same
@@ -502,24 +560,33 @@ enum RazerDevices {
         // passed with 0x1f (every id tried answers on the cable). It has no lighting: every group
         // answers 0x05. The classic polling command answers "not supported" (0x05), as on the
         // Basilisk V4 models, so it takes polling_rate2. Its read answered `00 01`, 8000 Hz,
-        // and polling stays unverified until a test passes it. Its control interface is the fourth one. Its sensor is the Focus Pro 50K,
-        // but 45000 is as high as the app writes (the driver's clamp), and the firmware echoed it.
-        .init(pid: 0x00E5, name: "Razer Viper V4 Pro (Wired)", unverified: [.polling], hasBattery: true, hasLighting: false, maxDPI: 45000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, usesPollingRate2: true, maxPollingRate: 8000, notOnMouse: [.lighting]),
+        // Its control interface is the fourth one. Its sensor is the Focus Pro 50K, but 45000
+        // is as high as the app writes (the driver's clamp), and the firmware echoed it.
+        // A 0.10.0 report (firmware v1.4, credit Kartas) passed polling with polling_rate2: it
+        // read 8000 Hz, set 500 Hz and put 8000 back.
+        .init(pid: 0x00E5, name: "Razer Viper V4 Pro (Wired)", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 45000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, usesPollingRate2: true, maxPollingRate: 8000, notOnMouse: [.lighting]),
         // Viper V4 Pro over the dongle (in-app report from Robotxm): battery and DPI and stages
         // passed with 0x1f, and every id tried answers. No lighting (every group answers 0x05),
         // and the classic polling command answers 0x05, as on its cable. Same 45000 ceiling.
-        // 8000 Hz is the vendor spec for its HyperPolling dongle. Only the cable has read it.
-        .init(pid: 0x00E6, name: "Razer Viper V4 Pro (Wireless)", unverified: [.polling], hasBattery: true, hasLighting: false, maxDPI: 45000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, usesPollingRate2: true, maxPollingRate: 8000, notOnMouse: [.lighting]),
+        // 8000 Hz is the vendor spec for its HyperPolling dongle.
+        // Two 0.10.0 runs over the dongle (firmware v1.4, the same day the cable passed) failed
+        // polling: both polling_rate2 writes for 500 Hz answered 0x02, but the read stayed at
+        // 8000 Hz. So the dongle doesn't take the rate this way yet: polling stays unverified,
+        // and `ignoresPollingWrites` hides the picker until a report shows a rate landing.
+        .init(pid: 0x00E6, name: "Razer Viper V4 Pro (Wireless)", unverified: [.polling], hasBattery: true, hasLighting: false, maxDPI: 45000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, usesPollingRate2: true, maxPollingRate: 8000, ignoresPollingWrites: true, notOnMouse: [.lighting]),
         // Basilisk V4 HyperSpeed on the cable (two in-app reports, no credit given): battery and
         // DPI and stages passed with 0x1f, and every id answers. As over the dongle, every LED
         // group the sweep asks refuses brightness and the classic polling command answers 0x05,
-        // so it takes the dongle's lighting LEDs and polling command. OpenRazer drives the cable
-        // the same way (#2959), but nobody has tried either here, so both stay unverified, and
-        // the dongle's button table isn't assumed. Its control
+        // so it takes the dongle's lighting LEDs. OpenRazer drives the cable the same way
+        // (#2959). The dongle's button table isn't assumed. Its control
         // interface is the fourth one. The owner found 2 of its 4 thumb buttons and one wheel
         // tilt unusable for remapping: the tilt sends horizontal scroll (consumer page 0x238),
         // and the other two thumb buttons sent nothing standard during the button step.
-        .init(pid: 0x00EB, name: "Razer Basilisk V4 HyperSpeed (Wired)", unverified: [.polling, .lighting], hasBattery: true, hasLighting: true, maxDPI: 33000, transactionId: 0x1f, matrixTransactionId: 0x1f, brightnessLed: Razer.zeroLed, brightnessReadLed: 0x0A, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, pollingCommand: .basiliskV4HyperSpeed),
+        // Two 0.10.0 reports (firmware v1.0, 2026-11-23) passed polling with polling_rate2:
+        // 1000 Hz to 500 and back. So the cable keeps polling_rate2, though the dongle takes its
+        // own command. Its lighting is the dongle's (ZERO, read back on 0x0A), which no cable
+        // report has tested yet: those reports saw no group answer the sweep's brightness reads.
+        .init(pid: 0x00EB, name: "Razer Basilisk V4 HyperSpeed (Wired)", unverified: [.lighting], hasBattery: true, hasLighting: true, maxDPI: 33000, transactionId: 0x1f, matrixTransactionId: 0x1f, brightnessLed: Razer.zeroLed, brightnessReadLed: 0x0A, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, usesPollingRate2: true),
         // Pro Click V2 over the dongle (in-app report, no credit given): battery, DPI and stages,
         // and polling passed with 0x1f. 0xFF and 0x80 time out. No lighting (every group
         // returns 0x03). 30000 is the vendor spec, as for the Vertical Edition. Its zone effect
@@ -581,8 +648,9 @@ enum RazerDevices {
         // command answers 0x05 too, while the polling_rate2 read answers, so like the Basilisk
         // V4 models it takes that pair, and polling stays unverified until a test passes it.
         // 20000 is the vendor spec.
-        // 8000 Hz is the vendor spec (it's in the name). No report has set it yet.
-        .init(pid: 0x0091, name: "Razer Viper 8KHz", unverified: [.polling], hasBattery: false, hasLighting: true, maxDPI: 20000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, usesPollingRate2: true, maxPollingRate: 8000, notOnMouse: [.battery]),
+        // A 0.10.0 report (firmware v1.3) passed polling with polling_rate2: it read 8000 Hz,
+        // set 500 Hz and put 8000 back.
+        .init(pid: 0x0091, name: "Razer Viper 8KHz", unverified: [], hasBattery: false, hasLighting: true, maxDPI: 20000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, usesPollingRate2: true, maxPollingRate: 8000, notOnMouse: [.battery]),
         // Naga V2 HyperSpeed over the dongle (two in-app reports on firmware v1.1, no credit
         // given): battery, DPI and stages, and polling passed with 0x1f. 0xFF and 0x80 time out.
         // No lighting: every group answers 0x05. The charging read answers 0x05 too: it runs on
@@ -609,12 +677,24 @@ enum RazerDevices {
         // so the lighting controls stay hidden until a third report settles it. Both zones are
         // recorded for the slider for when they are. 35000 is the spec. Two more reports on
         // 0.9.0 and firmware v3.0 (2026-11-13) split the same way, one pass and one fail.
+        // A 0.10.0 report (firmware v3.0, 2026-11-22), the first with red sent to each zone:
+        // the red showed, the dim didn't. The dim only reaches LOGO and SCROLL, the groups the
+        // sweep asks; the underglow (0x0A) took the red but may have stayed lit. Still hidden.
         .init(pid: 0x00CC, name: "Razer Basilisk V3 Pro 35K (Wired)", unverified: [.lighting], hasBattery: true, hasLighting: false, maxDPI: 35000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
         // Its dongle (in-app report on firmware v2.50, no credit given): battery, DPI and
-        // stages, and polling passed. Lighting failed, as on the cable's first report. No
-        // extra zones recorded: a report that shows lighting working says which answer. A
-        // second report (0.9.0, 2026-11-13) passed lighting, so it stands one each way.
-        .init(pid: 0x00CD, name: "Razer Basilisk V3 Pro 35K (Wireless)", unverified: [.lighting], hasBattery: true, hasLighting: false, maxDPI: 35000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
+        // stages, and polling passed. Lighting failed, as on the cable's first report. A
+        // second report (0.9.0, 2026-11-13) passed lighting, so it stood one each way.
+        // A third (0.10.0, firmware v2.52, 2026-11-23), with red sent to each zone, passed:
+        // the lights dimmed and turned red, and LOGO and SCROLL answered brightness, so
+        // SCROLL is recorded now. Two passes to one, and the fail came before 0.10.0's
+        // per-zone writes.
+        .init(pid: 0x00CD, name: "Razer Basilisk V3 Pro 35K (Wireless)", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 35000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
+        // Basilisk V3 Pro 35K Phantom Green Edition (in-app report on 0.10.0, firmware v2.53,
+        // no credit given): battery, DPI and stages, and polling passed with 0x1f. Lighting
+        // was skipped. The owner picked "dongle", but OpenRazer (PR 2583) lists 0x00D6 as the
+        // cable and 0x00D7 as the dongle. Both were attached and the battery read said
+        // charging, so this row follows OpenRazer. 0x00D7 has no row until a report.
+        .init(pid: 0x00D6, name: "Razer Basilisk V3 Pro 35K Phantom Green Edition (Wired)", unverified: [.lighting], hasBattery: true, hasLighting: false, maxDPI: 35000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
         // Basilisk V3 Pro over its dongle (in-app report on firmware v1.1, no credit given):
         // battery, DPI and stages, polling and lighting all passed with 0x1f. LOGO and SCROLL
         // answer brightness, and both dimmed and came back. 30000 is the vendor spec.
@@ -628,7 +708,8 @@ enum RazerDevices {
         // it refuses the classic polling command (0x05) and answers polling_rate2 (`00 08`,
         // 1000 Hz), which it now gets. 30000 is the vendor spec.
         // 8000 Hz is the vendor spec. Its read answered 1000 Hz; no report has set more.
-        .init(pid: 0x00B2, name: "Razer DeathAdder V3", unverified: [.polling], hasBattery: false, hasLighting: false, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, usesPollingRate2: true, maxPollingRate: 8000, notOnMouse: [.battery, .lighting]),
+        // A third report (0.10.0, 2026-11-22) passed polling_rate2: 1000 Hz to 500 Hz and back.
+        .init(pid: 0x00B2, name: "Razer DeathAdder V3", unverified: [], hasBattery: false, hasLighting: false, maxDPI: 30000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, usesPollingRate2: true, maxPollingRate: 8000, notOnMouse: [.battery, .lighting]),
         // DeathAdder V2 X HyperSpeed over its dongle (in-app report on firmware v1.2, no credit
         // given): battery, DPI and stages, and polling passed. It runs on an AA cell,
         // so there's no cable and no charging read. No lighting. 14000 is the vendor spec.
@@ -657,8 +738,10 @@ enum RazerDevices {
         .init(pid: 0x00C1, name: "Razer Viper V3 Pro (Wireless)", unverified: [], hasBattery: true, hasLighting: false, maxDPI: 35000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.lighting]),
         // DeathAdder Elite (in-app report on firmware v1.6, no credit given): DPI and polling
         // passed. No battery. Lighting was skipped, so it stays hidden until a test
-        // runs it. 16000 is the vendor spec.
-        .init(pid: 0x005C, name: "Razer DeathAdder Elite", unverified: [.lighting], hasBattery: false, hasLighting: false, maxDPI: 16000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
+        // runs it. 16000 is the vendor spec. A second report (0.10.0, 2026-11-22) passed
+        // lighting with 0x1f: LOGO and SCROLL answer brightness, both dimmed and came back,
+        // and the red showed. Synapse was running on that Mac and didn't get in the way.
+        .init(pid: 0x005C, name: "Razer DeathAdder Elite", unverified: [], hasBattery: false, hasLighting: true, maxDPI: 16000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
         // DeathAdder V2 (two in-app reports on firmware v1.4, no credit given): DPI and stages,
         // and polling passed with 0x1f. No battery. The first report skipped lighting. In the
         // second, LOGO and SCROLL answered brightness, both dimmed and came back, and a static
@@ -672,6 +755,10 @@ enum RazerDevices {
         // pick the zones from. A second report (0.9.0, 2026-11-12) saw the red, but left the
         // dim unanswered, so lighting still waits. Its side grid types 1 to 0, minus and
         // equals, and it has no button table: the read fails. 18000 is the vendor spec.
+        // A third report (0.10.0, 2026-11-21) went the same way: red shown, dim not.
+        // A fourth (0.10.0, 2026-11-23) went the other way: SCROLL dimmed, but the red, sent to
+        // ZERO_LED alone, didn't show. Its zones are recorded below, so the next test sends the
+        // red to each and dims the side grid too.
         .init(pid: 0x0096, name: "Razer Naga X", unverified: [.lighting], hasBattery: false, hasLighting: false, maxDPI: 18000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
         // Mamba Tournament Edition (in-app report on firmware v1.3, no credit given): DPI and
         // polling passed with 0x1f. It's wired only: the battery read answers with zeros. Every
@@ -680,18 +767,44 @@ enum RazerDevices {
         // builds, so lighting stays hidden. The stage table read returns 0x03, so the popover
         // shows no stages. 16000 is the vendor spec.
         .init(pid: 0x0046, name: "Razer Mamba Tournament Edition", unverified: [.lighting], hasBattery: false, hasLighting: false, maxDPI: 16000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
+        // Mamba Elite (in-app report on firmware v1.1, no credit given): DPI and stages, and
+        // polling passed with 0x1f. No battery. LOGO and SCROLL answer brightness, but the
+        // lighting step was skipped, so lighting waits. 16000 is the vendor spec.
+        // Two 0.10.0 reports (firmware v1.0, 2026-11-23, one credited to mikey-vivedia) saw the
+        // red but not the dim: once "not sure", once "no". The zone effect read answers on
+        // 0x10 and 0x11 too, the side strips the dim doesn't reach, so its zones are recorded
+        // below and the next test dims them. Its side buttons are set on the mouse to type
+        // Alt+Left and Alt+Right, so the button step saw keys, not buttons 4 and 5.
+        .init(pid: 0x006C, name: "Razer Mamba Elite", unverified: [.lighting], hasBattery: false, hasLighting: false, maxDPI: 16000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
+        // Basilisk Essential (two 0.10.0 reports on firmware v1.2, no credit given): polling
+        // and lighting passed with 0x1f, LOGO and SCROLL dimming and turning red. No battery.
+        // Its DPI read answers X with Y always 0. X read back every write, so DPI counts as
+        // verified, and `singleAxisDPI` lets the test confirm on X. Its stage table read
+        // [800, 4100] while the button step saw the DPI button cycle 6400, 800, 1800 and
+        // 3600: the table it answers with isn't the one its button uses, so the popover
+        // doesn't offer to edit it. 6400 is the vendor spec.
+        .init(pid: 0x0065, name: "Razer Basilisk Essential", unverified: [], hasBattery: false, hasLighting: true, maxDPI: 6400, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, singleAxisDPI: true, buttonIgnoresStageTable: true, notOnMouse: [.battery]),
+        // Naga Left Handed Edition (0.10.0 report on firmware v1.0, no credit given): DPI,
+        // stages, polling and lighting all passed with 0x1f, LOGO and SCROLL dimming and
+        // turning red. No battery, and no polling_rate2. Its twelve side keys type 1 to 0, -
+        // and =, like the other Nagas. 20000 is OpenRazer's DPI_MAX.
+        .init(pid: 0x008D, name: "Razer Naga Left Handed Edition", unverified: [], hasBattery: false, hasLighting: true, maxDPI: 20000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
         // Lancehead Tournament Edition (#139): wired only. The first row came from OpenRazer
         // alone, with 0x3f and 0xFF for the DPI-stages pair. Then an in-app report (0.9.0,
         // firmware v1.1, no credit given) ran it as an unknown mouse on 0x1f, and DPI, the stages
         // read, polling and lighting all passed there; every id answers identify. LOGO and SCROLL
         // answer brightness, and both dimmed, turned red and came back. No battery (0x05).
-        // It holds a single DPI stage. 16000 is the daemon's DPI_MAX. The zone effect read also
+        // That unit held a single DPI stage; the second read five. 16000 is the daemon's DPI_MAX. The zone effect read also
         // answers on 0x10 and 0x11, its side strips, which the effect on ZERO_LED may not reach
         // (on the Basilisk Ultimate's cable only the scroll wheel changed), and brightness was
-        // tried on LOGO and SCROLL only. So lighting stays hidden until a test shows every zone.
+        // tried on LOGO and SCROLL only, so lighting stayed hidden. A second report (0.10.0,
+        // firmware v1.2, @fortinmike) passed everything again on 0x1f. The effect went to all
+        // five zones (`effectZones`) and every write answered, and the colour put back at the
+        // end turned the whole mouse, side strips too. So lighting is on. Brightness is
+        // confirmed on LOGO and SCROLL; the side strips get it best effort.
         // OpenRazer drives it with 0x3f, so a unit that stays silent on 0x1f still gets the
         // search for the id it answers.
-        .init(pid: 0x0060, name: "Razer Lancehead Tournament Edition", unverified: [.lighting], hasBattery: false, hasLighting: false, maxDPI: 16000, transactionId: 0x1f, matrixTransactionId: 0x1f, idMayDiffer: true, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
+        .init(pid: 0x0060, name: "Razer Lancehead Tournament Edition", unverified: [], hasBattery: false, hasLighting: true, maxDPI: 16000, transactionId: 0x1f, matrixTransactionId: 0x1f, idMayDiffer: true, extraBrightnessLeds: [Razer.scrollLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
     ]
 
     static func info(pid: Int) -> RazerDeviceInfo? { known.first { $0.pid == pid } }
@@ -784,6 +897,39 @@ enum RazerDevices {
     }
     /// For tests.
     static func forgetLearnedTransactionIds() { learned.withLock { $0 = [:] } }
+
+    // MARK: - Lighting of the mouse on a dock
+
+    /// Receivers whose lighting is the lighting of the mouse on them. The dock doesn't say
+    /// which mouse that is, so its row can't know. The Mouse Dock Pro's row came from a Naga
+    /// V3 Pro report. A later one with a Basilisk V4 HyperSpeed on it, which has no lights,
+    /// refused every brightness read. So the app asks the mouse (`DeviceProbe.dockedLighting`)
+    /// and what it answers decides `hasLighting` and the brightness zones.
+    static let lightingFollowsDockedMouse: Set<Int> = [0x00A4]
+
+    /// Per pid, the groups the docked mouse answered on. Empty: it has no lights. Missing: not
+    /// asked yet, or nothing heard, so the row's values stand. Per pid, since one dock at a
+    /// time is what anyone has. In memory only: the mouse on the dock can change.
+    private static let dockedLighting = OSAllocatedUnfairLock<[Int: [UInt8]]>(initialState: [:])
+
+    /// Records what the mouse on dock `pid` answered. nil forgets it. Ignored on other pids.
+    static func learnDockedLighting(_ found: DeviceProbe.DockedLighting, pid: Int) {
+        guard lightingFollowsDockedMouse.contains(pid) else { return }
+        dockedLighting.withLock {
+            switch found {
+            case .lit(let leds): $0[pid] = leds
+            case .unlit: $0[pid] = []
+            case .unknown: $0[pid] = nil
+            }
+        }
+    }
+    /// The groups the mouse on dock `pid` answered on, nil when not known.
+    static func dockedLightingLeds(pid: Int?) -> [UInt8]? {
+        guard let pid, lightingFollowsDockedMouse.contains(pid) else { return nil }
+        return dockedLighting.withLock { $0[pid] }
+    }
+    /// For tests.
+    static func forgetDockedLighting() { dockedLighting.withLock { $0 = [:] } }
 
     // MARK: - The online support list
 
@@ -943,7 +1089,11 @@ enum RazerDevices {
 
     /// Defaults assume a full-featured mouse for unknown models (so we still attempt controls).
     static func hasBattery(pid: Int) -> Bool { info(pid: pid)?.hasBattery ?? true }
-    static func hasLighting(pid: Int) -> Bool { info(pid: pid)?.hasLighting ?? true }
+    /// On a dock, what the mouse on it answered, once known (`dockedLightingLeds`).
+    static func hasLighting(pid: Int) -> Bool {
+        if let docked = dockedLightingLeds(pid: pid) { return !docked.isEmpty }
+        return info(pid: pid)?.hasLighting ?? true
+    }
     /// False for an AA-cell mouse, which has nothing to charge.
     static func canCharge(pid: Int) -> Bool { info(pid: pid)?.canCharge ?? true }
     static func maxDPI(pid: Int) -> Int { info(pid: pid)?.maxDPI ?? 26000 }
@@ -956,7 +1106,7 @@ enum RazerDevices {
     /// back after every write and reports a mismatch.
     static func supportsUSBStageEditing(pid: Int) -> Bool {
         guard let info = info(pid: pid) else { return false }
-        return info.connection != .bluetooth && !info.unverified.contains(.dpi)
+        return info.connection != .bluetooth && !info.unverified.contains(.dpi) && !info.buttonIgnoresStageTable
     }
     /// Mice whose stage table holds their DPI in the active onboard slot on every link, so
     /// the popover offers Single and Stages modes there instead of the slider and presets.
@@ -969,6 +1119,8 @@ enum RazerDevices {
     static func lightingZones(pid: Int?) -> [LightingZone] { pid.flatMap { info(pid: $0)?.lightingZones } ?? [] }
     static func buttonTable(pid: Int) -> OnboardButtons.Table? { info(pid: pid)?.buttonTable }
     static func dpiStagesCountFromOne(pid: Int) -> Bool { info(pid: pid)?.dpiStagesCountFromOne ?? false }
+    static func singleAxisDPI(pid: Int) -> Bool { info(pid: pid)?.singleAxisDPI ?? false }
+    static func ignoresPollingWrites(pid: Int) -> Bool { info(pid: pid)?.ignoresPollingWrites ?? false }
     static func verifiesBrightnessWrite(pid: Int) -> Bool { info(pid: pid)?.verifiesBrightnessWrite ?? false }
     static func usesPollingRate2(pid: Int) -> Bool { info(pid: pid)?.usesPollingRate2 ?? false }
     static func maxPollingRate(pid: Int) -> Int { info(pid: pid)?.maxPollingRate ?? 1000 }
@@ -1030,8 +1182,10 @@ enum RazerDevices {
     static func dischargeCurveModelKey(pid: Int) -> String? { info(pid: pid)?.dischargeCurveModelKey }
     /// LED group for brightness get/set. Unknown models fall back to LOGO_LED, the id the
     /// Cobra family answers on.
+    /// On a dock, the first group the mouse on it answered on.
     static func brightnessLed(pid: Int?) -> UInt8 {
-        pid.flatMap { info(pid: $0)?.brightnessLed } ?? Razer.logoLed
+        if let first = dockedLightingLeds(pid: pid)?.first { return first }
+        return pid.flatMap { info(pid: $0)?.brightnessLed } ?? Razer.logoLed
     }
     /// The LED a brightness read goes to: `brightnessReadLed` where a model has one.
     static func brightnessReadLed(pid: Int?) -> UInt8 {
@@ -1044,16 +1198,20 @@ enum RazerDevices {
         return led == readLed ? nil : (led, readLed)
     }
     /// The zones the row confirms for brightness: `brightnessLed`, then `extraBrightnessLeds`.
+    /// On a dock, the first answering group alone. The others are best effort
+    /// (`brightnessLeds`), since a zone can answer a read and still not be a light.
     static func confirmedBrightnessLeds(pid: Int?) -> [UInt8] {
-        [brightnessLed(pid: pid)] + (pid.flatMap { info(pid: $0)?.extraBrightnessLeds } ?? [])
+        if let first = dockedLightingLeds(pid: pid)?.first { return [first] }
+        return [brightnessLed(pid: pid)] + (pid.flatMap { info(pid: $0)?.extraBrightnessLeds } ?? [])
     }
     /// Every LED group a brightness write goes to, `brightnessLed` first. The confirmed
     /// zones, then each effect zone (`effectZones`) not already listed, so the slider dims
     /// every zone an effect lights. ZERO_LED is left out: it is the all-zones id for
-    /// effects, not a zone of its own. Unlisted mice keep their confirmed zones alone.
+    /// effects, not a zone of its own. Unlisted mice keep their confirmed zones alone. On a
+    /// dock, every other group the mouse on it answered on comes before the effect zones.
     static func brightnessLeds(pid: Int?) -> [UInt8] {
         var leds = confirmedBrightnessLeds(pid: pid)
-        for led in effectLeds(pid: pid) where led != Razer.zeroLed && !leds.contains(led) {
+        for led in (dockedLightingLeds(pid: pid) ?? []) + effectLeds(pid: pid) where led != Razer.zeroLed && !leds.contains(led) {
             leds.append(led)
         }
         return leds
@@ -1084,8 +1242,16 @@ enum RazerDevices {
         // Basilisk V3 Pro 35K: logo and scroll wheel per OpenRazer, and 0x0A answers too.
         0x00CC: [Razer.zeroLed, Razer.logoLed, Razer.scrollLed, Razer.underglowLed],
         0x00CD: [Razer.zeroLed, Razer.logoLed, Razer.scrollLed, Razer.underglowLed],
+        // Its Phantom Green Edition, taken to have the same zones until a report says.
+        0x00D6: [Razer.zeroLed, Razer.logoLed, Razer.scrollLed, Razer.underglowLed],
         // Lancehead Tournament Edition: logo, scroll wheel and both sides.
         0x0060: [Razer.zeroLed, Razer.logoLed, Razer.scrollLed, Razer.leftSideLed, Razer.rightSideLed],
+        // Basilisk V3 35K: as the V3 Pro 35K, from its report's zone read.
+        0x00CB: [Razer.zeroLed, Razer.logoLed, Razer.scrollLed, Razer.underglowLed],
+        // Mamba Elite: logo, scroll wheel and both side strips, from its reports' zone reads.
+        0x006C: [Razer.zeroLed, Razer.logoLed, Razer.scrollLed, Razer.leftSideLed, Razer.rightSideLed],
+        // Naga X: scroll wheel and side grid (0x01 and 0x11 answer; 0x00 answers as 0x01).
+        0x0096: [Razer.zeroLed, Razer.scrollLed, Razer.leftSideLed],
     ]
 
     /// Every LED group an effect write goes to. ZERO_LED alone unless `effectZones` lists

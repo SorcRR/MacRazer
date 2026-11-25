@@ -78,7 +78,7 @@ final class BasiliskV4HyperSpeedTests: XCTestCase {
     }
 
     func testCableLightingWaitsForATest() {
-        XCTAssertEqual(RazerDevices.unverified(pid: cable), [.polling, .lighting])
+        XCTAssertEqual(RazerDevices.unverified(pid: cable), [.lighting], "its polling passed with polling_rate2")
         XCTAssertEqual(RazerDevices.unverified(pid: dongle), [.polling])
     }
 
