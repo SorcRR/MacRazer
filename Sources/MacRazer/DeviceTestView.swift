@@ -402,7 +402,7 @@ struct DeviceTestView: View {
                         Text(nothing ? "Nothing yet" : "Seen so far")
                             .font(.system(size: 11)).foregroundStyle(.secondary)
                         FlowLayout(spacing: 6) {
-                            ForEach(model.buttonsSeen, id: \.self) { label in
+                            ForEach(model.buttonChips, id: \.self) { label in
                                 chip(ButtonCapture.friendlyName(label), color: .razerGreen)
                             }
                             ForEach(model.keysSeen, id: \.self) { key in

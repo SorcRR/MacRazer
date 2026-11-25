@@ -36,6 +36,10 @@ expect rough edges until 1.0.
   tested. Before, the app took it for a mouse.
 
 ### Fixed
+- **Test This Mouse: tilting the wheel left and right shows two chips.** Both tilts send the
+  same input, so they shared one chip, and a person could answer that a button didn't show up.
+- **Test This Mouse: no extra "Media key" chip.** Some mice send a blank input with every media
+  key. It showed as a chip, and a report with it in could be turned down when sent.
 - **The device test can now confirm lighting on mice without brightness.** The Pro Click V2
   Vertical Edition takes colours but has no brightness to dim. The test used to stop there and
   say it had no lights. Now it turns the mouse red and asks if you saw it.

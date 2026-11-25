@@ -83,6 +83,9 @@ final class DeviceTestModel: ObservableObject {
     @Published var dimmed: Answer? { didSet { foldLightingAnswers() } }
     @Published var turnedRed: Answer? { didSet { foldLightingAnswers() } }
     @Published private(set) var buttonsSeen: [String] = []
+    /// What the step shows, one chip per input (`ButtonCapture.chip`). Like `buttonsSeen`,
+    /// but a tilting wheel gets a chip per direction.
+    @Published private(set) var buttonChips: [String] = []
     /// Whether the button step could open the mouse to listen. False means it can't hear
     /// presses (no Input Monitoring, or the mouse went away), and the step says so.
     @Published private(set) var listening = false
@@ -695,14 +698,15 @@ final class DeviceTestModel: ObservableObject {
 
     private func startListening() {
         buttonsSeen = []
+        buttonChips = []
         keyLog = KeystrokeLog()
         keysSeen = []
         unheard = nil
         buttonEvents = []
         buttonStepOpened = Date()
         noteSoftware()
-        let capture = ButtonCapture { [weak self] label in
-            Task { @MainActor in self?.saw(label) }
+        let capture = ButtonCapture { [weak self] label, chip in
+            Task { @MainActor in self?.saw(label, chip: chip) }
         }
         self.capture = capture
         // The report's own vendor: a mouse on Bluetooth enumerates under BLEProtocol's.
@@ -760,8 +764,9 @@ final class DeviceTestModel: ObservableObject {
         report?.software = software
     }
 
-    private func saw(_ label: String) {
+    private func saw(_ label: String, chip: String) {
         if !buttonsSeen.contains(label) { buttonsSeen.append(label) }
+        if !buttonChips.contains(chip) { buttonChips.append(chip) }
         logButtonEvent(.init(ms: buttonStepMs, input: label))
     }
 
@@ -987,6 +992,7 @@ final class DeviceTestModel: ObservableObject {
         dimmed = nil
         turnedRed = nil
         buttonsSeen = []
+        buttonChips = []
         recordKeys = false
         keysSeen = []
         keyCaptureProblem = nil
@@ -1045,6 +1051,7 @@ extension DeviceTestModel {
             turnedRed = .yes
         }
         buttonsSeen = ["09:04", "09:05", "07:1e", "07:1f", "07:20"]
+        buttonChips = buttonsSeen
         report.buttons = .init(outcome: .passed, data: .init(seen: buttonsSeen))
         listening = true
         connection = .dongle

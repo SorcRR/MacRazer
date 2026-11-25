@@ -185,4 +185,39 @@ final class DeviceReportOutputTests: XCTestCase {
         XCTAssertEqual(ButtonCapture.friendlyName("07:04"), "Key A")
         XCTAssertEqual(ButtonCapture.friendlyName("0c:cd"), "Media key")
     }
+
+    /// The Basilisk V4 HyperSpeed sends 0c:ffffffff with every media key (PR #55 report).
+    func testConsumerUsagePastSixteenBitsDoesNotCount() {
+        XCTAssertNil(ButtonCapture.label(page: kHIDPage_Consumer, usage: 0xFFFF_FFFF, value: 1))
+        XCTAssertNil(ButtonCapture.label(page: kHIDPage_Consumer, usage: 0x1_0000, value: 1))
+        XCTAssertEqual(ButtonCapture.label(page: kHIDPage_Consumer, usage: 0xFFFF, value: 1), "0c:ffff")
+        XCTAssertNil(ButtonCapture.label(page: kHIDPage_Consumer, usage: 0, value: 1))
+    }
+
+    /// Every label fits the Worker's check: two hex digits, a colon, two to four hex digits.
+    func testLabelsFitTheWorkersFormat() throws {
+        let format = try NSRegularExpression(pattern: "^[0-9a-f]{2}:[0-9a-f]{2,4}$")
+        let inputs: [(Int, Int)] = [(kHIDPage_Button, 3), (kHIDPage_Button, 0xFFFF),
+                                    (kHIDPage_KeyboardOrKeypad, 0xE7), (kHIDPage_Consumer, 1),
+                                    (kHIDPage_Consumer, 0x238), (kHIDPage_Consumer, 0xFFFF)]
+        for (page, usage) in inputs {
+            let label = try XCTUnwrap(ButtonCapture.label(page: page, usage: usage, value: 1))
+            XCTAssertLessThanOrEqual(label.count, 7, label)
+            XCTAssertEqual(format.numberOfMatches(in: label, range: NSRange(label.startIndex..., in: label)), 1, label)
+        }
+    }
+
+    /// Both tilts send AC Pan, so the report has one label but the screen one chip each.
+    func testTiltGetsAChipPerDirection() throws {
+        let label = try XCTUnwrap(ButtonCapture.label(page: kHIDPage_Consumer, usage: 0x238, value: -1))
+        XCTAssertEqual(label, "0c:238")
+        XCTAssertEqual(ButtonCapture.label(page: kHIDPage_Consumer, usage: 0x238, value: 1), label)
+        let left = ButtonCapture.chip(label: label, value: -1)
+        let right = ButtonCapture.chip(label: label, value: 1)
+        XCTAssertNotEqual(left, right)
+        XCTAssertEqual(ButtonCapture.friendlyName(left), "Tilt left")
+        XCTAssertEqual(ButtonCapture.friendlyName(right), "Tilt right")
+        XCTAssertEqual(ButtonCapture.chip(label: "0c:e9", value: 1), "0c:e9", "other inputs keep their label")
+        XCTAssertEqual(ButtonCapture.chip(label: "09:04", value: -1), "09:04")
+    }
 }
