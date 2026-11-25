@@ -192,6 +192,16 @@ final class DeviceReportOutputTests: XCTestCase {
         XCTAssertNil(ButtonCapture.label(page: kHIDPage_Consumer, usage: 0x1_0000, value: 1))
         XCTAssertEqual(ButtonCapture.label(page: kHIDPage_Consumer, usage: 0xFFFF, value: 1), "0c:ffff")
         XCTAssertNil(ButtonCapture.label(page: kHIDPage_Consumer, usage: 0, value: 1))
+        XCTAssertNil(ButtonCapture.label(page: kHIDPage_Button, usage: 0xFFFF_FFFF, value: 1), "the button page too")
+    }
+
+    /// A tilt left reads negative whether the mouse calls the range signed or not.
+    func testSignedValue() {
+        XCTAssertEqual(ButtonCapture.signed(-1, logicalMin: -127, logicalMax: 127), -1)
+        XCTAssertEqual(ButtonCapture.signed(1, logicalMin: -127, logicalMax: 127), 1)
+        XCTAssertEqual(ButtonCapture.signed(0xFF, logicalMin: 0, logicalMax: 0xFF), -1)
+        XCTAssertEqual(ButtonCapture.signed(1, logicalMin: 0, logicalMax: 0xFF), 1)
+        XCTAssertEqual(ButtonCapture.signed(5, logicalMin: 0, logicalMax: 0), 5, "no range given")
     }
 
     /// Every label fits the Worker's check: two hex digits, a colon, two to four hex digits.

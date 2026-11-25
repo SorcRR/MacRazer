@@ -54,8 +54,10 @@ final class ButtonCapture: @unchecked Sendable {
                 let usage = Int(IOHIDElementGetUsage(element))
                 let integer = IOHIDValueGetIntegerValue(value)
                 guard let label = ButtonCapture.label(page: page, usage: usage, value: integer) else { return }
+                let direction = ButtonCapture.signed(integer, logicalMin: IOHIDElementGetLogicalMin(element),
+                                                     logicalMax: IOHIDElementGetLogicalMax(element))
                 Unmanaged<ButtonCapture>.fromOpaque(context).takeUnretainedValue()
-                    .onInput(label, ButtonCapture.chip(label: label, value: integer))
+                    .onInput(label, ButtonCapture.chip(label: label, value: direction))
             }, context)
             IOHIDDeviceScheduleWithRunLoop(device, CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue)
             opened.append(device)
@@ -86,19 +88,27 @@ final class ButtonCapture: @unchecked Sendable {
     /// other than left and right, a keyboard key, or a consumer control such as a media key.
     /// Everything else (movement, the wheel, releases) is nil.
     ///
-    /// A consumer usage past 0xFFFF isn't a control. Razer's consumer interface sends
-    /// 0xFFFFFFFF next to every media key, and the Worker turns down a report whose label runs
-    /// past four hex digits.
+    /// A usage past 0xFFFF isn't a control. Razer's consumer interface sends 0xFFFFFFFF next
+    /// to every media key, and the Worker turns down a report whose label runs past four hex
+    /// digits.
     static func label(page: Int, usage: Int, value: Int) -> String? {
         guard value != 0 else { return nil }
         switch page {
-        case kHIDPage_Button where usage >= 3,
+        case kHIDPage_Button where (3...0xFFFF).contains(usage),
              kHIDPage_KeyboardOrKeypad where (0x04...0xE7).contains(usage),
              kHIDPage_Consumer where (0x01...0xFFFF).contains(usage):
             return String(format: "%02x:%02x", page, usage)
         default:
             return nil
         }
+    }
+
+    /// A relative control's value as a signed number, for `chip`'s tilt direction. One
+    /// described with a range that starts at zero (0...255 for a byte) still means negative in
+    /// its upper half: a tilt left sends 0xFF for -1. A range below zero is signed already.
+    static func signed(_ value: Int, logicalMin: Int, logicalMax: Int) -> Int {
+        guard logicalMin >= 0, logicalMax > 0, value > logicalMax / 2 else { return value }
+        return value - (logicalMax + 1)
     }
 
     /// AC Pan, which a tilting wheel sends for both directions.
