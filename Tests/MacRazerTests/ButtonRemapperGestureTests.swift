@@ -98,6 +98,22 @@ final class ButtonRemapperGestureTests: XCTestCase {
         XCTAssertEqual(emitted.actions, [bindings.click])
     }
 
+    /// A side button has no short and long press: a press without a swipe is its Click,
+    /// however long it is held, and a Hold that turns up in its saved data never fires. The
+    /// editor doesn't list Hold for it.
+    func testHoldIsInertOnASideButton() {
+        let emitted = Emitted()
+        var holding = bindings
+        holding.hold = .doubleClick
+        let r = ButtonRemapper(defaults: defaults(), actionEmitter: { emitted.actions.append($0) })
+        r.setMappings([back: .gesture(holding)])
+        send(r, .otherMouseDown)
+        send(r, .otherMouseDragged, dx: 5)
+        send(r, .otherMouseUp)
+        XCTAssertEqual(emitted.actions, [bindings.click])
+        XCTAssertFalse(r.gestureSlots(of: back).contains(.hold))
+    }
+
     /// While the mouse is offline a gesture button behaves as every mapped button does today:
     /// it goes through (it may be another mouse's) and its press asks for a check.
     func testWhilePausedTheGestureButtonPassesThrough() {
@@ -289,6 +305,10 @@ final class ButtonRemapperGestureTests: XCTestCase {
         XCTAssertEqual(GestureBindings.defaults(for: 2).click, .mouseButton(button: 2, name: "Middle Click"),
                        "the same action as the menu's Middle Click")
         XCTAssertEqual(GestureBindings.defaults(for: 5).click, .mouseButton(button: 5, name: "Button 6"))
+        XCTAssertEqual(GestureBindings.defaults(for: ButtonRemapper.dpiButton).click, .passthrough,
+                       "the DPI button has no click of its own to post")
+        XCTAssertEqual(GestureBindings.defaults(for: ButtonRemapper.dpiButton).down, .launchpad,
+                       "and its swipes are the same defaults")
     }
 
     /// With the defaults a swipe down opens Launchpad once, as soon as it reaches 50 points,
@@ -379,11 +399,11 @@ final class ButtonRemapperGestureTests: XCTestCase {
 
     /// When a mouse first connects its data is saved under its product id, and moves to its
     /// serial once that's read (`MouseController.migratePerDeviceData`). A gesture goes with
-    /// it whole, in the mouse buttons' table and in a profile.
+    /// it whole, in the mouse buttons' table, as the DPI button's action, and in a profile.
     func testAGestureMovesFromThePidKeyToTheSerialKey() throws {
         let oldKey = "test-pid-\(UUID().uuidString)", newKey = "test-serial-\(UUID().uuidString)"
         let standard = UserDefaults.standard
-        let keys = ["buttonMappings-\(oldKey)", "buttonMappings-\(newKey)"]
+        let keys = ["buttonMappings-", "dpiCycleSoftwareAction-"].flatMap { ["\($0)\(oldKey)", "\($0)\(newKey)"] }
         defer {
             keys.forEach(standard.removeObject(forKey:))
             ProfileStore.removeStorage(forDevice: oldKey)
@@ -391,6 +411,7 @@ final class ButtonRemapperGestureTests: XCTestCase {
         }
         let table: [Int: RemapAction] = [back: .gesture(bindings), 4: .doubleClick]
         standard.set(try JSONEncoder().encode(table), forKey: "buttonMappings-\(oldKey)")
+        standard.set(try JSONEncoder().encode(RemapAction.gesture(bindings)), forKey: "dpiCycleSoftwareAction-\(oldKey)")
         let profile = MouseProfile(name: "Swipes", dpi: 1600, pollRate: 1000, brightness: 50, effect: "",
                                    color: RGB(r: 0, g: 0, b: 0), buttonMappings: table)
         ProfileStore.save([profile], forDevice: oldKey)
@@ -398,10 +419,12 @@ final class ButtonRemapperGestureTests: XCTestCase {
         MouseController.migratePerDeviceData(from: oldKey, to: newKey)
 
         let r = ButtonRemapper(defaults: standard)
-        r.setActiveDevice(newKey)
+        r.setActiveDevice(newKey, deviceID: 0x00DC)
         XCTAssertEqual(r.mappings, table)
+        XCTAssertEqual(r.gestureBindings(for: ButtonRemapper.dpiButton), bindings)
         XCTAssertEqual(ProfileStore.profiles(forDevice: newKey).map(\.buttonMappings), [table])
         XCTAssertNil(standard.object(forKey: "buttonMappings-\(oldKey)"))
+        XCTAssertNil(standard.object(forKey: "dpiCycleSoftwareAction-\(oldKey)"))
         XCTAssertEqual(ProfileStore.profiles(forDevice: oldKey), [])
     }
 

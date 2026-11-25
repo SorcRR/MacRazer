@@ -127,10 +127,15 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     @Published private(set) var deviceKey: String?
     /// The connected mouse is on Bluetooth. Read through the `supports…` properties below.
     @Published private(set) var deviceIsBluetooth = false
-    /// The Basilisk V3 X HyperSpeed's dedicated DPI Cycle assignment, available over Bluetooth.
+    /// The DPI button's assignment, as last read from the mouse over Bluetooth, on a model with
+    /// `RazerDevices.supportsDpiButtonBinding`. Nil until a read parses, and after a disconnect.
     @Published private(set) var dpiCycleButtonBinding: BLEProtocol.DPIButtonBinding?
+    /// Why the last read or write of it failed, in plain words (`dpiButtonErrorText`).
     @Published private(set) var dpiCycleButtonError: String?
     @Published private(set) var isUpdatingDpiCycleButton = false
+    /// The DPI button's driver mode, on a mouse with `RazerDevices.dpiButtonPrivateKeys`
+    /// (`setDpiDriverModeWanted`). `.off` on every other mouse.
+    @Published private(set) var dpiDriverMode: DpiDriverModeState = .off
     /// Side buttons the mouse's own table sends something else for (`SideButtonReset`), read
     /// over Bluetooth by `checkSideButtons`. Empty until read, and on other mice.
     @Published private(set) var remappedSideButtons: [SideButtonReset.Remap] = []
@@ -359,6 +364,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         io.async { [weak self] in
             guard let self, self.isCurrentWakeRecovery(generation) else { return }
             self.bypassBluetoothRetryCooldown = true
+            // The mouse may have slept, and driver mode doesn't survive that. The read below
+            // engages it again if it went (`syncDpiDriverMode`), reading first.
+            self.driverMode.doubtful()
             self.readBatterySync()
             if self.pollState.batteryReady, let active = self.device,
                active.isBluetooth, RazerDevices.supportsDpiButtonBinding(pid: active.productID) {
@@ -866,7 +874,18 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             outcome = .failure(deviceGone: gone)
         }
 
-        switch pollState.handle(outcome, immediateOffline: immediateOffline) {
+        let verdict = pollState.handle(outcome, immediateOffline: immediateOffline)
+        // Driver mode rides on the poll rather than a timer of its own: a read that went
+        // through is a moment to engage it on a new connection or check it is still there
+        // (`DpiDriverModeBook`), and a mouse gone offline has lost it.
+        defer {
+            switch verdict {
+            case .reading, .aliveNoBattery: syncDpiDriverMode(.mouseAnswered)
+            case .offline: dpiDriverModeConnectionLost()
+            case .notReady, .pendingOffline: break
+            }
+        }
+        switch verdict {
         case .aliveNoBattery:
             // A battery-less (wired) mouse can't be charging — without this the menu bar
             // bolt survives a swap from a charging wireless mouse and never clears.
@@ -1428,14 +1447,18 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                     self.isUpdatingDpiCycleButton = false
                 }
             } catch {
+                let text = Self.dpiButtonErrorText(error)
                 self.publish {
-                    self.dpiCycleButtonError = "Could not read this button over Bluetooth: \(error.localizedDescription)"
+                    self.dpiCycleButtonError = text
                     self.isUpdatingDpiCycleButton = false
                 }
             }
         }
     }
 
+    /// Writes the DPI button's assignment. `BluetoothDevice.setDpiCycleBinding` writes nothing
+    /// while the mouse says it's on a profile other than 1, or unless the entry it reads first
+    /// parses, then reads it back, so `completion` gets true only once the mouse holds `binding`.
     func setDpiCycleButtonBinding(_ binding: BLEProtocol.DPIButtonBinding,
                                   completion: @escaping @Sendable (Bool) -> Void = { _ in }) {
         userCommand { [weak self] in
@@ -1458,12 +1481,265 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                     completion(true)
                 }
             } catch {
+                let text = Self.dpiButtonErrorText(error)
                 self.publish {
-                    self.dpiCycleButtonError = "Button assignment failed or did not read back: \(error.localizedDescription)"
+                    self.dpiCycleButtonError = text
                     self.isUpdatingDpiCycleButton = false
                     self.lastWriteFailure = Date()
                     completion(false)
                 }
+            }
+        }
+    }
+
+    /// The DPI button section's line for a failed read or write, in plain words. The write
+    /// reads first and throws that read's errors unchanged, so those all say nothing changed.
+    static func dpiButtonErrorText(_ error: Error) -> String {
+        switch error {
+        case BLEProtocol.DPIButtonWriteError.notTaken:
+            return "The mouse didn't confirm the change. Try again."
+        case BLEProtocol.DPIButtonWriteError.notReadBack:
+            return "The mouse didn't read the new setting back, so it may not have changed. Try again."
+        case BLEProtocol.DPIButtonEntryError.notTheDpiButton:
+            return "MacRazer couldn't confirm this is the mouse's DPI button, so it won't change it."
+        case BLEProtocol.DPIButtonEntryError.unrecognized:
+            return "MacRazer doesn't recognize what the mouse has saved for this button, so it won't change it."
+        case BLEProtocol.DPIButtonEntryError.otherProfileInUse(let slot):
+            return "The mouse is on its onboard profile \(slot), and MacRazer can only change this button "
+                + "on profile 1, so it won't change it. Switch the mouse to profile 1 and try again."
+        case HIDDevice.HIDError.timeout, HIDDevice.HIDError.notFound:
+            return "The mouse stopped answering. Check that it's on and try again."
+        case HIDDevice.HIDError.notSupported, HIDDevice.HIDError.commandFailed:
+            return "The mouse didn't let MacRazer read this button, so MacRazer won't change it."
+        default:
+            return "MacRazer couldn't read this button from the mouse, so it won't change it. Try again."
+        }
+    }
+
+    // MARK: - DPI button driver mode
+
+    /// `io` only. When driver mode is read and written (`DpiDriverModeBook`).
+    private var driverMode = DpiDriverModeBook()
+    /// `io` only. The connection `driverMode` is about, so a new one starts it over.
+    private weak var driverModeConnection: BluetoothDevice?
+    /// `io` only. The plain sentence for the last change that failed.
+    private var driverModeError: String?
+    /// `io` only. The state last handed to the main queue, so a poll that changes nothing
+    /// sends nothing there.
+    private var publishedDriverMode = DpiDriverModeState.off
+    /// `driverMode.maybeSet`, for quitting, which asks from the main thread. Under the lock.
+    private var driverModeMaybeSet = false
+    private let driverModeLock = NSLock()
+    /// How long quitting waits for normal mode to be written back: one write and its read
+    /// back, and a little for `io` to free up.
+    static let driverModeRestoreTimeout: TimeInterval = 3
+
+    /// Main thread. `ButtonRemapper` needs the DPI button in driver mode, or no longer does:
+    /// it has an action MacRazer carries out on a mouse with `RazerDevices.dpiButtonPrivateKeys`,
+    /// and the permissions to carry it out. Acted on at once on the device queue, and then
+    /// on each poll (`DpiDriverModeBook`).
+    func setDpiDriverModeWanted(_ wanted: Bool) {
+        guard !RenderOptions.isActive else { return }
+        io.async { [weak self] in
+            guard let self, self.driverMode.wanted != wanted else { return }
+            GestureDebugLog.log("DEVMODE \(wanted ? "wanted" : "no longer wanted")")
+            self.driverMode.setWanted(wanted)
+            self.syncDpiDriverMode(.wantChanged)
+        }
+    }
+
+    /// `io` only. Does what `driverMode` says for the open connection, if it is to a mouse with
+    /// private keys, and publishes where that leaves it. Nothing goes to any other mouse.
+    ///
+    /// The mouse goes back to normal mode by itself when it sleeps, reconnects or is switched
+    /// off and on, and MacRazer writes normal mode back when it is no longer wanted and when
+    /// it quits (`restoreDpiDriverModeForQuit`). If MacRazer crashes or is killed, nothing
+    /// writes it back then: the DPI button does nothing until the mouse sleeps or is switched
+    /// off and on, or until MacRazer runs again without wanting driver mode, which reads the
+    /// mode once and puts normal mode back (`DpiDriverModeBook.Step.checkLeftover`).
+    private func syncDpiDriverMode(_ occasion: DpiDriverModeBook.Occasion) {
+        guard !deviceTestActiveForIO else { return }
+        guard let bluetooth = device as? BluetoothDevice,
+              RazerDevices.dpiButtonPrivateKeys(pid: bluetooth.productID) != nil else {
+            // Another mouse, or none open: whatever was engaged was on a connection now gone.
+            if driverModeConnection != nil || occasion == .wantChanged { dpiDriverModeConnectionLost() }
+            return
+        }
+        if driverModeConnection !== bluetooth {
+            driverModeConnection = bluetooth
+            driverMode.connectionChanged()
+        }
+        let now = ProcessInfo.processInfo.systemUptime
+        if occasion == .mouseAnswered { driverMode.answered(at: now) }
+        let step = driverMode.step(for: occasion, now: now)
+        switch step {
+        case .nothing:
+            break
+        case .engage, .recheck:
+            // A background check gives way to a tap waiting on the queue; the next poll does it.
+            if step == .recheck, userWorkPending { return }
+            if step == .engage { publishDriverMode(.engaging) }
+            do {
+                let change = try bluetooth.setDeviceMode(.driver, readFirst: true,
+                                                         beforeWrite: { self.driverModeMayHaveSet() })
+                driverModeMayHaveSet()
+                driverMode.engaged(at: now)
+                driverModeError = nil
+                GestureDebugLog.log("DEVMODE \(step == .engage ? "engaged" : "checked"): "
+                                    + (change == .alreadySet ? "already in driver mode" : "driver mode written and read back"))
+            } catch BLEProtocol.DeviceModeError.unreadable where step == .recheck {
+                // Most likely still in the mode. Read again a whole interval later, as after
+                // an answer: at every poll, a mouse that stopped answering this read would get
+                // it every few seconds, each holding the queue up to a lenient timeout.
+                driverMode.recheckUnanswered(at: now)
+                GestureDebugLog.log("DEVMODE check unanswered, read again in \(Int(DpiDriverModeBook.recheckInterval)) s")
+            } catch {
+                driverMode.failed(at: now)
+                driverModeError = Self.dpiDriverModeErrorText(error)
+                GestureDebugLog.log("DEVMODE engage failed (\(driverMode.failures) on this connection): \(error)")
+            }
+        case .restore:
+            restoreNormalMode(on: bluetooth, now: now)
+        case .checkLeftover:
+            // A background read too: it gives way to a tap, and the next poll does it.
+            if userWorkPending { return }
+            checkForLeftoverDriverMode(on: bluetooth, now: now)
+        }
+        publishDriverMode()
+    }
+
+    /// `io` only. Driver mode isn't wanted and this run never set it: reads the mode, and only
+    /// if it reads as driver mode (an earlier run crashed or was killed with the mouse in it)
+    /// writes normal mode back. A read that goes unanswered is tried again like any change
+    /// (`DpiDriverModeBook.failed`), and nothing is written.
+    private func checkForLeftoverDriverMode(on bluetooth: BluetoothDevice, now: TimeInterval) {
+        let mode: UInt16
+        do {
+            mode = try bluetooth.readDeviceMode()
+        } catch {
+            driverMode.failed(at: now)
+            GestureDebugLog.log("DEVMODE leftover check unanswered (\(driverMode.failures) on this connection): \(error)")
+            return
+        }
+        guard driverMode.leftoverRead(mode) else { return }
+        GestureDebugLog.log("DEVMODE found in driver mode with none wanted, left by an earlier run: restoring")
+        setDriverModeMaybeSet(true)
+        restoreNormalMode(on: bluetooth, now: now)
+    }
+
+    /// `io` only. Writes normal mode and reads it back.
+    private func restoreNormalMode(on bluetooth: BluetoothDevice, now: TimeInterval) {
+        do {
+            try bluetooth.setDeviceMode(.normal, readFirst: false)
+            driverMode.restored()
+            driverModeError = nil
+            GestureDebugLog.log("DEVMODE restored normal mode")
+        } catch {
+            driverMode.failed(at: now)
+            GestureDebugLog.log("DEVMODE restore failed: \(error)")
+        }
+        setDriverModeMaybeSet(driverMode.maybeSet)
+    }
+
+    /// `io` only. A write of driver mode is going out, or a read found the mouse in it.
+    private func driverModeMayHaveSet() {
+        driverMode.mayHaveSet()
+        setDriverModeMaybeSet(true)
+    }
+
+    private func setDriverModeMaybeSet(_ value: Bool) {
+        driverModeLock.withLock { driverModeMaybeSet = value }
+    }
+
+    /// `io` only. The mouse went offline, which ends driver mode on it.
+    private func dpiDriverModeConnectionLost() {
+        driverModeConnection = nil
+        driverMode.connectionChanged()
+        publishDriverMode()
+    }
+
+    /// `io` only. Publishes `state`, by default where `driverMode` stands.
+    private func publishDriverMode(_ state: DpiDriverModeState? = nil) {
+        let state = state ?? driverMode.state(lastError: driverModeError)
+        guard state != publishedDriverMode else { return }
+        publishedDriverMode = state
+        publish { self.update(\.dpiDriverMode, state) }
+    }
+
+    /// Called from `applicationWillTerminate`. When this run may have left the mouse in driver
+    /// mode, writes normal mode back before quitting, so the DPI button cycles DPI again with
+    /// MacRazer closed. Waits at most `driverModeRestoreTimeout`: like `flushHistoryToDisk`,
+    /// `io` may be busy, and quitting isn't held for it. The mouse loses the mode when it next
+    /// sleeps anyway.
+    func restoreDpiDriverModeForQuit() {
+        guard driverModeLock.withLock({ driverModeMaybeSet }) else { return }
+        let done = DispatchSemaphore(value: 0)
+        userCommand { [weak self] in
+            defer { done.signal() }
+            guard let self else { return }
+            guard let bluetooth = self.device as? BluetoothDevice,
+                  RazerDevices.dpiButtonPrivateKeys(pid: bluetooth.productID) != nil else {
+                GestureDebugLog.log("DEVMODE quit: no connection to the mouse to write normal mode on")
+                return
+            }
+            self.restoreNormalMode(on: bluetooth, now: ProcessInfo.processInfo.systemUptime)
+        }
+        if done.wait(timeout: .now() + Self.driverModeRestoreTimeout) == .timedOut {
+            GestureDebugLog.log("DEVMODE quit: gave up waiting for the device queue; normal mode may not have been written")
+        }
+    }
+
+    /// The Buttons page's line for a change of driver mode that didn't go through, in plain
+    /// words. Each says what the DPI button does meanwhile.
+    static func dpiDriverModeErrorText(_ error: Error) -> String {
+        switch error {
+        case BLEProtocol.DeviceModeError.notTaken:
+            return "The mouse didn't accept the switch that lets MacRazer handle its DPI button, "
+                + "so the button keeps cycling DPI. MacRazer tries again later."
+        case BLEProtocol.DeviceModeError.notReadBack:
+            return "The mouse didn't confirm the switch that lets MacRazer handle its DPI button, "
+                + "so the button may only cycle DPI. MacRazer tries again later."
+        case BLEProtocol.DeviceModeError.unreadable:
+            return "The mouse didn't answer when MacRazer asked how its DPI button is set, "
+                + "so the button keeps cycling DPI. MacRazer tries again later."
+        default:
+            return "MacRazer couldn't take over the DPI button, so it keeps cycling DPI. "
+                + "MacRazer tries again later."
+        }
+    }
+
+    /// A short press of the DPI button in driver mode, where the firmware no longer cycles DPI
+    /// itself: the next stage, after the last the first, as the button does in normal mode.
+    /// The stage table is read fresh, so a stage chosen anywhere else since is where it goes on
+    /// from, and the write is read back (`BluetoothDevice.setDpiStages`). Main thread.
+    func cycleDpiStage() {
+        guard !RenderOptions.isActive else { return }
+        userCommand { [weak self] in
+            guard let self else { return }
+            // A press of the button isn't the test's: the Bluetooth test closed the app's own
+            // connection (`releaseBluetoothForDeviceTest`), and `ensureDevice` would open it
+            // again under the test, whose reads then go unanswered.
+            guard !self.deviceTestActiveForIO else {
+                GestureDebugLog.log("DPI cycle skipped: a device test holds the mouse")
+                return
+            }
+            do {
+                guard let bluetooth = try self.ensureDevice() as? BluetoothDevice,
+                      RazerDevices.dpiButtonPrivateKeys(pid: bluetooth.productID) != nil else {
+                    throw HIDDevice.HIDError.notSupported
+                }
+                guard let next = try bluetooth.readDpiStages().nextStage() else { return }
+                try bluetooth.setDpiStages(next)
+                GestureDebugLog.log("DPI cycle: stage \(next.active + 1) of \(next.values.count), \(next.values[next.active]) DPI")
+                // As a press on the mouse shows up at the next read, at once.
+                self.publish {
+                    self.update(\.dpiStages, next.values)
+                    self.update(\.activeDpiStage, next.active)
+                    self.update(\.dpi, next.values[next.active])
+                }
+            } catch {
+                GestureDebugLog.log("DPI cycle failed: \(error)")
+                self.publish { self.lastWriteFailure = Date() }
             }
         }
     }
@@ -2302,7 +2578,41 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             // slider, a saved profile and the next colour pick all agree with what it shows.
             self.update(\.effect, self.supported(self.effect))
         }
+        if GestureDebugLog.enabled, let bluetooth = d as? BluetoothDevice { scheduleTraceProbes(bluetooth) }
         return d
+    }
+
+    // MARK: - Gesture trace (diagnostic only)
+
+    /// io only. The Bluetooth connection the gesture trace has probed, so each is probed once.
+    private weak var traceProbedDevice: BluetoothDevice?
+    /// Long enough for the reads a new connection starts with (battery, settings, the DPI
+    /// button's entry, the device mode) to be on `io` before the probes.
+    static let traceProbeDelay: TimeInterval = 3
+
+    /// io only, with the trace on. Queues the read-only probes (`BLEProtocol.traceProbeKeys`)
+    /// for a connection just opened. They only read: the device mode is MacRazer's own to
+    /// write (`syncDpiDriverMode`), and its changes are logged there.
+    private func scheduleTraceProbes(_ bluetooth: BluetoothDevice) {
+        guard traceProbedDevice !== bluetooth else { return }
+        traceProbedDevice = bluetooth
+        io.asyncAfter(deadline: .now() + Self.traceProbeDelay) { [weak self] in
+            GestureDebugLog.log(String(format: "BLEREAD probing %@ (product %04x)", bluetooth.productName, bluetooth.productID))
+            self?.runTraceProbes(BLEProtocol.traceProbeKeys[...], on: bluetooth)
+        }
+    }
+
+    /// io only. One read, then the rest queued behind whatever is waiting on `io` by then, so a
+    /// tap never waits for the whole run. Stops when the connection is no longer the one being
+    /// probed, or a device test holds the mouse.
+    private func runTraceProbes(_ keys: ArraySlice<BLEProtocol.Key>, on bluetooth: BluetoothDevice) {
+        guard let key = keys.first else { return }
+        guard (device as? BluetoothDevice) === bluetooth, !deviceTestActiveForIO else {
+            GestureDebugLog.log("BLEREAD stopped: the connection changed, or a device test holds the mouse")
+            return
+        }
+        GestureDebugLog.log("BLEREAD \(GestureDebugLog.hex(key.bytes)) -> \(bluetooth.traceRead(key))")
+        io.async { [weak self] in self?.runTraceProbes(keys.dropFirst(), on: bluetooth) }
     }
 
     /// Moves every per-device store from one key to another — files and UserDefaults —

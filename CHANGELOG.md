@@ -45,6 +45,37 @@ expect rough edges until 1.0.
   every button's shortcut list, next to Mission Control and the Spaces, and it's the gesture's
   default for a swipe down.
 - **An App Exposé ⌃↓ shortcut preset.** It's in the shortcut list of every button.
+- **The Cobra HyperSpeed's DPI button over Bluetooth.** It can be remapped as the Basilisk V3
+  X HyperSpeed's can: a function the mouse can do itself (a mouse button, a key it can type)
+  is written to the button's entry (0x60) and works without MacRazer. Anything else, a gesture
+  included, works through the mouse's driver mode: while the button has such an action,
+  MacRazer switches the mouse to it, and the firmware stops acting on the button and reports
+  it as two private keys, one when a short press is let go and one held from about a second
+  into a long press until the release. A gesture is hold and swipe: hold the button until it
+  starts, then swipe, and Mission Control and the Spaces follow the pointer. A short press
+  runs the gesture's Click, a long press let go without a swipe its Hold, a sixth slot only
+  this button has. Both start as None, and DPI Cycle is a choice of its own there, which
+  MacRazer carries out by stepping the DPI stage, as the firmware no longer does in driver
+  mode. The entry keeps DPI Cycle, so with MacRazer closed the button cycles DPI as it came.
+  The Basilisk V3 X keeps its F20 bridge, unchanged, and driver mode isn't used there.
+- **Driver mode is set up, kept up and given back.** It needs Accessibility and Input
+  Monitoring, and without them the button keeps cycling DPI. Accessibility granted while
+  MacRazer runs is picked up without a relaunch; Input Monitoring took effect only after a
+  reopen on macOS 26.3, so the Buttons page says so and has a Reopen MacRazer button, which
+  quits the way Quit does. Driver mode doesn't survive the mouse sleeping or reconnecting, so
+  MacRazer sets it on each connection and after a wake, checks it about every 30 seconds, and
+  tries a failed change at most 3 times per connection. Normal mode is written back when the
+  action is cleared and when MacRazer quits. After a crash the button does nothing until the
+  mouse sleeps or MacRazer runs again and gives the mode back. On a real Cobra a trace
+  captured the mode write taken and read back, the link staying up, the two keys as described
+  and normal mode restored on quit. The device-mode key and the key report were learned from
+  OpenRazer, OpenSnek, OpenSynapse and ergo-control (credited in NOTICE.md); no code from them
+  is used.
+- **A gesture trace for bug reports.** The hidden `gestureDebugLog` default writes a trace to
+  `~/Library/Logs/MacRazer/gesture.log`: gesture holds, pointer movement, F20 timing, the
+  mouse's raw HID reports (never which key a keyboard typed, only F13 to F20), Razer's
+  Bluetooth characteristics, read-only probes once per connection, device-mode changes and
+  the DPI button's private keys.
 - **More mice from test reports.**
   - **Polling confirmed with the newer command** on the Viper 8KHz, both Basilisk V4 Pro
     links and the Mouse Dock Pro, which goes up to 8000 Hz.
@@ -74,6 +105,14 @@ expect rough edges until 1.0.
 - **Cynosa Lite tested.** It lost its UNTESTED tag after passing the lighting test.
 - **Joro keyboard.** It gets its own lighting card, with brightness and a static colour
   tested. Before, the app took it for a mouse.
+
+### Changed
+- **The DPI button's write checks first.** On both mice, MacRazer reads the DPI button's entry
+  before every write and writes nothing if it can't confirm the entry is the DPI button or
+  doesn't recognise what is saved there, or while the mouse is on an onboard profile other
+  than 1, which the write doesn't reach. It reads the entry back after, and says plainly if
+  the mouse didn't take the change. The section is called DPI Button now, since DPI Cycle is
+  also a choice in it.
 
 ### Fixed
 - **A remapped button is never left held down in an app.** A remapped button's release was

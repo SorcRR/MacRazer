@@ -18,6 +18,9 @@ enum BLEProtocol {
     static let serviceUUID = "52401523-F97C-7F90-0E7F-6C6F4E36DB1C"
     static let writeUUID = "52401524-F97C-7F90-0E7F-6C6F4E36DB1C"
     static let notifyUUID = "52401525-F97C-7F90-0E7F-6C6F4E36DB1C"
+    /// A third characteristic other Razer Bluetooth mice expose (read and notify), purpose
+    /// unknown. Only the gesture trace subscribes to it (`GestureDebugLog`).
+    static let auxiliaryUUID = "52401526-F97C-7F90-0E7F-6C6F4E36DB1C"
     /// Vendor id the mouse reports over Bluetooth (Device Information PnP ID, and the
     /// IOHID `VendorID`). Not the USB 0x1532.
     static let vendorId = 0x068E
@@ -44,9 +47,11 @@ enum BLEProtocol {
         static func brightnessGet(led: UInt8) -> Key { Key(0x10, 0x85, 0x01, led) }
         static func brightnessSet(led: UInt8) -> Key { Key(0x10, 0x05, 0x01, led) }
         static let staticColor = Key(0x10, 0x04, 0x00, 0x00)
-        // The Basilisk DPI Cycle assignment lives in the mouse's function table. Reads
-        // target the active bank; writes use the projection bank and are read back by the
-        // BluetoothDevice helper before the UI reports success.
+        // The DPI button's assignment lives in the mouse's function table, entry 0x60
+        // (`RazerDevices.supportsDpiButtonBinding`). Reads target the slot in use (0); writes
+        // go to profile slot 1, as the payload's first byte says too. BluetoothDevice writes
+        // only while the mouse says slot 1 is the one in use, and reads the entry before
+        // every write and again after it, before the UI reports success.
         static let dpiButtonGet = Key(0x08, 0x84, 0x00, 0x60)
         static let dpiButtonSet = Key(0x08, 0x04, 0x01, 0x60)
         /// Any entry of that function table, by its id (the DPI Cycle entry is 0x60).
@@ -55,6 +60,124 @@ enum BLEProtocol {
         static func buttonFunctionSet(_ id: UInt8, slot: UInt8 = 0x01) -> Key { Key(0x08, 0x04, slot, id) }
         /// The onboard profile slot the mouse is using, as one byte (Basilisk V4 Pro, #55).
         static let activeSlotGet = Key(0x03, 0x82, 0x00, 0x00)
+        /// The mouse's device mode, a little-endian u16: `00 00` normal, `03 00` driver
+        /// (`DeviceMode`). Written only on a mouse with `RazerDevices.dpiButtonPrivateKeys`.
+        static let deviceModeGet = Key(0x01, 0x82, 0x00, 0x00)
+        static let deviceModeSet = Key(0x01, 0x02, 0x00, 0x00)
+
+        /// A read, by the usual Razer convention of the command byte's high bit.
+        var isRead: Bool { bytes[1] & 0x80 != 0 }
+    }
+
+    // MARK: - Device mode
+
+    /// The device modes MacRazer writes, and no others. In `normal` the firmware handles its
+    /// special buttons itself (the Cobra's DPI button cycles DPI); in `driver` it reports them
+    /// to the host instead, as private keys in HID input report 4
+    /// (`RazerDevices.dpiButtonPrivateKeys`), and leaves acting on them to the host. Driver
+    /// mode doesn't last: the mouse is back in normal mode after it sleeps, reconnects or is
+    /// switched off and on.
+    enum DeviceMode: UInt8, Equatable, Sendable {
+        case normal = 0x00
+        case driver = 0x03
+
+        /// The u16 a read of the mode answers with for this mode (`parseDeviceMode`).
+        var value: UInt16 { UInt16(rawValue) }
+    }
+
+    /// The one device-mode write: `01 02 00 00` with `[mode, 0]`. Built only from a
+    /// `DeviceMode`, so no other mode, and no other class 01 key, can be written this way.
+    static func deviceModeRequest(_ mode: DeviceMode) -> Request {
+        Request(key: .deviceModeSet, payload: [mode.rawValue, 0x00], reply: .ack)
+    }
+
+    /// The read of the mode: `01 82 00 00`, no payload.
+    static let deviceModeReadRequest = Request(key: .deviceModeGet, payload: [], reply: .ack)
+
+    /// The mode a read answers with, the little-endian u16 its payload starts with (`03 00`
+    /// is driver mode, 3). Nil when the payload is too short to hold one.
+    static func parseDeviceMode(_ payload: some Collection<UInt8>) -> UInt16? {
+        let bytes = Array(payload.prefix(2))
+        guard bytes.count == 2 else { return nil }
+        return UInt16(bytes[0]) | UInt16(bytes[1]) << 8
+    }
+
+    /// Why a change of the device mode didn't go through (`BluetoothDevice.setDeviceMode`).
+    enum DeviceModeError: Error, Equatable {
+        /// The read before the write failed or made no sense, so nothing was written.
+        case unreadable
+        /// The mouse refused the write or didn't answer it, so it may or may not have taken it.
+        case notTaken
+        /// The read after the write failed (nil), or showed another mode.
+        case notReadBack(UInt16?)
+    }
+
+    // MARK: - Gesture trace (diagnostic only)
+
+    /// A read for the trace, or nil for a key that isn't one (`Key.isRead`): the trace's
+    /// probes can't write anything by accident.
+    static func traceReadRequest(_ key: Key) -> Request? {
+        key.isRead ? Request(key: key, payload: [], reply: .ack) : nil
+    }
+
+    /// The trace's read-only probes, in the order they run once per connection: the device
+    /// mode, the class 01 command catalogue, the button inventory and every binding, the DPI
+    /// button's entry (0x60) in the slot in use and in slots 1-5, entry 0x80 (slot in use and
+    /// slot 1), the profile slot in use, and the live DPI.
+    static let traceProbeKeys: [Key] = [
+        .deviceModeGet,
+        Key(0x01, 0x80, 0x00, 0x00),
+        Key(0x08, 0x80, 0x00, 0x00),
+        Key(0x08, 0x80, 0x01, 0x00),
+        Key(0x08, 0x83, 0x01, 0x00),
+    ] + (0...5).map { Key(0x08, 0x84, UInt8($0), 0x60) } + [
+        Key(0x08, 0x84, 0x00, 0x80),
+        Key(0x08, 0x84, 0x01, 0x80),
+        .activeSlotGet,
+        Key(0x0B, 0x81, 0x00, 0x00),
+    ]
+
+    /// A reply as the trace records it, kept whole where `Assembler` keeps what the app needs:
+    /// the header frame as it came, the length as the 24-bit little-endian value other
+    /// implementations read from bytes 1-3 (`Assembler` reads byte 1 only), and every byte of
+    /// every continuation frame, past the declared length too.
+    ///
+    /// Some Razer firmware answers status 03 and then 02 for the same request. So a complete
+    /// reply that isn't a success gives way to a later header with the same id, and the status
+    /// it had is kept in `replacedStatuses`. `BluetoothDevice` waits a moment for that before
+    /// it reports a refusal.
+    struct TraceAssembler: Sendable {
+        let id: UInt8
+        private(set) var header: [UInt8]?
+        private(set) var payload: [UInt8] = []
+        private(set) var replacedStatuses: [UInt8] = []
+
+        init(id: UInt8) { self.id = id }
+
+        var status: UInt8? { header.map { $0[7] } }
+        var declaredLength: Int {
+            header.map { Int($0[1]) | Int($0[2]) << 8 | Int($0[3]) << 16 } ?? 0
+        }
+        var isComplete: Bool { header != nil && payload.count >= declaredLength }
+        var isSuccess: Bool { isComplete && status == Status.ok.rawValue }
+
+        /// Whether the frame belongs to this reply. A frame that doesn't (another id before
+        /// the header, anything after a successful reply) is the caller's to report.
+        @discardableResult
+        mutating func add(_ frame: Data) -> Bool {
+            let bytes = Array(frame)
+            let isHeader = bytes.count >= 8 && bytes[0] == id
+            if header == nil || (isComplete && !isSuccess && isHeader) {
+                guard isHeader else { return false }
+                if let status { replacedStatuses.append(status) }
+                header = bytes
+                payload = []
+                return true
+            }
+            guard !isComplete else { return false }
+            payload += bytes
+            return true
+        }
     }
 
     /// One entry of the mouse's function table: what the button does now, and its factory
@@ -81,10 +204,13 @@ enum BLEProtocol {
         [slot, id, layer] + block
     }
 
-    /// Assignments supported by the Basilisk V3 X HyperSpeed's DPI Cycle control. Media
-    /// actions and custom shortcuts use `softwareBridge` (the mouse emits F20 and MacRazer
-    /// turns that signal into the saved macOS action); no undocumented consumer-control
-    /// payload is sent to the mouse.
+    /// What the DPI button's entry can hold, on every mouse with
+    /// `RazerDevices.supportsDpiButtonBinding`. Actions the mouse can't run itself (media
+    /// keys, Double Click, a gesture, a key it can't send) use `softwareBridge`: the mouse
+    /// types F20 and MacRazer turns that into the saved action. A mouse with
+    /// `RazerDevices.dpiButtonPrivateKeys` keeps `dpiCycle` under them instead, and MacRazer
+    /// acts on its private keys in driver mode. No undocumented consumer-control payload is
+    /// sent to the mouse.
     enum DPIButtonBinding: Equatable, Identifiable, Sendable {
         case dpiCycle
         case leftClick
@@ -184,7 +310,34 @@ enum BLEProtocol {
         if let buttonID = binding.buttonID {
             return Data([0x01, 0x60, 0x00, 0x01, 0x01, buttonID, 0, 0, 0, 0])
         }
-        return Data([0x01, 0x60, 0x00, 0x06, 0x01, 0x06, 0, 0, 0, 0])
+        return Data([0x01, 0x60, 0x00] + dpiCycleBlock)
+    }
+
+    /// The DPI button's factory function, DPI Cycle. What "DPI Cycle (default)" writes back,
+    /// and what a read of the entry must name as its factory block when it carries one.
+    static let dpiCycleBlock: [UInt8] = [0x06, 0x01, 0x06, 0, 0, 0, 0]
+
+    /// Why a read of the DPI button's entry, or of the profile in use, can't be used. The write
+    /// path reads both first and stops on these, so they always mean nothing was written.
+    enum DPIButtonEntryError: Error, Equatable {
+        /// The reply isn't laid out as a read of entry 0x60, or what the button does now isn't
+        /// a `DPIButtonBinding` (a macro, a profile switch, nothing at all).
+        case unrecognized
+        /// The mouse names a factory function other than DPI Cycle for the entry, so on this
+        /// mouse it isn't the DPI button.
+        case notTheDpiButton
+        /// The mouse says it's using onboard profile `slot`, not profile 1. The write goes to
+        /// profile 1's entry (`Key.dpiButtonSet`) while the reads around it see the profile in
+        /// use, so it would change an entry nothing read, and never read back.
+        case otherProfileInUse(UInt8)
+    }
+
+    /// Why a write of the DPI button's entry failed after the read before it went through.
+    enum DPIButtonWriteError: Error, Equatable {
+        /// The mouse refused the write or didn't answer it, so it may or may not have taken it.
+        case notTaken
+        /// The read after the write failed, or showed something other than what was written.
+        case notReadBack
     }
 
     static let sleepTimeoutRange = 60...900
@@ -204,36 +357,45 @@ enum BLEProtocol {
         return value
     }
 
+    /// What the DPI button does now, from a read of entry 0x60. Fails closed, so that a write
+    /// only ever replaces something this app understands (`DPIButtonEntryError`).
+    ///
+    /// Two layouts answer. The short one (`01 60 00` and the current block) has no factory
+    /// block. The function-table one (`ButtonFunction`: `60, flag`, then the current and
+    /// factory blocks interleaved) is how the Cobra HyperSpeed answers entries 0x04 and 0x05;
+    /// with flag 0 its factory block must be DPI Cycle, the one sign a read gives that the
+    /// entry really is this mouse's DPI button. With flag 01 the second block is a HyperShift
+    /// layer instead, which says nothing about that, so only the current block is checked, as
+    /// in the short layout.
     static func parseDpiButtonBinding(_ payload: Data) throws -> DPIButtonBinding {
         let bytes = Array(payload)
         let functionBlock: [UInt8]
         if bytes.count >= 10, bytes[0] == 0x01, bytes[1] == 0x60 {
             functionBlock = Array(bytes[3..<10])
-        } else if bytes.count >= 16, bytes[0] == 0x60 {
-            let packed = Array(bytes.dropFirst(2))
-            functionBlock = Array(packed.enumerated().compactMap { index, byte in
-                index.isMultiple(of: 2) ? byte : nil
-            }.prefix(7))
+        } else if bytes.count >= 16, bytes[0] == 0x60,
+                  let entry = try? parseButtonFunction(id: 0x60, payload) {
+            if bytes[1] == 0x00, entry.factory != dpiCycleBlock { throw DPIButtonEntryError.notTheDpiButton }
+            functionBlock = entry.current
         } else {
-            throw HIDDevice.HIDError.badResponse
+            throw DPIButtonEntryError.unrecognized
         }
 
-        if functionBlock == [0x06, 0x01, 0x06, 0, 0, 0, 0] { return .dpiCycle }
-        if functionBlock.count == 7, functionBlock[0] == 0x02, functionBlock[1] == 0x02,
+        if functionBlock == dpiCycleBlock { return .dpiCycle }
+        if functionBlock[0] == 0x02, functionBlock[1] == 0x02,
            functionBlock[4...6].allSatisfy({ $0 == 0 }), functionBlock[3] != 0 {
             return .keyboardShortcut(hidUsage: functionBlock[3], modifiers: functionBlock[2])
         }
-        guard functionBlock.count == 7,
-              functionBlock[0] == 0x01,
-              functionBlock[1] == 0x01,
+        // A mouse button is `01 01 id` and nothing after it, as `dpiButtonPayload` writes it.
+        guard functionBlock[0] == 0x01, functionBlock[1] == 0x01,
+              functionBlock[3...6].allSatisfy({ $0 == 0 }),
               let binding = DPIButtonBinding.allCases.first(where: { $0.buttonID == functionBlock[2] }) else {
-            throw HIDDevice.HIDError.notSupported
+            throw DPIButtonEntryError.unrecognized
         }
         return binding
     }
 
-    /// Translate a macOS virtual key code into the USB HID usage used by the Basilisk
-    /// function table. Unknown keys fail closed instead of writing an ambiguous binding.
+    /// Translate a macOS virtual key code into the USB HID usage the mouse's function table
+    /// takes. Unknown keys fail closed instead of writing an ambiguous binding.
     static func hidUsage(forMacKeyCode keyCode: UInt16) -> UInt8? {
         let map: [UInt16: UInt8] = [
             0: 0x04, 1: 0x16, 2: 0x07, 3: 0x09, 4: 0x0B, 5: 0x0A,
@@ -295,16 +457,20 @@ enum BLEProtocol {
         /// The reply is complete: header seen and every payload byte collected.
         var isComplete: Bool { status != nil && payload.count >= expected }
 
-        mutating func add(_ frame: Data) {
+        /// Returns whether the frame was taken as this reply's header or payload, so the
+        /// gesture trace can report the ones that weren't.
+        @discardableResult
+        mutating func add(_ frame: Data) -> Bool {
             let bytes = Array(frame)
             if status == nil {
-                guard bytes.count >= 8, bytes[0] == id else { return }
+                guard bytes.count >= 8, bytes[0] == id else { return false }
                 status = bytes[7]
                 expected = Int(bytes[1])
-                return
+                return true
             }
-            guard !isComplete else { return }
+            guard !isComplete else { return false }
             payload.append(contentsOf: bytes.prefix(expected - payload.count))
+            return true
         }
 
         /// The finished payload, or the error the status byte stands for.
@@ -436,6 +602,14 @@ enum BLEProtocol {
             }
             guard let active = ids.firstIndex(of: bytes[0]) else { throw HIDDevice.HIDError.badResponse }
             self.init(active: active, values: values)
+        }
+
+        /// The table with the stage after the active one selected, back to the first after
+        /// the last, as the DPI button steps through them. The stages themselves don't change.
+        /// Nil when there is only one stage, and nothing to step to.
+        func nextStage() -> DPIStageTable? {
+            guard values.count > 1 else { return nil }
+            return DPIStageTable(active: (active + 1) % values.count, values: values)
         }
 
         func encoded() -> [UInt8] {
