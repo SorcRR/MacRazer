@@ -42,9 +42,11 @@ Razer mice that use the same HID protocol family, but those are untested, so tre
   or mousepad is connected.
 - **Connection sounds** when the mouse connects or disconnects (can be turned off).
 - **Button remapping** for the side Back/Forward buttons (software, via a CGEvent tap):
-  keyboard shortcuts (presets or a custom recorder), mouse clicks, media keys, and Launchpad
-  (Apps on macOS 26). Saved per device. If another mouse app (Mac Mouse Fix, SteerMouse, BetterMouse) takes the side
-  buttons' clicks first, the page names it so you know which one to quit.
+  keyboard shortcuts (presets or a custom recorder), mouse clicks, media keys, Launchpad, or a
+  **gesture**: hold the button and move the mouse to run a different action for each
+  direction (see [Gesture mode](#gesture-mode)). Saved per device. If another mouse app (Mac
+  Mouse Fix, SteerMouse, BetterMouse) takes the side buttons' clicks first, the page names it
+  so you know which one to quit.
 - **Reverse scrolling on Razer mice**, under Settings › General. Reverses wheel and tilt
   scrolling on Razer mice while trackpads and other mice keep their directions. Off by
   default and saved once for the app. Requires Accessibility and MacRazer running; it does
@@ -241,6 +243,37 @@ and the GitHub issue instead.
 
 Adding a model is a small change to a registry plus on-hardware verification. See
 [CONTRIBUTING.md](CONTRIBUTING.md).
+
+### Gesture mode
+
+In Configure Buttons, any extra button can be set to **Gesture…**. Hold the button and move
+the mouse up, down, left or right, and that direction's action runs. Press and release without
+moving and the **Click** action runs.
+
+- **Defaults** when you choose Gesture…: up Mission Control, down Launchpad, left the next
+  Space, right the previous Space. Left and right move the Spaces the way a trackpad does, as
+  if you grabbed the desktop and moved it; swap the two Space slots if you prefer it the other
+  way. Click is what the button did before (Back still goes back, the wheel click still
+  middle-clicks). Choosing Gesture… again reopens the editor with your choices kept.
+- **Each of the five slots** takes any ordinary action: a shortcut preset, Launchpad, a
+  recorded shortcut, a mouse click, a media key, or None. A gesture can't be nested inside a
+  gesture.
+- **A swipe fires once per hold**, as soon as the movement along the stronger axis reaches 50
+  points, not at release, so Mission Control opens while your hand is still moving. Going right
+  and then back again counts as no movement, so it is still a click.
+- **Mission Control, App Exposé and the Spaces** are sent as their keyboard shortcuts (⌃↑, ⌃↓,
+  ⌃←, ⌃→), so they have to be on in System Settings › Keyboard › Keyboard Shortcuts › Mission
+  Control. App Exposé ⌃↓ is also a new preset in every button's Shortcut menu.
+- **Launchpad** has no keyboard shortcut, so MacRazer opens the app itself. On macOS 26 that is
+  **Apps**, which replaced Launchpad, and the menus call it that. It's in every button's
+  Shortcut menu, next to the system presets, not only in a gesture.
+- **The pointer is not frozen** while you hold the button; it moves as usual. The button's own
+  press, drag events and release are swallowed, so the app under the pointer doesn't see them.
+- **Only the extra buttons** (the ones macOS reports as "other" mouse buttons) can be gestures,
+  not the left and right buttons. The Click action fires when the button comes back up, so a
+  gesture button can't be held to drag.
+- Like every remap, it works while MacRazer is running and the mouse is connected, and needs
+  Accessibility. MacRazer only watches pointer drags while at least one button is a gesture.
 
 ### Buttons MacRazer cannot see
 

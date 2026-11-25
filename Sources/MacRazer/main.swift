@@ -562,10 +562,13 @@ case "render-remap":
     _ = NSApplication.shared
     let path = outputPath(args.dropFirst(), default: "remap-preview.png")
     let r = ButtonRemapper()
-    r.loadPreviewState()
+    r.loadPreviewState(gesture: args.contains("gesture"))
     // `wide`: the popover's two-column Buttons page, with the DPI button section.
     // `side-buttons`: the window with the notice for side buttons saved to other functions.
-    if args.contains("side-buttons") {
+    // `gesture`: the window with the gesture editor open on a gesture button.
+    if args.contains("gesture") {
+        writeHostedPNG(RemapView(remapper: r, previewGestureEditor: 5), look: renderLook(args), to: path)
+    } else if args.contains("side-buttons") {
         let mouse = MouseController()
         mouse.loadPreviewState()
         mouse.setPreviewSideButtonsRemapped()

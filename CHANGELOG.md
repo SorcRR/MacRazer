@@ -7,9 +7,20 @@ expect rough edges until 1.0.
 ## [Unreleased]
 
 ### Added
+- **Gesture mode for the extra buttons.** In Configure Buttons, choose Gesture… for a button,
+  then hold it and move the mouse up, down, left or right to run a different action for each
+  direction. Press and release without moving and its Click action runs. The defaults are
+  Mission Control up, Launchpad down, the next Space left and the previous Space right, so
+  the Spaces move the way a trackpad drags the desktop; Click is what the button did before.
+  Each of the five slots takes any normal action: a shortcut preset, Launchpad, a recorded
+  shortcut, a mouse click, a media key or None. A swipe fires once per hold, as soon
+  as the movement along the stronger axis reaches 50 points. The pointer isn't frozen while
+  you hold the button, and pointer drags are only watched while a button is a gesture.
 - **Launchpad for any button.** It has no keyboard shortcut, so MacRazer opens the app itself.
   On macOS 26 that's Apps, which replaced Launchpad, and the menus call it Apps there. It's in
-  every button's shortcut list, next to Mission Control and the Spaces.
+  every button's shortcut list, next to Mission Control and the Spaces, and it's the gesture's
+  default for a swipe down.
+- **An App Exposé ⌃↓ shortcut preset.** It's in the shortcut list of every button.
 - **More mice from test reports.**
   - **Polling confirmed with the newer command** on the Viper 8KHz, both Basilisk V4 Pro
     links and the Mouse Dock Pro, which goes up to 8000 Hz.
