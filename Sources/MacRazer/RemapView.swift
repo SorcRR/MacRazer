@@ -259,6 +259,11 @@ struct RemapView: View {
                 Menu("Shortcut") {
                     ForEach(ButtonRemapper.presets) { p in
                         Button(p.name) { remapper.setAction(p.action, for: button) }
+                        // Next to the other system presets, though it opens an app rather than
+                        // typing a shortcut: it has none by default.
+                        if p.id == ButtonRemapper.launchpadMenuAnchor {
+                            Button(RemapAction.launchpad.label) { remapper.setAction(.launchpad, for: button) }
+                        }
                     }
                 }
                 Menu("Mouse") {

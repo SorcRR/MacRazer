@@ -419,7 +419,15 @@ side buttons (Back/Forward = buttons 4/5) emit OS-level events and are remappabl
 buttons are handled onboard and never reach macOS.
 
 - Actions: passthrough, **keystroke** (preset shortcuts or a **custom recorder** that
- captures any combo), **mouse** (middle/double click), **media** (play/next/prev/volume/mute).
+ captures any combo), **mouse** (middle/double click), **media** (play/next/prev/volume/mute),
+ and **Launchpad** (`RemapAction.launchpad`).
+- **Launchpad** has no default keyboard shortcut, so `LaunchpadApp.open()` opens the system
+ app through `NSWorkspace` by bundle id: `com.apple.apps.launcher` (Apps, which replaced
+ Launchpad on macOS 26, where there is no Launchpad.app), then `com.apple.launchpad.launcher`
+ (macOS 15 and earlier); nothing on a Mac with neither. The menus call it "Apps" where Apps is
+ the one installed (`LaunchpadApp.label(installed:)`, pure) and "Launchpad" otherwise, and
+ list it in the Shortcut menu after the system presets (`launchpadMenuAnchor`). It goes out
+ through `apply` like any action, so a test's `actionEmitter` catches it and nothing opens.
 - Mappings persist to UserDefaults. Needs **Accessibility** permission (banner + Open
  Settings / Re-check in the UI).
 - Available both inline (popover buttons page) and as a standalone window
@@ -764,7 +772,7 @@ that path draws the content but needs an explicit size, since there is no window
 | `PopoverView.swift` | Main popover UI + page navigation. |
 | `PopoverTheme.swift` | Settings › Appearance: theme, glass, the resolved look, the popover and window backdrops. |
 | `ColorPickerPage.swift` | Inline hue/sat colour wheel page + shared `BackButton`. |
-| `ButtonRemapper.swift` | CGEvent tap, action model, presets, persistence, Accessibility. |
+| `ButtonRemapper.swift` | CGEvent tap, action model, presets, `LaunchpadApp`, persistence, Accessibility. |
 | `RemapView.swift` | Button-config UI (inline + window), key recorder. |
 | `RemapWindowController.swift` | Standalone window host for the remap UI. |
 | `DeviceProbe.swift` | The probes shared by the CLI and the device test. |

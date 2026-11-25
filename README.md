@@ -42,8 +42,8 @@ Razer mice that use the same HID protocol family, but those are untested, so tre
   or mousepad is connected.
 - **Connection sounds** when the mouse connects or disconnects (can be turned off).
 - **Button remapping** for the side Back/Forward buttons (software, via a CGEvent tap):
-  keyboard shortcuts (presets or a custom recorder), mouse clicks, and media keys. Saved per
-  device. If another mouse app (Mac Mouse Fix, SteerMouse, BetterMouse) takes the side
+  keyboard shortcuts (presets or a custom recorder), mouse clicks, media keys, and Launchpad
+  (Apps on macOS 26). Saved per device. If another mouse app (Mac Mouse Fix, SteerMouse, BetterMouse) takes the side
   buttons' clicks first, the page names it so you know which one to quit.
 - **Reverse scrolling on Razer mice**, under Settings › General. Reverses wheel and tilt
   scrolling on Razer mice while trackpads and other mice keep their directions. Off by

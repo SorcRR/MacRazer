@@ -7,20 +7,62 @@ import ApplicationServices
 import CoreGraphics
 
 /// What a remapped button does. `.passthrough` lets the original event through; `.keystroke`
-/// suppresses the button and posts a key combo instead.
+/// suppresses the button and posts a key combo instead. `.launchpad` opens Launchpad, which
+/// is Apps on macOS 26 (`LaunchpadApp`). A new case: everything saved before it decodes as
+/// it did.
 enum RemapAction: Codable, Equatable, Sendable {
     case passthrough
     case keystroke(keyCode: UInt16, modifiers: UInt64, name: String)
     case mouseButton(button: Int, name: String)
     case doubleClick
     case mediaKey(code: Int, name: String)
+    case launchpad
 
     var label: String {
         switch self {
         case .passthrough: return "None"
         case .keystroke(_, _, let name), .mouseButton(_, let name), .mediaKey(_, let name): return name
         case .doubleClick: return "Double Click"
+        case .launchpad: return LaunchpadApp.label
         }
+    }
+}
+
+/// The system app that `RemapAction.launchpad` opens: Launchpad on macOS 15 and earlier, and
+/// Apps, which replaced it, on macOS 26 (there is no Launchpad.app there). It has no keyboard
+/// shortcut by default, so it is opened by bundle id rather than typed.
+enum LaunchpadApp {
+    /// Apps, macOS 26 and later (`/System/Applications/Apps.app`).
+    static let appsBundleID = "com.apple.apps.launcher"
+    /// Launchpad, macOS 15 and earlier.
+    static let launchpadBundleID = "com.apple.launchpad.launcher"
+    /// Tried in this order: a Mac with Apps has no Launchpad to open.
+    static let bundleIDs = [appsBundleID, launchpadBundleID]
+
+    /// The first of `bundleIDs` that `exists` says is installed, or nil for neither.
+    static func installedBundleID(exists: (String) -> Bool) -> String? {
+        bundleIDs.first(where: exists)
+    }
+
+    /// What the menus call it, from the bundle that is installed: "Apps" where Apps is the one
+    /// there, the name macOS 26 gives it, and "Launchpad" otherwise.
+    static func label(installed bundleID: String?) -> String {
+        bundleID == appsBundleID ? "Apps" : "Launchpad"
+    }
+
+    /// This Mac's app, looked up once: it can't change while the app runs.
+    static let installed: String? = installedBundleID { url(of: $0) != nil }
+
+    static let label = label(installed: installed)
+
+    private static func url(of bundleID: String) -> URL? {
+        NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID)
+    }
+
+    /// Opens it, or does nothing on a Mac with neither.
+    static func open() {
+        guard let installed, let url = url(of: installed) else { return }
+        NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
     }
 }
 
@@ -143,6 +185,10 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         .init(id: "screenshot", name: "Screenshot  ⇧⌘4", keyCode: 21, flags: [.maskCommand, .maskShift]),
         .init(id: "switchApp", name: "Switch App  ⌘Tab", keyCode: 48, flags: .maskCommand),
     ]
+
+    /// The preset the menus list Launchpad (`RemapAction.launchpad`) after: the last of the
+    /// system ones, Mission Control and the Spaces.
+    static let launchpadMenuAnchor = "spaceRight"
 
     // MARK: - Lifecycle
 
@@ -469,6 +515,7 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         case .mouseButton(let b, _): postMouseClick(b)
         case .doubleClick: postDoubleClick()
         case .mediaKey(let code, _): postMediaKey(code)
+        case .launchpad: LaunchpadApp.open()
         }
     }
 

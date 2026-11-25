@@ -7,6 +7,9 @@ expect rough edges until 1.0.
 ## [Unreleased]
 
 ### Added
+- **Launchpad for any button.** It has no keyboard shortcut, so MacRazer opens the app itself.
+  On macOS 26 that's Apps, which replaced Launchpad, and the menus call it Apps there. It's in
+  every button's shortcut list, next to Mission Control and the Spaces.
 - **More mice from test reports.**
   - **Polling confirmed with the newer command** on the Viper 8KHz, both Basilisk V4 Pro
     links and the Mouse Dock Pro, which goes up to 8000 Hz.
