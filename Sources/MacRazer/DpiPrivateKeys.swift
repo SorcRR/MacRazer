@@ -52,6 +52,91 @@ enum PrivateKeyReport {
     }
 }
 
+/// A notification the mouse sends by itself in HID input report 5, as the Cobra HyperSpeed
+/// does over Bluetooth: a code, then what goes with it. The codes come from other projects'
+/// notes and a trace of the Cobra. They are matched on but not relied on: any other is `other`,
+/// and nothing depends on one arriving.
+enum MouseNotice: Equatable, Sendable {
+    /// `02`: the DPI changed, to `x` and `y` (big-endian after the code), nil where the report
+    /// is too short to say. In driver mode only MacRazer should change it.
+    case dpiChanged(x: Int?, y: Int?)
+    /// `09`: availability, with the byte after the code. The Cobra sent `09 02` as it went to
+    /// sleep; `09 03` is documented as the wake.
+    case availability(UInt8?)
+    /// `0c`: power or connection state. The Cobra sent it as it finished starting after a wake.
+    case powerState
+    /// `10`: a Bluetooth heartbeat.
+    case heartbeat
+    /// `31`: the battery.
+    case battery
+    case other(UInt8)
+
+    var code: UInt8 {
+        switch self {
+        case .dpiChanged: 0x02
+        case .availability: 0x09
+        case .powerState: 0x0C
+        case .heartbeat: 0x10
+        case .battery: 0x31
+        case .other(let code): code
+        }
+    }
+
+    /// For the trace.
+    var name: String {
+        switch self {
+        case .dpiChanged(let x, let y): "DPI changed to \(x.map(String.init) ?? "?") x \(y.map(String.init) ?? "?")"
+        case .availability(let state): "availability" + (state.map { String(format: " %02x", $0) } ?? "")
+        case .powerState: "power state"
+        case .heartbeat: "heartbeat"
+        case .battery: "battery"
+        case .other: "unknown"
+        }
+    }
+
+    /// With driver mode engaged, whether this suggests the firmware restarted (`powerState`,
+    /// `availability`) or acted on the DPI button itself (`dpiChanged`), and so lost the mode
+    /// (`DpiDriverModeBook.noticed`). The rest say nothing about it.
+    var suggestsModeLost: Bool {
+        switch self {
+        case .dpiChanged, .availability, .powerState: true
+        case .heartbeat, .battery, .other: false
+        }
+    }
+}
+
+/// HID input report 5: the mouse's notifications (`MouseNotice`). Pure, so the layout is
+/// tested without a mouse.
+enum MouseNoticeReport {
+    static let reportID = 5
+
+    /// The notification in a report, or nil for any other report or one with nothing after its
+    /// ids. As with report 4 (`PrivateKeyReport`), IOKit hands it over with its id in front,
+    /// and on the Cobra over Bluetooth with the id twice (`05 05 09 02 01 ...`), so up to two
+    /// leading ids are dropped. A code equal to the id can't be told from that, and is never
+    /// one MacRazer acts on.
+    static func notice(reportID: Int, bytes: [UInt8]) -> MouseNotice? {
+        guard reportID == Self.reportID else { return nil }
+        let id = UInt8(Self.reportID)
+        var rest = bytes[...]
+        if rest.first == id { rest = rest.dropFirst() }
+        if rest.first == id { rest = rest.dropFirst() }
+        guard let code = rest.first else { return nil }
+        let after = Array(rest.dropFirst())
+        func bigEndian(at index: Int) -> Int? {
+            after.count >= index + 2 ? Int(after[index]) << 8 | Int(after[index + 1]) : nil
+        }
+        switch code {
+        case 0x02: return .dpiChanged(x: bigEndian(at: 0), y: bigEndian(at: 2))
+        case 0x09: return .availability(after.first)
+        case 0x0C: return .powerState
+        case 0x10: return .heartbeat
+        case 0x31: return .battery
+        default: return .other(code)
+        }
+    }
+}
+
 /// Turns the successive key arrays of report 4 into a down and an up per key. A frame that
 /// holds what the last one held changes nothing.
 ///
@@ -97,11 +182,13 @@ struct PrivateKeyTracker: Equatable, Sendable {
 /// `DpiPrivateKeyWatcher`; tests hand the remapper the keys themselves.
 protocol PrivateKeySource: AnyObject {
     var isRunning: Bool { get }
-    /// Starts delivering the private keys of the Bluetooth mouse `productID`, on the main
-    /// thread. False when it can't: Input Monitoring isn't granted, or the mouse's HID device
-    /// wouldn't open. Starting again for the same mouse keeps what is running. A failure isn't
-    /// kept: the next start tries again from scratch.
-    func start(productID: Int, onEvent: @escaping (PrivateKeyEvent) -> Void) -> Bool
+    /// Starts delivering the private keys of the Bluetooth mouse `productID`, and the
+    /// notifications it sends in report 5 (`MouseNotice`), on the main thread. False when it
+    /// can't: Input Monitoring isn't granted, or the mouse's HID device wouldn't open. Starting
+    /// again for the same mouse keeps what is running. A failure isn't kept: the next start
+    /// tries again from scratch.
+    func start(productID: Int, onEvent: @escaping (PrivateKeyEvent) -> Void,
+               onNotice: @escaping (MouseNotice) -> Void) -> Bool
     func stop()
     /// Whether a start for `productID` would open the mouse now, found by opening and closing
     /// it at once: nothing is watched or kept, and nothing is sent to the mouse. How a run
@@ -112,7 +199,10 @@ protocol PrivateKeySource: AnyObject {
 /// Watches HID input report 4 of one Bluetooth mouse (vendor 0x068E and its product id, so
 /// nothing of any other device) and turns it into private-key events (`PrivateKeyTracker`).
 /// Needs Input Monitoring, as every HID input read does. Only runs while the mouse is in
-/// driver mode, which is when it sends that report.
+/// driver mode, which is when it sends that report. Its report 5 comes through the same
+/// callbacks, and is handed on as the mouse's notifications (`MouseNoticeReport`): a sign that
+/// the firmware restarted or cycled DPI itself, and may have dropped driver mode. Both of the
+/// mouse's HID devices deliver it, so a notification usually comes twice.
 ///
 /// An `IOHIDManager` finds the mouse's HID devices, now and whenever macOS enumerates them
 /// again (a reconnect), and each is watched as the gesture trace watches it
@@ -127,6 +217,7 @@ final class DpiPrivateKeyWatcher: PrivateKeySource, @unchecked Sendable {
     private var watched: [Watched] = []
     private var tracker = PrivateKeyTracker()
     private var onEvent: ((PrivateKeyEvent) -> Void)?
+    private var onNotice: ((MouseNotice) -> Void)?
     private var productID: Int?
     /// Retained for the manager's C callbacks' context while running, released by `stop()`.
     private var selfContext: UnsafeMutableRawPointer?
@@ -189,9 +280,11 @@ final class DpiPrivateKeyWatcher: PrivateKeySource, @unchecked Sendable {
         return Self.startWorks(managerOpen: managerOpen, present: present.count, opened: opened)
     }
 
-    func start(productID: Int, onEvent: @escaping (PrivateKeyEvent) -> Void) -> Bool {
+    func start(productID: Int, onEvent: @escaping (PrivateKeyEvent) -> Void,
+               onNotice: @escaping (MouseNotice) -> Void) -> Bool {
         if isRunning, self.productID == productID {
             self.onEvent = onEvent
+            self.onNotice = onNotice
             return true
         }
         stop()
@@ -215,6 +308,7 @@ final class DpiPrivateKeyWatcher: PrivateKeySource, @unchecked Sendable {
         self.manager = manager
         self.productID = productID
         self.onEvent = onEvent
+        self.onNotice = onNotice
         selfContext = context
         tracker = PrivateKeyTracker()
         generation &+= 1
@@ -243,6 +337,7 @@ final class DpiPrivateKeyWatcher: PrivateKeySource, @unchecked Sendable {
         self.manager = nil
         productID = nil
         onEvent = nil
+        onNotice = nil
         tracker = PrivateKeyTracker()
         generation &+= 1
         if let context = selfContext {
@@ -263,9 +358,10 @@ final class DpiPrivateKeyWatcher: PrivateKeySource, @unchecked Sendable {
         nextSourceID &+= 1
         let entry = Watched(device: device, id: nextSourceID, size: size, watcher: self)
         IOHIDDeviceRegisterInputReportCallback(device, entry.buffer, size, { context, _, _, _, reportID, report, length in
-            // Pointer movement comes through here too, at the polling rate: only report 4 is
-            // copied and looked at.
-            guard let context, Int(reportID) == PrivateKeyReport.reportID else { return }
+            // Pointer movement comes through here too, at the polling rate: only reports 4 and
+            // 5 are copied and looked at.
+            guard let context, Int(reportID) == PrivateKeyReport.reportID
+                    || Int(reportID) == MouseNoticeReport.reportID else { return }
             let entry = Unmanaged<Watched>.fromOpaque(context).takeUnretainedValue()
             entry.watcher?.received(reportID: Int(reportID),
                                     bytes: Array(UnsafeBufferPointer(start: report, count: max(0, length))),
@@ -293,8 +389,23 @@ final class DpiPrivateKeyWatcher: PrivateKeySource, @unchecked Sendable {
     /// Inside IOKit's dispatch of the report: the events go to `onEvent` on the next turn of
     /// the run loop, so whatever they lead to (a stop among them) never runs in here.
     private func received(reportID: Int, bytes: [UInt8], from source: Int) {
-        guard isRunning, let keys = PrivateKeyReport.heldKeys(reportID: reportID, bytes: bytes) else { return }
-        deliver(tracker.update(keys, from: source))
+        guard isRunning else { return }
+        if let keys = PrivateKeyReport.heldKeys(reportID: reportID, bytes: bytes) {
+            deliver(tracker.update(keys, from: source))
+        } else if let notice = MouseNoticeReport.notice(reportID: reportID, bytes: bytes) {
+            deliver(notice)
+        }
+    }
+
+    /// Hands `notice` to `onNotice` the same way (`deliver(_:)`). Each copy goes on: what it
+    /// leads to is spaced out there (`DpiDriverModeBook.noticeCheckSpacing`).
+    private func deliver(_ notice: MouseNotice) {
+        guard isRunning else { return }
+        let generation = generation
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.isRunning, self.generation == generation else { return }
+            self.onNotice?(notice)
+        }
     }
 
     /// Hands `events` to `onEvent` on the next turn of the run loop, unless a stop or another

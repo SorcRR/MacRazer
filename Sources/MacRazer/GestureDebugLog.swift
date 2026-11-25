@@ -25,9 +25,11 @@ import Foundation
 ///
 /// It also records what MacRazer itself does with the DPI button on a mouse that reports it as
 /// private keys (`RazerDevices.dpiButtonPrivateKeys`): each read and write of the device mode
-/// and why (`DEVMODE` lines, from `MouseController` and `BluetoothDevice`), the private keys as
-/// they go down and up (`PRIVKEY` lines, `DpiPrivateKeyWatcher`), and the stages a short press
-/// steps to (`DPI cycle`).
+/// and why (`DEVMODE` lines, from `MouseController` and `BluetoothDevice`, among them the
+/// settling re-checks after an engage, the mouse's notifications that called for a re-check or
+/// were MacRazer's own DPI change, and a restore dropped because its connection went), the
+/// private keys as they go down and up (`PRIVKEY` lines, `DpiPrivateKeyWatcher`), and the
+/// stages a short press steps to (`DPI cycle`).
 ///
 /// To turn it off:
 ///

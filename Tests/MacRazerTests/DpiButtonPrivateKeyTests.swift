@@ -53,12 +53,15 @@ final class DpiButtonPrivateKeyTests: XCTestCase {
         private(set) var checks: [Int] = []
         private(set) var isRunning = false
         private var onEvent: ((PrivateKeyEvent) -> Void)?
+        private var onNotice: ((MouseNotice) -> Void)?
 
-        func start(productID: Int, onEvent: @escaping (PrivateKeyEvent) -> Void) -> Bool {
+        func start(productID: Int, onEvent: @escaping (PrivateKeyEvent) -> Void,
+                   onNotice: @escaping (MouseNotice) -> Void) -> Bool {
             starts.append(productID)
             guard !refuses else { return false }
             isRunning = true
             self.onEvent = onEvent
+            self.onNotice = onNotice
             return true
         }
 
@@ -66,6 +69,7 @@ final class DpiButtonPrivateKeyTests: XCTestCase {
             stops += 1
             isRunning = false
             onEvent = nil
+            onNotice = nil
         }
 
         func canWatch(productID: Int) -> Bool {
@@ -74,6 +78,7 @@ final class DpiButtonPrivateKeyTests: XCTestCase {
         }
 
         func send(_ code: UInt8, down: Bool) { onEvent?(PrivateKeyEvent(code: code, isDown: down)) }
+        func notify(_ notice: MouseNotice) { onNotice?(notice) }
     }
 
     private var suites: [String] = []
@@ -236,6 +241,47 @@ final class DpiButtonPrivateKeyTests: XCTestCase {
         XCTAssertEqual(emitted.actions, [], "no Hold for a disconnect")
         XCTAssertTrue(move(r, dy: -200))
         XCTAssertEqual(emitted.actions, [], "the pointer moved by anything else after that is no swipe")
+    }
+
+    // MARK: Report 5
+
+    /// The mouse's notifications as a trace of the Cobra over Bluetooth captured them, the
+    /// report id twice: going to sleep (`09 02`), the start-up after a wake (`0c`, `31`) and the
+    /// firmware cycling DPI with driver mode gone (`02` and the new DPI, big-endian, for X and
+    /// Y). With the id once, or none, it reads the same, and nothing comes of another report or
+    /// of one with nothing after its ids.
+    func testTheMousesNotificationsAreReadWithTheIdOnceOrTwice() {
+        func notice(_ bytes: [UInt8], reportID: Int = 5) -> MouseNotice? {
+            MouseNoticeReport.notice(reportID: reportID, bytes: bytes)
+        }
+        XCTAssertEqual(notice([0x05, 0x05, 0x09, 0x02, 0x01, 0, 0]), .availability(0x02))
+        XCTAssertEqual(notice([0x05, 0x05, 0x0C, 0x00, 0, 0]), .powerState)
+        XCTAssertEqual(notice([0x05, 0x05, 0x31, 0xD9, 0x00, 0x00, 0x01]), .battery)
+        XCTAssertEqual(notice([0x05, 0x05, 0x02, 0x12, 0xC0, 0x12, 0xC0, 0, 0]), .dpiChanged(x: 4800, y: 4800))
+        XCTAssertEqual(notice([0x05, 0x05, 0x02, 0x03, 0x20, 0x04, 0xB0]), .dpiChanged(x: 800, y: 1200))
+        XCTAssertEqual(notice([0x05, 0x02, 0x12, 0xC0, 0x12, 0xC0]), .dpiChanged(x: 4800, y: 4800), "the id once")
+        XCTAssertEqual(notice([0x09, 0x03]), .availability(0x03), "no id at all")
+        XCTAssertEqual(notice([0x05, 0x05, 0x02, 0x12]), .dpiChanged(x: nil, y: nil), "too short to say the DPI")
+        XCTAssertEqual(notice([0x05, 0x05, 0x09]), .availability(nil))
+        XCTAssertEqual(notice([0x05, 0x05, 0x10, 0x01]), .heartbeat)
+        XCTAssertEqual(notice([0x05, 0x05, 0x7E, 0x01]), .other(0x7E))
+        XCTAssertNil(notice([0x05, 0x05]), "nothing after the ids")
+        XCTAssertNil(notice([]))
+        XCTAssertNil(notice([0x04, 0x04, 0x52, 0, 0], reportID: 4), "the private keys' report")
+        XCTAssertNil(PrivateKeyReport.heldKeys(reportID: 5, bytes: [0x05, 0x05, 0x0C, 0x00]), "and the other way round")
+    }
+
+    /// Only a sign that the firmware restarted (power state, availability) or cycled DPI by
+    /// itself can mean driver mode was dropped; a heartbeat, the battery or an unknown code
+    /// can't. The codes are what the trace names them.
+    func testOnlyARestartOrADpiChangeSuggestsDriverModeWasDropped() {
+        let suggest: [MouseNotice] = [.powerState, .availability(0x02), .availability(0x03), .availability(nil),
+                                      .dpiChanged(x: 800, y: 800), .dpiChanged(x: nil, y: nil)]
+        let dont: [MouseNotice] = [.heartbeat, .battery, .other(0x7E)]
+        for notice in suggest { XCTAssertTrue(notice.suggestsModeLost, notice.name) }
+        for notice in dont { XCTAssertFalse(notice.suggestsModeLost, notice.name) }
+        XCTAssertEqual([MouseNotice.dpiChanged(x: 1, y: 1), .availability(2), .powerState, .heartbeat, .battery,
+                        .other(0x7E)].map(\.code), [0x02, 0x09, 0x0C, 0x10, 0x31, 0x7E])
     }
 
     // MARK: Which mice
@@ -598,6 +644,27 @@ final class DpiButtonPrivateKeyTests: XCTestCase {
         XCTAssertTrue(source.isRunning)
         r.setActiveDevice("PM2533", deviceID: basilisk)
         XCTAssertFalse(source.isRunning, "another mouse")
+    }
+
+    /// The mouse's notifications come through the same watch, so only while driver mode is
+    /// engaged, and are handed on to the controller (`onMouseNotice`), which reads the mode at
+    /// once when one suggests it was dropped. Nothing once the watch stops.
+    func testTheMousesNotificationsReachTheControllerWhileItsKeysAreWatched() {
+        let emitted = Emitted()
+        let source = FakeSource()
+        let r = remapper(emitted, engaged: false, source: source)
+        var heard: [MouseNotice] = []
+        r.onMouseNotice = { heard.append($0) }
+        source.notify(.powerState)
+        XCTAssertEqual(heard, [], "nothing is watched before driver mode")
+        r.dpiDriverModeChanged(.engaged)
+        source.notify(.powerState)
+        source.notify(.dpiChanged(x: 4800, y: 4800))
+        XCTAssertEqual(heard, [.powerState, .dpiChanged(x: 4800, y: 4800)])
+        XCTAssertEqual(emitted.actions, [], "a notification is no press")
+        r.dpiDriverModeChanged(.off)
+        source.notify(.availability(0x02))
+        XCTAssertEqual(heard.count, 2, "the watch stopped with driver mode")
     }
 
     /// Keys that can't be watched (the mouse's HID device wouldn't open) are remembered, so

@@ -1178,6 +1178,7 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         onDpiDriverModeWanted = { [weak controller] wanted in controller?.setDpiDriverModeWanted(wanted) }
         sentDpiDriverModeWant = nil
         onDpiCycleRequest = { [weak controller] in controller?.cycleDpiStage() }
+        onMouseNotice = { [weak controller] notice in controller?.dpiDriverModeNoticed(notice) }
         controller.$deviceKey.combineLatest(controller.$deviceID)
             .combineLatest(controller.$deviceIsBluetooth)
             .combineLatest(controller.$connected)
@@ -1492,6 +1493,10 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
     /// longer cycles DPI itself: MacRazer's DPI cycle (`MouseController.cycleDpiStage`).
     /// Set by `observeDpiCycle`; tests catch it.
     var onDpiCycleRequest: (() -> Void)?
+    /// A notification the mouse sent while its private keys are watched (`MouseNotice`), for
+    /// `MouseController.dpiDriverModeNoticed`, which reads the mode at once when one suggests
+    /// the firmware dropped it. Set by `observeDpiCycle`; tests catch it.
+    var onMouseNotice: ((MouseNotice) -> Void)?
 
     /// What driver mode needs now (`DpiDriverModeNeed`), with Input Monitoring read live. Also
     /// what the status line shows.
@@ -1584,7 +1589,9 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
     /// Watches the private keys exactly while they are MacRazer's to act on. When they stop
     /// being so (driver mode lost, the mouse gone, another mouse), a hold of the DPI button
     /// ends: its release may never come. A mouse whose keys can't be watched doesn't need
-    /// driver mode (`privateKeyInputBlocked`), so it goes back to normal until they can.
+    /// driver mode (`privateKeyInputBlocked`), so it goes back to normal until they can. The
+    /// mouse's notifications come from the same watch, so only while driver mode is engaged,
+    /// which is when they matter (`onMouseNotice`).
     private func syncPrivateKeySource() {
         guard privateKeysActive, let productID = activeDeviceID else {
             if privateKeySource?.isRunning == true { privateKeySource?.stop() }
@@ -1592,7 +1599,8 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
             return
         }
         guard let privateKeySource else { return }
-        if !privateKeySource.start(productID: productID, onEvent: { [weak self] in self?.handlePrivateKey($0) }) {
+        if !privateKeySource.start(productID: productID, onEvent: { [weak self] in self?.handlePrivateKey($0) },
+                                   onNotice: { [weak self] in self?.onMouseNotice?($0) }) {
             privateKeyInputBlocked = true
             refreshDpiDriverModeWant()
         }

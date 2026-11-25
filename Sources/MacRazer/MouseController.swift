@@ -347,6 +347,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             if discardBluetoothSession, self.device?.isBluetooth == true {
                 self.device?.close()
                 self.device = nil
+                // Driver mode went with it, and a restore pending for it is dropped now, not
+                // written to the connection that replaces it.
+                self.dpiDriverModeConnectionLost()
             }
             self.bluetoothOpenFailedAt = nil
             self.performWakeRecoveryAttempt(generation: generation, retryIndex: 0)
@@ -365,8 +368,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             guard let self, self.isCurrentWakeRecovery(generation) else { return }
             self.bypassBluetoothRetryCooldown = true
             // The mouse may have slept, and driver mode doesn't survive that. The read below
-            // engages it again if it went (`syncDpiDriverMode`), reading first.
-            self.driverMode.doubtful()
+            // engages it again if it went (`syncDpiDriverMode`), reading first, and checks it
+            // again as the mouse settles.
+            self.dpiDriverModeDoubtful()
             self.readBatterySync()
             if self.pollState.batteryReady, let active = self.device,
                active.isBluetooth, RazerDevices.supportsDpiButtonBinding(pid: active.productID) {
@@ -1258,7 +1262,9 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         let v = UInt16(max(100, min(value, 45000)))
         userCommand { [weak self] in
             guard let self else { return }
+            self.noteOwnDpiChange()
             let ok = (try? self.ensureDevice().sendWithRetry(RazerCommands.setDPI(x: v, y: v))) != nil
+            self.noteOwnDpiChange()
             self.publish {
                 guard ok else { self.lastWriteFailure = Date(); return }
                 self.dpi = Int(v); self.clearActiveProfileIfNeeded()
@@ -1293,6 +1299,8 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 var table = try bluetooth.readDpiStages()
                 guard table.values.indices.contains(index) else { throw HIDDevice.HIDError.badResponse }
                 table.values[index] = dpiValue
+                self.noteOwnDpiChange()
+                defer { self.noteOwnDpiChange() }
                 try bluetooth.setDpiStages(table)
                 let written = table
                 self.publish {
@@ -1533,6 +1541,15 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// How long quitting waits for normal mode to be written back: one write and its read
     /// back, and a little for `io` to free up.
     static let driverModeRestoreTimeout: TimeInterval = 3
+    /// `io` only. The book's early check (`DpiDriverModeBook.nextEarlyCheck`) the one-shot on
+    /// `io` waits for, nil with none waiting (`scheduleDpiDriverModeEarlyCheck`).
+    private var driverModeEarlyCheckFor: TimeInterval?
+    /// `io` only. Bumped whenever that one-shot is replaced or dropped, so one already handed
+    /// to the queue does nothing.
+    private var driverModeEarlyCheckGeneration = 0
+    /// How long an early check that fell due while a command waited on `io` waits before it
+    /// tries again: a background check gives way to a tap.
+    static let driverModeEarlyCheckRetryDelay: TimeInterval = 0.5
 
     /// Main thread. `ButtonRemapper` needs the DPI button in driver mode, or no longer does:
     /// it has an action MacRazer carries out on a mouse with `RazerDevices.dpiButtonPrivateKeys`,
@@ -1557,8 +1574,17 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// writes it back then: the DPI button does nothing until the mouse sleeps or is switched
     /// off and on, or until MacRazer runs again without wanting driver mode, which reads the
     /// mode once and puts normal mode back (`DpiDriverModeBook.Step.checkLeftover`).
+    ///
+    /// After a wake the Cobra has taken driver mode, read it back and dropped it again a few
+    /// hundred milliseconds later as it finished starting. So an engage on a new connection or
+    /// after a wake is checked again as it settles, and a notification from the mouse that
+    /// suggests it dropped the mode has it read at once (`dpiDriverModeNoticed`): early checks,
+    /// each a one-shot on `io` (`scheduleDpiDriverModeEarlyCheck`), not a timer.
     private func syncDpiDriverMode(_ occasion: DpiDriverModeBook.Occasion) {
         guard !deviceTestActiveForIO else { return }
+        // Whatever this leaves the book with, the next early check is lined up for it, and one
+        // the book has dropped is called off.
+        defer { scheduleDpiDriverModeEarlyCheck() }
         guard let bluetooth = device as? BluetoothDevice,
               RazerDevices.dpiButtonPrivateKeys(pid: bluetooth.productID) != nil else {
             // Another mouse, or none open: whatever was engaged was on a connection now gone.
@@ -1567,7 +1593,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         }
         if driverModeConnection !== bluetooth {
             driverModeConnection = bluetooth
-            driverMode.connectionChanged()
+            dpiDriverModeConnectionChanged()
         }
         let now = ProcessInfo.processInfo.systemUptime
         if occasion == .mouseAnswered { driverMode.answered(at: now) }
@@ -1576,27 +1602,43 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         case .nothing:
             break
         case .engage, .recheck:
-            // A background check gives way to a tap waiting on the queue; the next poll does it.
+            // A background check gives way to a tap waiting on the queue; the next poll does it,
+            // or for an early check, its one-shot shortly.
             if step == .recheck, userWorkPending { return }
             if step == .engage { publishDriverMode(.engaging) }
+            // For the trace: an engage, the poll's check, or an early one and why.
+            let early = step == .recheck ? driverMode.earlyCheckDue(at: now)?.reason : nil
+            let what = step == .engage ? "engage" : Self.dpiDriverModeCheckName(early)
+            let done = step == .engage ? "engaged" : early == nil ? "checked" : what
             do {
                 let change = try bluetooth.setDeviceMode(.driver, readFirst: true,
                                                          beforeWrite: { self.driverModeMayHaveSet() })
                 driverModeMayHaveSet()
-                driverMode.engaged(at: now)
+                let settling = driverMode.engaged(at: now, wrote: change == .written)
                 driverModeError = nil
-                GestureDebugLog.log("DEVMODE \(step == .engage ? "engaged" : "checked"): "
-                                    + (change == .alreadySet ? "already in driver mode" : "driver mode written and read back"))
+                let result = switch (step, change) {
+                case (_, .alreadySet): "already in driver mode"
+                case (.engage, .written): "driver mode written and read back"
+                default: "it had fallen back to normal mode; driver mode written again and read back"
+                }
+                GestureDebugLog.log("DEVMODE \(done): \(result)")
+                if settling {
+                    let delays = DpiDriverModeBook.settlingCheckDelays.map { "\(Int($0)) s" }.joined(separator: " and ")
+                    GestureDebugLog.log("DEVMODE settling re-checks scheduled \(delays) from now "
+                                        + "(round \(driverMode.settlingRounds) of \(DpiDriverModeBook.maxSettlingRounds))")
+                }
             } catch BLEProtocol.DeviceModeError.unreadable where step == .recheck {
                 // Most likely still in the mode. Read again a whole interval later, as after
                 // an answer: at every poll, a mouse that stopped answering this read would get
-                // it every few seconds, each holding the queue up to a lenient timeout.
+                // it every few seconds, each holding the queue up to a lenient timeout. A later
+                // settling check still goes; nothing else early does.
                 driverMode.recheckUnanswered(at: now)
-                GestureDebugLog.log("DEVMODE check unanswered, read again in \(Int(DpiDriverModeBook.recheckInterval)) s")
+                GestureDebugLog.log("DEVMODE \(what) unanswered, read again in \(Int(DpiDriverModeBook.recheckInterval)) s"
+                                    + (driverMode.nextEarlyCheck != nil ? " or at the next settling re-check" : ""))
             } catch {
                 driverMode.failed(at: now)
                 driverModeError = Self.dpiDriverModeErrorText(error)
-                GestureDebugLog.log("DEVMODE engage failed (\(driverMode.failures) on this connection): \(error)")
+                GestureDebugLog.log("DEVMODE \(what) failed (\(driverMode.failures) on this connection): \(error)")
             }
         case .restore:
             restoreNormalMode(on: bluetooth, now: now)
@@ -1654,8 +1696,98 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     /// `io` only. The mouse went offline, which ends driver mode on it.
     private func dpiDriverModeConnectionLost() {
         driverModeConnection = nil
-        driverMode.connectionChanged()
+        dpiDriverModeConnectionChanged()
         publishDriverMode()
+    }
+
+    /// `io` only. The connection `driverMode` was about is gone or replaced, and driver mode
+    /// with it (`DpiDriverModeBook.connectionChanged`): a restore of normal mode pending for it
+    /// is dropped, never written to the next connection, and so are its early checks.
+    private func dpiDriverModeConnectionChanged() {
+        if driverMode.connectionChanged() {
+            GestureDebugLog.log("DEVMODE dropped the pending restore of normal mode: the connection it was for is gone, "
+                                + "and driver mode with it")
+        }
+        setDriverModeMaybeSet(driverMode.maybeSet)
+        scheduleDpiDriverModeEarlyCheck()
+    }
+
+    /// `io` only. The Mac woke or the mouse came back, and may have lost driver mode
+    /// (`DpiDriverModeBook.doubtful`). The next read engages it again, then checks it as the
+    /// mouse settles; the early checks from before go.
+    private func dpiDriverModeDoubtful() {
+        driverMode.doubtful()
+        scheduleDpiDriverModeEarlyCheck()
+    }
+
+    /// `io` only. Has the book's next early check (`DpiDriverModeBook.nextEarlyCheck`: a
+    /// settling check, or one a notification called for) run when it falls due, as a one-shot
+    /// `asyncAfter` on `io`: no timer, and nothing at all while none is waiting. A one-shot whose
+    /// check the book has dropped since (the connection changed, driver mode is no longer
+    /// wanted, a change failed) is called off, and one that runs finds nothing to do if the
+    /// check went meanwhile. A check that came due while a command waited gave way to it, and
+    /// tries again `driverModeEarlyCheckRetryDelay` later.
+    private func scheduleDpiDriverModeEarlyCheck() {
+        guard let due = driverMode.nextEarlyCheck else {
+            if driverModeEarlyCheckFor != nil {
+                driverModeEarlyCheckFor = nil
+                driverModeEarlyCheckGeneration &+= 1
+                GestureDebugLog.log("DEVMODE early re-check called off: none is due any more")
+            }
+            return
+        }
+        guard due != driverModeEarlyCheckFor else { return }
+        driverModeEarlyCheckFor = due
+        driverModeEarlyCheckGeneration &+= 1
+        let generation = driverModeEarlyCheckGeneration
+        let now = ProcessInfo.processInfo.systemUptime
+        let delay = due > now ? due - now : Self.driverModeEarlyCheckRetryDelay
+        io.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self, self.driverModeEarlyCheckGeneration == generation else { return }
+            self.driverModeEarlyCheckFor = nil
+            self.syncDpiDriverMode(.earlyCheck)
+        }
+    }
+
+    /// What a check of driver mode is called in the trace.
+    static func dpiDriverModeCheckName(_ early: DpiDriverModeBook.EarlyCheckReason?) -> String {
+        switch early {
+        case .settling: "settling re-check"
+        case .notice(let code): String(format: "re-check for notice %02x", code)
+        case nil: "check"
+        }
+    }
+
+    /// Main thread. The mouse sent `notice` in its report 5, which is watched with its private
+    /// keys, so only while driver mode is engaged (`ButtonRemapper.onMouseNotice`). One that
+    /// suggests its firmware restarted or cycled DPI itself has the mode read at once, at most
+    /// once a second (`DpiDriverModeBook.noticed`): after a wake the Cobra dropped driver mode
+    /// by itself as it finished starting, and the DPI button cycled DPI in the firmware until
+    /// the next check. A DPI change MacRazer made itself is told apart by its time
+    /// (`noteOwnDpiChange`).
+    func dpiDriverModeNoticed(_ notice: MouseNotice) {
+        guard !RenderOptions.isActive, notice.suggestsModeLost else { return }
+        let now = ProcessInfo.processInfo.systemUptime
+        io.async { [weak self] in
+            guard let self else { return }
+            let label = String(format: "DEVMODE notice %02x (%@)", notice.code, notice.name)
+            switch self.driverMode.noticed(notice, at: now) {
+            case .check:
+                GestureDebugLog.log("\(label) calls for a re-check now")
+                self.syncDpiDriverMode(.earlyCheck)
+            case .ownDpiChange:
+                GestureDebugLog.log("\(label) ignored: MacRazer changed the DPI itself just now")
+            case .irrelevant, .notEngaged, .debounced:
+                break
+            }
+        }
+    }
+
+    /// `io` only. MacRazer is changing the DPI itself, so the mouse's notification of it isn't
+    /// the firmware cycling DPI (`DpiDriverModeBook.ownDpiChange`). Said before the write and
+    /// again after it.
+    private func noteOwnDpiChange() {
+        driverMode.ownDpiChange(at: ProcessInfo.processInfo.systemUptime)
     }
 
     /// `io` only. Publishes `state`, by default where `driverMode` stands.
@@ -1729,6 +1861,10 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                     throw HIDDevice.HIDError.notSupported
                 }
                 guard let next = try bluetooth.readDpiStages().nextStage() else { return }
+                // The mouse tells of the change (report 5, code 02): it is this one, not the
+                // firmware cycling DPI with driver mode gone (`dpiDriverModeNoticed`).
+                self.noteOwnDpiChange()
+                defer { self.noteOwnDpiChange() }
                 try bluetooth.setDpiStages(next)
                 GestureDebugLog.log("DPI cycle: stage \(next.active + 1) of \(next.values.count), \(next.values[next.active]) DPI")
                 // As a press on the mouse shows up at the next read, at once.
@@ -2078,8 +2214,10 @@ final class MouseController: ObservableObject, @unchecked Sendable {
                 }
                 return
             }
+            self.noteOwnDpiChange()
             let stagesOK = stagesReport.map { (try? dev.sendWithRetry($0)) != nil } ?? true
             let dpiOK = (try? dev.sendWithRetry(RazerCommands.setDPI(x: dpi, y: dpi))) != nil
+            self.noteOwnDpiChange()
             // A profile saved on an 8000 Hz mouse asks no more of this one than it can do.
             // Capped for the mouse this reaches, which may not be the one the profile was
             // applied on if they changed in between.

@@ -101,6 +101,22 @@ enum DpiDriverModeNeed: Equatable, Sendable, CustomStringConvertible {
 /// mode is written back where this run may have left driver mode (`maybeSet`), and where a
 /// run that crashed or was killed left it (`checkLeftover`): the mode is read once a run,
 /// and written only when it reads as driver mode.
+///
+/// Just after a reconnect or a wake the mouse hasn't finished starting. A real Cobra
+/// HyperSpeed over Bluetooth took driver mode then and read it back, and a few hundred
+/// milliseconds later, as it sent its own start-up notifications, went back to normal mode by
+/// itself: the DPI button cycled DPI in the firmware until the next check, 30 seconds on. So
+/// the first engage on a new connection or after a wake is followed by settling checks
+/// (`settlingCheckDelays`), quiet checks that put the mode back if it went, and a check that
+/// finds it gone starts them over, at most `maxSettlingRounds` times. While it is engaged, a
+/// notification from the mouse that suggests its firmware restarted or acted on the DPI button
+/// itself calls for a check at once (`noticed`). These early checks (`earlyChecks`) are
+/// one-shots `MouseController` runs on its device queue when they fall due (`nextEarlyCheck`),
+/// and they go when the connection changes or driver mode stops being wanted.
+///
+/// A disconnect takes driver mode with it, so a restore of normal mode pending for that
+/// connection is dropped (`connectionChanged`), never written to the next one: "no longer
+/// wanted" only because the mouse went away mustn't become a write once it is back.
 struct DpiDriverModeBook: Equatable, Sendable {
     /// How often the poll reads the mode while it is engaged, and how long a failed change
     /// waits before the poll tries it again.
@@ -112,6 +128,21 @@ struct DpiDriverModeBook: Equatable, Sendable {
     /// mouse: at launch the first reads come before it knows which mouse this is, and a mouse
     /// in driver mode then is most often one it is about to want again.
     static let leftoverCheckDelay: TimeInterval = 10
+    /// How long after a settling engage the first settling check reads the mode. The Cobra
+    /// dropped driver mode about 0.4 s after one, so this comes after that.
+    static let firstSettlingCheckDelay: TimeInterval = 1
+    /// How long after it the second does, for a mouse that takes longer to start.
+    static let secondSettlingCheckDelay: TimeInterval = 3
+    static var settlingCheckDelays: [TimeInterval] { [firstSettlingCheckDelay, secondSettlingCheckDelay] }
+    /// Rounds of settling checks on one connection or after one wake: the first engage's, and
+    /// one more each time a check finds the mode gone, up to this. Then only the poll's.
+    static let maxSettlingRounds = 3
+    /// Least time between two checks called for by the mouse's notifications. It sends several
+    /// together as it starts, and each arrives from both of its HID devices.
+    static let noticeCheckSpacing: TimeInterval = 1
+    /// How long, either side of MacRazer's own DPI change (`ownDpiChange`), a notification that
+    /// the DPI changed is taken for that change rather than the firmware acting on the button.
+    static let ownDpiChangeWindow: TimeInterval = 2
 
     /// What prompts a look at the mode.
     enum Occasion: Equatable, Sendable {
@@ -119,6 +150,41 @@ struct DpiDriverModeBook: Equatable, Sendable {
         case wantChanged
         /// A read of the mouse went through: the poll, a connection, a wake check.
         case mouseAnswered
+        /// An early check fell due (`nextEarlyCheck`): a settling check, or one a notification
+        /// called for. Only ever a check of a mode taken for engaged: it never engages, restores
+        /// or looks for a leftover.
+        case earlyCheck
+    }
+
+    /// Why the mode is read before `recheckInterval` is up.
+    enum EarlyCheckReason: Equatable, Sendable {
+        /// Settling after an engage on a new connection or after a wake, or after a check found
+        /// the mode gone (`settlingCheckDelays`).
+        case settling
+        /// A notification from the mouse called for it (`noticed`), with its code.
+        case notice(UInt8)
+    }
+
+    /// A check of the mode due at `at`, before the interval is up.
+    struct EarlyCheck: Equatable, Sendable {
+        let at: TimeInterval
+        let reason: EarlyCheckReason
+    }
+
+    /// What a notification from the mouse means for driver mode (`noticed`).
+    enum NoticeVerdict: Equatable, Sendable {
+        /// Read the mode at once (`Occasion.earlyCheck`).
+        case check
+        /// Nothing that suggests the firmware restarted or acted on the button: a heartbeat,
+        /// the battery, a code MacRazer doesn't know.
+        case irrelevant
+        /// A DPI change, but MacRazer's own (`ownDpiChangeWindow`).
+        case ownDpiChange
+        /// Driver mode isn't taken for engaged now, or the last check of it went unanswered:
+        /// the poll's checks carry on as they are.
+        case notEngaged
+        /// Another notification called for a check less than `noticeCheckSpacing` ago.
+        case debounced
     }
 
     enum Step: Equatable, Sendable {
@@ -160,16 +226,31 @@ struct DpiDriverModeBook: Equatable, Sendable {
     /// or this run wrote normal mode and read it back. From then on only this run can have
     /// left the mouse in driver mode, which `maybeSet` covers.
     private(set) var leftoverChecked = false
+    /// Checks of the mode due before `recheckInterval` is up, earliest first: settling checks
+    /// and ones notifications called for. Only while it is wanted and taken for engaged.
+    private(set) var earlyChecks: [EarlyCheck] = []
+    /// The connection is new or the mouse may have just woken, so its firmware may still be
+    /// starting: the next engage that reads back is followed by settling checks.
+    private(set) var fresh = false
+    /// Rounds of settling checks begun on this connection or since the wake.
+    private(set) var settlingRounds = 0
+    /// When a notification last called for a check (`noticeCheckSpacing`).
+    private(set) var lastNoticeCheckAt: TimeInterval?
+    /// When MacRazer last changed the DPI itself (`ownDpiChange`).
+    private(set) var lastOwnDpiChangeAt: TimeInterval?
 
     /// What to do now.
     func step(for occasion: Occasion, now: TimeInterval) -> Step {
         if wanted {
             if let verifiedAt {
+                if occasion != .wantChanged, earlyCheckDue(at: now) != nil { return .recheck }
                 let lastCheck = max(verifiedAt, uncheckedSince ?? verifiedAt)
                 return now - lastCheck >= Self.recheckInterval ? .recheck : .nothing
             }
+            guard occasion != .earlyCheck else { return .nothing }
             return mayTry(occasion, now: now) ? .engage : .nothing
         }
+        guard occasion != .earlyCheck else { return .nothing }
         if maybeSet { return mayTry(occasion, now: now) ? .restore : .nothing }
         guard !leftoverChecked, occasion == .mouseAnswered, let answeringSince,
               now - answeringSince >= Self.leftoverCheckDelay else { return .nothing }
@@ -183,24 +264,62 @@ struct DpiDriverModeBook: Equatable, Sendable {
             && now - lastFailureAt >= Self.recheckInterval
     }
 
-    /// A change of mind is a fresh start: what failed before is tried again at once.
+    /// The earliest early check, if it is due at `now`.
+    func earlyCheckDue(at now: TimeInterval) -> EarlyCheck? {
+        guard let first = earlyChecks.first, first.at <= now else { return nil }
+        return first
+    }
+
+    /// When the next early check falls due, for `MouseController` to run it then. Nil with
+    /// none waiting.
+    var nextEarlyCheck: TimeInterval? { earlyChecks.first?.at }
+
+    /// A change of mind is a fresh start: what failed before is tried again at once, and the
+    /// early checks, which were for the mode as it was wanted, go.
     mutating func setWanted(_ wanted: Bool) {
         self.wanted = wanted
         failures = 0
         lastFailureAt = nil
+        earlyChecks = []
     }
 
-    /// Another connection to the mouse, or none: nothing verified on the last one holds.
-    mutating func connectionChanged() {
+    /// Another connection to the mouse, or none: nothing verified on the last one holds, and
+    /// driver mode didn't outlast it. So a restore of normal mode pending for it is dropped,
+    /// not written to the next connection, which starts in normal mode, and quitting has
+    /// nothing to give back until driver mode is engaged again. In case this run only reopened
+    /// its own connection while the mouse stayed connected in driver mode, the once-a-run
+    /// leftover read is armed again (`checkLeftover`): if the next connection doesn't want the
+    /// mode, it reads it and writes normal mode only where it finds driver mode. Returns
+    /// whether a restore was pending.
+    @discardableResult
+    mutating func connectionChanged() -> Bool {
+        let restorePending = maybeSet && !wanted
+        if maybeSet {
+            maybeSet = false
+            leftoverChecked = false
+        }
+        forgetVerification()
+        return restorePending
+    }
+
+    /// The Mac woke, or the mouse came back: it may have lost the mode, and deserves a try.
+    /// Unlike a new connection, a restore still pending goes ahead: the mouse on this one may
+    /// still be in driver mode.
+    mutating func doubtful() { forgetVerification() }
+
+    /// What a new connection and a wake both make doubtful: the mode is engaged afresh, and the
+    /// firmware may still be starting (`fresh`).
+    private mutating func forgetVerification() {
         verifiedAt = nil
         uncheckedSince = nil
         answeringSince = nil
         failures = 0
         lastFailureAt = nil
+        earlyChecks = []
+        fresh = true
+        settlingRounds = 0
+        lastNoticeCheckAt = nil
     }
-
-    /// The Mac woke, or the mouse came back: it may have lost the mode, and deserves a try.
-    mutating func doubtful() { connectionChanged() }
 
     /// A read of the mouse went through on this connection at `now`.
     mutating func answered(at now: TimeInterval) {
@@ -210,18 +329,61 @@ struct DpiDriverModeBook: Equatable, Sendable {
     /// A write of driver mode is about to go out, or a read found the mouse in it.
     mutating func mayHaveSet() { maybeSet = true }
 
-    mutating func engaged(at now: TimeInterval) {
+    /// Driver mode read back at `now`, from an engage or a check. `wrote`: the read before
+    /// found normal mode, so it was written. On a check of a mode taken for engaged, that is
+    /// the mouse having dropped it by itself, and the settling checks start over; the first
+    /// engage on a new connection or after a wake (`fresh`) starts them. At most
+    /// `maxSettlingRounds` per connection or wake. Returns whether a round started.
+    @discardableResult
+    mutating func engaged(at now: TimeInterval, wrote: Bool = false) -> Bool {
+        let fellBack = verifiedAt != nil && wrote
         verifiedAt = now
         uncheckedSince = nil
         failures = 0
         lastFailureAt = nil
         maybeSet = true
         leftoverChecked = true
+        earlyChecks.removeAll { $0.at <= now }
+        let settles = (fresh || fellBack) && settlingRounds < Self.maxSettlingRounds
+        fresh = false
+        guard settles else { return false }
+        settlingRounds += 1
+        earlyChecks.removeAll { $0.reason == .settling }
+        earlyChecks += Self.settlingCheckDelays.map { EarlyCheck(at: now + $0, reason: .settling) }
+        earlyChecks.sort { $0.at < $1.at }
+        return true
     }
 
-    /// A quiet check (`recheck`) went unanswered at `now`. Nothing else changes: the mouse is
-    /// most likely still in the mode.
-    mutating func recheckUnanswered(at now: TimeInterval) { uncheckedSince = now }
+    /// A quiet check (`recheck`) went unanswered at `now`. The mouse is most likely still in
+    /// the mode: the early checks due by now are done with, a later one still goes, and no
+    /// notification calls for another until a check is answered (`noticed`).
+    mutating func recheckUnanswered(at now: TimeInterval) {
+        uncheckedSince = now
+        earlyChecks.removeAll { $0.at <= now }
+    }
+
+    /// The mouse sent `notice` at `now`. While driver mode is taken for engaged, one that
+    /// suggests the firmware restarted or acted on the DPI button itself
+    /// (`MouseNotice.suggestsModeLost`) calls for a check at once, added to `earlyChecks`, at
+    /// most one every `noticeCheckSpacing`. A DPI change within `ownDpiChangeWindow` of
+    /// MacRazer's own is that change, and calls for nothing.
+    mutating func noticed(_ notice: MouseNotice, at now: TimeInterval) -> NoticeVerdict {
+        guard notice.suggestsModeLost else { return .irrelevant }
+        if case .dpiChanged = notice, let own = lastOwnDpiChangeAt, abs(now - own) < Self.ownDpiChangeWindow {
+            return .ownDpiChange
+        }
+        guard wanted, verifiedAt != nil, uncheckedSince == nil else { return .notEngaged }
+        if let last = lastNoticeCheckAt, now - last < Self.noticeCheckSpacing { return .debounced }
+        lastNoticeCheckAt = now
+        earlyChecks.append(EarlyCheck(at: now, reason: .notice(notice.code)))
+        earlyChecks.sort { $0.at < $1.at }
+        return .check
+    }
+
+    /// MacRazer is changing the DPI itself at `now`: the software DPI cycle, a DPI or stage
+    /// set in the app, a profile. Said as the write starts and again once it is done, so the
+    /// mouse's notification of it, whenever it comes, isn't taken for the firmware cycling DPI.
+    mutating func ownDpiChange(at now: TimeInterval) { lastOwnDpiChangeAt = now }
 
     /// The mode read `mode` while it isn't wanted (`checkLeftover`). Returns whether normal
     /// mode is to be written back: only when it reads as driver mode, which this run then
@@ -242,12 +404,16 @@ struct DpiDriverModeBook: Equatable, Sendable {
         lastFailureAt = nil
         maybeSet = false
         leftoverChecked = true
+        earlyChecks = []
     }
 
+    /// A change failed at `now`. It counts against `maxAttempts`, and the poll's retries take
+    /// over from any early check.
     mutating func failed(at now: TimeInterval) {
         verifiedAt = nil
         failures += 1
         lastFailureAt = now
+        earlyChecks = []
     }
 
     /// What the page shows after `step` has run. While the change is under way it's

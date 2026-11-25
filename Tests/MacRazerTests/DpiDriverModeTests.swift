@@ -44,18 +44,23 @@ final class DpiDriverModeTests: XCTestCase {
     }
 
     /// A new connection, or a wake, may have lost the mode: it is engaged again at once
-    /// (`BluetoothDevice.setDeviceMode` reads first, so a mouse still in it isn't written).
+    /// (`BluetoothDevice.setDeviceMode` reads first, so a mouse still in it isn't written). A
+    /// wake keeps the connection, which may still hold driver mode, so quitting would still
+    /// write normal mode back; a new connection starts in normal mode, so it has nothing to
+    /// give back until it is engaged again.
     func testANewConnectionOrAWakeEngagesItAgain() {
-        let changes: [(String, (inout Book) -> Void)] = [("connection", { $0.connectionChanged() }),
-                                                         ("wake", { $0.doubtful() })]
-        for (name, change) in changes {
+        let changes: [(String, Bool, (inout Book) -> Void)] = [("connection", false, { $0.connectionChanged() }),
+                                                               ("wake", true, { $0.doubtful() })]
+        for (name, keepsMaybeSet, change) in changes {
             var book = Book()
             book.setWanted(true)
             book.engaged(at: 0)
             change(&book)
             XCTAssertEqual(book.step(for: .mouseAnswered, now: 1), .engage, name)
             XCTAssertEqual(book.state(lastError: nil), .off, name)
-            XCTAssertTrue(book.maybeSet, "\(name): quitting still writes normal mode back")
+            XCTAssertEqual(book.maybeSet, keepsMaybeSet, name)
+            book.engaged(at: 1)
+            XCTAssertTrue(book.maybeSet, "\(name): once engaged again, quitting writes normal mode back")
         }
     }
 
@@ -152,6 +157,304 @@ final class DpiDriverModeTests: XCTestCase {
                        "a new connection is engaged at once, whatever went unanswered on the last")
     }
 
+    // MARK: As the mouse settles
+
+    /// After a wake a real Cobra took driver mode, read it back, and dropped it again a few
+    /// hundred milliseconds later as it finished starting; the poll only saw it 30 seconds
+    /// on. So the first engage on a new connection or after a wake is checked again
+    /// `firstSettlingCheckDelay` and `secondSettlingCheckDelay` later (one-shots at
+    /// `nextEarlyCheck`), and only then does the poll's interval take over.
+    func testTheFirstEngageOnANewConnectionOrAfterAWakeIsCheckedAgainAsTheMouseSettles() {
+        let first = Book.firstSettlingCheckDelay, second = Book.secondSettlingCheckDelay
+        XCTAssertEqual(first, 1)
+        XCTAssertEqual(second, 3)
+        let changes: [(String, (inout Book) -> Void)] = [("connection", { $0.connectionChanged() }),
+                                                         ("wake", { $0.doubtful() })]
+        for (name, change) in changes {
+            var book = Book()
+            book.setWanted(true)
+            change(&book)
+            XCTAssertEqual(book.step(for: .mouseAnswered, now: 100), .engage, name)
+            XCTAssertTrue(book.engaged(at: 100, wrote: true), "\(name): the settling checks start")
+            XCTAssertEqual(book.nextEarlyCheck, 100 + first, name)
+            XCTAssertEqual(book.step(for: .earlyCheck, now: 100 + first - 0.1), .nothing, name)
+            XCTAssertEqual(book.step(for: .earlyCheck, now: 100 + first), .recheck, name)
+            XCTAssertEqual(book.earlyCheckDue(at: 100 + first)?.reason, .settling, name)
+            XCTAssertFalse(book.engaged(at: 100 + first), "\(name): still in driver mode, nothing more starts")
+            XCTAssertEqual(book.nextEarlyCheck, 100 + second, name)
+            XCTAssertEqual(book.step(for: .mouseAnswered, now: 100 + second), .recheck,
+                           "\(name): or from the poll, if it comes first")
+            book.engaged(at: 100 + second)
+            XCTAssertNil(book.nextEarlyCheck, name)
+            XCTAssertEqual(book.step(for: .earlyCheck, now: 100 + second + 1), .nothing, name)
+            XCTAssertEqual(book.step(for: .mouseAnswered, now: 100 + second + interval - 1), .nothing,
+                           "\(name): the poll's interval from the last one")
+            XCTAssertEqual(book.step(for: .mouseAnswered, now: 100 + second + interval), .recheck, name)
+        }
+    }
+
+    /// Only the engage after a new connection or a wake settles: a later one on the same
+    /// connection, after a change of mind for instance, has no early checks. And an early check
+    /// is only ever a check: it never engages, restores or looks for a leftover.
+    func testOnlyAFreshEngageSettlesAndAnEarlyCheckOnlyEverChecks() {
+        var book = Book()
+        book.connectionChanged()
+        book.setWanted(true)
+        book.engaged(at: 0, wrote: true)
+        book.engaged(at: 1)
+        book.engaged(at: 3)
+        book.setWanted(false)
+        XCTAssertEqual(book.step(for: .earlyCheck, now: 4), .nothing, "never a restore")
+        XCTAssertEqual(book.step(for: .wantChanged, now: 4), .restore)
+        book.restored()
+        book.setWanted(true)
+        XCTAssertEqual(book.step(for: .earlyCheck, now: 5), .nothing, "never an engage")
+        XCTAssertEqual(book.step(for: .wantChanged, now: 5), .engage)
+        XCTAssertFalse(book.engaged(at: 5, wrote: true), "the connection has settled")
+        XCTAssertNil(book.nextEarlyCheck)
+
+        var leftover = Book()
+        leftover.answered(at: 0)
+        XCTAssertEqual(leftover.step(for: .earlyCheck, now: 100), .nothing, "never a leftover read")
+        XCTAssertEqual(leftover.step(for: .mouseAnswered, now: 100), .checkLeftover)
+    }
+
+    /// The settling checks are called off when the connection changes, after a wake, when
+    /// driver mode stops being wanted, and when a change fails (the poll's slow retries take
+    /// over). A new connection or wake settles again from its own engage.
+    func testTheSettlingChecksAreCalledOffWhenTheConnectionChangesOrItIsNoLongerWanted() {
+        func settling() -> Book {
+            var book = Book()
+            book.connectionChanged()
+            book.setWanted(true)
+            book.engaged(at: 0, wrote: true)
+            XCTAssertNotNil(book.nextEarlyCheck)
+            return book
+        }
+        var reconnected = settling()
+        reconnected.connectionChanged()
+        XCTAssertNil(reconnected.nextEarlyCheck, "a new connection")
+        XCTAssertEqual(reconnected.step(for: .earlyCheck, now: 1), .nothing)
+        XCTAssertEqual(reconnected.step(for: .mouseAnswered, now: 1), .engage, "engaged afresh instead")
+        XCTAssertTrue(reconnected.engaged(at: 1), "and settling again from there")
+        XCTAssertEqual(reconnected.nextEarlyCheck, 1 + Book.firstSettlingCheckDelay)
+
+        var woke = settling()
+        woke.doubtful()
+        XCTAssertNil(woke.nextEarlyCheck, "a wake")
+
+        var cleared = settling()
+        cleared.setWanted(false)
+        XCTAssertNil(cleared.nextEarlyCheck, "no longer wanted")
+        XCTAssertEqual(cleared.step(for: .earlyCheck, now: 1), .nothing)
+
+        var failing = settling()
+        failing.failed(at: 1)
+        XCTAssertNil(failing.nextEarlyCheck, "a failed change")
+    }
+
+    /// A check that finds the mouse back in normal mode puts driver mode back, and the
+    /// settling checks start over from that write, as the firmware may not be done. At most
+    /// `maxSettlingRounds` rounds per connection or wake: after that a fall-back is still put
+    /// back, and the poll's interval goes on. A fall-back the poll finds on a settled
+    /// connection settles too.
+    func testAFallBackSeenAtASettlingCheckIsPutBackAndTheChecksStartOver() {
+        var book = Book()
+        book.connectionChanged()
+        book.setWanted(true)
+        book.engaged(at: 0, wrote: true)
+        XCTAssertEqual(book.settlingRounds, 1)
+        var now = Book.firstSettlingCheckDelay
+        for round in 2...Book.maxSettlingRounds {
+            XCTAssertEqual(book.step(for: .earlyCheck, now: now), .recheck, "round \(round)")
+            XCTAssertTrue(book.engaged(at: now, wrote: true), "round \(round): written again, and settling starts over")
+            XCTAssertEqual(book.settlingRounds, round)
+            XCTAssertEqual(book.earlyChecks, Book.settlingCheckDelays.map { Book.EarlyCheck(at: now + $0, reason: .settling) },
+                           "round \(round): from the write, the last round's later check replaced")
+            XCTAssertEqual(book.state(lastError: nil), .engaged)
+            now += Book.firstSettlingCheckDelay
+        }
+        XCTAssertEqual(book.step(for: .earlyCheck, now: now), .recheck)
+        XCTAssertFalse(book.engaged(at: now, wrote: true), "the rounds are used up: put back, nothing more starts")
+        XCTAssertEqual(book.state(lastError: nil), .engaged)
+        XCTAssertEqual(book.earlyChecks.count, 1, "only the last round's later check is left")
+
+        var settled = Book()
+        settled.setWanted(true)
+        settled.engaged(at: 0)
+        XCTAssertNil(settled.nextEarlyCheck, "not a fresh connection")
+        XCTAssertEqual(settled.step(for: .mouseAnswered, now: interval), .recheck)
+        XCTAssertTrue(settled.engaged(at: interval, wrote: true), "the poll found it gone")
+        XCTAssertEqual(settled.nextEarlyCheck, interval + Book.firstSettlingCheckDelay)
+    }
+
+    /// A settling check has the limits of any check. One whose write fails counts against
+    /// `maxAttempts` like any change, and the poll retries it slowly. One that goes unanswered
+    /// changes nothing and isn't repeated, though the round's later check still goes.
+    func testASettlingCheckKeepsTheLimitsOfAnyCheck() {
+        var book = Book()
+        book.connectionChanged()
+        book.setWanted(true)
+        book.engaged(at: 0, wrote: true)
+        XCTAssertEqual(book.step(for: .earlyCheck, now: 1), .recheck)
+        book.recheckUnanswered(at: 1)
+        XCTAssertEqual(book.step(for: .earlyCheck, now: 1.5), .nothing, "not repeated")
+        XCTAssertEqual(book.step(for: .mouseAnswered, now: 2), .nothing, "nor from the poll")
+        XCTAssertEqual(book.nextEarlyCheck, 3, "the round's later check still goes")
+        XCTAssertEqual(book.step(for: .earlyCheck, now: 3), .recheck)
+        book.recheckUnanswered(at: 3)
+        XCTAssertNil(book.nextEarlyCheck)
+        XCTAssertEqual(book.step(for: .mouseAnswered, now: 3 + interval - 1), .nothing, "then the poll's interval")
+        XCTAssertEqual(book.step(for: .mouseAnswered, now: 3 + interval), .recheck)
+
+        var failing = Book()
+        failing.connectionChanged()
+        failing.setWanted(true)
+        failing.engaged(at: 0, wrote: true)
+        XCTAssertEqual(failing.step(for: .earlyCheck, now: 1), .recheck)
+        failing.failed(at: 1)
+        XCTAssertEqual(failing.failures, 1, "it counts against the retries")
+        XCTAssertEqual(failing.step(for: .earlyCheck, now: 3), .nothing, "no early retry")
+        XCTAssertEqual(failing.step(for: .mouseAnswered, now: 3), .nothing)
+        XCTAssertEqual(failing.step(for: .mouseAnswered, now: 1 + interval), .engage, "the poll's, an interval later")
+    }
+
+    // MARK: The mouse's notifications
+
+    /// While driver mode is engaged, a notification that the firmware restarted (power state,
+    /// availability) or cycled DPI itself calls for a check at once; a heartbeat, the battery
+    /// or an unknown code doesn't. At most one check a second: the mouse sends several together
+    /// as it starts, and each comes from both of its HID devices.
+    func testANoticeOfARestartCallsForACheckAtOnceAtMostOnceASecond() {
+        var book = Book()
+        book.setWanted(true)
+        book.engaged(at: 0)
+        for notice: MouseNotice in [.heartbeat, .battery, .other(0x7E)] {
+            XCTAssertEqual(book.noticed(notice, at: 10), .irrelevant, notice.name)
+        }
+        XCTAssertNil(book.nextEarlyCheck)
+        XCTAssertEqual(book.noticed(.powerState, at: 10), .check)
+        XCTAssertEqual(book.earlyCheckDue(at: 10)?.reason, .notice(0x0C))
+        XCTAssertEqual(book.step(for: .earlyCheck, now: 10), .recheck, "at once")
+        XCTAssertEqual(book.noticed(.powerState, at: 10.01), .debounced, "its copy from the other device")
+        XCTAssertEqual(book.noticed(.availability(0x03), at: 10.5), .debounced)
+        book.engaged(at: 10.1)
+        XCTAssertNil(book.nextEarlyCheck, "done")
+        XCTAssertEqual(book.noticed(.availability(0x02), at: 11), .check, "a second on")
+        XCTAssertEqual(book.earlyCheckDue(at: 11)?.reason, .notice(0x09))
+        book.engaged(at: 11)
+        XCTAssertEqual(book.noticed(.dpiChanged(x: 4800, y: 4800), at: 12), .check, "the firmware cycling DPI")
+        XCTAssertEqual(book.step(for: .wantChanged, now: 12), .nothing, "only from its own occasion or the poll")
+    }
+
+    /// A notification calls for nothing while driver mode isn't taken for engaged: not
+    /// wanted, not engaged yet, failed, or after a check that went unanswered (the poll's
+    /// interval rules then, so an unanswered read isn't repeated at each notification).
+    func testANoticeCallsForNothingUnlessItIsEngaged() {
+        var book = Book()
+        XCTAssertEqual(book.noticed(.powerState, at: 0), .notEngaged, "not wanted")
+        book.setWanted(true)
+        XCTAssertEqual(book.noticed(.powerState, at: 0), .notEngaged, "not engaged yet")
+        book.failed(at: 0)
+        XCTAssertEqual(book.noticed(.powerState, at: 1), .notEngaged, "failed")
+        book.engaged(at: 2)
+        book.recheckUnanswered(at: 40)
+        XCTAssertEqual(book.noticed(.powerState, at: 41), .notEngaged, "the last check went unanswered")
+        XCTAssertNil(book.nextEarlyCheck)
+        book.engaged(at: 70)
+        XCTAssertEqual(book.noticed(.powerState, at: 71), .check, "until one is answered")
+    }
+
+    /// MacRazer's own DPI changes (the software DPI cycle, a DPI set in the app) are told by
+    /// time: a notification that the DPI changed within `ownDpiChangeWindow` of one, said as
+    /// its write starts and again as it ends, either side, is that change and calls for
+    /// nothing. Later, it is the firmware cycling DPI by itself. Only a DPI change is told apart
+    /// this way: a restart counts whenever it comes.
+    func testTheAppsOwnDpiChangeDoesntCallForACheck() {
+        let window = Book.ownDpiChangeWindow
+        var book = Book()
+        book.setWanted(true)
+        book.engaged(at: 0)
+        book.ownDpiChange(at: 100)
+        book.ownDpiChange(at: 100.3)
+        XCTAssertEqual(book.noticed(.dpiChanged(x: 1200, y: 1200), at: 100.4), .ownDpiChange)
+        XCTAssertEqual(book.noticed(.dpiChanged(x: 1200, y: 1200), at: 100.3 + window - 0.01), .ownDpiChange)
+        XCTAssertEqual(book.noticed(.dpiChanged(x: nil, y: nil), at: 100.2), .ownDpiChange,
+                       "handed on as the write was still going out")
+        XCTAssertNil(book.nextEarlyCheck)
+        XCTAssertEqual(book.noticed(.powerState, at: 100.5), .check, "a restart isn't the app's")
+        book.engaged(at: 100.5)
+        XCTAssertEqual(book.noticed(.dpiChanged(x: 1600, y: 1600), at: 100.3 + window + 0.01), .check,
+                       "past the window: the firmware's")
+    }
+
+    // MARK: The trace from a real Cobra
+
+    /// The sleep and wake a trace of a real Cobra HyperSpeed over Bluetooth recorded, replayed
+    /// on the book with its times. Before, the reconnect got `00 00` from a restore left over
+    /// by the disconnect, then driver mode was engaged and read back, the mouse dropped it by
+    /// itself as it finished starting, and its DPI button cycled DPI in the firmware until the
+    /// poll's check 30 seconds later. Now the disconnect leaves nothing to restore, and the
+    /// drop is caught by the first settling check, a second after the engage, and put back.
+    func testTheWakeFromTheCobraTraceIsPutBackWithinASecondWithoutAStrayRestore() {
+        var book = Book()
+        // Engaged and settled long before.
+        book.connectionChanged()
+        book.answered(at: 500)
+        book.setWanted(true)
+        book.engaged(at: 500, wrote: true)
+        book.engaged(at: 501)
+        book.engaged(at: 503)
+
+        // 634.03, `05 05 09 02 01`: the mouse going to sleep. The check it calls for goes
+        // unanswered, which changes nothing.
+        XCTAssertEqual(book.noticed(.availability(0x02), at: 634.03), .check)
+        XCTAssertEqual(book.step(for: .earlyCheck, now: 634.03), .recheck)
+        book.recheckUnanswered(at: 634.03)
+        // 634.47, its HID device goes, and with it the connection. 635.44, no longer wanted,
+        // as the remapper sees the mouse go.
+        XCTAssertFalse(book.connectionChanged(), "still wanted then: no restore to drop")
+        book.setWanted(false)
+        XCTAssertEqual(book.step(for: .wantChanged, now: 635.44), .nothing, "nothing to give back")
+        // 637.41, the mouse back; 637.86, the first read on the new connection.
+        book.connectionChanged()
+        book.answered(at: 637.86)
+        XCTAssertEqual(book.step(for: .mouseAnswered, now: 637.86), .nothing, "no `00 00` on the new connection")
+        // 637.88, wanted again: read `00 00`, write `03 00`, read back `03 00`.
+        book.setWanted(true)
+        XCTAssertEqual(book.step(for: .wantChanged, now: 637.88), .engage)
+        XCTAssertTrue(book.engaged(at: 637.94, wrote: true), "the settling checks start")
+        // 638.27, `05 05 0c 00` and `05 05 31 d9 ...`: the mouse finishing its start. The check
+        // they call for may still find driver mode.
+        XCTAssertEqual(book.noticed(.powerState, at: 638.27), .check)
+        XCTAssertEqual(book.noticed(.battery, at: 638.27), .irrelevant)
+        XCTAssertEqual(book.noticed(.powerState, at: 638.28), .debounced, "the other device's copy")
+        XCTAssertEqual(book.step(for: .earlyCheck, now: 638.27), .recheck)
+        XCTAssertFalse(book.engaged(at: 638.27))
+        // Then the firmware drops it. The first settling check finds normal mode, long before
+        // the press at 642.70 that the firmware took as a DPI cycle, and puts driver mode back.
+        let first = 637.94 + Book.firstSettlingCheckDelay
+        XCTAssertEqual(book.nextEarlyCheck, first)
+        XCTAssertLessThan(first, 642.70)
+        XCTAssertEqual(book.step(for: .earlyCheck, now: first), .recheck)
+        XCTAssertTrue(book.engaged(at: first, wrote: true), "put back, and settling starts over")
+        for check in Book.settlingCheckDelays.map({ first + $0 }) {
+            XCTAssertEqual(book.step(for: .earlyCheck, now: check), .recheck)
+            XCTAssertFalse(book.engaged(at: check), "it holds now")
+        }
+        XCTAssertNil(book.nextEarlyCheck, "the poll's interval from here")
+
+        // Had the firmware dropped it later still, its own DPI change at a press
+        // (`05 05 02 12 c0 12 c0` at 642.70) calls for a check at once, not 25 seconds later.
+        let later = first + Book.secondSettlingCheckDelay + 1
+        XCTAssertEqual(book.noticed(.dpiChanged(x: 0x12C0, y: 0x12C0), at: later), .check)
+        XCTAssertEqual(book.step(for: .earlyCheck, now: later), .recheck)
+        book.engaged(at: later, wrote: true)
+        // And MacRazer's own DPI cycle, at the next press, calls for nothing.
+        book.ownDpiChange(at: later + 5)
+        XCTAssertEqual(book.noticed(.dpiChanged(x: 0x0320, y: 0x0320), at: later + 5.2), .ownDpiChange)
+    }
+
     // MARK: A driver mode left by an earlier run
 
     /// MacRazer crashed or was killed with the mouse in driver mode, and this run doesn't want
@@ -246,17 +549,82 @@ final class DpiDriverModeTests: XCTestCase {
         XCTAssertEqual(mayHaveSet.step(for: .mouseAnswered, now: late), .restore, "its own write is undone, not read for")
     }
 
-    /// Losing the connection forgets what was verified and what failed, but not what is
-    /// wanted, nor that the mode may have been set.
+    /// Losing the connection forgets what was verified and what failed, and that the mode may
+    /// have been set (it didn't outlast the connection), but not what is wanted.
     func testLosingTheConnectionKeepsWhatIsWanted() {
         var book = Book()
         book.setWanted(true)
         book.engaged(at: 0)
-        book.connectionChanged()
+        XCTAssertFalse(book.connectionChanged(), "wanted: no restore was pending")
         XCTAssertTrue(book.wanted)
-        XCTAssertTrue(book.maybeSet)
+        XCTAssertFalse(book.maybeSet)
         XCTAssertNil(book.verifiedAt)
         XCTAssertEqual(book.failures, 0)
+    }
+
+    // MARK: A disconnect and the restore
+
+    /// Before, a restore of normal mode left pending by a disconnect went to the next
+    /// connection: on the real Cobra, "no longer wanted" came only because the mouse slept and
+    /// its device went away, and the reconnect got `00 00` before driver mode was wanted again.
+    /// Now the disconnect drops the restore: the mouse starts the next connection in normal
+    /// mode anyway. Clearing the action while connected still restores at once.
+    func testADisconnectDropsThePendingRestoreButAClearStillRestores() {
+        var book = Book()
+        book.connectionChanged()
+        book.setWanted(true)
+        book.engaged(at: 0)
+        book.setWanted(false)
+        XCTAssertEqual(book.step(for: .wantChanged, now: 1), .restore, "cleared while connected: restored")
+
+        var gone = Book()
+        gone.connectionChanged()
+        gone.setWanted(true)
+        gone.engaged(at: 0)
+        gone.setWanted(false)
+        XCTAssertTrue(gone.connectionChanged(), "the restore was pending, and is dropped")
+        XCTAssertFalse(gone.maybeSet, "and quitting has nothing to give back")
+        gone.answered(at: 10)
+        XCTAssertEqual(gone.step(for: .mouseAnswered, now: 10), .nothing, "the next connection gets no write")
+        XCTAssertEqual(gone.step(for: .wantChanged, now: 10), .nothing)
+        XCTAssertFalse(gone.connectionChanged(), "dropped once")
+
+        var failedFirst = Book()
+        failedFirst.setWanted(true)
+        failedFirst.engaged(at: 0)
+        failedFirst.setWanted(false)
+        failedFirst.failed(at: 1)
+        XCTAssertTrue(failedFirst.connectionChanged(), "a restore that failed on the old connection is dropped too")
+        failedFirst.answered(at: 100)
+        XCTAssertEqual(failedFirst.step(for: .mouseAnswered, now: 101), .nothing)
+    }
+
+    /// The restore is dropped on the guess that the mouse lost driver mode with the
+    /// connection. Should only MacRazer's own connection have been reopened, with the mouse
+    /// still in driver mode, the once-a-run leftover read is armed again: it reads the mode once
+    /// the new connection has answered for `leftoverCheckDelay`, and writes normal mode only
+    /// where it finds driver mode. A wake keeps the restore pending instead: it is the same
+    /// connection.
+    func testADroppedRestoreLeavesALeftoverReadAndAWakeKeepsIt() {
+        var book = Book()
+        book.setWanted(true)
+        book.engaged(at: 0)
+        book.setWanted(false)
+        book.connectionChanged()
+        book.answered(at: 100)
+        XCTAssertEqual(book.step(for: .mouseAnswered, now: 100 + Book.leftoverCheckDelay - 1), .nothing)
+        XCTAssertEqual(book.step(for: .mouseAnswered, now: 100 + Book.leftoverCheckDelay), .checkLeftover,
+                       "read, not written")
+        XCTAssertFalse(book.leftoverRead(0), "normal mode, as expected: nothing written")
+
+        var woke = Book()
+        woke.setWanted(true)
+        woke.engaged(at: 0)
+        woke.setWanted(false)
+        woke.failed(at: 1)
+        woke.doubtful()
+        XCTAssertTrue(woke.maybeSet)
+        XCTAssertEqual(woke.step(for: .mouseAnswered, now: 2), .restore, "a wake is a fresh chance for the restore")
     }
 
     // MARK: How
