@@ -19,12 +19,13 @@ import IOKit.hid
 /// Main thread only, like the run loop it schedules on. `@unchecked Sendable` states that
 /// discipline, the same as `HIDInputWatcher`.
 final class ButtonCapture: @unchecked Sendable {
-    private let onInput: @Sendable (String) -> Void
+    /// The input's label (`label`) and its chip (`chip`).
+    private let onInput: @Sendable (_ label: String, _ chip: String) -> Void
     private var open: [IOHIDDevice] = []
     /// Retained for the C callback's context, released by `stop()`.
     private var selfContext: UnsafeMutableRawPointer?
 
-    init(onInput: @escaping @Sendable (String) -> Void) {
+    init(onInput: @escaping @Sendable (_ label: String, _ chip: String) -> Void) {
         self.onInput = onInput
     }
 
@@ -51,9 +52,12 @@ final class ButtonCapture: @unchecked Sendable {
                 let element = IOHIDValueGetElement(value)
                 let page = Int(IOHIDElementGetUsagePage(element))
                 let usage = Int(IOHIDElementGetUsage(element))
-                guard let label = ButtonCapture.label(page: page, usage: usage,
-                                                      value: IOHIDValueGetIntegerValue(value)) else { return }
-                Unmanaged<ButtonCapture>.fromOpaque(context).takeUnretainedValue().onInput(label)
+                let integer = IOHIDValueGetIntegerValue(value)
+                guard let label = ButtonCapture.label(page: page, usage: usage, value: integer) else { return }
+                let direction = ButtonCapture.signed(integer, logicalMin: IOHIDElementGetLogicalMin(element),
+                                                     logicalMax: IOHIDElementGetLogicalMax(element))
+                Unmanaged<ButtonCapture>.fromOpaque(context).takeUnretainedValue()
+                    .onInput(label, ButtonCapture.chip(label: label, value: direction))
             }, context)
             IOHIDDeviceScheduleWithRunLoop(device, CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue)
             opened.append(device)
@@ -83,20 +87,45 @@ final class ButtonCapture: @unchecked Sendable {
     /// Which inputs count, as "page:usage" in hex: a press (nonzero value) of a mouse button
     /// other than left and right, a keyboard key, or a consumer control such as a media key.
     /// Everything else (movement, the wheel, releases) is nil.
+    ///
+    /// A usage past 0xFFFF isn't a control. Razer's consumer interface sends 0xFFFFFFFF next
+    /// to every media key, and the Worker turns down a report whose label runs past four hex
+    /// digits.
     static func label(page: Int, usage: Int, value: Int) -> String? {
         guard value != 0 else { return nil }
         switch page {
-        case kHIDPage_Button where usage >= 3,
+        case kHIDPage_Button where (3...0xFFFF).contains(usage),
              kHIDPage_KeyboardOrKeypad where (0x04...0xE7).contains(usage),
-             kHIDPage_Consumer where usage != 0:
+             kHIDPage_Consumer where (0x01...0xFFFF).contains(usage):
             return String(format: "%02x:%02x", page, usage)
         default:
             return nil
         }
     }
 
+    /// A relative control's value as a signed number, for `chip`'s tilt direction. One
+    /// described with a range that starts at zero (0...255 for a byte) still means negative in
+    /// its upper half: a tilt left sends 0xFF for -1. A range below zero is signed already.
+    static func signed(_ value: Int, logicalMin: Int, logicalMax: Int) -> Int {
+        guard logicalMin >= 0, logicalMax > 0, value > logicalMax / 2 else { return value }
+        return value - (logicalMax + 1)
+    }
+
+    /// AC Pan, which a tilting wheel sends for both directions.
+    static let panLabel = String(format: "%02x:%02x", kHIDPage_Consumer, kHIDUsage_Csmr_ACPan)
+
+    /// What the step shows a chip for: the label, except a tilt, which gets one chip per
+    /// direction so the person doesn't read the second tilt as a button that didn't show up.
+    /// Only for the screen: the report keeps the label, the format the Worker checks.
+    static func chip(label: String, value: Int) -> String {
+        guard label == panLabel else { return label }
+        return label + (value < 0 ? "<" : ">")
+    }
+
     /// A name a person would recognise, for the step's list: "Button 4", "Key 1", "Media key".
     static func friendlyName(_ label: String) -> String {
+        if label == panLabel + "<" { return "Tilt left" }
+        if label == panLabel + ">" { return "Tilt right" }
         let parts = label.split(separator: ":").compactMap { Int($0, radix: 16) }
         guard parts.count == 2 else { return label }
         let (page, usage) = (parts[0], parts[1])
