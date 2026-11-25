@@ -574,7 +574,7 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(RazerDevices.notOnMouse(pid: 0x009E), [.lighting])
         XCTAssertTrue(RazerDevices.hasBattery(pid: 0x009E))
         // Lighting acknowledged but not seen working everywhere: hidden until a report settles it.
-        for pid in [0x0086, 0x008C] {
+        for pid in [0x008C] {
             XCTAssertEqual(RazerDevices.unverified(pid: pid), [.lighting], String(format: "0x%04X", pid))
             XCTAssertFalse(RazerDevices.hasLighting(pid: pid), String(format: "0x%04X", pid))
         }
@@ -811,6 +811,19 @@ final class RazerDevicesTests: XCTestCase {
                        ["LEFT_SIDE"])
         // Basilisk Ultimate over the dongle: one pass and one fail on 0.10.0, still hidden.
         XCTAssertFalse(RazerDevices.hasLighting(pid: 0x0088))
+    }
+
+    /// The reports of 2026-11-24 and 11-25.
+    func testMiceFromTheNovemberTwentyFifthReports() {
+        // Basilisk Ultimate on the cable: the per-zone red reached every zone.
+        XCTAssertTrue(RazerDevices.hasLighting(pid: 0x0086))
+        XCTAssertEqual(RazerDevices.unverified(pid: 0x0086), [])
+        XCTAssertEqual(RazerDevices.connection(pid: 0x0086), .wired)
+        XCTAssertEqual(RazerDevices.brightnessLeds(pid: 0x0086), [0x04, 0x01, 0x11, 0x10])
+        // Its dongle and the V3 Pro 35K cable still wait.
+        XCTAssertFalse(RazerDevices.hasLighting(pid: 0x0088))
+        XCTAssertFalse(RazerDevices.hasLighting(pid: 0x00CC))
+        XCTAssertEqual(RazerDevices.unverified(pid: 0x00CC), [.lighting])
     }
 
     /// Only a mouse whose id is a guess gets searched: one not on record, or on record with
