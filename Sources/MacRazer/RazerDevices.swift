@@ -293,8 +293,9 @@ enum RazerDevices {
         // until the effect reaches them all. 20000 is the vendor spec, as on the dongle.
         // A 0.10.0 report (firmware v1.7, 2026-11-25), with red sent to each zone, passed
         // lighting: LOGO and SCROLL dimmed, every zone took the red and the owner saw it. So
-        // the effect reaches them all now, and the lighting controls show.
-        .init(pid: 0x0086, name: "Razer Basilisk Ultimate (Wired)", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 20000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
+        // the effect reaches them all now, and the lighting controls show. SCROLL answered
+        // brightness in every report, so it's recorded for the slider.
+        .init(pid: 0x0086, name: "Razer Basilisk Ultimate (Wired)", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 20000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
         // Basilisk (in-app report on 0.9.0, firmware v1.0, no credit given): DPI and polling
         // passed with 0x1f, and every id answers. The battery read answers 0x05. LOGO and SCROLL
         // answer brightness, but both read 0 (the lights were off), and the owner saw no red, so
