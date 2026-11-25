@@ -27,6 +27,41 @@ final class SideButtonResetTests: XCTestCase {
         XCTAssertEqual(remaps.map { SideButtonReset.describe($0.current) }, ["⌃V", "⌃C"])
     }
 
+    // MARK: - USB reads carry the current block only
+
+    func testAUSBReadOfCtrlVIsARemap() throws {
+        let remap = try XCTUnwrap(SideButtonReset.remap(id: 4, block: [0x02, 0x02, 0x01, 0x19, 0, 0, 0]))
+        XCTAssertEqual(remap.factory, SideButtonReset.mouseBlock(4))
+        XCTAssertEqual(SideButtonReset.describe(remap.current), "⌃V")
+    }
+
+    func testAUSBFactoryBlockIsNoRemap() {
+        XCTAssertNil(SideButtonReset.remap(id: 4, block: SideButtonReset.mouseBlock(4)))
+    }
+
+    func testAUSBEmptyBlockIsNoRemap() {
+        XCTAssertNil(SideButtonReset.remap(id: 4, block: [0, 0, 0, 0, 0, 0, 0]))
+    }
+
+    func testAUSBReplyForAnotherEntryHasNoBlock() {
+        var reply = RazerReport(commandClass: 0x02, commandId: 0x8C, dataSize: 0x0A)
+        reply.arguments[1] = 0x05
+        reply.arguments[3] = 0x02
+        XCTAssertNil(SideButtonReset.usbBlock(id: 0x04, reply: reply))
+        XCTAssertEqual(SideButtonReset.usbBlock(id: 0x05, reply: reply), [0x02, 0, 0, 0, 0, 0, 0])
+    }
+
+    func testTheUSBNoticeNamesTheActiveProfile() {
+        let remap = SideButtonReset.Remap(id: 4, current: [0x02, 0x02, 0x01, 0x19, 0, 0, 0],
+                                          factory: SideButtonReset.mouseBlock(4))
+        XCTAssertTrue(SideButtonReset.noticeText([remap], activeProfileOnly: true).contains("the profile the mouse is using"))
+        XCTAssertTrue(SideButtonReset.noticeText([remap]).contains("in the mouse itself"))
+    }
+
+    func testUSBOnlyOffersTheSideButtons() {
+        XCTAssertNil(SideButtonReset.remap(id: 1, block: [0x02, 0x02, 0, 0x04, 0, 0, 0]))
+    }
+
     func testAButtonOnItsFactoryFunctionIsNoRemap() {
         XCTAssertNil(SideButtonReset.remap(id: 4, payload: reply([4, 0, 1, 1, 1, 1, 4, 4, 0, 0, 0, 0])))
     }

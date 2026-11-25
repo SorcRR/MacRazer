@@ -411,8 +411,10 @@ long content scrolls without resizing the popover):
 - **Buttons page**, `RemapView.swift` embedded (see §6.3).
 
 ### 6.3 Button remapping, `ButtonRemapper.swift` + `RemapView.swift`
-**Software** remapping via a `CGEvent` tap (the onboard-remap protocol isn't in OpenRazer and
-Razer's EULA forbids reverse-engineering it, see CHANGELOG / chat). The tap watches
+**Software** remapping via a `CGEvent` tap. The app writes the mouse's own function table in
+one narrow case only: **resetting** side buttons Synapse changed, back to their factory
+blocks (`SideButtonReset.swift`). Arbitrary onboard assignment is not implemented, and the
+protocol for it isn't in OpenRazer; see CHANGELOG / chat. The tap watches
 `otherMouseDown/Up`; for a mapped button it **suppresses the original event and posts the
 mapped action** (events the app itself posts are tagged and skipped to avoid loops). Only the
 side buttons (Back/Forward = buttons 4/5) emit OS-level events and are remappable; DPI/profile
@@ -427,6 +429,14 @@ buttons are handled onboard and never reach macOS.
 - Another app's event tap can take a side button's clicks before MacRazer's sees them. Until a
  side button gets through, the page names any such app that's running
  (`ButtonRemapper.competingTapApps`, from `CGGetEventTapList`, Apple's own processes left out).
+
+**Onboard reset**, `SideButtonReset.swift`. Over Bluetooth (Cobra HyperSpeed) it reads entries
+0x04/0x05 with their factory blocks and writes the factory one back to every profile slot
+that holds the remap. Over USB (Viper Ultimate, `resetsOnboardSideButtonsOverUSB`) the reply
+carries the current block only, so the factory one is taken to be the side button itself; the
+write goes to the active profile, is read back, and the notice says "active profile" rather
+than counting slots. `MacRazer buttons` prints the same table, and `buttons reset` performs
+the reset without the GUI.
 
 ### 6.3.1 Reverse scrolling, `ScrollSettings.swift` and `ScrollDirection.swift`
 
