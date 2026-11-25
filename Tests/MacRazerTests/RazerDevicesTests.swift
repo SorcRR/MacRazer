@@ -211,7 +211,7 @@ final class RazerDevicesTests: XCTestCase {
     func testVerifiedAndUnverifiedFeatures() {
         XCTAssertEqual(RazerDevices.unverified(pid: 0x00DB), [])
         XCTAssertTrue(RazerDevices.fullySupported(pid: 0x00DB))
-        XCTAssertEqual(RazerDevices.unverified(pid: 0x00EA), [.polling])
+        XCTAssertEqual(RazerDevices.unverified(pid: 0x00EA), [.polling, .lighting])
         XCTAssertFalse(RazerDevices.fullySupported(pid: 0x00EA))
         XCTAssertNil(RazerDevices.unverified(pid: 0x9999))
         // Verified from 0.7.0 reports. The DeathAdder V2 Pro has no cable row yet, so it
@@ -265,7 +265,7 @@ final class RazerDevicesTests: XCTestCase {
                        "the dongle is fully supported now")
         // Polling counts too on a polling_rate2 mouse: the test now checks it there.
         XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00EA), [Link(connection: .wired, missing: [.lighting])])
-        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00EB), [Link(connection: .wirelessDongle, missing: [.polling])])
+        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00EB), [Link(connection: .wirelessDongle, missing: [.polling, .lighting])])
         // Fully supported on every link it has a row for.
         XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00E8), [])
         XCTAssertEqual(RazerDevices.linksToTest(besides: 0x0090), [], "Naga Pro, both links verified")
@@ -458,8 +458,8 @@ final class RazerDevicesTests: XCTestCase {
     func testPollingRate2MiceAreAskedAboutPolling() {
         for pid in [0x00EA, 0x00E6] {
             let ask = RazerDevices.ask(pid: pid)
-            XCTAssertEqual(RazerDevices.unverified(pid: pid), [.polling], String(pid, radix: 16))
-            XCTAssertEqual(ask.here, [.polling], String(pid, radix: 16))
+            XCTAssertEqual(RazerDevices.unverified(pid: pid)?.contains(.polling), true, String(pid, radix: 16))
+            XCTAssertTrue(ask.here.contains(.polling), String(pid, radix: 16))
             XCTAssertTrue(ask.needsReport, String(pid, radix: 16))
             XCTAssertNotEqual(RazerDevices.support(pid: pid), .full, "still not counted as working")
         }
@@ -532,10 +532,10 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(RazerDevices.connection(pid: 0x00E6), .wirelessDongle)
         XCTAssertEqual(RazerDevices.connection(pid: 0x00EB), .wired)
         // The cables have passed polling with polling_rate2 since. The V4 HyperSpeed's cable
-        // still waits on lighting, and its dongle on polling with its own command.
+        // still waits on lighting, and its dongle on polling with its own command and lighting.
         XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00E6), [])
         XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00EA), [.init(connection: .wired, missing: [.lighting])])
-        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00EB), [.init(connection: .wirelessDongle, missing: [.polling])])
+        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x00EB), [.init(connection: .wirelessDongle, missing: [.polling, .lighting])])
 
         XCTAssertTrue(RazerDevices.fullySupported(pid: 0x00D1), "Pro Click V2")
         XCTAssertFalse(RazerDevices.hasLighting(pid: 0x00D1))

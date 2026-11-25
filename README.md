@@ -157,7 +157,7 @@ says so.
 | Razer DeathAdder V2 Pro (Wired) | Battery, DPI, DPI stages, polling, lighting, brightness | anonymous reports |
 | Razer Viper Ultimate (Wired) | Battery, DPI, polling, lighting | anonymous report |
 | Razer Taipan | DPI, polling; lighting not working yet | anonymous report |
-| Razer Basilisk V4 HyperSpeed (wired + wireless) | Battery, DPI, DPI stages, lighting and brightness over the dongle, thumb-button remaps saved in the mouse over the dongle. Polling confirmed on the cable; the dongle's polling and the cable's lighting still wait on a test report | [@k4ton](https://github.com/k4ton) and anonymous reports |
+| Razer Basilisk V4 HyperSpeed (wired + wireless) | Battery, DPI, DPI stages, thumb-button remaps saved in the mouse over the dongle. Polling confirmed on the cable. Lighting and brightness work over the dongle but wait on a test report to confirm, as do the dongle's polling and the cable's lighting | [@k4ton](https://github.com/k4ton) and anonymous reports |
 | Razer Viper V4 Pro (wired + wireless) | Battery, DPI, DPI stages; polling up to 8000 Hz on the cable; over the dongle the rate doesn't change yet, so the picker is hidden there | Robotxm, Kartas and an anonymous report |
 | Razer Viper 8KHz | DPI, DPI stages, polling up to 8000 Hz, lighting, brightness (wired only) | anonymous reports |
 | Razer Mouse Dock Pro (with a Naga V3 Pro or Basilisk V4 HyperSpeed) | Battery, DPI, polling up to 8000 Hz; lighting and brightness with a Naga V3 Pro (the dock lights only what the mouse has) | maesta2, Kartas and an anonymous report |
