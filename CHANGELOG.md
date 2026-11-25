@@ -38,6 +38,12 @@ expect rough edges until 1.0.
   tested. Before, the app took it for a mouse.
 
 ### Fixed
+- **A remapped button is never left held down in an app.** A remapped button's release was
+  swallowed whenever the button was still remapped, whatever had happened to its press. A
+  press let through while the mouse was offline can bring the mapping back before the button
+  is released, and the app that saw the press then kept the button held down. The other way
+  round, remapping a button to None mid-press let a release through whose press no app had
+  seen. Each release now goes the way its press went.
 - **Battery history keeps a whole long charge.** It saved a reading every 4 seconds, even
   when nothing changed, and hit its limit after about a day of use. A long-lasting mouse lost
   the start of its charge from the usage chart and the estimate. A steady reading is now kept
