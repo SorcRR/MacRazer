@@ -13,9 +13,33 @@ expect rough edges until 1.0.
   Mission Control up, Launchpad down, the next Space left and the previous Space right, so
   the Spaces move the way a trackpad drags the desktop; Click is what the button did before.
   Each of the five slots takes any normal action: a shortcut preset, Launchpad, a recorded
-  shortcut, a mouse click, a media key or None. A swipe fires once per hold, as soon
-  as the movement along the stronger axis reaches 50 points. The pointer isn't frozen while
-  you hold the button, and pointer drags are only watched while a button is a gesture.
+  shortcut, a mouse click, a media key or None. A swipe fires once per hold, as soon as the
+  movement along the stronger axis reaches 50 points, and Mission Control, the Spaces and,
+  where its trackpad gesture is on, App Exposé follow the pointer instead (see the entry
+  below). The pointer isn't frozen while you hold the button, and pointer drags are only
+  watched while a button is a gesture.
+- **Gestures that follow the pointer.** In a gesture, Mission Control, Space Left and Space
+  Right don't type a keyboard shortcut. They are driven as the trackpad's own dock swipe
+  events, so the Spaces transition or Mission Control follows the pointer while the button is
+  held, and the Dock finishes it or snaps it back when you let go. With the default slots the
+  desktop moves with the hand, as on a trackpad. After a 12 point dead zone the stronger axis
+  is locked. The direction follows your slots: moving towards the slot that holds Space Left
+  goes to the Space on the left. Moving back past the start goes into the opposite slot's
+  swipe only when that is the same swipe the other way, and otherwise stops at the start, so
+  a swipe up taken back down never turns into the Launchpad below it. Letting go sends the end
+  with the hand's velocity, so a flick finishes a short swipe, and cancels when the pointer
+  was coming back. The end is sent again after 0.2 s and 0.5 s in case the Dock misses it,
+  and a hold that ends early cancels an open swipe. App Exposé follows the pointer only while
+  its trackpad gesture is on (System Settings › Trackpad › More Gestures, off out of the box),
+  as the Dock ignores the swipe otherwise; then it is the ⌃↓ shortcut, fired once at 50
+  points. Launchpad, a custom shortcut, a media key or a mouse click in a slot fire once at
+  50 points too. On macOS 27, which ignores these event fields, all four presets stay keyboard
+  shortcuts (⌃↑ ⌃↓ ⌃← ⌃→), which have to be on in System Settings › Keyboard › Keyboard
+  Shortcuts › Mission Control. The event format is undocumented macOS behaviour, learned from
+  Mac Mouse Fix (credited in NOTICE.md) and written independently. Tried on a real mouse on
+  macOS 26.3: the Spaces animation follows the pointer for horizontal swipes and a vertical
+  swipe was driven; App Exposé as a swipe did nothing there, with its trackpad gesture off.
+  The constants have not been tuned.
 - **Launchpad for any button.** It has no keyboard shortcut, so MacRazer opens the app itself.
   On macOS 26 that's Apps, which replaced Launchpad, and the menus call it Apps there. It's in
   every button's shortcut list, next to Mission Control and the Spaces, and it's the gesture's

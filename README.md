@@ -44,7 +44,8 @@ Razer mice that use the same HID protocol family, but those are untested, so tre
 - **Button remapping** for the side Back/Forward buttons (software, via a CGEvent tap):
   keyboard shortcuts (presets or a custom recorder), mouse clicks, media keys, Launchpad, or a
   **gesture**: hold the button and move the mouse to run a different action for each
-  direction (see [Gesture mode](#gesture-mode)). Saved per device. If another mouse app (Mac
+  direction, with Mission Control and the Spaces following the pointer like a trackpad swipe
+  (see [Gesture mode](#gesture-mode)). Saved per device. If another mouse app (Mac
   Mouse Fix, SteerMouse, BetterMouse) takes the side buttons' clicks first, the page names it
   so you know which one to quit.
 - **Reverse scrolling on Razer mice**, under Settings › General. Reverses wheel and tilt
@@ -258,12 +259,41 @@ moving and the **Click** action runs.
 - **Each of the five slots** takes any ordinary action: a shortcut preset, Launchpad, a
   recorded shortcut, a mouse click, a media key, or None. A gesture can't be nested inside a
   gesture.
-- **A swipe fires once per hold**, as soon as the movement along the stronger axis reaches 50
-  points, not at release, so Mission Control opens while your hand is still moving. Going right
-  and then back again counts as no movement, so it is still a click.
-- **Mission Control, App Exposé and the Spaces** are sent as their keyboard shortcuts (⌃↑, ⌃↓,
-  ⌃←, ⌃→), so they have to be on in System Settings › Keyboard › Keyboard Shortcuts › Mission
-  Control. App Exposé ⌃↓ is also a new preset in every button's Shortcut menu.
+- **Other actions fire once per hold**, as soon as the movement along the stronger axis reaches
+  50 points, not at release. This is what Launchpad, a custom shortcut, a media key or a mouse
+  click in a slot does. Going right and then back again counts as no movement, so it is still
+  a click.
+- **Mission Control, Space Left and Space Right follow the pointer.** In a gesture, these
+  presets don't type a shortcut. MacRazer sends the same kind of swipe events a trackpad does,
+  so the Spaces transition or Mission Control moves with the pointer while you hold the
+  button, and finishes or snaps back when you release. With the default slots the desktop
+  moves with your hand, as on a trackpad. A flick finishes it even if it hasn't gone far;
+  moving back to where you started cancels it.
+  - Nothing happens until the pointer has moved 12 points. Then the stronger axis is locked for
+    the rest of the hold, as on a trackpad.
+  - Which way is forward follows your slots: moving towards the slot that holds Space Left goes
+    to the Space on the left, whichever slot that is. You can move back past the start into the
+    opposite slot's swipe only when that slot holds the same swipe the other way (Space Right
+    opposite Space Left, App Exposé opposite Mission Control). Otherwise the swipe stops at its
+    start: you can take it back, but not turn it into something else. With the defaults, a
+    swipe up taken back down stops at the start rather than opening Launchpad.
+  - **App Exposé** follows the pointer too, but only while its trackpad gesture is on (System
+    Settings › Trackpad › More Gestures › App Exposé, off out of the box): the Dock ignores the
+    swipe otherwise. While it is off, App Exposé in a slot is the ⌃↓ shortcut, fired once at 50
+    points. MacRazer looks at that setting each time you press the button.
+  - How far you have to move scales with the screen under the pointer: about one screen width
+    for a Space, and the screen's height for Mission Control. These numbers are untuned
+    starting points.
+  - **On macOS 27 and later** these events are ignored, so the presets go back to sending
+    their keyboard shortcuts (⌃↑, ⌃↓, ⌃←, ⌃→). They then fire once at 50 points like any other
+    action, and have to be on in System Settings › Keyboard › Keyboard Shortcuts › Mission
+    Control. App Exposé ⌃↓ is also a new preset in every button's Shortcut menu.
+  - The event format is undocumented macOS behaviour. It was learned from
+    [Mac Mouse Fix](https://github.com/noah-nuebling/mac-mouse-fix) (see
+    [NOTICE.md](NOTICE.md)) and written independently here; no code from it is used.
+  - **Tried on real hardware** on macOS 26.3: the Spaces animation follows the pointer for
+    horizontal swipes, and a vertical swipe was driven. App Exposé as a swipe did nothing
+    there, with its trackpad gesture off, which is why it falls back to the shortcut.
 - **Launchpad** has no keyboard shortcut, so MacRazer opens the app itself. On macOS 26 that is
   **Apps**, which replaced Launchpad, and the menus call it that. It's in every button's
   Shortcut menu, next to the system presets, not only in a gesture.

@@ -124,9 +124,14 @@ struct RemapView: View {
             + "its clicks. Quit \(pronoun) and try again."
     }
 
-    /// How the gesture editor says a gesture is made.
-    nonisolated static func gestureEditorExplanation() -> String {
+    /// How the gesture editor says a gesture is made. `followsPointer`: the four system swipes
+    /// follow the pointer on this Mac (`DockSwipe.isSupported`), so the text says so.
+    nonisolated static func gestureEditorExplanation(followsPointer: Bool = DockSwipe.isSupported) -> String {
         "Hold the button and move the mouse up, down, left or right. "
+            + (followsPointer
+                ? "Mission Control and the Spaces follow the pointer while you hold it, and so does App Exposé "
+                    + "with its trackpad gesture on. "
+                : "")
             + "Press and release it without moving to click."
     }
 

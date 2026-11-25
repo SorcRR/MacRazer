@@ -29,6 +29,12 @@ It is GPL because it is derived from OpenRazer (see below).
  by **[@pilotmoon](https://github.com/pilotmoon)** documents identifying a scroll event's
  HID sender and preserving its line, pixel and fixed-point deltas. MacRazer's scroll
  reversal is implemented here using the system interfaces; no Scroll Reverser code is bundled.
+- **Dock-swipe research:** [Mac Mouse Fix](https://github.com/noah-nuebling/mac-mouse-fix) by
+ **[Noah Nübling](https://github.com/noah-nuebling)** documents the events macOS uses for the
+ trackpad's Spaces and Mission Control swipes (their types, fields, phases and scale), and
+ [InstantSpaceSwitcher](https://github.com/jurplel/InstantSpaceSwitcher) by
+ **[@jurplel](https://github.com/jurplel)** confirmed their direction. The gesture swipes that
+ follow the pointer are implemented here from that format; no code from either is bundled.
 - Hardware findings unique to this project (e.g. brightness living on the LOGO LED, the
  31 ms request/response timing on macOS) were verified on real hardware and are documented
  in [`docs/DOCUMENTATION.md`](docs/DOCUMENTATION.md).
