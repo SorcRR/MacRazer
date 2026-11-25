@@ -28,6 +28,8 @@ expect rough edges until 1.0.
   - **Basilisk V3 Pro 35K over its dongle:** lighting works now, so the popover shows its
     lighting controls. On the cable it still waits on a clear result.
   - **Basilisk V3 35K:** DPI, polling and lighting all passed.
+  - **Basilisk Ultimate on its cable:** lighting works now, and colours reach the side
+    strips too, so the popover shows its lighting controls.
   - **Basilisk:** lighting works now, so it's fully supported.
   - **Mouse Dock V2 Pro** and the **Basilisk V4 HyperSpeed on its cable:** polling
     confirmed. The dock goes up to 8000 Hz.

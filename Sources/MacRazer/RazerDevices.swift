@@ -291,7 +291,11 @@ enum RazerDevices {
         // goes to ZERO_LED, and the zone effect read answers on 0x01, 0x04, 0x10 and 0x11 (the
         // scroll wheel, the logo and the two side strips), so the lighting controls stay hidden
         // until the effect reaches them all. 20000 is the vendor spec, as on the dongle.
-        .init(pid: 0x0086, name: "Razer Basilisk Ultimate (Wired)", unverified: [.lighting], hasBattery: true, hasLighting: false, maxDPI: 20000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
+        // A 0.10.0 report (firmware v1.7, 2026-11-25), with red sent to each zone, passed
+        // lighting: LOGO and SCROLL dimmed, every zone took the red and the owner saw it. So
+        // the effect reaches them all now, and the lighting controls show. SCROLL answered
+        // brightness in every report, so it's recorded for the slider.
+        .init(pid: 0x0086, name: "Razer Basilisk Ultimate (Wired)", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 20000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
         // Basilisk (in-app report on 0.9.0, firmware v1.0, no credit given): DPI and polling
         // passed with 0x1f, and every id answers. The battery read answers 0x05. LOGO and SCROLL
         // answer brightness, but both read 0 (the lights were off), and the owner saw no red, so
@@ -424,6 +428,9 @@ enum RazerDevices {
         // No cable test, as on the first dock.
         // A 0.10.0 report (2026-11-24) passed polling with polling_rate2: it read 8000 Hz, set
         // 500 Hz and went back, so the picker goes to 8000 as on the first dock.
+        // Another (2026-11-25) passed polling again, 2000 Hz to 500 and back. Identify failed:
+        // the firmware read 0.0 on most ids, likely the dock answering with no mouse awake on
+        // it. The row stands.
         .init(pid: 0x00F1, name: "Razer Mouse Dock V2 Pro", unverified: [], hasBattery: true, hasLighting: true, maxDPI: 35000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, hasCableLink: false, usesPollingRate2: true, maxPollingRate: 8000),
         // HyperFlux V2 charging mat: like the Mouse Dock Pro, the mat is the receiver for the
         // mouse on it, so what answers is that mouse. The one report (no credit given) passed
@@ -618,6 +625,10 @@ enum RazerDevices {
         // A 0.10.0 report (firmware v3.0, 2026-11-22), the first with red sent to each zone:
         // the red showed, the dim didn't. The dim only reaches LOGO and SCROLL, the groups the
         // sweep asks; the underglow (0x0A) took the red but may have stayed lit. Still hidden.
+        // Four more 0.10.0 reports (firmware v3.0, 2026-11-24 to 11-25, likely one owner) split
+        // two and two. The red showed every time; each fail was the dim. That fits the
+        // underglow staying lit, which the next release's test dims too, so a report on it
+        // settles this.
         .init(pid: 0x00CC, name: "Razer Basilisk V3 Pro 35K (Wired)", unverified: [.lighting], hasBattery: true, hasLighting: false, maxDPI: 35000, transactionId: 0x1f, matrixTransactionId: 0x1f, extraBrightnessLeds: [Razer.scrollLed], connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil),
         // Its dongle (in-app report on firmware v2.50, no credit given): battery, DPI and
         // stages, and polling passed. Lighting failed, as on the cable's first report. A

@@ -167,7 +167,7 @@ says so.
 | Razer Naga Hex V2 | DPI, polling; lighting not working yet | foivos92 |
 | Razer Mamba Tournament Edition | DPI, polling; lighting not working yet | anonymous report |
 | Razer Naga X | DPI, DPI stages, polling; lighting not working yet | anonymous report |
-| Razer Basilisk Ultimate (wired + wireless) | Battery, DPI, DPI stages, polling; lighting hidden for now (it dims over the dongle, but colours didn't show) | anonymous reports |
+| Razer Basilisk Ultimate (wired + wireless) | Battery, DPI, DPI stages, polling; lighting and brightness on the cable (over the dongle it waits on a clear result) | anonymous reports |
 | Razer Basilisk | DPI, DPI stages, polling, lighting, brightness | anonymous reports |
 | Razer DeathAdder V2 Mini | DPI, DPI stages, polling; lighting not confirmed yet | anonymous reports |
 | Razer Basilisk V3 Pro 35K (Wireless) | Battery, DPI, DPI stages, polling, lighting, brightness | anonymous reports |
