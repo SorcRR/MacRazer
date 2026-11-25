@@ -642,7 +642,11 @@ private struct DpiCycleBindingSection: View {
                             .fixedSize(horizontal: false, vertical: true)
                         Spacer()
                         if remapper.dpiActionNeedsInputMonitoring {
-                            Button("Input Monitoring") { SystemSettingsPanes.openInputMonitoring() }
+                            Button("Input Monitoring") {
+                                // Asked first, so MacRazer is in the list the pane opens on.
+                                ButtonRemapper.askForInputMonitoring()
+                                SystemSettingsPanes.openInputMonitoring()
+                            }
                                 .font(.system(size: 10))
                         }
                     }

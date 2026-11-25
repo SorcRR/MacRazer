@@ -1537,6 +1537,15 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         send(want)
     }
 
+    /// Asks macOS for Input Monitoring. Asking is what puts the app in the list in System
+    /// Settings, with a switch to turn on; an app that only looks (`IOHIDCheckAccess`) is never
+    /// listed, and the user is left to add it by hand with the + button. The first time it
+    /// also shows macOS's own prompt; once answered, asking again changes nothing. Called once
+    /// when the DPI button starts waiting for the permission, and from the page's button.
+    static func askForInputMonitoring() {
+        _ = IOHIDRequestAccess(kIOHIDRequestTypeListenEvent)
+    }
+
     /// Starts or stops the permission timer as `DpiDriverModeNeed.rechecksPermissions` says:
     /// it runs only while driver mode waits for a permission and the mouse is connected, and
     /// stops at the first look that finds the permission there or the wait over.
@@ -1553,6 +1562,7 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
             permissionRecheckTimer = timer
             GestureDebugLog.log("PERMISSIONS DPI button waits for \(lastDpiDriverModeNeed), looking every "
                                 + "\(Int(Self.permissionRecheckInterval)) s")
+            if lastDpiDriverModeNeed == .inputMonitoring { Self.askForInputMonitoring() }
         } else if !waits, let timer = permissionRecheckTimer {
             timer.invalidate()
             permissionRecheckTimer = nil
