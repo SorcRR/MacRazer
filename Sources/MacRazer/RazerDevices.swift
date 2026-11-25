@@ -245,8 +245,8 @@ enum RazerDevices {
         // sleep timeout, low battery level and button table answered over the shared BLE layer.
         // Brightness answered on 0x0A only, and the zone effect on 0x00 and 0x0A. As with the
         // V3 Pro 35K, nobody has set DPI or lighting over Bluetooth yet, so both stay unverified
-        // and lighting stays hidden. 26000 is the vendor spec.
-        .init(pid: 0x00EC, name: "Razer Basilisk V4 HyperSpeed (Bluetooth)", unverified: [.dpi, .lighting], hasBattery: true, hasLighting: false, maxDPI: 26000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .bluetooth, silhouette: .cobra, dischargeCurveModelKey: nil),
+        // and lighting stays hidden. 33000 is the vendor spec (Focus X 33K Gen-3), as on USB.
+        .init(pid: 0x00EC, name: "Razer Basilisk V4 HyperSpeed (Bluetooth)", unverified: [.dpi, .lighting], hasBattery: true, hasLighting: false, maxDPI: 33000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .bluetooth, silhouette: .cobra, dischargeCurveModelKey: nil),
         // Plain Cobra per razermouse_driver.c: 0xFF for standard/misc (serial :1509,
         // polling :2011/:2193, DPI :2600/:2781) but 0x1f for every extended-matrix
         // command (brightness :4202/:4312, spectrum :4622, static :5085, none :5301).
