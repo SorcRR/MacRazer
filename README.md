@@ -395,8 +395,10 @@ Both mice:
 - **What has been tried on a real Cobra:** the entry write, with the read before and the read
   back. A trace on a Cobra over Bluetooth captured the device mode write accepted and read back,
   the link staying stable, the two keys behaving as described and normal mode restored on quit.
-  Not yet verified as a finished feature: the app's own code path, re-arming after sleep and
-  wake, and the software DPI cycle.
+  The finished feature was then used on that mouse: hold and swipe on the DPI button, the short
+  press doing Click, the software DPI cycle stepping one stage per press, and the periodic
+  check finding the mouse still in driver mode over a session of about an hour. Not yet tried:
+  re-arming after the mouse sleeps or the Mac wakes, and the Hold slot.
 - **Gesture trace.** If the DPI button or a gesture misbehaves, run
   `defaults write com.macrazer.menubar gestureDebugLog -bool true` and relaunch. MacRazer then
   writes a trace to `~/Library/Logs/MacRazer/gesture.log`: gesture holds and pointer movement,

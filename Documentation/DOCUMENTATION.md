@@ -735,8 +735,10 @@ USB and the 2.4 GHz dongle are not supported: the firmware handles the button on
  plain sentence. Entry `0x60` and `SideButtonReset`'s entries `0x04` and `0x05` never overlap.
 - **Hardware.** On a Cobra over Bluetooth: the entry write with its read before and after; and,
  through the trace, the device-mode write accepted and read back, the link staying up, the two
- keys as described and normal mode restored on quit. Not yet verified as a finished feature:
- the product code path, re-arming after sleep, the software DPI cycle. Driver mode is not
+ keys as described and normal mode restored on quit. The product code path was then used on
+ that mouse: hold and swipe, the short press doing Click, the software DPI cycle stepping one
+ stage per press, and the periodic check finding driver mode still set over about an hour. Not
+ yet tried: re-arming after the mouse sleeps or the Mac wakes, and the Hold slot. Driver mode is not
  enabled on the Basilisk: unverified there, and another project saw its link fail writing it.
 - **Gesture trace** (`GestureDebugLog.swift`). Off by default; `defaults write
  com.macrazer.menubar gestureDebugLog -bool true` and a relaunch make it append to
