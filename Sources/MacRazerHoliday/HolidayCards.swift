@@ -132,9 +132,10 @@ public struct HolidayScoreLine: View {
     public init(onLeaderboard: (() -> Void)? = nil) { self.onLeaderboard = onLeaderboard }
 
     public var body: some View {
-        if holiday.isFestive, game.score > 0 || showsLink {
+        // Nothing until the first catch: then the score, and the leaderboard link under it.
+        if holiday.isFestive, game.score > 0 {
             VStack(alignment: .leading, spacing: 4) {
-                if game.score > 0 { score }
+                score
                 if showsLink { link }
             }
             .padding(.horizontal, 4)
