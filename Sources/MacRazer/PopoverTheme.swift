@@ -144,7 +144,7 @@ enum PopoverLayout {
     /// The popover's width in one column.
     static let oneColumnWidth: CGFloat = 380
 
-    /// Below this usable height (every laptop at its default scaling) one column can run off
+    /// Below this usable height (13- to 15-inch laptops at their default scaling) one column can run off
     /// the bottom with a few sections open, so two columns is the default there.
     static let smallScreenHeight: CGFloat = 1000
 

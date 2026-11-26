@@ -52,7 +52,7 @@ expect rough edges until 1.0.
   tested. Before, the app took it for a mouse.
 
 ### Changed
-- **Two columns by default on a laptop screen.** On a screen under 1000 points tall, the
+- **Two columns by default on a smaller screen.** On a screen under 1000 points tall, the
   popover now starts in two columns, so it stays on the screen with a few sections open. Your
   own pick in Settings › Appearance still wins.
 

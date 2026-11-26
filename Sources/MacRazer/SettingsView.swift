@@ -513,7 +513,7 @@ struct SettingsView: View {
             symbol: "rectangle.split.2x1", tint: Color(nsColor: .systemIndigo),
             title: "Two-column popover",
             detail: "A wider, shorter popover: battery and DPI on the left, settings on the right. "
-                + "On by default on a laptop-sized screen. Always on while a Razer keyboard or mousepad is connected too.",
+                + "On by default on a smaller screen. Always on while a Razer keyboard or mousepad is connected too.",
             isOn: $appearance.twoColumns
         )
     }
