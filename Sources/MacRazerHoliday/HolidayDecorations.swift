@@ -144,32 +144,46 @@ struct Fireworks: View {
 
     var body: some View {
         TimelineView(.animation(minimumInterval: frameInterval, paused: !animating)) { timeline in
-            let t = timeline.date.timeIntervalSinceReferenceDate
             Canvas { ctx, size in
-                let bursts: [(CGFloat, CGFloat, Color, Double)] = [
-                    (0.18, 14, HolidayColor.gold, 0), (0.74, 12, HolidayColor.red, 0.7), (0.34, 16, HolidayColor.blue, 1.4),
-                    (0.88, 15, HolidayColor.paleGold, 2.1), (0.62, 13, HolidayColor.rose, 2.8)]
-                for (fx, cy, color, delay) in bursts {
-                    let phase = ((t + 3.5 - delay).truncatingRemainder(dividingBy: 3.5)) / 3.5
-                    let scale = CGFloat(min(1, phase / 0.9)), alpha = phase < 0.12 ? phase / 0.12 : max(0, 1 - (phase - 0.65) / 0.35)
-                    guard alpha > 0 else { continue }
-                    let cx = fx * size.width
-                    for k in 0..<14 {
-                        let a = Double(k) / 14 * 2 * .pi
-                        var ray = Path()
-                        ray.move(to: CGPoint(x: cx + cos(a) * 3 * scale, y: cy + sin(a) * 3 * scale))
-                        ray.addLine(to: CGPoint(x: cx + cos(a) * 10 * scale, y: cy + sin(a) * 10 * scale))
-                        ctx.stroke(ray, with: .color(color.opacity(alpha)), style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
-                        ctx.fill(Path(ellipseIn: CGRect(x: cx + cos(a) * 12 * scale - 1, y: cy + sin(a) * 12 * scale - 1, width: 2, height: 2)),
-                                 with: .color(color.opacity(alpha)))
-                    }
-                }
+                Self.draw(ctx, size: size, t: timeline.date.timeIntervalSinceReferenceDate)
             }
         }
         // Only in the band above the cards, where the star hangs: never behind any text.
         .frame(height: holidayStarHeight)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+    }
+
+    private struct Burst { let x: CGFloat; let y: CGFloat; let color: Color; let delay: Double }
+
+    private static let bursts: [Burst] = [
+        Burst(x: 0.18, y: 14, color: HolidayColor.gold, delay: 0),
+        Burst(x: 0.74, y: 12, color: HolidayColor.red, delay: 0.7),
+        Burst(x: 0.34, y: 16, color: HolidayColor.blue, delay: 1.4),
+        Burst(x: 0.88, y: 15, color: HolidayColor.paleGold, delay: 2.1),
+        Burst(x: 0.62, y: 13, color: HolidayColor.rose, delay: 2.8),
+    ]
+
+    // Kept in small typed steps: as one expression it was too much for the compiler on CI.
+    private static func draw(_ ctx: GraphicsContext, size: CGSize, t: Double) {
+        for burst in bursts {
+            let phase: Double = ((t + 3.5 - burst.delay).truncatingRemainder(dividingBy: 3.5)) / 3.5
+            let scale = CGFloat(min(1, phase / 0.9))
+            let alpha: Double = phase < 0.12 ? phase / 0.12 : max(0, 1 - (phase - 0.65) / 0.35)
+            guard alpha > 0 else { continue }
+            let center = CGPoint(x: burst.x * size.width, y: burst.y)
+            let color = burst.color.opacity(alpha)
+            for k in 0..<14 {
+                let a: Double = Double(k) / 14 * 2 * .pi
+                let dx = CGFloat(cos(a)) * scale, dy = CGFloat(sin(a)) * scale
+                var ray = Path()
+                ray.move(to: CGPoint(x: center.x + dx * 3, y: center.y + dy * 3))
+                ray.addLine(to: CGPoint(x: center.x + dx * 10, y: center.y + dy * 10))
+                ctx.stroke(ray, with: .color(color), style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
+                let spark = CGRect(x: center.x + dx * 12 - 1, y: center.y + dy * 12 - 1, width: 2, height: 2)
+                ctx.fill(Path(ellipseIn: spark), with: .color(color))
+            }
+        }
     }
 }
 
