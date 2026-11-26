@@ -31,6 +31,8 @@ struct RemapView: View {
     @State private var editingGesture: Int?
     /// The slot of `editingGesture` a custom shortcut is being recorded for.
     @State private var recordingSlot: GestureSlot?
+    /// The open gesture editor's height, so the page is never shorter than it (`body`).
+    @State private var gestureEditorHeight: CGFloat = 0
 
     private var buttons: [Int] {
         Array(remapper.seenButtons.union(remapper.suggestedButtons).union(remapper.mappings.keys)).sorted()
@@ -70,8 +72,11 @@ struct RemapView: View {
         }
         .padding(18)
         .frame(width: width)
-        // Room for the gesture editor when the page has only a button or two.
-        .frame(minHeight: gestureEditorButton == nil ? nil : 400, alignment: .top)
+        // Room for the gesture editor when the page has only a button or two, and at least its
+        // own height with a margin, so its checkbox and a long explanation are never clipped at
+        // the top and bottom. The editor's height doesn't depend on the page's, so this
+        // settles at once.
+        .frame(minHeight: gestureEditorButton == nil ? nil : max(400, gestureEditorHeight + 24), alignment: .top)
         .onAppear {
             remapper.refreshAccessibility(prompt: false)
             if let previewGestureEditor { editingGesture = previewGestureEditor }
@@ -125,7 +130,10 @@ struct RemapView: View {
     }
 
     /// How the gesture editor says a gesture is made. `followsPointer`: the four system swipes
-    /// follow the pointer on this Mac (`DockSwipe.isSupported`), so the text says so.
+    /// follow the pointer on this Mac (`DockSwipe.isSupported`), so the text says so. The editor
+    /// passes `ButtonRemapper.systemSwipesFollowPointerHere`, which is also off while its
+    /// checkbox is (`followPointerToggle`): the four are then shortcuts, as the rest of the text
+    /// already covers.
     nonisolated static func gestureEditorExplanation(followsPointer: Bool = DockSwipe.isSupported) -> String {
         "Hold the button and move the mouse up, down, left or right. "
             + (followsPointer
@@ -134,6 +142,10 @@ struct RemapView: View {
                 : "")
             + "Press and release it without moving to click."
     }
+
+    /// The gesture editor's checkbox for `ButtonRemapper.systemSwipesFollowPointer`. Short
+    /// enough for one line at the editor's width beside its box.
+    nonisolated static let followPointerToggleTitle = "Mission Control and Spaces follow the pointer"
 
     /// The DPI button's binding and model notes.
     @ViewBuilder private var dpiAndModelNotes: some View {
@@ -207,14 +219,15 @@ struct RemapView: View {
     }
 
     /// A gesture button's actions, over the page like the key recorder: Click and the four
-    /// swipes. Each change is saved as it's made, so Done only closes it.
+    /// swipes, then whether the system swipes follow the pointer where they can
+    /// (`followPointerToggle`). Each change is saved as it's made, so Done only closes it.
     private func gestureEditor(_ button: Int) -> some View {
         ZStack {
             Color.black.opacity(0.45).onTapGesture { editingGesture = nil }
             VStack(spacing: 12) {
                 VStack(spacing: 4) {
                     Text("\(ButtonRemapper.label(for: button)) Gesture").font(.system(size: 14, weight: .semibold))
-                    Text(Self.gestureEditorExplanation())
+                    Text(Self.gestureEditorExplanation(followsPointer: remapper.systemSwipesFollowPointerHere))
                         .font(.system(size: 11)).foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                         .fixedSize(horizontal: false, vertical: true)
@@ -243,6 +256,9 @@ struct RemapView: View {
                     }
                 }
                 .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 10))
+                // Only where the Dock takes these swipes: anywhere else the four are shortcuts
+                // whatever it says.
+                if DockSwipe.isSupported { followPointerToggle }
                 // Esc belongs to the key recorder while it's up, as with the Back button.
                 Button("Done") { editingGesture = nil }
                     .keyboardShortcut(isRecording ? nil : KeyboardShortcut.cancelAction)
@@ -250,7 +266,24 @@ struct RemapView: View {
             .padding(20)
             .frame(width: 320)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+            .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { gestureEditorHeight = $0 }
         }
+    }
+
+    /// Whether Mission Control, App Exposé and the Spaces follow the pointer
+    /// (`ButtonRemapper.systemSwipesFollowPointer`). One setting for every gesture button, so it
+    /// sits under the slots rather than among them. A checkbox: a switch beside the label
+    /// wouldn't leave it one line at the editor's width.
+    private var followPointerToggle: some View {
+        Toggle(isOn: $remapper.systemSwipesFollowPointer) {
+            Text(Self.followPointerToggleTitle)
+                .font(.system(size: 11))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .toggleStyle(.checkbox)
+        .controlSize(.small)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 4)
     }
 
     private func dpiShortcutBinding(keyCode: UInt16, flags: CGEventFlags) -> BLEProtocol.DPIButtonBinding? {

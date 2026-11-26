@@ -644,13 +644,24 @@ four system presets does not fire once: it drives a swipe that follows the point
    27: App Exposé as a swipe with its trackpad gesture on, and Natural scrolling turned off.
    Building 200,000 attached events without posting them grew the heap by under 200 bytes. The
    constants (the scale, the dead zone) have not been tuned.
+  - **Turning it off** (`ButtonRemapper.systemSwipesFollowPointer`, `RemapView`'s checkbox titled
+   `followPointerToggleTitle`, "Mission Control and Spaces follow the pointer"). On by default.
+   Off, `dockSwipeTracker(for:)` returns nil, so no tracker is made and the four presets are
+   the keyboard shortcuts their slots hold, fired once at 50 points like any other action. One
+   global setting: saved in the defaults key `systemSwipesFollowPointerKey`
+   (`gestureSystemSwipesFollowPointer`), not per mouse and not in profiles; absent reads as on.
+   Holds read it as they start, so a change sets `gestureHold` to nil, which ends the hold and
+   cancels an open swipe; writing the value it already has changes nothing. The checkbox shows
+   only `if DockSwipe.isSupported`, and the editor's explanation goes by
+   `systemSwipesFollowPointerHere` (`dockSwipes != nil` and the setting on). The page is at
+   least as tall as the open editor (`gestureEditorHeight`), so the checkbox is never clipped.
 - **A gesture's click re-posts the button** (`mouseClickEvents(button:at:source:)`, made with
  `postSource` so the events carry `magic` and pass the tap, and with the button number set
  outright so Back and Forward don't come out as a middle click). It fires at release, so a
  gesture button can't be held to drag.
 - **UI.** `RemapView.gestureEditor` lists the five slots with an action menu each (the same
  `RemapActionMenu`, whose None does nothing in a slot and which offers the button's own click
- under Mouse) and a key recorder. `swift run MacRazer render-remap gesture out.png` renders the
+ under Mouse), a key recorder, and the follow-the-pointer checkbox where dock swipes work. `swift run MacRazer render-remap gesture out.png` renders the
  editor from preview data (`ButtonRemapper.loadPreviewState(gesture: true)` puts a gesture on
  button 6).
 - **Tests.** `GestureRecognizerTests` (threshold, dominant axis, once per hold, net movement)
@@ -668,7 +679,11 @@ four system presets does not fire once: it drives a swipe that follows the point
  through the tap with a recording `DockSwipeOutput` and a clock the test moves: the swipe
  following a hold, other actions still firing once, no swipe without dock swipes, every reset
  cancelling an open swipe, App Exposé as a swipe or a shortcut by the Dock's setting, the
- default gesture's mixed vertical axis and its Spaces following the hand).
+ default gesture's mixed vertical axis and its Spaces following the hand) and
+ `SystemSwipesFollowPointerTests` (the setting: on out of the box, each preset firing its
+ shortcut once at 50 points when off, turning it off mid-swipe cancelling the swipe and
+ changing it mid-hold ending the hold without firing, the saved key being global, and the
+ editor's text).
 
 ### 6.4 Device test, `DeviceTest*.swift` + the Worker
 The right-click menu's **Help Support This Mouse…** (or **Test This Mouse…** on a verified

@@ -211,6 +211,26 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
     /// Where a gesture's system swipes go as they follow the pointer (`DockSwipeTracker`).
     /// Nil leaves them keyboard shortcuts that fire once, as every other slot's action does.
     private let dockSwipes: DockSwipeOutput?
+    /// Where `systemSwipesFollowPointer` is saved: one setting for the app, not per device,
+    /// and not part of a profile.
+    static let systemSwipesFollowPointerKey = "gestureSystemSwipesFollowPointer"
+    /// Whether a gesture's four system presets (Mission Control, App Exposé and the Spaces)
+    /// follow the pointer as dock swipes where this Mac takes them (`dockSwipes`). On unless
+    /// turned off in the gesture editor. Off, a hold is exactly what it is on a Mac without
+    /// dock swipes: no tracker, and each preset is the keyboard shortcut its slot holds, fired
+    /// once at 50 points. Holds read it as they start (`dockSwipeTracker(for:)`), so a change
+    /// ends the one in progress, which cancels its open swipe (`gestureHold`): the Dock never
+    /// stays halfway, and no hold goes on the other way from how it began.
+    @Published var systemSwipesFollowPointer: Bool {
+        didSet {
+            guard systemSwipesFollowPointer != oldValue else { return }
+            defaults.set(systemSwipesFollowPointer, forKey: Self.systemSwipesFollowPointerKey)
+            gestureHold = nil
+        }
+    }
+    /// A new hold's system swipes follow the pointer: this Mac takes dock swipes, and
+    /// `systemSwipesFollowPointer` is on. What the gesture editor's explanation goes by.
+    var systemSwipesFollowPointerHere: Bool { dockSwipes != nil && systemSwipesFollowPointer }
     /// Seconds on a monotonic clock, for a swipe's velocity. Tests pass their own.
     private let clock: () -> TimeInterval
 
@@ -224,6 +244,8 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         self.defaults = defaults
         self.actionEmitter = actionEmitter
         self.dockSwipes = dockSwipes ?? (actionEmitter == nil ? .system(userData: Self.magic) : nil)
+        // Never written until first changed, and on out of the box.
+        self.systemSwipesFollowPointer = defaults.object(forKey: Self.systemSwipesFollowPointerKey) as? Bool ?? true
         self.clock = clock
     }
 
@@ -241,7 +263,7 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         var recognizer = GestureRecognizer()
         /// The swipe that follows the pointer when the hold heads for a system swipe. Nil when
         /// none of its directions is one, or system swipes don't follow the pointer here
-        /// (`dockSwipes`): the hold is then only `recognizer`'s.
+        /// (`dockSwipes`, `systemSwipesFollowPointer`): the hold is then only `recognizer`'s.
         var swipe: DockSwipeTracker? = nil
     }
     /// The hold in progress, if any. One at a time: a new press ends it.
@@ -779,7 +801,8 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
     }
 
     /// The tracker for a hold of `bindings`: nil when no direction holds a system swipe, or
-    /// they don't follow the pointer here. The scale is the screen's as the hold starts.
+    /// they don't follow the pointer here (no `dockSwipes`, or `systemSwipesFollowPointer`
+    /// off). The scale is the screen's as the hold starts.
     ///
     /// App Exposé is a swipe only while the Dock's trackpad gesture for it is on: off, which it
     /// is out of the box, the Dock ignores the swipe and nothing at all would happen. So then it
@@ -787,7 +810,7 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
     /// like any other action. Asked at every hold, so a change in System Settings counts from
     /// the next press.
     private func dockSwipeTracker(for bindings: GestureBindings) -> DockSwipeTracker? {
-        guard let dockSwipes else { return nil }
+        guard let dockSwipes, systemSwipesFollowPointer else { return nil }
         var slots = SystemSwipeSlots(bindings)
         if slots.contains(.appExpose), !dockSwipes.appExposeEnabled() { slots = slots.removing(.appExpose) }
         guard !slots.isEmpty else { return nil }
