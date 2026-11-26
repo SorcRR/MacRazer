@@ -130,7 +130,7 @@ enum SideButtonReset {
             if let what = describe(remap.current) { return "\(name(remap.id)) sends \(what)" }
             return "\(name(remap.id)) does something else"
         }
-        let list = ListFormatter.localizedString(byJoining: parts)
+        let list = ListFormatter.english(parts)
         let pronoun = remaps.count == 1 ? "it's" : "they're"
         return "Your mouse has its side buttons saved to other functions, probably by Razer Synapse: "
             + "\(list). Configure Buttons can't remap them as Back and Forward until \(pronoun) reset. "
