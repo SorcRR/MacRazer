@@ -22,6 +22,8 @@ struct RemapView: View {
     var width: CGFloat = 440
     /// The two-column popover: the buttons on the left, the DPI button and notes on the right.
     var twoColumns = false
+    /// For the `render-remap gesture` preview: the button whose gesture editor is open.
+    var previewGestureEditor: Int?
     @State private var recordingButton: Int?
     /// Set while recording a Turbo Keybind: its repeat interval.
     @State private var recordingTurboMs: Int?
@@ -33,6 +35,10 @@ struct RemapView: View {
     /// Editing the HyperShift layer: each row then sets what its button does while the
     /// HyperShift key is held (`ButtonRemapper.hyperShiftKey`).
     @State private var editingHyperShift = false
+    /// The button whose gesture editor is open.
+    @State private var editingGesture: Int?
+    /// The slot of `editingGesture` a custom shortcut is being recorded for.
+    @State private var recordingSlot: GestureSlot?
 
     private var buttons: [Int] {
         // A mouse that keeps its remaps lists all its controls, pressed yet or not, in the
@@ -47,6 +53,14 @@ struct RemapView: View {
             .filter { !ButtonRemapper.isHyperShiftKey($0) }
             .filter { HardwareButton(rawValue: $0) == nil || onboard.contains($0) }
             .sorted { (rank($0), $0) < (rank($1), $1) }
+    }
+
+    private var isRecording: Bool { recordingButton != nil || recordingDpiCycleShortcut || recordingSlot != nil }
+
+    /// The gesture editor's button, while it is still a gesture (applying a profile can
+    /// change that with the editor open).
+    private var gestureEditorButton: Int? {
+        editingGesture.flatMap { remapper.gestureBindings(for: $0) != nil ? $0 : nil }
     }
 
     var body: some View {
@@ -75,10 +89,23 @@ struct RemapView: View {
         }
         .padding(18)
         .frame(width: width)
+        // Room for the gesture editor when the page has only a button or two.
+        .frame(minHeight: gestureEditorButton == nil ? nil : 400, alignment: .top)
         .onAppear {
             remapper.refreshAccessibility(prompt: false)
+            if let previewGestureEditor { editingGesture = previewGestureEditor }
         }
-        .overlay { if recordingButton != nil || recordingDpiCycleShortcut { recorderOverlay } }
+        .overlay { if let button = gestureEditorButton { gestureEditor(button) } }
+        // A button that stopped being a gesture under the open editor closes it for good, so
+        // it can't pop up again if the button becomes one later.
+        .onChange(of: gestureEditorButton) { _, now in
+            if now == nil {
+                editingGesture = nil
+                recordingSlot = nil
+            }
+        }
+        // After the gesture editor, so recording one of its slots shows on top of it.
+        .overlay { if isRecording { recorderOverlay } }
         .overlay { if clutchButton != nil { clutchOverlay } }
         .background { if let controller { SideButtonCheckTrigger(controller: controller) } }
     }
@@ -119,10 +146,16 @@ struct RemapView: View {
     }
 
     nonisolated static func competingAppsText(_ apps: [String]) -> String {
-        let list = ListFormatter.localizedString(byJoining: apps)
+        let list = ListFormatter.english(apps)
         let pronoun = apps.count == 1 ? "it" : "them"
         return "If a side button doesn't show up here when you press it, \(list) may be taking "
             + "its clicks. Quit \(pronoun) and try again."
+    }
+
+    /// How the gesture editor says a gesture is made.
+    nonisolated static func gestureEditorExplanation() -> String {
+        "Hold the button and move the mouse up, down, left or right. "
+            + "Press and release it without moving to click."
     }
 
     /// The DPI button's binding and model notes.
@@ -176,26 +209,42 @@ struct RemapView: View {
         clutchButton = nil
     }
 
+    private func endRecording() {
+        recordingButton = nil
+        recordingDpiCycleShortcut = false
+        recordingSlot = nil
+        recordingTurboMs = nil
+        recorderError = nil
+    }
+
+    /// Who the recorded shortcut is for: "DPI Cycle", "Back (4)", "Button 6, Swipe Up".
+    private var recordingTarget: String {
+        if recordingDpiCycleShortcut { return "DPI Cycle" }
+        if let slot = recordingSlot, let button = editingGesture {
+            return "\(remapper.displayLabel(for: button)), \(slot.title)"
+        }
+        return recordingButton.map { remapper.displayLabel(for: $0) } ?? ""
+    }
+
     private var recorderOverlay: some View {
         ZStack {
-            Color.black.opacity(0.45).onTapGesture {
-                recordingButton = nil
-                recordingTurboMs = nil
-                recordingDpiCycleShortcut = false
-                recorderError = nil
-            }
+            Color.black.opacity(0.45).onTapGesture { endRecording() }
             VStack(spacing: 14) {
                 Text("Press a key or combination").font(.system(size: 14, weight: .semibold))
-                Text("for \(recordingDpiCycleShortcut ? "DPI Cycle" : recordingButton.map { remapper.displayLabel(for: $0) } ?? "")")
+                Text("for \(recordingTarget)")
                     .font(.system(size: 11)).foregroundStyle(.secondary)
                 KeyRecorderView(onCapture: { keyCode, flags, display in
+                    let action = RemapAction.keystroke(keyCode: keyCode, modifiers: flags.rawValue, name: display)
                     if let b = recordingButton {
                         if let ms = recordingTurboMs {
                             remapper.setAction(.turboKey(keyCode: keyCode, modifiers: flags.rawValue, name: display, intervalMs: ms), for: b)
                         } else {
-                            remapper.setAction(.keystroke(keyCode: keyCode, modifiers: flags.rawValue, name: display), for: b)
+                            remapper.setAction(action, for: b)
                         }
                         recordingTurboMs = nil
+                    }
+                    if let slot = recordingSlot, let b = editingGesture {
+                        remapper.setGestureAction(action, for: slot, of: b)
                     }
                     if recordingDpiCycleShortcut {
                         if let binding = dpiShortcutBinding(keyCode: keyCode, flags: flags), let controller {
@@ -207,13 +256,9 @@ struct RemapView: View {
                         }
                     } else {
                         recordingButton = nil
+                        recordingSlot = nil
                     }
-                }, onCancel: {
-                    recordingButton = nil
-                    recordingTurboMs = nil
-                    recordingDpiCycleShortcut = false
-                    recorderError = nil
-                })
+                }, onCancel: { endRecording() })
                 .frame(height: 46)
                 .frame(maxWidth: .infinity)
                 .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.10)))
@@ -222,15 +267,57 @@ struct RemapView: View {
                     Text(recorderError).font(.system(size: 10)).foregroundStyle(Color.batteryMid)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                Button("Cancel") {
-                    recordingButton = nil
-                    recordingTurboMs = nil
-                    recordingDpiCycleShortcut = false
-                    recorderError = nil
-                }
+                Button("Cancel") { endRecording() }
             }
             .padding(20)
             .frame(width: 260)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+        }
+    }
+
+    /// A gesture button's actions, over the page like the key recorder: Click and the four
+    /// swipes. Each change is saved as it's made, so Done only closes it.
+    private func gestureEditor(_ button: Int) -> some View {
+        ZStack {
+            Color.black.opacity(0.45).onTapGesture { editingGesture = nil }
+            VStack(spacing: 12) {
+                VStack(spacing: 4) {
+                    Text("\(remapper.displayLabel(for: button)) Gesture").font(.system(size: 14, weight: .semibold))
+                    Text(Self.gestureEditorExplanation())
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                VStack(spacing: 0) {
+                    ForEach(Array(GestureSlot.allCases.enumerated()), id: \.element) { index, slot in
+                        if index > 0 { Divider().overlay(Color.primary.opacity(0.1)) }
+                        HStack(spacing: 8) {
+                            Image(systemName: slot.symbol)
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(Color.razerGreenText)
+                                .frame(width: 16)
+                            Text(slot.title).font(.system(size: 12, weight: .medium))
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
+                            Spacer(minLength: 6)
+                            // A slot's None does nothing: there is no click to let through.
+                            RemapActionMenu(label: (remapper.gestureBindings(for: button)?[slot] ?? .passthrough).label,
+                                            noneTitle: RemapAction.passthrough.label,
+                                            ownClick: ButtonRemapper.originalClick(for: button),
+                                            onPick: { remapper.setGestureAction($0, for: slot, of: button) },
+                                            onRecord: { recorderError = nil; recordingSlot = slot })
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                    }
+                }
+                .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 10))
+                // Esc belongs to the key recorder while it's up, as with the Back button.
+                Button("Done") { editingGesture = nil }
+                    .keyboardShortcut(isRecording ? nil : KeyboardShortcut.cancelAction)
+            }
+            .padding(20)
+            .frame(width: 320)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
         }
     }
@@ -242,9 +329,10 @@ struct RemapView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Esc belongs to the key recorder while it's up: it cancels the recording.
+            // Esc belongs to the key recorder while it's up: it cancels the recording. And to
+            // the gesture editor while that's open: it closes the editor.
             if let onBack {
-                BackButton(action: onBack, escapes: recordingButton == nil && !recordingDpiCycleShortcut)
+                BackButton(action: onBack, escapes: !isRecording && gestureEditorButton == nil)
             }
             VStack(alignment: .leading, spacing: 2) {
                 Text("Configure Buttons").font(.system(size: 16, weight: .semibold))
@@ -457,6 +545,18 @@ struct RemapView: View {
                     Button(opt.name) { remapper.setAction(.mediaKey(code: opt.code, name: opt.name), for: button) }
                 }
             }
+            // Only MacRazer can open it, so like Double Click it needs a control whose presses
+            // the app sees, and a mouse's own HyperShift layer has no room for it.
+            if remapper.appSees(control) && !(inMouse && button != control) {
+                item(RemapAction.launchpad.label, .launchpad)
+            }
+            // Choosing Gesture… again reopens the editor, with the button's choices kept.
+            if remapper.canBeGesture(button) {
+                Button("Gesture…") {
+                    remapper.makeGesture(button)
+                    editingGesture = button
+                }
+            }
             if inMouse && !wheelStep {
                 if controller?.supportsOnboardSlots == true {
                     Menu("Profile") {
@@ -644,6 +744,75 @@ private struct LevelSlider: View {
             .accessibilityHidden(true)
         }
         .onChange(of: level) { _, new in value = Double(new) }
+    }
+}
+
+/// The actions a button, or one of a gesture's slots, can be set to. One menu for both, so
+/// their lists can't drift apart.
+private struct RemapActionMenu: View {
+    /// The current action's label, shown as the menu's title.
+    let label: String
+    /// A button's "None" lets its click through. A gesture slot's does nothing at all.
+    var noneTitle = "None (default)"
+    /// The button's own click (`ButtonRemapper.originalClick`), offered under Mouse: a
+    /// gesture's slot can't pass the click through, only post it again.
+    var ownClick: RemapAction?
+    let onPick: (RemapAction) -> Void
+    let onRecord: () -> Void
+    /// Offers Gesture… when set. Never inside a gesture: one nested in another can't fire.
+    var onGesture: (() -> Void)?
+
+    private static let middleClick = RemapAction.mouseButton(button: 2, name: "Middle Click")
+
+    var body: some View {
+        Menu {
+            Button(noneTitle) { onPick(.passthrough) }
+            Menu("Shortcut") {
+                ForEach(ButtonRemapper.presets) { p in
+                    Button(p.name) { onPick(p.action) }
+                    // Next to the other system presets, though it opens an app rather than
+                    // typing a shortcut: it has none by default.
+                    if p.id == ButtonRemapper.launchpadMenuAnchor {
+                        Button(RemapAction.launchpad.label) { onPick(.launchpad) }
+                    }
+                }
+            }
+            Menu("Mouse") {
+                Button("Middle Click") { onPick(Self.middleClick) }
+                if let ownClick, ownClick != .passthrough, ownClick != Self.middleClick {
+                    Button(ownClick.label) { onPick(ownClick) }
+                }
+                Button("Double Click") { onPick(.doubleClick) }
+            }
+            Menu("Media") {
+                ForEach(ButtonRemapper.mediaOptions, id: \.code) { opt in
+                    Button(opt.name) { onPick(.mediaKey(code: opt.code, name: opt.name)) }
+                }
+            }
+            if let onGesture {
+                Button("Gesture…", action: onGesture)
+            }
+            Divider()
+            Button("Record Custom Shortcut…", action: onRecord)
+        } label: {
+            Text(label)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+        }
+        .menuStyle(.borderlessButton)
+        .frame(width: 150)
+    }
+}
+
+private extension GestureSlot {
+    var symbol: String {
+        switch self {
+        case .click: "cursorarrow.click"
+        case .up: "arrow.up"
+        case .down: "arrow.down"
+        case .left: "arrow.left"
+        case .right: "arrow.right"
+        }
     }
 }
 

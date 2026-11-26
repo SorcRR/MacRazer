@@ -12,6 +12,7 @@ import Foundation
 import AppKit
 import ServiceManagement
 import SwiftUI
+import MacRazerHoliday
 
 let args = Array(CommandLine.arguments.dropFirst())
 
@@ -27,6 +28,8 @@ if args.isEmpty {
 
 let command = args.first!
 if command.hasPrefix("render") {
+    // A render in December shows the decorations from scratch storage, never the real choices.
+    Holiday.useScratchStorage()
     RenderOptions.isActive = true
     AppInfo.renderVersion = args.first { $0.hasPrefix("version=") }.map { String($0.dropFirst("version=".count)) }
     if let crop = args.first(where: { $0.hasPrefix("crop=") }) {
@@ -573,10 +576,13 @@ case "render-remap":
     let path = outputPath(args.dropFirst(), default: "remap-preview.png")
     let r = ButtonRemapper()
     // `--v4pro` previews the Basilisk V4 Pro's list, saved in the mouse.
-    r.loadPreviewState(pid: args.contains("--v4pro") ? 0x00E3 : nil)
+    r.loadPreviewState(pid: args.contains("--v4pro") ? 0x00E3 : nil, gesture: args.contains("gesture"))
     // `wide`: the popover's two-column Buttons page, with the DPI button section.
     // `side-buttons`: the window with the notice for side buttons saved to other functions.
-    if args.contains("side-buttons") {
+    // `gesture`: the window with the gesture editor open on a gesture button.
+    if args.contains("gesture") {
+        writeHostedPNG(RemapView(remapper: r, previewGestureEditor: 5), look: renderLook(args), to: path)
+    } else if args.contains("side-buttons") {
         let mouse = MouseController()
         mouse.loadPreviewState()
         mouse.setPreviewSideButtonsRemapped()

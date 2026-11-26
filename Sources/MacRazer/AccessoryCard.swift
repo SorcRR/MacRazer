@@ -2,6 +2,7 @@
 // Part of MacRazer, a control app for Razer mice on macOS. See LICENSE and NOTICE.md.
 
 import SwiftUI
+import MacRazerHoliday
 
 // MARK: Shared lighting controls
 
@@ -80,6 +81,7 @@ struct WaveSpeedSlider: View {
             }
             .tint(.razerGreen)
             .controlSize(.small)
+            .holidaySliderStripes(value)
             .accessibilityLabel("Wave speed")
             .accessibilityValue(WaveSpeed.spokenValue(fromFraction: value))
             .scrollAdjusts($value, in: 0...1, onCommit: onCommit)
@@ -101,6 +103,7 @@ struct BrightnessSlider: View {
             }
             .tint(.razerGreen)
             .controlSize(.small)
+            .holidaySliderStripes(value / 100)
             .scrollAdjusts($value, in: 0...100, snap: 1) { onCommit(Int($0)) }
             Image(systemName: "sun.max.fill").font(.system(size: 11)).foregroundStyle(.secondary)
         }

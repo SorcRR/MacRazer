@@ -3,6 +3,7 @@
 
 import SwiftUI
 import AppKit
+import MacRazerHoliday
 
 /// Reports the main page's measured height so the popover can size to it.
 private struct HeightKey: PreferenceKey {
@@ -59,6 +60,9 @@ struct PopoverView: View {
     @ObservedObject var supportPrompt: SupportPrompt = .shared
     /// Razer keyboards and mousepads plugged in next to the mouse, a card each.
     @ObservedObject var accessories: Accessories = .shared
+    /// The December decorations (`MacRazerHoliday`). Off season every holiday view here is
+    /// empty and the popover is exactly as it always is.
+    @ObservedObject private var holiday: Holiday = .shared
     @Environment(\.colorScheme) private var colorScheme
     /// Opening a window is the owner's job — the popover doesn't know about window controllers.
     /// Deliberately not defaulted: a no-op default would let a future call site forget the
@@ -184,6 +188,8 @@ struct PopoverView: View {
         // main page's height instead of resizing once the transition finishes.
         .onPreferenceChange(HeightKey.self) { if $0 > 0 { mainHeight = $0 } }
         .animation(.easeInOut(duration: 0.26), value: page)
+        // Wider by a branch each side while the decorations are on; the pages keep their width.
+        .holidayPopoverDecorations()
         .overlay {
             if appearance.look(systemIsDark: colorScheme == .dark).hasGreenEdge {
                 // Follows the body's rounded outline; the arrow above it has no edge.
@@ -316,6 +322,7 @@ struct PopoverView: View {
     private var mainPage: some View {
         VStack(alignment: .leading, spacing: 10) {
             headerCard
+            HolidayHeadline()
             if let card = supportCard { supportCardView(card) }
             if let version = updateChecker.latestVersion { updateCard(version) }
             // Never both: an update waiting to be installed is the more useful thing to say
@@ -328,6 +335,12 @@ struct PopoverView: View {
             case .heldByAnotherApp?: heldByAnotherAppNotice
             case nil: EmptyView()
             }
+            // The holiday banner, or the last-day notice: only when the app has nothing of its
+            // own to say. Its notices, and setting up permissions, always come first.
+            if supportCard == nil, updateChecker.latestVersion == nil, updateChecker.justUpdatedTo == nil,
+               offlineNotice == nil, !needsPermission {
+                HolidayNotice(themeName: appearance.theme.title)
+            }
             // Nothing to put beside the no-mouse card: it says what to do, across the page.
             if twoColumns && !(noMouse && accessories.available.isEmpty) {
                 // Status on the left, settings on the right. Accessories go under the status,
@@ -335,6 +348,8 @@ struct PopoverView: View {
                 HStack(alignment: .top, spacing: 10) {
                     VStack(alignment: .leading, spacing: 10) {
                         statusCards
+                        // Dec 24 to 26 only: the presents, under the battery.
+                        HolidayPresentsCard()
                         if !noMouse { accessoriesSection }
                     }
                     .frame(width: columnWidth, alignment: .top)
@@ -347,7 +362,9 @@ struct PopoverView: View {
                 statusCards
                 mouseSettings
                 accessoriesSection
+                HolidayPresentsCard()
             }
+            HolidayScoreLine()
             footer
         }
         .padding(12)
@@ -402,11 +419,13 @@ struct PopoverView: View {
             // stays active so you can retry.
             if controller.deviceHasBattery {
                 batteryCard.opacity(controller.connected ? 1 : 0.55)
+                    .holidayPeekSpot(.popover)
             }
             // Live mouse-config sections: dim AND disable while disconnected.
             dpiCard
                 .disabled(!controller.connected)
                 .opacity(controller.connected ? 1 : 0.45)
+                .holidayPeekSpot(.popover)
         }
     }
 
@@ -510,11 +529,15 @@ struct PopoverView: View {
             HStack(spacing: 10) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 9).fill(Color.razerGreenBright.opacity(0.20))
-                    Image(nsImage: MenuBarIcon.mouseModel(pid: controller.deviceID, razerCutout: controller.deviceHasLighting, pointSize: 20))
-                        .renderingMode(.template)
-                        .resizable().scaledToFit()
-                        .frame(width: 19, height: 19)
-                        .foregroundStyle(Color.razerGreenBright)
+                    if holiday.isFestive {
+                        HolidayHeaderIcon().frame(width: 24, height: 24)
+                    } else {
+                        Image(nsImage: MenuBarIcon.mouseModel(pid: controller.deviceID, razerCutout: controller.deviceHasLighting, pointSize: 20))
+                            .renderingMode(.template)
+                            .resizable().scaledToFit()
+                            .frame(width: 19, height: 19)
+                            .foregroundStyle(Color.razerGreenBright)
+                    }
                 }
                 .frame(width: 34, height: 34)
                 VStack(alignment: .leading, spacing: 1) {
@@ -1079,6 +1102,8 @@ struct PopoverView: View {
                 ZStack(alignment: .leading) {
                     Capsule().fill(Color.primary.opacity(0.1))
                     Capsule().fill(batteryColor)
+                        // Candy cane in December, unless the colour is saying "getting low".
+                        .holidayBarStripes((controller.batteryPercent ?? 0) >= Battery.midThresholdPercent)
                         .frame(width: max(6, geo.size.width * batteryLevel))
                         .animation(.easeInOut, value: batteryLevel)
                 }
@@ -1415,6 +1440,7 @@ struct PopoverView: View {
                 }
                 .tint(.razerGreen)
                 .controlSize(.small)
+                .holidaySliderStripes((dpiValue - 100) / max(1, Double(controller.deviceMaxDPI) - 100))
                 .scrollAdjusts($dpiValue, in: 100...Double(controller.deviceMaxDPI), snap: 50, onCommit: commitDPI)
             }
             HStack(spacing: 6) {
@@ -1688,6 +1714,7 @@ struct PopoverView: View {
                 }
                 .tint(.razerGreen)
                 .controlSize(.small)
+                .holidaySliderStripes((sleepTimeoutValue - 60) / 840)
                 .scrollAdjusts($sleepTimeoutValue, in: 60...900, snap: 15) { controller.setSleepTimeout(Int($0)) }
             }
             .disabled(controller.sleepTimeout == nil)
@@ -2030,6 +2057,7 @@ struct PopoverView: View {
                     }
                 }
                 .frame(maxWidth: .infinity))
+                .holidayPeekSpot(.popover)
             }
         }
     }

@@ -206,6 +206,10 @@ enum OnboardButtons {
         switch action {
         case .passthrough:
             return nil
+        case .launchpad, .gesture:
+            // Only MacRazer can open an app or follow a swipe: the control stays on its
+            // factory function and the event tap does the rest (`Placement.app`).
+            return nil
         case .doubleClick:
             return doubleClickBlock
         case .hyperShift:
