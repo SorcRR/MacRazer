@@ -183,4 +183,16 @@ final class HolidayGameAndReporterTests: XCTestCase {
         h.refresh()
         XCTAssertEqual(game.score, 0, "A new season starts at zero")
     }
+
+    func testOneCharacterAtATimeAcrossThePopoverAndSettings() {
+        let game = HolidayGame(holiday: holiday())
+        let card = UUID(), group = UUID()
+        game.register(card, surface: .popover)
+        game.register(group, surface: .settings)
+        XCTAssertEqual(game.eligibleSpot(on: .settings), group)
+        let santa = game.forcePeek(.santa, spot: card)
+        XCTAssertNil(game.eligibleSpot(on: .settings), "Settings waits while Santa is out in the popover")
+        XCTAssertTrue(game.caught(santa.id))
+        XCTAssertEqual(game.eligibleSpot(on: .settings), group)
+    }
 }
