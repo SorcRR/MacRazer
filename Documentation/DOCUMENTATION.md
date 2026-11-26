@@ -432,7 +432,10 @@ buttons are handled onboard and never reach macOS.
  (`swallowedPresses`) and swallows exactly their releases, whatever changed in between
  (paused or unpaused, remapped, a gesture's hold ended). An app must never see a press
  without its release, which leaves the button held down there. The set survives a reinstall
- of the tap and is cleared when Accessibility goes.
+ of the tap and is cleared when Accessibility goes. The DPI button's F20 (`bridgeKeyIsDown`,
+ `handleDpiBridge`) follows the same rule, its key repeats too: a fresh press starts over, and
+ the flag survives a reinstall that still asks for the keys (`tapReplaced`). A tap without
+ them never sees the release, so there it is dropped.
 - **Tap mask** (`ButtonRemapper.eventMask(keyboard:gestures:)`, the wanted one in
  `wantedEventMask`): always `otherMouseDown/Up`; `otherMouseDragged` only while a mapped button
  is a gesture, since drags come at the mouse's polling rate and a tap that doesn't ask for them

@@ -194,6 +194,9 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
 
     @Published private(set) var dpiCycleSoftwareAction: RemapAction?
     @Published private(set) var dpiBridgeBindingConfirmed = false
+    /// The DPI button's F20 press was swallowed and its release hasn't come yet
+    /// (`handleDpiBridge`). Kept across a reinstall of a tap that still sees the keys
+    /// (`tapReplaced`).
     private var bridgeKeyIsDown = false
     /// Mouse buttons whose press the tap swallowed and whose release hasn't come yet: the
     /// release is swallowed exactly when its press was (`handle`), as F20's is
@@ -343,6 +346,7 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         } else {
             removeTap()
             // No tap is coming back to see these presses' releases.
+            bridgeKeyIsDown = false
             swallowedPresses = []
         }
         refreshCompetingTaps()
@@ -351,8 +355,8 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
     /// Tears down the event tap and its run-loop source — called when Accessibility is revoked
     /// while the app is running, so a stale tap isn't left registered indefinitely, and before
     /// a tap with another mask is installed. Ends any hold: its events may go by unseen in
-    /// between. `swallowedPresses` stays, so the release of a swallowed press that reaches the
-    /// new tap is still swallowed.
+    /// between. `bridgeKeyIsDown` and `swallowedPresses` stay, so the release of a swallowed
+    /// press that reaches the new tap is still swallowed (`tapReplaced`).
     private func removeTap() {
         if let tap { CGEvent.tapEnable(tap: tap, enable: false) }
         if let runLoopSource { CFRunLoopRemoveSource(CFRunLoopGetMain(), runLoopSource, .commonModes) }
@@ -362,7 +366,17 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         gestureHold = nil
         eventTapAvailable = false
         keyboardCaptureAvailable = false
-        bridgeKeyIsDown = false
+    }
+
+    /// What carries over to the tap that replaced the old one, which asks for `mask` (0 when
+    /// none could be installed). Adding the first gesture or removing the last reinstalls the
+    /// tap, and the DPI button may be held right then: its F20 release must still be
+    /// swallowed, as its press was. A tap without the keys never sees that release, though, so
+    /// it is forgotten; a later tap with them would otherwise swallow the release of a press an
+    /// app saw. Internal rather than private so tests can follow a reinstall without installing
+    /// a real tap.
+    func tapReplaced(mask: CGEventMask) {
+        if !Self.includesKeyboardEvents(mask) { bridgeKeyIsDown = false }
     }
 
     func openAccessibilitySettings() { SystemSettingsPanes.openAccessibility() }
@@ -476,6 +490,8 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         }
         removeTap()
         installTap(mask: mask)
+        // The mask it got, which lacks the keys when macOS refused them.
+        tapReplaced(mask: tapMask)
     }
 
     /// The mask the tap should have now (`eventMask`). A change reinstalls it. Internal rather
@@ -989,22 +1005,33 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         return "Ready"
     }
 
+    /// The DPI button's F20: a press fires the saved action. Its repeats and release go the way
+    /// the press went, as a mouse button's release does (`handle`): swallowed after a swallowed
+    /// press, whatever changed in between (paused, the binding no longer confirmed, the action
+    /// changed, the tap reinstalled), and through after a press an app saw. A fresh press
+    /// starts over, so one whose release went by unseen can't swallow the next one's action.
     private func handleDpiBridge(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         guard event.getIntegerValueField(.keyboardEventKeycode) == 90 else {
             return Unmanaged.passUnretained(event)
         }
-        if type == .keyUp, bridgeKeyIsDown {
+        if type == .keyUp {
+            guard bridgeKeyIsDown else { return Unmanaged.passUnretained(event) }
             bridgeKeyIsDown = false
             return nil
         }
-        let modifiers: CGEventFlags = [.maskCommand, .maskControl, .maskAlternate, .maskShift]
-        guard type == .keyDown, isBasiliskV3XHyperSpeed, dpiBridgeBindingConfirmed,
-              !remappingPaused, event.flags.intersection(modifiers).isEmpty,
-              let action = dpiCycleSoftwareAction else { return Unmanaged.passUnretained(event) }
-        if !bridgeKeyIsDown, event.getIntegerValueField(.keyboardEventAutorepeat) == 0 {
-            lastDetectedButton = -1
-            apply(action)
+        guard type == .keyDown else { return Unmanaged.passUnretained(event) }
+        if event.getIntegerValueField(.keyboardEventAutorepeat) != 0 {
+            return bridgeKeyIsDown ? nil : Unmanaged.passUnretained(event)
         }
+        let modifiers: CGEventFlags = [.maskCommand, .maskControl, .maskAlternate, .maskShift]
+        guard isBasiliskV3XHyperSpeed, dpiBridgeBindingConfirmed,
+              !remappingPaused, event.flags.intersection(modifiers).isEmpty,
+              let action = dpiCycleSoftwareAction else {
+            bridgeKeyIsDown = false
+            return Unmanaged.passUnretained(event)
+        }
+        lastDetectedButton = -1
+        apply(action)
         bridgeKeyIsDown = true
         return nil
     }

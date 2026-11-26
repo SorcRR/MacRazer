@@ -57,7 +57,8 @@ expect rough edges until 1.0.
   press let through while the mouse was offline can bring the mapping back before the button
   is released, and the app that saw the press then kept the button held down. The other way
   round, remapping a button to None mid-press let a release through whose press no app had
-  seen. Each release now goes the way its press went.
+  seen. Each release now goes the way its press went. So do the key repeats and release of
+  the Basilisk V3 X's DPI button (F20), also when the event tap restarts while it is held.
 - **Battery history keeps a whole long charge.** It saved a reading every 4 seconds, even
   when nothing changed, and hit its limit after about a day of use. A long-lasting mouse lost
   the start of its charge from the usage chart and the estimate. A steady reading is now kept
