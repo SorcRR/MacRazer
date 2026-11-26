@@ -253,6 +253,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
             .store(in: &cancellables)
         HolidayReporter.shared.configure(base: WorkerEndpoint.base, appVersion: AppInfo.version,
                                          fetch: { try await WorkerSession.shared.data(from: $0) })
+        // The Santa leaderboard: nothing goes to the Worker until someone joins on its page.
+        HolidayLeaderboard.shared.configure(base: WorkerEndpoint.base, hardwareUUID: UsageMachineID.hardwareUUID(),
+                                            send: { try await WorkerSession.shared.data(for: $0) })
 
         controller.start()
 

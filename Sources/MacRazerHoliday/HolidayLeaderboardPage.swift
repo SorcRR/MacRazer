@@ -27,7 +27,10 @@ public struct HolidayLeaderboardPage: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .onAppear { board.refresh() }
+        .onAppear {
+            board.refresh()
+            board.syncNow()
+        }
         .onChange(of: game.score) { _, _ in board.refresh() }
     }
 
@@ -82,11 +85,14 @@ public struct HolidayLeaderboardPage: View {
             if !draft.isEmpty, HolidayLeaderboard.cleaned(draft) == nil {
                 Text("3 to 24 letters, numbers and spaces.")
                     .font(.system(size: 11)).foregroundStyle(HolidayColor.red)
+            } else if let problem = board.problem {
+                Text(problem).font(.system(size: 11)).foregroundStyle(HolidayColor.red)
             }
             HStack(spacing: 8) {
                 Button(renaming ? "Save" : "Join as \(HolidayLeaderboard.cleaned(draft) ?? "…")", action: submit)
                     .buttonStyle(HolidayPillButton(filled: true))
-                    .disabled(HolidayLeaderboard.cleaned(draft) == nil)
+                    .disabled(HolidayLeaderboard.cleaned(draft) == nil || board.joining)
+                if board.joining { ProgressView().controlSize(.small).accessibilityLabel("Joining") }
                 if renaming {
                     Button("Cancel") { renaming = false }.buttonStyle(HolidayPillButton(filled: false))
                 }
@@ -99,8 +105,9 @@ public struct HolidayLeaderboardPage: View {
     }
 
     private func submit() {
-        guard board.join(as: draft) else { return }
-        renaming = false
+        Task {
+            if await board.join(as: draft) { renaming = false }
+        }
     }
 
     private var youCard: some View {
@@ -338,5 +345,36 @@ struct HolidayBackButton: View {
         .buttonStyle(.plain)
         .keyboardShortcut(.cancelAction)
         .help("Back (Esc)")
+    }
+}
+
+/// Settings › Privacy, once joined: what's on the board, and leaving it.
+public struct HolidayPrivacyRow: View {
+    @ObservedObject private var board = HolidayLeaderboard.shared
+    @State private var confirming = false
+
+    public init() {}
+
+    public var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "trophy.fill").font(.system(size: 13)).foregroundStyle(HolidayColor.gold)
+                .frame(width: 18)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Playing as \(board.name ?? "")").font(.system(size: 13))
+                Text("Your name, score, catches and presents are on the board until January. "
+                     + "Leaving deletes them there. Your score stays on this Mac.")
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 8)
+            Button("Leave…") { confirming = true }
+                .controlSize(.small)
+        }
+        .confirmationDialog("Leave the Santa leaderboard?", isPresented: $confirming) {
+            Button("Leave", role: .destructive) { board.leave() }
+        } message: {
+            Text("Your row is deleted from the board. You can join again any time this season.")
+        }
     }
 }

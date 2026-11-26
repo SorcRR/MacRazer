@@ -53,6 +53,8 @@ public struct HolidayPresentsCard: View {
                 if undoShown { hiddenNotice }
             } else {
                 card(stage)
+                    // Once joined, the Worker picks what's inside: asked before a box opens.
+                    .onAppear { HolidayLeaderboard.shared.presentsChanged() }
             }
         }
     }

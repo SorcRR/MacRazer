@@ -66,6 +66,8 @@ struct SettingsView: View {
     @ObservedObject var supportPrompt: SupportPrompt = .shared
     /// The December decorations' switch, shown in Appearance only in season.
     @ObservedObject private var holiday: Holiday = .shared
+    /// The Santa leaderboard, for its row in Privacy once joined.
+    @ObservedObject private var leaderboard: HolidayLeaderboard = .shared
     @State var pane: SettingsPane = .general
     @State private var confirmingDelete = false
     @State private var hoveredPane: SettingsPane?
@@ -357,6 +359,14 @@ struct SettingsView: View {
         }
         settingsGroup {
             deleteDataRow
+        }
+        // In season, once joined: the leaderboard's name, and leaving it.
+        if leaderboard.joined && holiday.showsSettingsRow {
+            settingsGroup("Santa leaderboard") {
+                HolidayPrivacyRow()
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+            }
         }
     }
 

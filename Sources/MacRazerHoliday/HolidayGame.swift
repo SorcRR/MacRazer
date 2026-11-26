@@ -228,6 +228,19 @@ public final class HolidayGame: ObservableObject {
         }
     }
 
+    /// The Worker's catches, on joining again after a reinstall: each count the higher of the
+    /// two, so nothing caught on either side is lost.
+    func adopt(_ stored: [HolidayCharacter: Int]) {
+        var changed = false
+        for (character, n) in stored where n > counts[character, default: 0] {
+            counts[character] = n
+            changed = true
+        }
+        guard changed else { return }
+        score = counts.reduce(0) { $0 + $1.key.points * $1.value }
+        save()
+    }
+
     // MARK: Storage
 
     private func load() {

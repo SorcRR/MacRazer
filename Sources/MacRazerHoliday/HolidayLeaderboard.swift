@@ -30,23 +30,20 @@ extension HolidayGiftRarity {
     }
 }
 
-/// What the Worker sends back: the top of the board and how many have joined. Below
-/// `HolidayLeaderboard.minimumPlayers` it sends only the count.
+/// What the Worker sends back: how many have joined, and from 30 the top ten, plus your own
+/// row and place when you're joined. Below `HolidayLeaderboard.minimumPlayers` only the count.
 public struct HolidayBoard: Equatable, Sendable {
     public var playerCount: Int
     /// Best first. Empty until the board opens.
-    public var players: [HolidayPlayer]
-}
-
-/// Where the board comes from. The Worker client comes with the server side; until then
-/// only the debug mock exists, and without a source the leaderboard isn't shown at all.
-@MainActor
-protocol HolidayBoardSource {
-    func board(you: HolidayPlayer?) -> HolidayBoard
+    public var top: [HolidayPlayer] = []
+    public var you: HolidayPlayer?
+    public var yourRank: Int?
 }
 
 /// The Santa leaderboard: opt in with a festive name, see the top of the board and your own
-/// place. Nothing is sent before joining, and leaving deletes the row.
+/// place. Nothing is sent before joining; then the score goes every few minutes, and leaving
+/// deletes the row. The score always lives on the Mac first: the game works the same without
+/// joining, and offline.
 @MainActor
 public final class HolidayLeaderboard: ObservableObject {
     public static let shared = HolidayLeaderboard(holiday: .shared, game: .shared, presents: .shared,
@@ -57,19 +54,27 @@ public final class HolidayLeaderboard: ObservableObject {
     /// The rows shown above your own.
     public static let topRows = 10
     static let nameLength = 3...24
+    /// How often a changed score goes to the Worker. It stores one at most every five minutes.
+    static let syncInterval: TimeInterval = 5 * 60
 
     /// The name you play under, once joined. Per season.
     @Published public private(set) var name: String?
     /// The name offered on the join card.
     @Published public var suggestedName: String
     @Published public private(set) var board: HolidayBoard?
+    /// A join or rename on its way.
+    @Published public private(set) var joining = false
+    /// What went wrong with the last join, in words for the page.
+    @Published public private(set) var problem: String?
 
     private let holiday: Holiday
     private let game: HolidayGame
     private let presents: HolidayPresents
-    private let source: HolidayBoardSource?
+    private var source: HolidayBoardSource?
     private var random: () -> Double
     private var cancellables: Set<AnyCancellable> = []
+    private var syncLoop: Task<Void, Never>?
+    private var syncing = false
 
     init(holiday: Holiday, game: HolidayGame, presents: HolidayPresents, source: HolidayBoardSource?,
          random: @escaping () -> Double = { Double.random(in: 0..<1) }) {
@@ -80,9 +85,19 @@ public final class HolidayLeaderboard: ObservableObject {
         self.random = random
         suggestedName = HolidayNames.random(random)
         load()
+        presents.onOpened = { [weak self] in self?.presentsChanged() }
         holiday.$storageSeason.removeDuplicates().dropFirst()
             .sink { [weak self] _ in self?.load() }
             .store(in: &cancellables)
+    }
+
+    /// The app hands over the Worker and the Mac's hardware UUID at launch. Without either,
+    /// or with the debug mock in use, nothing changes.
+    public func configure(base: URL?, hardwareUUID: String?, send: @escaping (URLRequest) async throws -> (Data, URLResponse)) {
+        guard source == nil, let base, let hardwareUUID, !hardwareUUID.isEmpty else { return }
+        source = HolidaySantaClient(base: base, key: HolidayPlayerKey.make(fromHardwareUUID: hardwareUUID), send: send)
+        objectWillChange.send()
+        startSyncing()
     }
 
     /// Whether the leaderboard is there to open at all: in the season, with somewhere to
@@ -98,18 +113,15 @@ public final class HolidayLeaderboard: ObservableObject {
     public var isFinalDay: Bool { holiday.phase == .lastDay }
 
     /// Your place, 1 for the top, once joined and the board is open.
-    public var rank: Int? {
-        guard isOpen else { return nil }
-        return board?.players.firstIndex(where: \.isYou).map { $0 + 1 }
-    }
+    public var rank: Int? { isOpen ? board?.yourRank : nil }
 
     /// The rows to show: the top ten, then yours with a gap above it if it's further down.
     public var visibleRows: [(rank: Int, player: HolidayPlayer, gapAbove: Bool)] {
-        guard isOpen, let players = board?.players else { return [] }
-        var rows = players.prefix(Self.topRows).enumerated().map { (rank: $0.offset + 1, player: $0.element, gapAbove: false) }
-        if let rank, rank > Self.topRows {
+        guard isOpen, let board else { return [] }
+        var rows = board.top.enumerated().map { (rank: $0.offset + 1, player: $0.element, gapAbove: false) }
+        if let you = board.you, let rank = board.yourRank, rank > board.top.count {
             // Straight after the tenth there's nobody in between to leave out.
-            rows.append((rank: rank, player: players[rank - 1], gapAbove: rank > Self.topRows + 1))
+            rows.append((rank: rank, player: you, gapAbove: rank > board.top.count + 1))
         }
         return rows
     }
@@ -126,27 +138,116 @@ public final class HolidayLeaderboard: ObservableObject {
         return trimmed
     }
 
-    /// Joins, or renames once joined. Returns false for a name that isn't fit to show.
+    /// Joins, or renames once joined. True once the Worker has it. After a reinstall the
+    /// Worker's catches come back, where they're more than this Mac has.
     @discardableResult
-    public func join(as proposed: String) -> Bool {
-        guard isAvailable, let clean = Self.cleaned(proposed) else { return false }
-        name = clean
-        holiday.setStored(clean, "leaderboard.name")
-        refresh()
-        return true
+    public func join(as proposed: String) async -> Bool {
+        guard isAvailable, let source, !joining else { return false }
+        guard let clean = Self.cleaned(proposed) else {
+            problem = "3 to 24 letters, numbers and spaces."
+            return false
+        }
+        joining = true
+        problem = nil
+        defer { joining = false }
+        do {
+            let reply = try await source.join(name: clean)
+            holiday.removeStored("leaderboard.leaving")
+            name = reply.name
+            holiday.setStored(reply.name, "leaderboard.name")
+            game.adopt(reply.counts)
+            // What the Worker has: the score goes again only when it's grown past that.
+            holiday.setStored(HolidayLeaderboard.points(reply.counts), "leaderboard.sent")
+            await sync()
+            await refreshNow()
+            return true
+        } catch let error as HolidaySantaError {
+            problem = Self.words(for: error)
+            return false
+        } catch {
+            problem = Self.words(for: .unavailable)
+            return false
+        }
     }
 
-    /// Leaves the board. On the server this deletes the row; the score stays on this Mac.
+    /// Leaves the board. The row on the Worker is deleted (tried again until it is); the
+    /// score stays on this Mac.
     public func leave() {
+        guard joined else { return }
         name = nil
         holiday.removeStored("leaderboard.name")
-        refresh()
+        holiday.setStored(true, "leaderboard.leaving")
+        board = nil
+        Task { await sync() }
     }
 
     /// Fetches the board. Only while its page is open.
     public func refresh() {
+        Task { await refreshNow() }
+    }
+
+    func refreshNow() async {
         guard let source, isAvailable else { board = nil; return }
-        board = source.board(you: you)
+        if let fresh = try? await source.board(you: you) { board = fresh }
+    }
+
+    /// Sends what's waiting: a leave, a grown score, the presents. Every few minutes, and
+    /// when the page opens. Failures are quiet and tried again next time.
+    func sync() async {
+        // A leave still waiting goes out in the rest of January too: the Worker takes one any time.
+        guard let source, !syncing, holiday.storageYear != nil else { return }
+        syncing = true
+        defer { syncing = false }
+        if holiday.stored(Bool.self, "leaderboard.leaving") == true {
+            do {
+                try await source.leave()
+                holiday.removeStored("leaderboard.leaving")
+            } catch {
+                return
+            }
+        }
+        guard joined, isAvailable else { return }
+        if game.score != holiday.stored(Int.self, "leaderboard.sent") ?? 0 {
+            let counts = game.counts
+            do {
+                _ = try await source.score(counts)
+                holiday.setStored(HolidayLeaderboard.points(counts), "leaderboard.sent")
+            } catch HolidaySantaError.notJoined {
+                // Deleted on the Worker (by the admin): this Mac isn't on the board any more.
+                name = nil
+                holiday.removeStored("leaderboard.name")
+            } catch {}
+        }
+        await syncPresents()
+    }
+
+    /// Dec 25 and 26 once joined: the Worker picks the three presents, so the board shows
+    /// what was really inside. Taken while no box is open yet; boxes opened go back to it.
+    func syncPresents() async {
+        guard let source, joined, presents.stage == .open else { return }
+        guard let reply = try? await source.presents(opened: presents.opened) else { return }
+        presents.adopt(reply.gifts)
+    }
+
+    /// For the page: send what's waiting now rather than at the next tick.
+    public func syncNow() {
+        Task { await sync() }
+    }
+
+    /// For the presents card: a box was opened, or the card appeared.
+    public func presentsChanged() {
+        guard joined else { return }
+        Task { await syncPresents() }
+    }
+
+    private func startSyncing() {
+        syncLoop?.cancel()
+        syncLoop = Task { [weak self] in
+            while !Task.isCancelled {
+                await self?.sync()
+                try? await Task.sleep(for: .seconds(Self.syncInterval))
+            }
+        }
     }
 
     /// Your row as the Mac knows it.
@@ -156,13 +257,37 @@ public final class HolidayLeaderboard: ObservableObject {
         return HolidayPlayer(id: "you", name: name, score: game.score, counts: game.counts, gifts: gifts, isYou: true)
     }
 
+    static func points(_ counts: [HolidayCharacter: Int]) -> Int {
+        counts.reduce(0) { $0 + $1.key.points * $1.value }
+    }
+
+    static func words(for error: HolidaySantaError) -> String {
+        switch error {
+        case .badName: "That name isn't allowed. Try another one."
+        case .seasonClosed: "This season's board is closed."
+        case .busy: "The leaderboard is busy. Try again in a minute."
+        case .notJoined, .notChristmas, .unavailable: "Couldn't reach the leaderboard. Try again in a moment."
+        }
+    }
+
     private func load() {
         name = holiday.stored(String.self, "leaderboard.name")
         board = nil
     }
 
+    /// For still renders: joined as `name`, with nothing sent.
+    public func previewJoin(_ name: String) {
+        self.name = name
+        previewBoard()
+    }
+
+    /// For still renders: the mock board filled in at once, without waiting on a task.
+    public func previewBoard() {
+        if let mock = source as? HolidayMockBoard { board = mock.make(you: you) }
+    }
+
     /// `MACRAZER_HOLIDAY_LEADERBOARD=mock` fills the board with made-up players, for trying the
-    /// page before the Worker has it; `=few` stays below the 30 the board needs. Debug only.
+    /// page without the Worker; `=few` stays below the 30 the board needs. Debug only.
     static func debugSource() -> HolidayBoardSource? {
         #if DEBUG
         switch ProcessInfo.processInfo.environment["MACRAZER_HOLIDAY_LEADERBOARD"] {
@@ -173,45 +298,6 @@ public final class HolidayLeaderboard: ObservableObject {
         #else
         return nil
         #endif
-    }
-}
-
-/// Made-up players, the same ones every time, with you slotted in by your score.
-struct HolidayMockBoard: HolidayBoardSource {
-    let players: Int
-
-    func board(you: HolidayPlayer?) -> HolidayBoard {
-        var rng = SeededRandom(seed: 2026)
-        var rows: [HolidayPlayer] = []
-        var usedNames: Set<String> = []
-        for i in 0..<players {
-            var name = HolidayNames.random { rng.next() }
-            while usedNames.contains(name) { name = HolidayNames.random { rng.next() } }
-            usedNames.insert(name)
-            // A long tail: a few keen players, most with a handful of catches.
-            let score = Int(620 * pow(rng.next(), 2.6)) + 1
-            rows.append(HolidayPlayer(id: "p\(i)", name: name, score: score,
-                                      counts: Self.counts(for: score, rng: &rng),
-                                      gifts: HolidayGift.pickThree { rng.next() }.prefix(Int(rng.next() * 3.99)).map { $0 },
-                                      isYou: false))
-        }
-        let total = players + (you == nil ? 0 : 1)
-        guard total >= HolidayLeaderboard.minimumPlayers else { return HolidayBoard(playerCount: total, players: []) }
-        if let you { rows.append(you) }
-        rows.sort { $0.score != $1.score ? $0.score > $1.score : $0.isYou && !$1.isYou }
-        return HolidayBoard(playerCount: total, players: rows)
-    }
-
-    /// Splits a score into catches the way the game hands them out.
-    private static func counts(for score: Int, rng: inout SeededRandom) -> [HolidayCharacter: Int] {
-        var left = score
-        let krampus = Int(Double(left) * 0.04 * rng.next()) / 3
-        left -= krampus * 3
-        let reindeer = Int(Double(left) * 0.25 * rng.next()) / 2
-        left -= reindeer * 2
-        let elves = Int(Double(left) * 0.3 * rng.next())
-        left -= elves
-        return [.santa: left, .reindeer: reindeer, .elf: elves, .krampus: krampus].filter { $0.value > 0 }
     }
 }
 
