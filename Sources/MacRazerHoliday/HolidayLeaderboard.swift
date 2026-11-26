@@ -69,6 +69,8 @@ public final class HolidayLeaderboard: ObservableObject {
     @Published public private(set) var joining = false
     /// What went wrong with the last join, in words for the page.
     @Published public private(set) var problem: String?
+    /// The last try to fetch the board didn't reach the Worker: no connection, most likely.
+    @Published public private(set) var boardUnreachable = false
 
     private let holiday: Holiday
     private let game: HolidayGame
@@ -121,12 +123,37 @@ public final class HolidayLeaderboard: ObservableObject {
     /// The rows to show: the top ten, then yours with a gap above it if it's further down.
     public var visibleRows: [(rank: Int, player: HolidayPlayer, gapAbove: Bool)] {
         guard isOpen, let board else { return [] }
-        var rows = board.top.enumerated().map { (rank: $0.offset + 1, player: $0.element, gapAbove: false) }
-        if let you = board.you, let rank = board.yourRank, rank > board.top.count {
+        let me = board.you.map(current)
+        var top = board.top.map(current)
+        // Caught up into the top ten since the Worker last stored your score: in you go.
+        if let me, let rank = board.yourRank, rank <= Self.topRows, !top.contains(where: \.isYou) {
+            top.append(me)
+        }
+        // Best first by the scores as they are now; equal scores keep the Worker's order.
+        top = top.enumerated().sorted { $0.element.score != $1.element.score ? $0.element.score > $1.element.score : $0.offset < $1.offset }
+            .map(\.element)
+        top = Array(top.prefix(Self.topRows))
+        // Players on the same score share a place, as the Worker counts them.
+        var rows = top.map { player in (rank: 1 + top.filter { $0.score > player.score }.count, player: player, gapAbove: false) }
+        if let me, let rank = board.yourRank, !top.contains(where: \.isYou) {
             // Straight after the tenth there's nobody in between to leave out.
-            rows.append((rank: rank, player: you, gapAbove: rank > board.top.count + 1))
+            rows.append((rank: rank, player: me, gapAbove: rank > top.count + 1))
         }
         return rows
+    }
+
+    /// Your own row as it is on this Mac right now: the Worker's copy can be a few catches
+    /// behind until the next send.
+    private func current(_ player: HolidayPlayer) -> HolidayPlayer {
+        guard player.isYou else { return player }
+        var me = player
+        if game.score > me.score {
+            me.score = game.score
+            me.counts = game.counts
+        }
+        let gifts = (0..<HolidayPresents.count).compactMap { presents.gift(in: $0) }
+        if gifts.count > me.gifts.count { me.gifts = gifts }
+        return me
     }
 
     public func shuffleName() { suggestedName = HolidayNames.random(random) }
@@ -192,7 +219,12 @@ public final class HolidayLeaderboard: ObservableObject {
 
     func refreshNow() async {
         guard let source, isAvailable else { board = nil; return }
-        if let fresh = try? await source.board(you: you) { board = fresh }
+        do {
+            board = try await source.board(you: you)
+            boardUnreachable = false
+        } catch {
+            boardUnreachable = true
+        }
     }
 
     /// Sends what's waiting: a leave, a grown score, the presents. With the update check (at

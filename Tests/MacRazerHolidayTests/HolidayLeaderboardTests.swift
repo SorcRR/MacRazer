@@ -224,6 +224,44 @@ final class HolidayLeaderboardTests: XCTestCase {
         XCTAssertEqual(rows.map(\.rank).prefix(10), Array(1...10)[...])
     }
 
+    func testYourRowShowsYourScoreNowAndMovesUp() async throws {
+        let source = FakeSource()
+        // You at 12 on the Worker, 11th; the tenth has 20.
+        let others = (1...10).map { HolidayPlayer(id: "p\($0)", name: "P\($0)", score: 120 - $0 * 10, counts: [:], gifts: [], isYou: false) }
+        source.board = HolidayBoard(playerCount: 40, top: others,
+                                    you: HolidayPlayer(id: "me", name: "Jolly Sprout", score: 12, counts: [:], gifts: [], isYou: true),
+                                    yourRank: 11)
+        let parts = make(source)
+        await parts.board.join(as: "Jolly Sprout")
+        await parts.board.refreshNow()
+        XCTAssertEqual(parts.board.visibleRows.last?.player.score, 12, "Nothing caught on this Mac yet: the Worker's 12 stands")
+        let spot = UUID()
+        parts.game.register(spot, surface: .popover)
+        for _ in 0..<25 { parts.game.caught(parts.game.forcePeek(.santa, spot: spot).id) }
+        // The Worker places you by the score sent with the fetch: 25 is 10th, past the old tenth's 20.
+        source.board?.yourRank = 10
+        await parts.board.refreshNow()
+        let rows = parts.board.visibleRows
+        XCTAssertEqual(rows.count, 10, "In the top ten, the old tenth drops out")
+        let me = try XCTUnwrap(rows.first { $0.player.isYou })
+        XCTAssertEqual(me.player.score, 25, "Your score as it is on this Mac")
+        XCTAssertEqual(me.rank, 10)
+        XCTAssertFalse(rows.contains { $0.player.id == "p10" })
+        XCTAssertEqual(source.boardScoreSent, 25)
+    }
+
+    func testNoConnectionIsSaid() async {
+        let source = FakeSource()
+        let parts = make(source)
+        await parts.board.join(as: "Jolly Sprout")
+        source.boardFails = true
+        await parts.board.refreshNow()
+        XCTAssertTrue(parts.board.boardUnreachable)
+        source.boardFails = false
+        await parts.board.refreshNow()
+        XCTAssertFalse(parts.board.boardUnreachable)
+    }
+
     func testBelowThirtyNobodySeesAnyNames() {
         let parts = make(HolidayMockBoard(players: 17))
         parts.board.previewJoin("Jolly Sprout")
@@ -375,6 +413,9 @@ private final class FakeSource: HolidayBoardSource {
     var scoreError: HolidaySantaError?
     var failing = false
     var storesScores = true
+    var board: HolidayBoard?
+    var boardFails = false
+    var boardScoreSent: Int?
     /// Answers only after a long wait, or when cancelled.
     var slow = false
     var stored: [HolidayCharacter: Int] = [:]
@@ -404,7 +445,9 @@ private final class FakeSource: HolidayBoardSource {
 
     func board(you: HolidayPlayer?) async throws -> HolidayBoard {
         calls.append("board")
-        return HolidayBoard(playerCount: 3)
+        if boardFails { throw HolidaySantaError.unavailable }
+        boardScoreSent = you?.score
+        return board ?? HolidayBoard(playerCount: 3)
     }
 
     func presents(opened: Set<Int>) async throws -> HolidayPresentsReply {

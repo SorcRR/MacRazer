@@ -91,8 +91,9 @@ final class HolidaySantaClient: HolidayBoardSource {
 
     func board(you: HolidayPlayer?) async throws -> HolidayBoard {
         let reply: [String: Any]
-        if you != nil {
-            reply = try await post("board", ["key": key])
+        if let you {
+            // Your score now: the Worker places you by it in this answer, and never stores it.
+            reply = try await post("board", ["key": key, "score": you.score])
         } else {
             reply = try await get("board")
         }

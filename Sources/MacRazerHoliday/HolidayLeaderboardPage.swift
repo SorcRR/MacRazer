@@ -21,7 +21,12 @@ public struct HolidayLeaderboardPage: View {
             header
             if board.isAvailable {
                 if !board.joined || renaming { joinCard } else { youCard }
-                if board.isOpen { rows } else { waitingCard }
+                if board.boardUnreachable && board.board == nil {
+                    offlineCard
+                } else {
+                    if board.boardUnreachable { offlineNote }
+                    if board.isOpen { rows } else { waitingCard }
+                }
                 footnote
             }
         }
@@ -122,12 +127,6 @@ public struct HolidayLeaderboardPage: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text("Playing as \(board.name ?? "")").font(.system(size: 12.5, weight: .semibold))
                 Text(youLine).font(.system(size: 11)).foregroundStyle(.secondary)
-                if let onBoard = board.board?.you?.score, game.score > onBoard {
-                    // The Worker keeps a score every five minutes: say so rather than look stuck.
-                    Text("The board has \(onBoard) so far. Newer catches reach it within a few minutes.")
-                        .font(.system(size: 10.5)).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
             }
             Spacer(minLength: 4)
             Menu {
@@ -173,6 +172,39 @@ public struct HolidayLeaderboardPage: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
         .accessibilityElement(children: .combine)
+    }
+
+    /// No board to show: the Worker couldn't be reached.
+    private var offlineCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: "wifi.slash").font(.system(size: 12)).foregroundStyle(.secondary)
+                Text("No connection").font(.system(size: 12.5, weight: .semibold))
+            }
+            Text("The board can't be checked right now. Your score keeps counting on this Mac and goes "
+                 + "up once you're back online.")
+                .font(.system(size: 11)).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Button("Try again") { board.syncThenRefresh() }
+                .buttonStyle(HolidayPillButton(filled: false))
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+        .accessibilityElement(children: .contain)
+    }
+
+    /// A board from earlier, and no connection to check it now.
+    private var offlineNote: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "wifi.slash").font(.system(size: 10.5))
+            Text("No connection. This is the board from earlier.").font(.system(size: 11))
+            Spacer(minLength: 4)
+            Button("Try again") { board.syncThenRefresh() }
+                .buttonStyle(.plain).font(.system(size: 11, weight: .semibold)).foregroundStyle(HolidayColor.red)
+        }
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 4)
     }
 
     private var rows: some View {
