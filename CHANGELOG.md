@@ -33,12 +33,18 @@ expect rough edges until 1.0.
   its trackpad gesture is on (System Settings › Trackpad › More Gestures, off out of the box),
   as the Dock ignores the swipe otherwise; then it is the ⌃↓ shortcut, fired once at 50
   points. Launchpad, a custom shortcut, a media key or a mouse click in a slot fire once at
-  50 points too. On macOS 27, which ignores these event fields, all four presets stay keyboard
-  shortcuts (⌃↑ ⌃↓ ⌃← ⌃→), which have to be on in System Settings › Keyboard › Keyboard
-  Shortcuts › Mission Control. The event format is undocumented macOS behaviour, learned from
-  Mac Mouse Fix (credited in NOTICE.md) and written independently. Tried on a real mouse on
-  macOS 26.3: the Spaces animation follows the pointer for horizontal swipes and a vertical
-  swipe was driven; App Exposé as a swipe did nothing there, with its trackpad gesture off.
+  50 points too. macOS 27 ignores these event fields, so there each frame goes out as one
+  event with the swipe attached as an IOHIDEvent, through private IOKit and SkyLight calls
+  looked up at run time, and signed by the Natural scrolling setting so it still goes the way
+  of your slots. If one of those calls is missing, the four presets stay keyboard shortcuts
+  (⌃↑ ⌃↓ ⌃← ⌃→), which have to be on in System Settings › Keyboard › Keyboard Shortcuts ›
+  Mission Control. The event formats are undocumented macOS behaviour, learned from Mac Mouse
+  Fix, the macOS 27 sign from OpenLogi (both credited in NOTICE.md), and written
+  independently. Tried on a real mouse on macOS 26.3: the Spaces animation follows the pointer
+  for horizontal swipes and a vertical swipe was driven; App Exposé as a swipe did nothing
+  there, with its trackpad gesture off. On macOS 27.2.1, with a Cobra HyperSpeed over
+  Bluetooth, the Spaces and Mission Control swipes follow the pointer too. Not tried on macOS
+  27: App Exposé as a swipe with its trackpad gesture on, and Natural scrolling turned off.
   The constants have not been tuned.
 - **Launchpad for any button.** It has no keyboard shortcut, so MacRazer opens the app itself.
   On macOS 26 that's Apps, which replaced Launchpad, and the menus call it Apps there. It's in

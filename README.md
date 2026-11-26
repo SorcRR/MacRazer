@@ -284,16 +284,25 @@ moving and the **Click** action runs.
   - How far you have to move scales with the screen under the pointer: about one screen width
     for a Space, and the screen's height for Mission Control. These numbers are untuned
     starting points.
-  - **On macOS 27 and later** these events are ignored, so the presets go back to sending
-    their keyboard shortcuts (⌃↑, ⌃↓, ⌃←, ⌃→). They then fire once at 50 points like any other
-    action, and have to be on in System Settings › Keyboard › Keyboard Shortcuts › Mission
-    Control. App Exposé ⌃↓ is also a new preset in every button's Shortcut menu.
-  - The event format is undocumented macOS behaviour. It was learned from
-    [Mac Mouse Fix](https://github.com/noah-nuebling/mac-mouse-fix) (see
-    [NOTICE.md](NOTICE.md)) and written independently here; no code from it is used.
+  - **On macOS 27 and later** the event fields above are ignored. macOS reads the swipe from an
+    IOHIDEvent attached to the event instead, so MacRazer sends it that way there, through
+    private IOKit and SkyLight calls it looks up at run time. macOS 27 reads that swipe's sign
+    by the Natural scrolling setting, which MacRazer reads as each swipe begins, so the
+    direction still follows your slots. If one of those calls is missing, the presets go back
+    to sending their keyboard shortcuts (⌃↑, ⌃↓, ⌃←, ⌃→). They then fire once at 50 points
+    like any other action, and have to be on in System Settings › Keyboard › Keyboard
+    Shortcuts › Mission Control. App Exposé ⌃↓ is also a new preset in every button's Shortcut
+    menu.
+  - The event formats are undocumented macOS behaviour. They were learned from
+    [Mac Mouse Fix](https://github.com/noah-nuebling/mac-mouse-fix), the macOS 27 sign from
+    [OpenLogi](https://github.com/AprilNEA/OpenLogi) (see [NOTICE.md](NOTICE.md)), and written
+    independently here; no code from either is used.
   - **Tried on real hardware** on macOS 26.3: the Spaces animation follows the pointer for
     horizontal swipes, and a vertical swipe was driven. App Exposé as a swipe did nothing
-    there, with its trackpad gesture off, which is why it falls back to the shortcut.
+    there, with its trackpad gesture off, which is why it falls back to the shortcut. On macOS
+    27.2.1, with a Cobra HyperSpeed over Bluetooth, the Spaces and Mission Control swipes
+    follow the pointer too. Not yet tried on macOS 27: App Exposé as a swipe with its trackpad
+    gesture on, and Natural scrolling turned off.
 - **Launchpad** has no keyboard shortcut, so MacRazer opens the app itself. On macOS 26 that is
   **Apps**, which replaced Launchpad, and the menus call it that. It's in every button's
   Shortcut menu, next to the system presets, not only in a gesture.

@@ -33,8 +33,19 @@ It is GPL because it is derived from OpenRazer (see below).
  **[Noah Nübling](https://github.com/noah-nuebling)** documents the events macOS uses for the
  trackpad's Spaces and Mission Control swipes (their types, fields, phases and scale), and
  [InstantSpaceSwitcher](https://github.com/jurplel/InstantSpaceSwitcher) by
- **[@jurplel](https://github.com/jurplel)** confirmed their direction. The gesture swipes that
- follow the pointer are implemented here from that format; no code from either is bundled.
+ **[@jurplel](https://github.com/jurplel)** confirmed their direction. For macOS 27, Mac Mouse
+ Fix's [commit f92d2d53a0](https://github.com/noah-nuebling/mac-mouse-fix/commit/f92d2d53a0)
+ (`TouchSimulator.m`, `Tests/FixDockSwipes.m`) shows the swipe moving into an IOHIDEvent
+ attached with SkyLight's `SLEventSetIOHIDEvent`, with a velocity event as its child at the
+ end; [OpenLogi](https://github.com/AprilNEA/OpenLogi) by
+ **[@AprilNEA](https://github.com/AprilNEA)**, in
+ [pull request 1703](https://github.com/AprilNEA/OpenLogi/pull/1703), tested on real hardware,
+ with both settings, that macOS 27 signs it by Natural scrolling; and
+ [MMF27 Dock Swipe Fix](https://github.com/timmyagentic/mac-mouse-fix-macos-27-fix) by
+ **[@timmyagentic](https://github.com/timmyagentic)** found that the velocity must be signed
+ with it. The event and field numbers are Apple's own, from its open-source
+ [IOHIDFamily](https://github.com/apple-oss-distributions/IOHIDFamily). The gesture swipes that
+ follow the pointer are implemented here from those facts; no code from any of them is bundled.
 - Hardware findings unique to this project (e.g. brightness living on the LOGO LED, the
  31 ms request/response timing on macOS) were verified on real hardware and are documented
  in [`docs/DOCUMENTATION.md`](docs/DOCUMENTATION.md).
