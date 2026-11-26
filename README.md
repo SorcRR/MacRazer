@@ -41,6 +41,8 @@ Razer mice that use the same HID protocol family, but those are untested, so tre
   Settings › Appearance. A two-column popover is there too. It's always used while a keyboard
   or mousepad is connected.
 - **Connection sounds** when the mouse connects or disconnects (can be turned off).
+- **Hide the menu bar icon** while no mouse is connected (off by default). Open MacRazer
+  again from Finder or Spotlight to get to Settings.
 - **Button remapping** for the side Back/Forward buttons (software, via a CGEvent tap):
   keyboard shortcuts (presets or a custom recorder), mouse clicks, and media keys. Saved per
   device. If another mouse app (Mac Mouse Fix, SteerMouse, BetterMouse) takes the side

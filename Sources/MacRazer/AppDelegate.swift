@@ -240,6 +240,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
             }
             .store(in: &cancellables)
 
+        // Hide the icon while no Razer device is known, if the user asked for it. A sleeping
+        // or out-of-range mouse keeps its name, so the icon does not flicker. A keyboard or
+        // mousepad alone keeps the icon: its controls are in the popover. Relaunching the
+        // app opens Settings (`applicationShouldHandleReopen`), so it stays reachable.
+        Publishers.CombineLatest3(
+            Publishers.CombineLatest3(controller.$connected, controller.$deviceName,
+                                      controller.$bluetoothMouse),
+            accessories.$connected.map(\.isEmpty),
+            controller.$hideIconWithoutMouse)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] mouse, noAccessory, hide in
+                guard let self else { return }
+                let visible = MouseController.iconVisible(
+                    connected: mouse.0, deviceName: mouse.1, bluetoothMouse: mouse.2,
+                    accessoryConnected: !noAccessory, hideWithoutMouse: hide)
+                // A popover or menu left open would float with nothing to point at.
+                if !visible { self.popover.performClose(nil) }
+                self.statusItem.isVisible = visible
+            }
+            .store(in: &cancellables)
+
         controller.start()
 
         // Instant plug/unplug detection via IOKit; polling remains the fallback for the
@@ -1014,6 +1035,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         guard mouse.running || accessory.running else { return .terminateNow }
         mouse.whenIdle { accessory.whenIdle { NSApp.reply(toApplicationShouldTerminate: true) } }
         return .terminateLater
+    }
+
+    /// The app has no Dock icon, so while the menu bar icon is hidden, opening the app again
+    /// from Finder or Spotlight shows Settings. While the icon shows, reopening does what it
+    /// always did.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        guard !statusItem.isVisible else { return true }
+        present(settingsWindow)
+        return false
     }
 
     func applicationWillTerminate(_ notification: Notification) {
