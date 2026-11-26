@@ -438,7 +438,9 @@ buttons are handled onboard and never reach macOS.
  Launchpad on macOS 26, where there is no Launchpad.app), then `com.apple.launchpad.launcher`
  (macOS 15 and earlier); nothing on a Mac with neither. The menus call it "Apps" where Apps is
  the one installed (`LaunchpadApp.label(installed:)`, pure) and "Launchpad" otherwise, and
- list it in the Shortcut menu after the system presets (`launchpadMenuAnchor`). It goes out
+ list it in a gesture slot's Shortcut menu after the system presets (`launchpadMenuAnchor`).
+ A button's own menu lists it on its own, after Multimedia, on a control whose presses the
+ app sees, and not on a mouse's own HyperShift layer. It goes out
  through `apply` like any action, so a test's `actionEmitter` catches it and nothing opens.
 - **A release follows its press.** The tap remembers which presses it swallowed
  (`swallowedPresses`) and swallows exactly their releases, whatever changed in between
@@ -494,14 +496,19 @@ The preview uses a fixed scratch defaults suite, removed before and after render
 
 ### 6.3.2 Gesture mode, `GestureRecognizer.swift` + `ButtonRemapper.swift`
 
-A remappable button can be set to **Gesture…** in `RemapView` (every button's menu,
-`RemapActionMenu`, has it). Held and moved, the button fires one action per direction;
+A button can be set to **Gesture…** in `RemapView`'s `actionMenu` when
+`canBeGesture(_:)` allows it: a button from 2 up whose presses the app sees (`appSees`), on
+the standard layer only (never a HyperShift key). Held and moved, the button fires one action per direction;
 pressed and released without a swipe, it fires its Click action.
 
-- **Data model.** `RemapAction.gesture(GestureBindings)` is saved with the other actions, so a
- gesture needs no new storage key, and a profile carries it too. `GestureBindings` holds five
+- **Data model.** `RemapAction.gesture(GestureBindings)` is saved with the other actions, and
+ a profile carries it too. Like Launchpad, it isn't one of the actions 0.9.0 knows
+ (`RemapAction.isLegacy`), so `RemapStorage` keeps it in the `Extended` table
+ (`buttonMappingsExtended-…`), which an older build never reads. `GestureBindings` holds five
  ordinary `RemapAction`s: `click`, `up`, `down`, `left`, `right` (`GestureSlot` names them for
- the editor, and `action(for: GestureDirection)` picks by direction). A gesture inside a
+ the editor, and `action(for: GestureDirection)` picks by direction). A slot takes only what
+ the tap can fire itself (`RemapAction.firesInApp`): `setGestureAction` refuses HyperShift and
+ the actions only the mouse does, such as turbo, scroll and DPI. A gesture inside a
  gesture is never offered, and `apply(_:)` ignores one that turns up in saved data.
  `GestureBindings.defaults(click:)` puts `missionControl` up, `.launchpad` down, `spaceRight`
  left and `spaceLeft` right: a swipe moves the Spaces the way a trackpad does, as if the hand
@@ -534,7 +541,8 @@ pressed and released without a swipe, it fires its Click action.
  (`cancelGesture`). The release after such a reset is still swallowed, as its press was, and
  fires nothing. While paused a press passes through, so the mouse's own function remains.
 - **The system presets.** `appExpose` ("App Exposé  ⌃↓", key code 125) was added for the
- gesture and is in every button's Shortcut menu. Mission Control, App Exposé and the Spaces go
+ gesture. All the presets are in a gesture slot's Shortcut menu and under Keyboard ›
+ Shortcuts in a button's own menu. Mission Control, App Exposé and the Spaces go
  out as their standard shortcuts (⌃↑, ⌃↓, ⌃←, ⌃→) with the flags a real arrow key carries
  (`postedFlags(keyCode:saved:)`), so they have to be on in System Settings › Keyboard ›
  Keyboard Shortcuts › Mission Control.
@@ -542,15 +550,16 @@ pressed and released without a swipe, it fires its Click action.
  `postSource` so the events carry `magic` and pass the tap, and with the button number set
  outright so Back and Forward don't come out as a middle click). It fires at release, so a
  gesture button can't be held to drag.
-- **UI.** `RemapView.gestureEditor` lists the five slots with an action menu each (the same
- `RemapActionMenu`, whose None does nothing in a slot and which offers the button's own click
+- **UI.** `RemapView.gestureEditor` lists the five slots with an action menu each
+ (`RemapActionMenu`, whose None does nothing in a slot and which offers the button's own click
  under Mouse) and a key recorder. `swift run MacRazer render-remap gesture out.png` renders the
  editor from preview data (`ButtonRemapper.loadPreviewState(gesture: true)` puts a gesture on
  button 6).
 - **Tests.** `GestureRecognizerTests` (threshold, dominant axis, once per hold, net movement)
  and `ButtonRemapperGestureTests` (swallowing, pass-through while paused, a release following
  its press, the reset rules, nested gestures, defaults, persistence and migration, the tap
- mask), driven through `handle(type:event:)` with synthetic `CGEvent`s and the `actionEmitter`
+ mask), plus `GestureAndHyperShiftTests` (a gesture beside a HyperShift key, each releasing on
+ its own press, `canBeGesture`, the slot limits, the `Extended` storage split), driven through `handle(type:event:)` with synthetic `CGEvent`s and the `actionEmitter`
  hook that records actions instead of posting them.
 
 ### 6.4 Device test, `DeviceTest*.swift` + the Worker

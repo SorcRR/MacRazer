@@ -485,6 +485,11 @@ struct RemapView: View {
             Button("Default (\(remapper.defaultLabel(for: button)))") { remapper.setAction(.passthrough, for: button) }
             Menu("Keyboard") {
                 Button("Record Keybind…") { recordingButton = button }
+                // The ready-made shortcuts, as master's menus have them: Mission Control,
+                // the Spaces, Switch App and the rest.
+                Menu("Shortcuts") {
+                    ForEach(ButtonRemapper.presets) { p in item(p.name, p.action) }
+                }
                 if inMouse && !wheelStep {
                     Menu("Record Turbo Keybind") {
                         ForEach(RemapAction.turboRates, id: \.self) { rate in
