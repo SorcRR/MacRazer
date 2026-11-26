@@ -259,6 +259,8 @@ private struct WrappedPresent: View {
         Button(action: onOpen) {
             BoxArt(wrapping: wrapping, lidLift: 0, lidTurn: 0, glow: 0, seam: Color.white)
                 .frame(width: wrapping.width + 8, height: wrapping.height + 16)
+                // The drawing ignores the pointer, so the button needs a shape of its own to click.
+                .contentShape(Rectangle())
                 .offset(y: hovered && !waiting ? -3 : 0)
                 .animation(still ? nil : .easeOut(duration: 0.15), value: hovered)
         }
@@ -442,6 +444,7 @@ private struct OpenedPresent: View {
                 GiftIcon(gift: gift, size: 30, rays: gift.rarity != .regular ? 1 : 0)
                 NamePill(gift: gift)
             }
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .opacity(featured ? 1 : 0.92)

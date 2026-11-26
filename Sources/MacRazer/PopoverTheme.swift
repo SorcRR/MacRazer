@@ -90,18 +90,21 @@ final class AppearanceSettings: ObservableObject {
     @Published var glass: Bool {
         didSet { defaults.set(glass, forKey: Self.glassKey) }
     }
-    /// The popover in two columns even with only the mouse. Off by default; see `PopoverLayout`.
+    /// The popover in two columns even with only the mouse. Until the person picks, on for a
+    /// small screen and off for a big one; see `PopoverLayout`.
     @Published var twoColumns: Bool {
         didSet { defaults.set(twoColumns, forKey: Self.twoColumnsKey) }
     }
 
-    init(defaults: UserDefaults = .standard) {
+    /// `screenHeight` is the usable height of the screen with the menu bar, for the default.
+    init(defaults: UserDefaults = .standard, screenHeight: CGFloat? = NSScreen.main?.visibleFrame.height) {
         self.defaults = defaults
         // An unknown stored value (a theme removed in a later version) falls back to System
         // rather than failing.
         theme = defaults.string(forKey: Self.themeKey).flatMap(PopoverTheme.init(rawValue:)) ?? .system
         glass = defaults.object(forKey: Self.glassKey) as? Bool ?? false
-        twoColumns = defaults.bool(forKey: Self.twoColumnsKey)
+        twoColumns = defaults.object(forKey: Self.twoColumnsKey) as? Bool
+            ?? PopoverLayout.twoColumnsByDefault(screenHeight: screenHeight)
     }
 
     func look(systemIsDark: Bool) -> PopoverLook {
@@ -140,6 +143,16 @@ enum PopoverLayout {
     static let twoColumnWidth: CGFloat = 760
     /// The popover's width in one column.
     static let oneColumnWidth: CGFloat = 380
+
+    /// Below this usable height (every laptop at its default scaling) one column can run off
+    /// the bottom with a few sections open, so two columns is the default there.
+    static let smallScreenHeight: CGFloat = 1000
+
+    /// The setting's default until the person picks: two columns on a small screen.
+    static func twoColumnsByDefault(screenHeight: CGFloat?) -> Bool {
+        guard let screenHeight else { return false }
+        return screenHeight < smallScreenHeight
+    }
 
     /// Two columns when the person picked them, and always with more than one Razer device
     /// connected: a keyboard or mousepad under the mouse's column would push the popover
