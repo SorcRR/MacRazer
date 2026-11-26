@@ -30,6 +30,15 @@ public enum HolidayPhase: String, CaseIterable, Sendable {
     }
 }
 
+/// The presents under the tree: wrapped on Christmas Eve, to open on December 25 and 26, and
+/// gone from the 27th.
+public enum HolidayPresentsStage: Sendable {
+    /// December 24: there, greyed out, not to be opened until Christmas.
+    case waiting
+    /// December 25 and 26.
+    case open
+}
+
 /// The calendar side of the season: which phase a date is in and which season it belongs to.
 /// Pure and time-zone explicit, so the tests can walk every day of the year in any zone.
 public enum HolidaySeason {
@@ -66,6 +75,17 @@ public enum HolidaySeason {
               let christmas = calendar.date(from: DateComponents(year: year, month: 12, day: 25)) else { return nil }
         let today = calendar.startOfDay(for: date)
         return calendar.dateComponents([.day], from: today, to: christmas).day
+    }
+
+    /// Where the presents are on a date, or nil when there are none.
+    public static func presentsStage(of date: Date, calendar: Calendar = .current) -> HolidayPresentsStage? {
+        let parts = calendar.dateComponents([.month, .day], from: date)
+        guard parts.month == 12, let day = parts.day else { return nil }
+        switch day {
+        case 24: return .waiting
+        case 25, 26: return .open
+        default: return nil
+        }
     }
 
     /// The next local midnight after a date, when the phase can next change.

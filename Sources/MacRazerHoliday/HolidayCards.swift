@@ -168,6 +168,7 @@ public struct HolidayScoreLine: View {
 public struct HolidaySettingsRow: View {
     @ObservedObject private var holiday = Holiday.shared
     @ObservedObject private var game = HolidayGame.shared
+    @ObservedObject private var presents = HolidayPresents.shared
     public init() {}
 
     public var body: some View {
@@ -187,6 +188,25 @@ public struct HolidaySettingsRow: View {
                 }
                 .toggleStyle(.switch)
                 .tint(HolidayColor.deepRed)
+                // Dec 24 to 26: brings back presents hidden from the popover.
+                if holiday.presentsStage != nil {
+                    Toggle(isOn: Binding(get: { !presents.hidden }, set: { presents.setHidden(!$0) })) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "gift").font(.system(size: 12)).foregroundStyle(HolidayColor.red)
+                                .frame(width: 16, height: 16)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("Presents under the tree").font(.system(size: 13))
+                                Text("In the popover on Dec 25 and 26.")
+                                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                            }
+                            Spacer(minLength: 8)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .toggleStyle(.switch)
+                    .tint(HolidayColor.deepRed)
+                    .padding(.top, 4)
+                }
                 if game.score > 0 {
                     Text("Score \(game.score) · Level \(game.level + 1) of \(HolidayGameRules.levelThresholds.count)")
                         .font(.system(size: 11)).foregroundStyle(HolidayColor.red)

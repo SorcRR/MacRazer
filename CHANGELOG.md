@@ -16,6 +16,9 @@ expect rough edges until 1.0.
   - **Catch Santa:** he peeks out of a card now and then. Click him for a point. Rudolph is
     worth two. Seven levels, each a little faster. In Settings it's elves, and now and then
     Little Krampus for three.
+  - **Presents under the tree** on Dec 25 and 26: three for each person, opened in place with
+    a shake and a little confetti. Socks, a banana, a lump of coal and more, with a rare golden
+    mouse and a very rare golden chocolate. They wait, wrapped, on Christmas Eve.
   - **An anonymous holiday count** for the reports page: whether the decorations are on, and
     whether they were kept or turned off. No ID for the Mac, like the daily mouse count.
 - **More mice from test reports.**

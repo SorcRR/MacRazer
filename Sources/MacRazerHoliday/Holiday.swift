@@ -23,6 +23,8 @@ public enum HolidayChange: String, CaseIterable, Sendable {
     case onLater = "on_later"
     /// The first catch of the season, once.
     case played
+    /// The presents card hidden with its close button, once a season.
+    case presentsHidden = "presents_hidden"
 
     /// The bucket for decorations turned off after this many whole days.
     static func offLater(afterDays days: Int) -> HolidayChange {
@@ -144,6 +146,12 @@ public final class Holiday: ObservableObject {
     /// The Settings row: shown all season, even with the decorations off, so they can come back.
     public var showsSettingsRow: Bool { phase != nil && remoteAllowed }
 
+    /// Where the presents are today, while the decorations are on.
+    public var presentsStage: HolidayPresentsStage? {
+        guard isFestive else { return nil }
+        return HolidaySeason.presentsStage(of: now(), calendar: calendar)
+    }
+
     /// "24 sleeps until Christmas", or the phase's own line.
     public var headline: String? {
         guard let phase else { return nil }
@@ -151,7 +159,7 @@ public final class Holiday: ObservableObject {
         case .advent:
             let n = HolidaySeason.sleepsUntilChristmas(from: now(), calendar: calendar) ?? 0
             return n == 1 ? "1 sleep until Christmas" : "\(n) sleeps until Christmas"
-        case .christmasEve: return "Christmas Eve. Santa leaves tonight"
+        case .christmasEve: return "Christmas Eve. Presents arrive tomorrow"
         case .christmasDay: return "Merry Christmas"
         case .afterChristmas: return "Season's greetings"
         case .newYearsDay: return "Happy New Year"

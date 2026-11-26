@@ -347,6 +347,8 @@ struct PopoverView: View {
                 HStack(alignment: .top, spacing: 10) {
                     VStack(alignment: .leading, spacing: 10) {
                         statusCards
+                        // Dec 24 to 26 only: the presents, under the battery.
+                        HolidayPresentsCard()
                         if !noMouse { accessoriesSection }
                     }
                     .frame(width: columnWidth, alignment: .top)
@@ -359,6 +361,7 @@ struct PopoverView: View {
                 statusCards
                 mouseSettings
                 accessoriesSection
+                HolidayPresentsCard()
             }
             HolidayScoreLine()
             footer
