@@ -79,8 +79,8 @@ public final class Holiday: ObservableObject {
         #endif
         guard let text = environment["MACRAZER_HOLIDAY_DATE"] else { return nil }
         let parts = text.split(separator: "-").compactMap { Int($0) }
-        guard parts.count == 3, let day = Calendar.current.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2])) else { return nil }
-        let offset = day.timeIntervalSince(Calendar.current.startOfDay(for: Date()))
+        guard parts.count == 3, let day = HolidaySeason.calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2])) else { return nil }
+        let offset = day.timeIntervalSince(HolidaySeason.calendar.startOfDay(for: Date()))
         return { Date().addingTimeInterval(offset) }
     }
 
@@ -126,7 +126,7 @@ public final class Holiday: ObservableObject {
     static let bannerShowsBeforeIgnored = 3
 
     public init(defaults: UserDefaults = UserDefaults(suiteName: "MacRazer.holiday") ?? .standard,
-                calendar: Calendar = .current, now: @escaping () -> Date = Date.init,
+                calendar: Calendar = HolidaySeason.calendar, now: @escaping () -> Date = Date.init,
                 watchSystem: Bool = true, stillness: (() -> Bool)? = nil) {
         self.defaults = defaults
         self.calendar = calendar

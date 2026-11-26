@@ -58,4 +58,17 @@ final class HolidaySeasonTests: XCTestCase {
         XCTAssertTrue(HolidayPhase.christmasDay.hasStar)
         XCTAssertTrue(HolidayPhase.lastDay.hasStar)
     }
+
+    func testTheSeasonIsGregorianWhateverTheMacsCalendar() {
+        XCTAssertEqual(HolidaySeason.calendar.identifier, .gregorian)
+        var buddhist = Calendar(identifier: .buddhist)
+        buddhist.timeZone = TimeZone(identifier: "UTC")!
+        var utc = Calendar(identifier: .gregorian)
+        utc.timeZone = TimeZone(identifier: "UTC")!
+        let christmas = utc.date(from: DateComponents(year: 2026, month: 12, day: 25, hour: 12))!
+        // On the Buddhist calendar the same day is in 2569: the season must still be 2026.
+        XCTAssertEqual(buddhist.component(.year, from: christmas), 2569)
+        XCTAssertEqual(HolidaySeason.year(of: christmas), 2026)
+        XCTAssertEqual(HolidaySeason.phase(of: christmas), .christmasDay)
+    }
 }
