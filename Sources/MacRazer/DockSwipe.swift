@@ -12,11 +12,18 @@ import Darwin
 /// the same stream (`DockSwipeTracker` makes it, `DockSwipePoster` posts it), so these four
 /// follow the pointer instead of jumping when a shortcut fires.
 ///
-/// None of this is public API. The event format was learned from Mac Mouse Fix (see
-/// NOTICE.md) and cross-checked against other open-source apps that post it: facts only, the
-/// code is this project's own. macOS 27 stopped reading these event fields (it wants an
-/// IOHIDEvent attached through private SkyLight calls instead), so there `isSupported` is
-/// false and the four presets fall back to their keyboard shortcuts.
+/// None of this is public API, and macOS reads it two ways (`Method`, chosen at run time):
+/// - **macOS 26 and earlier** read undocumented CGEvent fields (`events(for:userData:)`), two
+///   events a frame.
+/// - **macOS 27** ignores those fields. It reads an IOHIDEvent of the dock swipe type attached
+///   to one event a frame (`HIDPayload`), made and attached with private IOKit and SkyLight
+///   calls looked up at run time (`AttachedEvent`). When one of them is missing, `isSupported`
+///   is false and the four presets fall back to their keyboard shortcuts. Tried on macOS
+///   27.2.1, where the Spaces and Mission Control swipes follow the pointer this way.
+///
+/// Both formats were learned from Mac Mouse Fix and cross-checked against other open-source
+/// apps that post them, the macOS 27 sign against OpenLogi's tests on real hardware (see
+/// NOTICE.md): facts only, the code is this project's own.
 enum DockSwipe {
     /// Which swipe: the event's "motion" value.
     enum Kind: Int64, Sendable {
@@ -51,11 +58,34 @@ enum DockSwipe {
         var velocity: Double = 0
     }
 
-    /// Whether this macOS reads the event fields `events(for:userData:)` writes.
-    static var isSupported: Bool { ProcessInfo.processInfo.operatingSystemVersion.majorVersion < 27 }
+    /// How this macOS takes a dock swipe.
+    enum Method: Equatable, Sendable {
+        /// macOS 26 and earlier: the CGEvent fields below (`events(for:userData:)`).
+        case eventFields
+        /// macOS 27 and later: an IOHIDEvent attached to the event (`AttachedEvent`).
+        case attachedHIDEvent
+    }
 
-    // The undocumented CGEvent fields of a dock swipe. A trackpad's own events carry them,
-    // and the Dock reads them back; the numbers are CGEventField raw values.
+    /// The method this Mac takes, or nil for none: a macOS 27 or later where a private call
+    /// the attached event needs is missing (`AttachedEvent.missingSymbol`). Worked out once.
+    static let method: Method? = method(
+        majorVersion: ProcessInfo.processInfo.operatingSystemVersion.majorVersion,
+        missingSymbol: AttachedEvent.missingSymbol)
+
+    /// The method for a macOS of `majorVersion`. `missingSymbol` is only asked on macOS 27 or
+    /// later, so an earlier macOS never looks the private calls up.
+    static func method(majorVersion: Int, missingSymbol: @autoclosure () -> String?) -> Method? {
+        guard majorVersion >= 27 else { return .eventFields }
+        return missingSymbol() == nil ? .attachedHIDEvent : nil
+    }
+
+    /// Whether this Mac takes dock swipes at all (`method`). Where it doesn't, the four
+    /// presets stay keyboard shortcuts.
+    static var isSupported: Bool { method != nil }
+
+    // The undocumented CGEvent fields of a dock swipe, as macOS 26 and earlier read them. A
+    // trackpad's own events carry them, and the Dock reads them back; the numbers are
+    // CGEventField raw values.
 
     /// The event type, as on the event itself: 30 for the swipe, 29 for the gesture event
     /// that follows it.
@@ -89,9 +119,10 @@ enum DockSwipe {
     static let swipeEventType: Int64 = 30
     static let gestureEventType: Int64 = 29
 
-    /// The two events one frame posts, in the order to post them: the swipe event, then the
-    /// gesture event the Dock expects after it. Both carry `userData`, so a tap of ours that
-    /// sees them can tell they are ours. Pure: nothing is posted here.
+    /// The two events one frame posts with the `eventFields` method, in the order to post
+    /// them: the swipe event, then the gesture event the Dock expects after it. Both carry
+    /// `userData`, so a tap of ours that sees them can tell they are ours. Pure: nothing is
+    /// posted here.
     static func events(for frame: Frame, userData: Int64) -> [CGEvent] {
         guard let swipe = CGEvent(source: nil), let companion = CGEvent(source: nil) else { return [] }
         func field(_ raw: UInt32) -> CGEventField { CGEventField(rawValue: raw)! }
@@ -190,6 +221,172 @@ private enum ManagedSpaces {
             entry = displays.first { ($0["Display Identifier"] as? String) == name }
         }
         return (entry?["Spaces"] as? [Any])?.count
+    }
+}
+
+extension DockSwipe {
+    /// What the `attachedHIDEvent` method attaches for one frame: an IOHIDEvent of the dock
+    /// swipe type, as a trackpad's own events carry it on macOS 27, with a velocity event as
+    /// its child at the end. Pure, so tests check it on any Mac; `AttachedEvent` makes it.
+    ///
+    /// The type and field numbers are Apple's own, from IOHIDFamily's open-source
+    /// IOHIDEventTypes.h (an event field is its type << 16 | an index); which of them the Dock
+    /// needs, and how they are signed, comes from the projects credited in NOTICE.md.
+    struct HIDPayload: Equatable, Sendable {
+        /// kIOHIDEventTypeDockSwipe.
+        static let dockSwipeType: UInt32 = 23
+        /// kIOHIDEventTypeVelocity.
+        static let velocityType: UInt32 = 9
+        /// kIOHIDEventFieldDockSwipeMotion: the swipe's kind (`Kind`), an integer.
+        static let motionField: UInt32 = dockSwipeType << 16 | 1
+        /// kIOHIDEventFieldDockSwipeProgress: the progress, set as a double. IOKit keeps it in
+        /// 16.16 fixed point, so it reads back to within 1/65536.
+        static let progressField: UInt32 = dockSwipeType << 16 | 2
+        /// kIOHIDEventFieldDockSwipeFlavor: who the swipe is for, an integer.
+        static let flavorField: UInt32 = dockSwipeType << 16 | 5
+        /// kIOHIDGestureFlavorDockPrimary: the Dock's three or four finger swipe.
+        static let dockFlavor = 3
+        /// kIOHIDEventFieldVelocityX and Y, both set to the velocity (Z stays 0).
+        static let velocityFields: [UInt32] = [velocityType << 16 | 0, velocityType << 16 | 1]
+        /// kIOHIDEventEventOptionPhaseShift: the phase (`Phase`) sits in the event flags'
+        /// top byte.
+        static let phaseShift: UInt32 = 24
+
+        /// The event flags: the phase, shifted.
+        let flags: UInt32
+        let motion: Int
+        /// `Frame.progress`, signed the way macOS 27 reads it (`orientation`).
+        let progress: Double
+        /// The velocity child's value, signed with the progress: on an end only, nil before.
+        /// In progress per second, as the fields method sends it (`Frame.velocity`). Which unit
+        /// macOS 27 expects isn't known: Mac Mouse Fix sends about 100 times the last step and
+        /// says it isn't sure either.
+        let velocity: Double?
+
+        /// `naturalScrolling`: the setting as the swipe began (`DockGestures.naturalScrolling`).
+        init(_ frame: Frame, naturalScrolling: Bool) {
+            let orientation = Self.orientation(naturalScrolling: naturalScrolling)
+            flags = UInt32(frame.phase.rawValue) << Self.phaseShift
+            motion = Int(frame.kind.rawValue)
+            progress = orientation * frame.progress
+            velocity = frame.phase.isEnd ? orientation * frame.velocity : nil
+        }
+
+        /// What `Frame.progress` is multiplied by. The fields method sends `Frame.progress` as
+        /// it is (its sign was checked on 26.3). Against that, macOS 27 reads the attached
+        /// progress the other way while Natural scrolling is on (the macOS default), and the
+        /// same way while it is off: seen on 27.0.1 with both settings, 14 of 14 Space switches,
+        /// in OpenLogi's pull request 1703, and what Mac Mouse Fix's own macOS 27 path does. So
+        /// the swipe still follows the slots. The velocity is signed with the progress, or the
+        /// end rebounds (seen by a companion fix for Mac Mouse Fix on macOS 27; NOTICE.md).
+        static func orientation(naturalScrolling: Bool) -> Double { naturalScrolling ? -1 : 1 }
+    }
+
+    /// The private calls the `attachedHIDEvent` method makes, looked up once at run time
+    /// (`dlopen` and `dlsym`), so a macOS that lacks one only loses the method
+    /// (`missingSymbol`) and keeps the keyboard shortcuts.
+    ///
+    /// Ownership (measured on macOS 27.2.1 with a process that posted nothing):
+    /// IOHIDEventCreate follows the Create rule, so `event(for:userData:)` releases each
+    /// IOHIDEvent it makes. IOHIDEventAppendEvent retains the child it is given, so the
+    /// velocity event is released once appended. SLEventSetIOHIDEvent keeps a copy of the
+    /// IOHIDEvent in the CGEvent (its retain count doesn't change, and the CGEvent's event reads
+    /// back as a different object with the same fields), so the dock swipe event is released
+    /// once attached and the CGEvent then owns everything the frame needs. 200,000 events made
+    /// this way grew the heap by under 200 bytes.
+    enum AttachedEvent {
+        private typealias Create = @convention(c) (CFAllocator?, UInt32, UInt64, UInt32) -> UnsafeMutableRawPointer?
+        private typealias SetFlags = @convention(c) (UnsafeMutableRawPointer, UInt32) -> Void
+        private typealias SetInteger = @convention(c) (UnsafeMutableRawPointer, UInt32, CFIndex) -> Void
+        private typealias SetDouble = @convention(c) (UnsafeMutableRawPointer, UInt32, Double) -> Void
+        private typealias Append = @convention(c) (UnsafeMutableRawPointer, UnsafeMutableRawPointer, UInt32) -> Void
+        private typealias Attach = @convention(c) (CGEvent, UnsafeMutableRawPointer) -> Void
+
+        private struct Calls: Sendable {
+            /// IOHIDEventCreate(allocator, type, timestamp, options), +1.
+            let create: Create
+            /// IOHIDEventSetEventFlags(event, flags).
+            let setFlags: SetFlags
+            /// IOHIDEventSetIntegerValue(event, field, value).
+            let setInteger: SetInteger
+            /// IOHIDEventSetDoubleValue(event, field, value).
+            let setDouble: SetDouble
+            /// IOHIDEventAppendEvent(parent, child, options).
+            let append: Append
+            /// SLEventSetIOHIDEvent(cgEvent, hidEvent), SkyLight's.
+            let attach: Attach
+        }
+
+        static let ioKitPath = "/System/Library/Frameworks/IOKit.framework/IOKit"
+        static let skyLightPath = "/System/Library/PrivateFrameworks/SkyLight.framework/SkyLight"
+
+        /// The calls, or the first one that didn't resolve, as "name (framework)". The
+        /// handles stay open for the life of the app.
+        private static let calls: Result<Calls, MissingSymbol> = {
+            guard let ioKit = dlopen(ioKitPath, RTLD_LAZY) else { return .failure(MissingSymbol("IOKit (dlopen)")) }
+            guard let skyLight = dlopen(skyLightPath, RTLD_LAZY) else {
+                return .failure(MissingSymbol("SkyLight (dlopen)"))
+            }
+            func look<T>(_ name: String, in handle: UnsafeMutableRawPointer, _ framework: String,
+                         as type: T.Type) throws(MissingSymbol) -> T {
+                guard let pointer = dlsym(handle, name) else { throw MissingSymbol("\(name) (\(framework))") }
+                return unsafeBitCast(pointer, to: type)
+            }
+            do throws(MissingSymbol) {
+                return .success(Calls(
+                    create: try look("IOHIDEventCreate", in: ioKit, "IOKit", as: Create.self),
+                    setFlags: try look("IOHIDEventSetEventFlags", in: ioKit, "IOKit", as: SetFlags.self),
+                    setInteger: try look("IOHIDEventSetIntegerValue", in: ioKit, "IOKit", as: SetInteger.self),
+                    setDouble: try look("IOHIDEventSetDoubleValue", in: ioKit, "IOKit", as: SetDouble.self),
+                    append: try look("IOHIDEventAppendEvent", in: ioKit, "IOKit", as: Append.self),
+                    attach: try look("SLEventSetIOHIDEvent", in: skyLight, "SkyLight", as: Attach.self)))
+            } catch {
+                return .failure(error)
+            }
+        }()
+
+        struct MissingSymbol: Error {
+            let description: String
+            init(_ description: String) { self.description = description }
+        }
+
+        /// The first private call that didn't resolve, or nil when all of them did.
+        static var missingSymbol: String? {
+            if case .failure(let missing) = calls { return missing.description }
+            return nil
+        }
+
+        /// The one event a frame posts with this method: an event of type 30 carrying
+        /// `userData`, with `payload` attached. Nil when a call is missing or IOKit can't make
+        /// the event. Nothing is posted here.
+        static func event(for payload: HIDPayload, userData: Int64) -> CGEvent? {
+            // Timestamp 0 and sender 0, as Mac Mouse Fix's macOS 27 events have: a test in its
+            // pull request 2025 found a real timestamp made no difference.
+            guard case .success(let call) = calls, let event = CGEvent(source: nil),
+                  let swipe = call.create(nil, HIDPayload.dockSwipeType, 0, 0) else { return nil }
+            defer { release(swipe) }
+            // The CGEvent's own fields first: written after the attach, a field didn't keep
+            // its new value on macOS 27.2.1.
+            event.setIntegerValueField(CGEventField(rawValue: DockSwipe.typeField)!, value: DockSwipe.swipeEventType)
+            event.setIntegerValueField(.eventSourceUserData, value: userData)
+            call.setFlags(swipe, payload.flags)
+            call.setInteger(swipe, HIDPayload.motionField, payload.motion)
+            call.setInteger(swipe, HIDPayload.flavorField, HIDPayload.dockFlavor)
+            call.setDouble(swipe, HIDPayload.progressField, payload.progress)
+            // Without the velocity the end still ends; the Dock then has no speed to go on.
+            if let velocity = payload.velocity, let child = call.create(nil, HIDPayload.velocityType, 0, 0) {
+                for field in HIDPayload.velocityFields { call.setDouble(child, field, velocity) }
+                call.append(swipe, child, 0)
+                release(child)
+            }
+            call.attach(event, swipe)
+            return event
+        }
+
+        /// Gives up the reference IOHIDEventCreate returned.
+        private static func release(_ event: UnsafeMutableRawPointer) {
+            Unmanaged<AnyObject>.fromOpaque(event).release()
+        }
     }
 }
 
@@ -481,11 +678,11 @@ struct DockSwipeOutput {
         self.appExposeEnabled = appExposeEnabled
     }
 
-    /// Posts to the session, or nil on a macOS that ignores these events
-    /// (`DockSwipe.isSupported`), whose system swipes stay keyboard shortcuts.
+    /// Posts to the session by this Mac's method (`DockSwipe.method`), or nil where it has
+    /// none (`DockSwipe.isSupported`), whose system swipes stay keyboard shortcuts.
     static func system(userData: Int64) -> DockSwipeOutput? {
-        guard DockSwipe.isSupported else { return nil }
-        let poster = DockSwipePoster(userData: userData)
+        guard let method = DockSwipe.method else { return nil }
+        let poster = DockSwipePoster(userData: userData, method: method)
         return DockSwipeOutput(send: poster.post, scale: DockSwipe.Scale.current,
                                appExposeEnabled: DockGestures.appExposeEnabled)
     }
@@ -495,11 +692,14 @@ struct DockSwipeOutput {
 /// Exposé's is off out of the box, and while it is off the Dock ignores an App Exposé swipe
 /// entirely (seen on macOS 26.3, where it did nothing), so the preset falls back to its ⌃↓
 /// shortcut there (`ButtonRemapper.dockSwipeTracker(for:)`). Mission Control's and the
-/// Spaces' swipes are on out of the box and are always sent.
+/// Spaces' swipes are on out of the box and are always sent. Natural scrolling is here too:
+/// macOS 27 signs an attached swipe by it (`DockSwipe.HIDPayload.orientation`).
 enum DockGestures {
     static let dockDomain = "com.apple.dock"
     /// System Settings › Trackpad › More Gestures › App Exposé.
     static let appExposeKey = "showAppExposeGestureEnabled"
+    /// System Settings › Mouse (and Trackpad) › Natural scrolling, in the global domain.
+    static let naturalScrollingKey = "com.apple.swipescrolldirection"
 
     /// Read fresh each time: the setting can change in System Settings while MacRazer runs.
     static func appExposeEnabled() -> Bool {
@@ -508,31 +708,58 @@ enum DockGestures {
         return isOn(CFPreferencesCopyAppValue(appExposeKey as CFString, domain))
     }
 
+    /// Read fresh each time, as `appExposeEnabled`.
+    static func naturalScrolling() -> Bool {
+        CFPreferencesAppSynchronize(kCFPreferencesAnyApplication)
+        return isNaturalScrolling(CFPreferencesCopyAppValue(naturalScrollingKey as CFString,
+                                                            kCFPreferencesAnyApplication))
+    }
+
     /// A stored value as a switch: on only for a number or boolean that says so, so a setting
     /// never written reads as off, the macOS default.
     static func isOn(_ value: Any?) -> Bool {
         (value as? NSNumber)?.boolValue ?? false
     }
+
+    /// Natural scrolling is on unless stored as off: macOS doesn't write the key until the
+    /// setting is first changed, and it is on out of the box.
+    static func isNaturalScrolling(_ value: Any?) -> Bool {
+        (value as? NSNumber)?.boolValue ?? true
+    }
 }
 
-/// Posts dock swipe frames (`DockSwipe.events(for:userData:)`) at the session, as a
-/// trackpad's arrive. Main thread only, like the tap that drives it.
+/// Posts dock swipe frames at the session, as a trackpad's arrive, by this Mac's method
+/// (`DockSwipe.Method`): two events a frame with the CGEvent fields, one with an attached
+/// IOHIDEvent. Main thread only, like the tap that drives it.
 ///
 /// Under load the Dock can miss an end, which leaves the desktop stuck halfway between two
 /// Spaces until the next swipe. So each end goes out again `endRepeats` later. The next
-/// swipe's start stops any repeat still waiting: a late end would cut that swipe short.
+/// swipe's start stops any repeat still waiting: a late end would cut that swipe short. Mac
+/// Mouse Fix repeats its ends on macOS 27 too, without knowing whether that is still needed
+/// there, so this does the same.
 final class DockSwipePoster: @unchecked Sendable {
     static let endRepeats: [TimeInterval] = [0.2, 0.5]
 
+    let method: DockSwipe.Method
     private let userData: Int64
+    private let naturalScrolling: () -> Bool
     private let send: (CGEvent) -> Void
+    /// Natural scrolling as the swipe under way began, for the attached method's sign
+    /// (`DockSwipe.HIDPayload.orientation`): one swipe keeps one sign. On until a swipe begins,
+    /// the macOS default.
+    private var natural = true
     /// The last end's events, and the timers that post them again. Readable so tests can
     /// see them waiting and fire them.
     private var lastEnd: [CGEvent] = []
     private(set) var repeatTimers: [Timer] = []
 
-    init(userData: Int64, send: @escaping (CGEvent) -> Void = { $0.post(tap: .cgSessionEventTap) }) {
+    /// `naturalScrolling` is asked as each swipe begins, and only by the attached method.
+    init(userData: Int64, method: DockSwipe.Method,
+         naturalScrolling: @escaping () -> Bool = DockGestures.naturalScrolling,
+         send: @escaping (CGEvent) -> Void = { $0.post(tap: .cgSessionEventTap) }) {
         self.userData = userData
+        self.method = method
+        self.naturalScrolling = naturalScrolling
         self.send = send
     }
 
@@ -540,7 +767,8 @@ final class DockSwipePoster: @unchecked Sendable {
 
     func post(_ frame: DockSwipe.Frame) {
         if frame.phase == .began || frame.phase.isEnd { stopRepeats() }
-        let events = DockSwipe.events(for: frame, userData: userData)
+        if frame.phase == .began, method == .attachedHIDEvent { natural = naturalScrolling() }
+        let events = events(for: frame)
         events.forEach(send)
         guard frame.phase.isEnd else { return }
         lastEnd = events
@@ -549,6 +777,18 @@ final class DockSwipePoster: @unchecked Sendable {
             // Common modes, as the tap's source: the repeat still goes while a menu is tracking.
             RunLoop.main.add(timer, forMode: .common)
             return timer
+        }
+    }
+
+    /// The events of one frame, by `method`. Nothing is posted here.
+    private func events(for frame: DockSwipe.Frame) -> [CGEvent] {
+        switch method {
+        case .eventFields:
+            return DockSwipe.events(for: frame, userData: userData)
+        case .attachedHIDEvent:
+            let payload = DockSwipe.HIDPayload(frame, naturalScrolling: natural)
+            // Nothing when IOKit makes no IOHIDEvent: a frame missed, not a crash.
+            return DockSwipe.AttachedEvent.event(for: payload, userData: userData).map { [$0] } ?? []
         }
     }
 

@@ -110,4 +110,94 @@ final class ButtonRemapperReleaseTests: XCTestCase {
         XCTAssertTrue(send(r, .otherMouseUp))
         XCTAssertEqual(emitted.actions, [])
     }
+
+    // MARK: The DPI button's F20
+
+    private let playPause = RemapAction.mediaKey(code: 16, name: "Play / Pause")
+
+    /// A Basilisk V3 X over Bluetooth whose DPI button types F20 for Play / Pause, confirmed
+    /// on the mouse, with no gesture yet.
+    private func dpiRemapper(_ emitted: Emitted, name: String = #function) -> ButtonRemapper {
+        let r = remapper(emitted, name: name)
+        r.setActiveDevice("PM2533", deviceID: 0x00BA)
+        r.saveDpiSoftwareAction(playPause)
+        r.confirmDpiBridge(binding: .softwareBridge)
+        return r
+    }
+
+    /// Whether the tap let F20 through.
+    @discardableResult
+    private func sendF20(_ r: ButtonRemapper, down: Bool, repeating: Bool = false) -> Bool {
+        let event = CGEvent(keyboardEventSource: nil, virtualKey: 90, keyDown: down)!
+        if repeating { event.setIntegerValueField(.keyboardEventAutorepeat, value: 1) }
+        return r.handle(type: down ? .keyDown : .keyUp, event: event) != nil
+    }
+
+    /// Adding the first gesture or removing the last reinstalls the tap. With the DPI button
+    /// held right then, its F20 release must still be swallowed: an app that never saw F20 go
+    /// down mustn't see it come up.
+    func testTheDpiButtonsReleaseIsSwallowedAcrossATapReinstall() {
+        let emitted = Emitted()
+        let r = dpiRemapper(emitted)
+        let before = r.wantedEventMask
+
+        XCTAssertFalse(sendF20(r, down: true))
+        r.makeGesture(back)
+        XCTAssertNotEqual(r.wantedEventMask, before, "a new mask, so the tap is reinstalled")
+        XCTAssertTrue(ButtonRemapper.includesKeyboardEvents(r.wantedEventMask), "still with the keys")
+        r.tapReplaced(mask: r.wantedEventMask)
+        XCTAssertFalse(sendF20(r, down: true, repeating: true), "a repeat follows its press")
+        XCTAssertFalse(sendF20(r, down: false), "the release of the press before the reinstall")
+        XCTAssertEqual(emitted.actions, [playPause])
+
+        XCTAssertFalse(sendF20(r, down: true))
+        r.setAction(.passthrough, for: back)
+        r.tapReplaced(mask: r.wantedEventMask)
+        XCTAssertFalse(sendF20(r, down: false), "and removing the gesture again")
+        XCTAssertEqual(emitted.actions, [playPause, playPause])
+    }
+
+    /// A tap without the keys (none asked for, macOS refused them, or no tap at all) never
+    /// sees the release, which reaches the app. Forgotten, so the next F20 release a tap with
+    /// the keys sees, of a press an app saw, goes through.
+    func testATapWithoutTheKeysForgetsTheHeldDpiButton() {
+        for mask in [ButtonRemapper.eventMask(keyboard: false, gestures: true), CGEventMask(0)] {
+            let emitted = Emitted()
+            let r = dpiRemapper(emitted, name: "\(#function)-\(mask)")
+            XCTAssertFalse(sendF20(r, down: true))
+            r.tapReplaced(mask: mask)
+            XCTAssertTrue(sendF20(r, down: false), "mask \(mask)")
+        }
+    }
+
+    /// A press whose release went by unseen (the tap off for a moment) can't take the next
+    /// press's action: a fresh press starts over.
+    func testAFreshDpiPressFiresAfterALostRelease() {
+        let emitted = Emitted()
+        let r = dpiRemapper(emitted)
+        XCTAssertFalse(sendF20(r, down: true))
+        XCTAssertFalse(sendF20(r, down: true), "no release came between")
+        XCTAssertFalse(sendF20(r, down: false))
+        XCTAssertEqual(emitted.actions, [playPause, playPause])
+    }
+
+    /// F20's repeats and release go the way its press went, whatever changed in between: a
+    /// press let through while paused keeps its repeats and release going through after
+    /// unpausing, and a swallowed one keeps them swallowed after pausing.
+    func testTheDpiButtonsRepeatsAndReleaseFollowItsPress() {
+        let emitted = Emitted()
+        let r = dpiRemapper(emitted)
+        r.remappingPaused = true
+        XCTAssertTrue(sendF20(r, down: true))
+        r.remappingPaused = false
+        XCTAssertTrue(sendF20(r, down: true, repeating: true))
+        XCTAssertTrue(sendF20(r, down: false), "the release of a press the app saw")
+        XCTAssertEqual(emitted.actions, [])
+
+        XCTAssertFalse(sendF20(r, down: true))
+        r.remappingPaused = true
+        XCTAssertFalse(sendF20(r, down: true, repeating: true))
+        XCTAssertFalse(sendF20(r, down: false), "its press was swallowed")
+        XCTAssertEqual(emitted.actions, [playPause])
+    }
 }

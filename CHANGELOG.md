@@ -33,13 +33,25 @@ expect rough edges until 1.0.
   its trackpad gesture is on (System Settings › Trackpad › More Gestures, off out of the box),
   as the Dock ignores the swipe otherwise; then it is the ⌃↓ shortcut, fired once at 50
   points. Launchpad, a custom shortcut, a media key or a mouse click in a slot fire once at
-  50 points too. On macOS 27, which ignores these event fields, all four presets stay keyboard
-  shortcuts (⌃↑ ⌃↓ ⌃← ⌃→), which have to be on in System Settings › Keyboard › Keyboard
-  Shortcuts › Mission Control. The event format is undocumented macOS behaviour, learned from
-  Mac Mouse Fix (credited in NOTICE.md) and written independently. Tried on a real mouse on
-  macOS 26.3: the Spaces animation follows the pointer for horizontal swipes and a vertical
-  swipe was driven; App Exposé as a swipe did nothing there, with its trackpad gesture off.
+  50 points too. macOS 27 ignores these event fields, so there each frame goes out as one
+  event with the swipe attached as an IOHIDEvent, through private IOKit and SkyLight calls
+  looked up at run time, and signed by the Natural scrolling setting so it still goes the way
+  of your slots. If one of those calls is missing, the four presets stay keyboard shortcuts
+  (⌃↑ ⌃↓ ⌃← ⌃→), which have to be on in System Settings › Keyboard › Keyboard Shortcuts ›
+  Mission Control. The event formats are undocumented macOS behaviour, learned from Mac Mouse
+  Fix, the macOS 27 sign from OpenLogi (both credited in NOTICE.md), and written
+  independently. Tried on a real mouse on macOS 26.3: the Spaces animation follows the pointer
+  for horizontal swipes and a vertical swipe was driven; App Exposé as a swipe did nothing
+  there, with its trackpad gesture off. On macOS 27.2.1, with a Cobra HyperSpeed over
+  Bluetooth, the Spaces and Mission Control swipes follow the pointer too. Not tried on macOS
+  27: App Exposé as a swipe with its trackpad gesture on, and Natural scrolling turned off.
   The constants have not been tuned.
+- **A setting to turn off the swipes that follow the pointer.** The gesture editor has a
+  checkbox, "Mission Control and Spaces follow the pointer", on by default. Off, in a gesture
+  Mission Control, App Exposé and the two Space presets fire once as their keyboard shortcuts
+  when the pointer has moved 50 points, like any other action. It is one setting for the app,
+  not per mouse and not part of a profile. Changing it during a hold ends the hold and cancels
+  an open swipe. The checkbox shows only where macOS can do the swipes that follow the pointer.
 - **Launchpad for any button.** It has no keyboard shortcut, so MacRazer opens the app itself.
   On macOS 26 that's Apps, which replaced Launchpad, and the menus call it Apps there. It's in
   every button's shortcut list, next to Mission Control and the Spaces, and it's the gesture's
@@ -129,7 +141,8 @@ expect rough edges until 1.0.
   press let through while the mouse was offline can bring the mapping back before the button
   is released, and the app that saw the press then kept the button held down. The other way
   round, remapping a button to None mid-press let a release through whose press no app had
-  seen. Each release now goes the way its press went.
+  seen. Each release now goes the way its press went. So do the key repeats and release of
+  the Basilisk V3 X's DPI button (F20), also when the event tap restarts while it is held.
 - **Battery history keeps a whole long charge.** It saved a reading every 4 seconds, even
   when nothing changed, and hit its limit after about a day of use. A long-lasting mouse lost
   the start of its charge from the usage chart and the estimate. A steady reading is now kept
