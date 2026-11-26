@@ -110,6 +110,8 @@ public final class Holiday: ObservableObject {
     let defaults: UserDefaults
     private let calendar: Calendar
     let now: () -> Date
+    /// Reduce Motion or Low Power Mode, asked of the system. Tests pass their own.
+    private let stillness: () -> Bool
     private var midnightTimer: Timer?
     private var observers: [NSObjectProtocol] = []
 
@@ -118,10 +120,11 @@ public final class Holiday: ObservableObject {
 
     public init(defaults: UserDefaults = UserDefaults(suiteName: "MacRazer.holiday") ?? .standard,
                 calendar: Calendar = .current, now: @escaping () -> Date = Date.init,
-                watchSystem: Bool = true) {
+                watchSystem: Bool = true, stillness: (() -> Bool)? = nil) {
         self.defaults = defaults
         self.calendar = calendar
         self.now = now
+        self.stillness = stillness ?? { Holiday.systemWantsStillness() }
         refresh()
         if watchSystem { watch() }
     }
@@ -305,7 +308,7 @@ public final class Holiday: ObservableObject {
         if bannerPending != banner { bannerPending = banner }
         let ending = festive && phase == .lastDay && stored(Bool.self, "endingDismissed") != true
         if endingNoticePending != ending { endingNoticePending = ending }
-        let still = Self.systemWantsStillness()
+        let still = stillness()
         if stillMode != still { stillMode = still }
         let day = calendar.startOfDay(for: now())
         if today != day { today = day }

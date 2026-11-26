@@ -20,7 +20,7 @@ final class HolidayGameAndReporterTests: XCTestCase {
     }
 
     private func holiday() -> Holiday {
-        Holiday(defaults: defaults, calendar: calendar, now: { [unowned self] in clock }, watchSystem: false)
+        Holiday(defaults: defaults, calendar: calendar, now: { [unowned self] in clock }, watchSystem: false, stillness: { false })
     }
 
     func testCatchingScoresAndPersistsPerSeason() {
