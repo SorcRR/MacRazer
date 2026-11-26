@@ -3,12 +3,10 @@
 
 import SwiftUI
 
-/// The size of a peeking character, and how much of it shows: about the top half, so it stays
-/// in the card's padding and never covers a control.
-private let characterSize: CGFloat = 26
-private let showing: CGFloat = 14
-/// Cards shorter than this never get a character on their trailing edge.
-private let tallEnoughForTrailing: CGFloat = 60
+/// The size of a peeking character, and how much of it shows: the whole face, just inside the
+/// card's edge. It may sit over a control for the second or so it's out.
+private let characterSize: CGFloat = 30
+private let showing: CGFloat = 30
 
 /// Makes a card a place the game's characters can peek out of. Only the character itself
 /// takes clicks, and only while it's out; the card works exactly as before.
@@ -46,7 +44,16 @@ private struct PeekingCharacter: View {
     let peek: HolidayPeek
     let size: CGSize
     let onCatch: () -> Void
-    @State private var out = false
+    @State private var out = PeekingCharacter.startsOut
+
+    /// Still renders (`MACRAZER_HOLIDAY_PEEK`) catch it already out, not mid-slide.
+    private static var startsOut: Bool {
+        #if DEBUG
+        ProcessInfo.processInfo.environment["MACRAZER_HOLIDAY_PEEK"] != nil
+        #else
+        false
+        #endif
+    }
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 20)) { timeline in
@@ -72,11 +79,7 @@ private struct PeekingCharacter: View {
         }
     }
 
-    /// Rows keep their trailing edge for their switches and chevrons: a character there would
-    /// take a click meant for the control. Short cards get it from the bottom instead.
-    private var edge: PeekEdge {
-        peek.edge == .trailing && size.height < tallEnoughForTrailing ? .bottom : peek.edge
-    }
+    private var edge: PeekEdge { peek.edge }
 
     private var rotation: Angle {
         switch edge {

@@ -162,7 +162,7 @@ public final class HolidayGame: ObservableObject {
         loops[surface]?.cancel()
         loops[surface] = nil
         guard holiday.isFestive, !holiday.stillMode, visibleSurfaces.contains(surface) else {
-            if let peek, spots[peek.spot]?.surface == surface { self.peek = nil }
+            if let peek, !peekIsPinned, spots[peek.spot]?.surface == surface { self.peek = nil }
             return
         }
         loops[surface] = Task { [weak self] in await self?.run(surface) }
@@ -233,6 +233,15 @@ public final class HolidayGame: ObservableObject {
     private func save() {
         holiday.setStored(score, "score")
         holiday.setStored(Dictionary(uniqueKeysWithValues: counts.map { ($0.key.rawValue, $0.value) }), "counts")
+    }
+
+    /// A still render's forced peek stays put, whatever the game does around it.
+    private var peekIsPinned: Bool {
+        #if DEBUG
+        ProcessInfo.processInfo.environment["MACRAZER_HOLIDAY_PEEK"] != nil
+        #else
+        false
+        #endif
     }
 
     #if DEBUG
