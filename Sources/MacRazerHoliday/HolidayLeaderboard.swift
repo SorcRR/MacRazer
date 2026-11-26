@@ -54,9 +54,10 @@ public final class HolidayLeaderboard: ObservableObject {
     /// The rows shown above your own.
     public static let topRows = 10
     static let nameLength = 3...24
-    /// How often a changed score goes to the Worker. It stores one at most every five minutes,
-    /// counted in whole minutes, so a little more than that.
-    static let syncInterval: TimeInterval = 5 * 60 + 30
+    /// How often a changed score goes to the Worker. Kept slow: the Worker runs on Cloudflare's
+    /// free plan, and every stored score is a few database writes. The board's page sends one
+    /// at once when it opens, so it's never this far behind when someone looks.
+    static let syncInterval: TimeInterval = 15 * 60
 
     /// The name you play under, once joined. Per season.
     @Published public private(set) var name: String?
@@ -179,6 +180,7 @@ public final class HolidayLeaderboard: ObservableObject {
         guard joined else { return }
         name = nil
         holiday.removeStored("leaderboard.name")
+        forgetPresentsSent()
         holiday.setStored(true, "leaderboard.leaving")
         board = nil
         Task { await sync() }
@@ -222,6 +224,7 @@ public final class HolidayLeaderboard: ObservableObject {
                 // Deleted on the Worker (by the admin): this Mac isn't on the board any more.
                 name = nil
                 holiday.removeStored("leaderboard.name")
+                forgetPresentsSent()
             } catch {}
         }
         await syncPresents()
@@ -231,8 +234,21 @@ public final class HolidayLeaderboard: ObservableObject {
     /// what was really inside. Taken while no box is open yet; boxes opened go back to it.
     func syncPresents() async {
         guard let source, joined, presents.stage == .open else { return }
+        // Only when there's something to say: the Worker's picks not here yet, or a box opened
+        // since it last heard. Not on every tick.
+        let sent = Set(holiday.stored([Int].self, "leaderboard.presentsSent") ?? [])
+        let picked = holiday.stored(Bool.self, "leaderboard.presentsPicked") == true
+        guard !picked || presents.opened != sent else { return }
         guard let reply = try? await source.presents(opened: presents.opened) else { return }
         presents.adopt(reply.gifts)
+        holiday.setStored(true, "leaderboard.presentsPicked")
+        holiday.setStored(reply.opened.sorted(), "leaderboard.presentsSent")
+    }
+
+    /// A new row on the Worker (after leaving) gets presents of its own.
+    private func forgetPresentsSent() {
+        holiday.removeStored("leaderboard.presentsPicked")
+        holiday.removeStored("leaderboard.presentsSent")
     }
 
     /// The page came or went.

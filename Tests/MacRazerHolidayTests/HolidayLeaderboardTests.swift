@@ -223,6 +223,11 @@ final class HolidayLeaderboardTests: XCTestCase {
         await parts.board.syncPresents()
         XCTAssertEqual(parts.presents.gift(in: 0), .goldenMouse)
         XCTAssertEqual(source.openedSent, [0])
+        // Nothing new: no request, however often it's asked.
+        let asked = source.calls.filter { $0 == "presents" }.count
+        await parts.board.syncPresents()
+        await parts.board.sync()
+        XCTAssertEqual(source.calls.filter { $0 == "presents" }.count, asked)
     }
 
     // MARK: The Worker's wire format

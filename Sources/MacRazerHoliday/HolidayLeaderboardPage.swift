@@ -29,7 +29,6 @@ public struct HolidayLeaderboardPage: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .onAppear { board.setPageVisible(true) }
         .onDisappear { board.setPageVisible(false) }
-        .onChange(of: game.score) { _, _ in board.refresh() }
     }
 
     private var header: some View {
