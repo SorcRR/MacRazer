@@ -394,6 +394,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         // Unthrottled: a launch is rare, and it is when someone who just installed or reopened
         // the app most expects it to know about the latest release.
         Task { await updateChecker.checkForUpdatesNow() }
+        // The Santa leaderboard's score goes with it, once joined: at launch, every three
+        // hours on the same tick, and at quit.
+        HolidayLeaderboard.shared.syncAtLaunch()
         startUpdateTriggers()
     }
 
@@ -413,6 +416,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     /// or answer that hasn't gone out today.
     private func checkOnlineIfDue() {
         Task { await updateChecker.checkForUpdatesIfDue() }
+        HolidayLeaderboard.shared.syncIfDue()
         Task { await supportList.refreshIfDue() }
         Task { await countReporter.reportIfNeeded() }
         // December only: the anonymous holiday count, whose reply can switch the decorations off.
@@ -1030,10 +1034,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     /// it finishes, a few seconds at most. Quitting first would leave it that way: the history
     /// flush below only waits two seconds for the device queue, less than the lighting step.
     /// A keyboard or mousepad's lighting test is the same.
+    ///
+    /// A Santa leaderboard score not sent yet gets two seconds to go, at most.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         let mouse = deviceTestWindow.model, accessory = accessoryTestWindow.model
-        guard mouse.running || accessory.running else { return .terminateNow }
-        mouse.whenIdle { accessory.whenIdle { NSApp.reply(toApplicationShouldTerminate: true) } }
+        let leaderboard = HolidayLeaderboard.shared
+        guard mouse.running || accessory.running || leaderboard.hasSomethingToSend else { return .terminateNow }
+        mouse.whenIdle {
+            accessory.whenIdle {
+                leaderboard.syncBeforeQuit { NSApp.reply(toApplicationShouldTerminate: true) }
+            }
+        }
         return .terminateLater
     }
 

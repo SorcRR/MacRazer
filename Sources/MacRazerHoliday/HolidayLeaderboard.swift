@@ -54,10 +54,11 @@ public final class HolidayLeaderboard: ObservableObject {
     /// The rows shown above your own.
     public static let topRows = 10
     static let nameLength = 3...24
-    /// How often a changed score goes to the Worker. Kept slow: the Worker runs on Cloudflare's
-    /// free plan, and every stored score is a few database writes. The board's page sends one
-    /// at once when it opens, so it's never this far behind when someone looks.
-    static let syncInterval: TimeInterval = 15 * 60
+    /// How often a changed score goes to the Worker, on the update check's own rhythm: at
+    /// launch, every three hours, and at quit. The Worker runs on Cloudflare's free plan and
+    /// every stored score is a few database writes. The board's page sends one at once when it
+    /// opens, so your own row is current whenever you look.
+    static let syncInterval: TimeInterval = 3 * 60 * 60
 
     /// The name you play under, once joined. Per season.
     @Published public private(set) var name: String?
@@ -75,10 +76,9 @@ public final class HolidayLeaderboard: ObservableObject {
     private var source: HolidayBoardSource?
     private var random: () -> Double
     private var cancellables: Set<AnyCancellable> = []
-    private var syncLoop: Task<Void, Never>?
     private var syncing = false
-    /// The page is on screen: only then is the board fetched, also after each tick.
-    private var pageVisible = false
+    /// When everything waiting last reached the Worker, for the three-hour rhythm.
+    private var lastSynced: Date?
 
     init(holiday: Holiday, game: HolidayGame, presents: HolidayPresents, source: HolidayBoardSource?,
          random: @escaping () -> Double = { Double.random(in: 0..<1) }) {
@@ -101,7 +101,6 @@ public final class HolidayLeaderboard: ObservableObject {
         guard source == nil, let base, let hardwareUUID, !hardwareUUID.isEmpty else { return }
         source = HolidaySantaClient(base: base, key: HolidayPlayerKey.make(fromHardwareUUID: hardwareUUID), send: send)
         objectWillChange.send()
-        startSyncing()
     }
 
     /// Whether the leaderboard is there to open at all: in the season, with somewhere to
@@ -196,8 +195,9 @@ public final class HolidayLeaderboard: ObservableObject {
         if let fresh = try? await source.board(you: you) { board = fresh }
     }
 
-    /// Sends what's waiting: a leave, a grown score, the presents. Every few minutes, and
-    /// when the page opens. Failures are quiet and tried again next time.
+    /// Sends what's waiting: a leave, a grown score, the presents. With the update check (at
+    /// launch, every three hours, at quit) and when the page opens. Failures are quiet and
+    /// tried again next time.
     func sync() async {
         // A leave still waiting goes out in the rest of January too: the Worker takes one any time.
         guard let source, !syncing, holiday.storageYear != nil else { return }
@@ -211,8 +211,8 @@ public final class HolidayLeaderboard: ObservableObject {
                 return
             }
         }
-        guard joined, isAvailable else { return }
-        if game.score != holiday.stored(Int.self, "leaderboard.sent") ?? 0 {
+        guard joined, isAvailable else { lastSynced = holiday.now(); return }
+        if hasScoreToSend {
             let counts = game.counts
             do {
                 // What the Worker stored, not what went: it keeps one score every five minutes
@@ -220,14 +220,57 @@ public final class HolidayLeaderboard: ObservableObject {
                 // next time.
                 let stored = try await source.score(counts)
                 holiday.setStored(stored, "leaderboard.sent")
+                lastSynced = holiday.now()
             } catch HolidaySantaError.notJoined {
                 // Deleted on the Worker (by the admin): this Mac isn't on the board any more.
                 name = nil
                 holiday.removeStored("leaderboard.name")
                 forgetPresentsSent()
-            } catch {}
+            } catch {
+                // Not reached: still due, so the next update tick tries again.
+            }
+        } else {
+            lastSynced = holiday.now()
         }
         await syncPresents()
+    }
+
+    private var hasScoreToSend: Bool { game.score != holiday.stored(Int.self, "leaderboard.sent") ?? 0 }
+
+    /// Something to tell the Worker: a leave, or a score it hasn't stored.
+    public var hasSomethingToSend: Bool {
+        source != nil && holiday.storageYear != nil
+            && (holiday.stored(Bool.self, "leaderboard.leaving") == true || (joined && isAvailable && hasScoreToSend))
+    }
+
+    /// At launch, like the update check: unthrottled.
+    public func syncAtLaunch() {
+        Task { await sync() }
+    }
+
+    /// On the update check's tick (every 15 minutes, on wake, when the network comes back,
+    /// when the popover opens): sends only when three hours have passed since the last time.
+    public func syncIfDue() {
+        guard isDue else { return }
+        Task { await sync() }
+    }
+
+    var isDue: Bool {
+        guard let lastSynced else { return true }
+        return holiday.now().timeIntervalSince(lastSynced) >= Self.syncInterval
+    }
+
+    /// At quit: what's waiting, given at most `seconds`. Calls `done` either way.
+    public func syncBeforeQuit(within seconds: Double = 2, done: @escaping @MainActor () -> Void) {
+        let finished = Task { await sync() }
+        Task {
+            try? await Task.sleep(for: .seconds(seconds))
+            finished.cancel()
+        }
+        Task {
+            await finished.value
+            done()
+        }
     }
 
     /// Dec 25 and 26 once joined: the Worker picks the three presents, so the board shows
@@ -253,7 +296,6 @@ public final class HolidayLeaderboard: ObservableObject {
 
     /// The page came or went.
     public func setPageVisible(_ visible: Bool) {
-        pageVisible = visible
         if visible { syncThenRefresh() }
     }
 
@@ -269,17 +311,6 @@ public final class HolidayLeaderboard: ObservableObject {
     public func presentsChanged() {
         guard joined else { return }
         Task { await syncPresents() }
-    }
-
-    private func startSyncing() {
-        syncLoop?.cancel()
-        syncLoop = Task { [weak self] in
-            while !Task.isCancelled {
-                await self?.sync()
-                if self?.pageVisible == true { await self?.refreshNow() }
-                try? await Task.sleep(for: .seconds(Self.syncInterval))
-            }
-        }
     }
 
     /// Your row as the Mac knows it.

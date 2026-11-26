@@ -156,6 +156,46 @@ final class HolidayLeaderboardTests: XCTestCase {
         XCTAssertEqual(source.calls.filter { $0 == "score" }.count, 2, "Stored now: nothing more to send")
     }
 
+    func testTheScoreGoesEveryThreeHoursLikeTheUpdateCheck() async {
+        let source = FakeSource()
+        let parts = make(source)
+        await parts.board.join(as: "Jolly Sprout")
+        XCTAssertFalse(parts.board.isDue, "Just sent with the join")
+        XCTAssertFalse(parts.board.hasSomethingToSend)
+        let spot = UUID()
+        parts.game.register(spot, surface: .popover)
+        parts.game.caught(parts.game.forcePeek(.santa, spot: spot).id)
+        XCTAssertTrue(parts.board.hasSomethingToSend, "Quitting now would send it")
+        clock = clock.addingTimeInterval(2 * 3600)
+        XCTAssertFalse(parts.board.isDue)
+        clock = clock.addingTimeInterval(3600)
+        XCTAssertTrue(parts.board.isDue)
+        // A send that doesn't get through leaves it due.
+        source.scoreError = .unavailable
+        await parts.board.sync()
+        XCTAssertTrue(parts.board.isDue)
+        source.scoreError = nil
+        await parts.board.sync()
+        XCTAssertFalse(parts.board.isDue)
+        XCTAssertFalse(parts.board.hasSomethingToSend)
+    }
+
+    func testQuittingWaitsAtMostAMoment() async {
+        let source = FakeSource()
+        let parts = make(source)
+        await parts.board.join(as: "Jolly Sprout")
+        let spot = UUID()
+        parts.game.register(spot, surface: .popover)
+        parts.game.caught(parts.game.forcePeek(.santa, spot: spot).id)
+        source.slow = true
+        let started = Date()
+        await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+            parts.board.syncBeforeQuit(within: 0.2) { done.resume() }
+        }
+        XCTAssertLessThan(Date().timeIntervalSince(started), 2)
+        XCTAssertEqual(source.calls.last, "score", "It tried")
+    }
+
     func testDeletedByTheAdminMeansNotJoined() async {
         let source = FakeSource()
         let parts = make(source)
@@ -335,6 +375,8 @@ private final class FakeSource: HolidayBoardSource {
     var scoreError: HolidaySantaError?
     var failing = false
     var storesScores = true
+    /// Answers only after a long wait, or when cancelled.
+    var slow = false
     var stored: [HolidayCharacter: Int] = [:]
     var sentCounts: [HolidayCharacter: Int]?
     var gifts: [HolidayGift] = []
@@ -348,6 +390,7 @@ private final class FakeSource: HolidayBoardSource {
 
     func score(_ counts: [HolidayCharacter: Int]) async throws -> Int {
         calls.append("score")
+        if slow { try await Task.sleep(for: .seconds(30)) }
         if let scoreError { throw scoreError }
         sentCounts = counts
         if storesScores { stored = counts }
