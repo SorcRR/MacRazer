@@ -190,12 +190,17 @@ public final class HolidayGame: ObservableObject {
             lastSpot[surface] = spot
             self.peek = peek
             try? await Task.sleep(for: .seconds(seconds))
-            // Caught meanwhile: `caught` started a fresh loop with the short gap.
-            if self.peek?.id == peek.id { self.peek = nil } else { return }
+            // Caught meanwhile: `caught` cancelled this loop and started a fresh one with the
+            // short gap. Anything else (its card went away) and this loop carries on.
+            if Task.isCancelled { return }
+            if self.peek?.id == peek.id { self.peek = nil }
         }
     }
 
-    private func eligibleSpot(on surface: HolidaySurface) -> UUID? {
+    /// A card to peek from now, or nil to wait. There's one character at a time across the
+    /// popover and Settings, so while one is out anywhere, the other window waits its turn.
+    func eligibleSpot(on surface: HolidaySurface) -> UUID? {
+        if peek != nil { return nil }
         if let last = lastInteraction, holiday.now().timeIntervalSince(last) < Self.quietAfterInteraction { return nil }
         let choices = spots.filter { $0.value.surface == surface && !$0.value.hovered }.map(\.key)
         let fresh = choices.filter { $0 != lastSpot[surface] }
