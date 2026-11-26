@@ -2,6 +2,7 @@
 // Part of MacRazer, a control app for Razer mice on macOS. See LICENSE and NOTICE.md.
 
 import SwiftUI
+import MacRazerHoliday
 
 /// A clearly-labelled "‹ Back" button used by the popover sub-pages.
 ///
@@ -100,6 +101,7 @@ struct ColorPickerPage: View {
             Image(systemName: "sun.min.fill").font(.system(size: 10)).foregroundStyle(.secondary)
             Slider(value: $bri, in: 0...1) { editing in apply(force: !editing) }
                 .tint(.razerGreen).controlSize(.small)
+                .holidaySliderStripes(bri)
             Image(systemName: "sun.max.fill").font(.system(size: 11)).foregroundStyle(.secondary)
         }
     }

@@ -7,6 +7,20 @@ expect rough edges until 1.0.
 ## [Unreleased]
 
 ### Added
+- **Holiday decorations, Dec 1 to Jan 6.** The popover gets pine branches with twinkling
+  lights, a little snow, a tree in the menu bar and a countdown to Christmas, with a star from
+  Christmas Day and fireworks on New Year's Day. The first time the popover opens, a card offers
+  to keep them or turn them off, and Settings › Appearance has a switch all season. Your own
+  theme never changes underneath, and on Jan 7 everything goes back on its own. Reduce Motion
+  and Low Power Mode keep it still.
+  - **Catch Santa:** he peeks out of a card now and then. Click him for a point. Rudolph is
+    worth two. Seven levels, each a little faster. In Settings it's elves, and now and then
+    Little Krampus for three.
+  - **Presents under the tree** on Dec 25 and 26: three for each person, opened in place with
+    a shake and a little confetti. Socks, a banana, a lump of coal and more, with a rare golden
+    mouse and a very rare golden chocolate. They wait, wrapped, on Christmas Eve.
+  - **An anonymous holiday count** for the reports page: whether the decorations are on, and
+    whether they were kept or turned off. No ID for the Mac, like the daily mouse count.
 - **Gesture mode for the extra buttons.** In Configure Buttons, choose Gesture… for a button,
   then hold it and move the mouse up, down, left or right to run a different action for each
   direction. Press and release without moving and its Click action runs. The defaults are
@@ -50,6 +64,11 @@ expect rough edges until 1.0.
 - **Cynosa Lite tested.** It lost its UNTESTED tag after passing the lighting test.
 - **Joro keyboard.** It gets its own lighting card, with brightness and a static colour
   tested. Before, the app took it for a mouse.
+
+### Changed
+- **Two columns by default on a smaller screen.** On a screen under 1000 points tall, the
+  popover now starts in two columns, so it stays on the screen with a few sections open. Your
+  own pick in Settings › Appearance still wins.
 
 ### Fixed
 - **A remapped button is never left held down in an app.** A remapped button's release was
