@@ -294,13 +294,16 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
     /// follow the pointer as dock swipes where this Mac takes them (`dockSwipes`). On unless
     /// turned off in the gesture editor. Off, a hold is exactly what it is on a Mac without
     /// dock swipes: no tracker, and each preset is the keyboard shortcut its slot holds, fired
-    /// once at 50 points. Holds read it as they start (`dockSwipeTracker(for:)`), so a change
-    /// ends the one in progress, which cancels its open swipe (`gestureHold`): the Dock never
-    /// stays halfway, and no hold goes on the other way from how it began.
+    /// once at 50 points, for a mouse button's hold and the DPI button's alike. Holds read it
+    /// as they start (`dockSwipeTracker(for:)`), so a change ends the one in progress, which
+    /// cancels its open swipe (`gestureHold`): the Dock never stays halfway, and no hold goes
+    /// on the other way from how it began.
     @Published var systemSwipesFollowPointer: Bool {
         didSet {
             guard systemSwipesFollowPointer != oldValue else { return }
             defaults.set(systemSwipesFollowPointer, forKey: Self.systemSwipesFollowPointerKey)
+            GestureDebugLog.log("SWIPE follow the pointer \(systemSwipesFollowPointer ? "on" : "off")"
+                + (gestureHold.map { ", ending the hold of trigger=\($0.trigger)" } ?? ""))
             gestureHold = nil
         }
     }

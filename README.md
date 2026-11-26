@@ -309,9 +309,9 @@ moving and the **Click** action runs.
   - **Turning it off.** The gesture editor has a checkbox, "Mission Control and Spaces follow
     the pointer", on by default and shown only where macOS can do these swipes. Off, in a
     gesture Mission Control, App Exposé and the two Space presets fire once as their keyboard
-    shortcuts when the pointer has moved 50 points, like any other action. It is one setting
-    for the app, not per mouse and not part of a profile. Changing it during a hold ends the
-    hold and cancels an open swipe.
+    shortcuts when the pointer has moved 50 points, like any other action, for mouse buttons
+    and for the DPI button's long press alike. It is one setting for the app, not per mouse and
+    not part of a profile. Changing it during a hold ends the hold and cancels an open swipe.
 - **Launchpad** has no keyboard shortcut, so MacRazer opens the app itself. On macOS 26 that is
   **Apps**, which replaced Launchpad, and the menus call it that. It's in every button's
   Shortcut menu, next to the system presets, not only in a gesture.

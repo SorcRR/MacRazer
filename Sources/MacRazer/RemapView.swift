@@ -73,9 +73,9 @@ struct RemapView: View {
         .padding(18)
         .frame(width: width)
         // Room for the gesture editor when the page has only a button or two, and at least its
-        // own height with a margin, so its checkbox and a long explanation are never clipped at
-        // the top and bottom. The editor's height doesn't depend on the page's, so this
-        // settles at once.
+        // own height with a margin: the DPI button's, with six rows and its checkbox, is taller
+        // than the two-column popover's page, which would clip its top and bottom. The editor's
+        // height doesn't depend on the page's, so this settles at once.
         .frame(minHeight: gestureEditorButton == nil ? nil : max(400, gestureEditorHeight + 24), alignment: .top)
         .onAppear {
             remapper.refreshAccessibility(prompt: false)

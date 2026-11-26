@@ -660,8 +660,8 @@ four system presets does not fire once: it drives a swipe that follows the point
   - **Turning it off** (`ButtonRemapper.systemSwipesFollowPointer`, `RemapView`'s checkbox titled
    `followPointerToggleTitle`, "Mission Control and Spaces follow the pointer"). On by default.
    Off, `dockSwipeTracker(for:)` returns nil, so no tracker is made and the four presets are
-   the keyboard shortcuts their slots hold, fired once at 50 points like any other action. One
-   global setting: saved in the defaults key `systemSwipesFollowPointerKey`
+   the keyboard shortcuts their slots hold, fired once at 50 points like any other action, for
+   a mouse button's hold and the DPI button's long press alike. One global setting: saved in the defaults key `systemSwipesFollowPointerKey`
    (`gestureSystemSwipesFollowPointer`), not per mouse and not in profiles; absent reads as on.
    Holds read it as they start, so a change sets `gestureHold` to nil, which ends the hold and
    cancels an open swipe; writing the value it already has changes nothing. The checkbox shows
@@ -694,9 +694,9 @@ four system presets does not fire once: it drives a swipe that follows the point
  cancelling an open swipe, App Exposé as a swipe or a shortcut by the Dock's setting, the
  default gesture's mixed vertical axis and its Spaces following the hand) and
  `SystemSwipesFollowPointerTests` (the setting: on out of the box, each preset firing its
- shortcut once at 50 points when off, turning it off mid-swipe cancelling the swipe and
- changing it mid-hold ending the hold without firing, the saved key being global, and the
- editor's text).
+ shortcut once at 50 points when off for a mouse button and for the Cobra's long press,
+ turning it off mid-swipe cancelling the swipe for both, changing it mid-hold ending the hold
+ without firing, the saved key being global, and the editor's text).
 
 ### 6.3.3 The DPI button and driver mode, `ButtonRemapper.swift` + `DpiDriverMode.swift` + `DpiPrivateKeys.swift` + `BluetoothDevice.swift`
 

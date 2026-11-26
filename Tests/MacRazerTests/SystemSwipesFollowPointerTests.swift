@@ -15,6 +15,7 @@ import XCTest
 /// reaches the session or waits.
 final class SystemSwipesFollowPointerTests: XCTestCase {
     private let back = 3
+    private let cobra = 0x00DC
     /// 1 point is 0.001 of progress sideways and 0.002 up or down.
     private let scale = DockSwipe.Scale(horizontal: 0.001, vertical: 0.002)
     private let playPause = RemapAction.mediaKey(code: 16, name: "Play / Pause")
@@ -76,11 +77,23 @@ final class SystemSwipesFollowPointerTests: XCTestCase {
         return r
     }
 
+    /// The same on a Cobra over Bluetooth, whose DPI button is the gesture, in driver mode:
+    /// its private keys are handed to `handlePrivateKey` (`longKey`).
+    private func cobraRemapper(_ recorded: Recorded, clock: Clock, defaults: UserDefaults) -> ButtonRemapper {
+        let r = ButtonRemapper(defaults: defaults, actionEmitter: { recorded.actions.append($0) },
+                               dockSwipes: output(recorded), clock: { clock.now })
+        r.setActiveDevice("COBRA-BT", deviceID: cobra)
+        r.saveDpiSoftwareAction(.gesture(bindings))
+        r.dpiDriverModeChanged(.engaged)
+        return r
+    }
+
     /// Whether the tap let the event through, answered while `event` is still alive.
     @discardableResult
     private func send(_ r: ButtonRemapper, _ type: CGEventType, dx: Int64 = 0, dy: Int64 = 0) -> Bool {
+        let mouseButton = type == .mouseMoved ? CGMouseButton.left : CGMouseButton(rawValue: UInt32(back))!
         let event = CGEvent(mouseEventSource: nil, mouseType: type, mouseCursorPosition: .zero,
-                            mouseButton: CGMouseButton(rawValue: UInt32(back))!)!
+                            mouseButton: mouseButton)!
         event.setIntegerValueField(.mouseEventDeltaX, value: dx)
         event.setIntegerValueField(.mouseEventDeltaY, value: dy)
         return r.handle(type: type, event: event) != nil
@@ -91,6 +104,18 @@ final class SystemSwipesFollowPointerTests: XCTestCase {
     private func drag(_ r: ButtonRemapper, _ clock: Clock, dx: Int64 = 0, dy: Int64 = 0) -> Bool {
         clock.now += 0.01
         return send(r, .otherMouseDragged, dx: dx, dy: dy)
+    }
+
+    /// The pointer moving with no button down, 10 ms after the last event.
+    private func move(_ r: ButtonRemapper, _ clock: Clock, dx: Int64 = 0, dy: Int64 = 0) {
+        clock.now += 0.01
+        send(r, .mouseMoved, dx: dx, dy: dy)
+    }
+
+    /// The Cobra's long private key going down (the firmware recognised a long press of the
+    /// DPI button) or up (the button came up).
+    private func longKey(_ r: ButtonRemapper, down: Bool) {
+        r.handlePrivateKey(PrivateKeyEvent(code: DpiButtonPrivateKeys.cobraHyperSpeed.long, isDown: down))
     }
 
     // MARK: The default
@@ -117,11 +142,11 @@ final class SystemSwipesFollowPointerTests: XCTestCase {
 
     // MARK: Off: shortcuts fired once
 
-    /// Off, a hold is what it is on a Mac without dock swipes: no tracker, and each preset is
-    /// its keyboard shortcut, fired once as the movement reaches 50 points, never again for the
-    /// rest of the hold, and no frame for the Dock. App Exposé too, with its trackpad gesture
-    /// on.
-    func testOffEachPresetFiresItsShortcutOnceAt50Points() {
+    /// Off, a mouse button's hold is what it is on a Mac without dock swipes: no tracker, and
+    /// each preset is its keyboard shortcut, fired once as the movement reaches 50 points,
+    /// never again for the rest of the hold, and no frame for the Dock. App Exposé too, with
+    /// its trackpad gesture on.
+    func testOffEachPresetOfAMouseButtonFiresItsShortcutOnceAt50Points() {
         let recorded = Recorded()
         let clock = Clock()
         let r = remapper(recorded, clock: clock, defaults: defaults())
@@ -140,6 +165,31 @@ final class SystemSwipesFollowPointerTests: XCTestCase {
             drag(r, clock, dx: -swipe.dx * 600, dy: -swipe.dy * 600)
             XCTAssertFalse(send(r, .otherMouseUp), swipe.name)
             XCTAssertEqual(recorded.actions, [swipe.action], "\(swipe.name): once, and no click")
+            XCTAssertNil(r.gestureHold, swipe.name)
+        }
+        XCTAssertEqual(recorded.frames, [], "nothing for the Dock")
+    }
+
+    /// The same for the DPI button's long press on a mouse with private keys: its moves come
+    /// as plain pointer moves, and each preset fires its shortcut once at 50 points, with no
+    /// Hold at the release and nothing for the Dock.
+    func testOffEachPresetOfTheCobrasLongPressFiresItsShortcutOnceAt50Points() {
+        let recorded = Recorded()
+        let clock = Clock()
+        let r = cobraRemapper(recorded, clock: clock, defaults: defaults())
+        r.systemSwipesFollowPointer = false
+        for swipe in swipes {
+            recorded.actions = []
+            longKey(r, down: true)
+            XCTAssertEqual(r.gestureHold?.trigger, ButtonRemapper.dpiButton, swipe.name)
+            XCTAssertNil(r.gestureHold?.swipe, "\(swipe.name): no tracker")
+            move(r, clock, dx: swipe.dx * 49, dy: swipe.dy * 49)
+            XCTAssertEqual(recorded.actions, [], "\(swipe.name): 49 points")
+            move(r, clock, dx: swipe.dx, dy: swipe.dy)
+            XCTAssertEqual(recorded.actions, [swipe.action], "\(swipe.name): at 50 points")
+            move(r, clock, dx: swipe.dx * 300, dy: swipe.dy * 300)
+            longKey(r, down: false)
+            XCTAssertEqual(recorded.actions, [swipe.action], "\(swipe.name): once, and no Hold")
             XCTAssertNil(r.gestureHold, swipe.name)
         }
         XCTAssertEqual(recorded.frames, [], "nothing for the Dock")
@@ -173,6 +223,25 @@ final class SystemSwipesFollowPointerTests: XCTestCase {
         send(r, .otherMouseUp)
         XCTAssertEqual(recorded.actions, [preset("spaceRight")])
         XCTAssertEqual(recorded.frames.count, 3)
+    }
+
+    /// The same for a swipe of the Cobra's long press: cancelled at once, and the long key's
+    /// release after it fires no Hold and sends nothing.
+    func testOnTheCobraTurningItOffMidSwipeCancelsTheSwipe() {
+        let recorded = Recorded()
+        let clock = Clock()
+        let r = cobraRemapper(recorded, clock: clock, defaults: defaults())
+        longKey(r, down: true)
+        move(r, clock, dy: -30)
+        XCTAssertEqual(recorded.phases, [.began])
+        r.systemSwipesFollowPointer = false
+        XCTAssertNil(r.gestureHold)
+        XCTAssertEqual(recorded.phases, [.began, .cancelled])
+        XCTAssertEqual(recorded.frames.last?.progress ?? 0, -0.06, accuracy: 1e-9)
+        longKey(r, down: false)
+        move(r, clock, dy: -30)
+        XCTAssertEqual(recorded.frames.count, 2, "nothing more")
+        XCTAssertEqual(recorded.actions, [])
     }
 
     /// Turned back on during a hold that has no tracker, the hold ends too, without firing:
@@ -215,7 +284,7 @@ final class SystemSwipesFollowPointerTests: XCTestCase {
         XCTAssertEqual(recorded.actions, [preset("missionControl")], "a shortcut on the new one too")
         XCTAssertEqual(recorded.frames, [])
 
-        second.setActiveDevice("ANOTHER-MOUSE")
+        second.setActiveDevice("COBRA-BT", deviceID: cobra)
         second.setMappings([back: .gesture(bindings)])
         XCTAssertFalse(second.systemSwipesFollowPointer, "not the mouse's, nor the profile's")
         second.systemSwipesFollowPointer = true
@@ -227,19 +296,21 @@ final class SystemSwipesFollowPointerTests: XCTestCase {
 
     /// The gesture editor's explanation says the four follow the pointer only while they do:
     /// with the setting on, where dock swipes go somewhere. Off, or on a Mac without them, it
-    /// leaves that sentence out, as the four are then shortcuts like the rest. The checkbox's
+    /// leaves that sentence out, as the four are then shortcuts like the rest. The switch's
     /// label is a plain sentence.
     func testTheEditorTextFollowsTheSetting() {
         let recorded = Recorded()
         let r = remapper(recorded, clock: Clock(), defaults: defaults())
         let sentence = "Mission Control and the Spaces follow the pointer while you hold it"
-        r.systemSwipesFollowPointer = true
-        XCTAssertTrue(RemapView.gestureEditorExplanation(followsPointer: r.systemSwipesFollowPointerHere)
-            .contains(sentence), "on")
-        r.systemSwipesFollowPointer = false
-        let off = RemapView.gestureEditorExplanation(followsPointer: r.systemSwipesFollowPointerHere)
-        XCTAssertFalse(off.contains("follow the pointer"), "off")
-        XCTAssertTrue(off.hasPrefix("Hold the button"), off)
+        for longPress in [false, true] {
+            r.systemSwipesFollowPointer = true
+            XCTAssertTrue(RemapView.gestureEditorExplanation(longPress: longPress, followsPointer: r.systemSwipesFollowPointerHere)
+                .contains(sentence), "on, long press \(longPress)")
+            r.systemSwipesFollowPointer = false
+            let off = RemapView.gestureEditorExplanation(longPress: longPress, followsPointer: r.systemSwipesFollowPointerHere)
+            XCTAssertFalse(off.contains("follow the pointer"), "off, long press \(longPress)")
+            XCTAssertTrue(off.hasPrefix(longPress ? "Hold the DPI button" : "Hold the button"), off)
+        }
 
         let withoutDockSwipes = ButtonRemapper(defaults: defaults("\(#function)-without"), actionEmitter: { _ in })
         XCTAssertTrue(withoutDockSwipes.systemSwipesFollowPointer)
