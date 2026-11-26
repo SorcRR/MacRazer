@@ -846,7 +846,11 @@ USB and the 2.4 GHz dongle are not supported: the firmware handles the button on
  unverified there, and another project saw its link fail writing it.
 - **Gesture trace** (`GestureDebugLog.swift`). Off by default; `defaults write
  com.macrazer.menubar gestureDebugLog -bool true` and a relaunch make it append to
- `~/Library/Logs/MacRazer/gesture.log`: holds and pointer deltas, dock swipe frames, F20
+ `~/Library/Logs/MacRazer/gesture.log`: holds and pointer deltas, dock swipe frames, the dock
+ swipe method once as its poster is made (`SWIPE method: ...`, or `SWIPE method: none, ...`
+ with the call that was missing), with the attached method each swipe's `began`, `ended` and
+ `cancelled` as sent (`SWIPE attached ...`, with the signed progress, the velocity and the
+ Natural scrolling setting), each change of the follow-the-pointer setting, F20
  timing, the mouse's HID input reports other than pointer movement (`GestureDebugHIDWatch`,
  `HIDREPORT`; a keyboard report only when its keys are F13 to F20,
  `GestureDebugReportFilter`), Razer's GATT characteristics and unsolicited notifications,
@@ -1172,7 +1176,7 @@ that path draws the content but needs an explicit size, since there is no window
 | `RazerDevices.swift` | PID to {name, supported, hasBattery} registry; `dpiButtonPrivateKeys` marks a mouse whose DPI button reports private keys in driver mode (the Cobra HyperSpeed). |
 | `DpiPrivateKeys.swift` | The DPI button's private keys (`DpiButtonPrivateKeys`), report 4 (`PrivateKeyReport`), `PrivateKeyTracker`, the mouse's notifications in report 5 (`MouseNotice`, `MouseNoticeReport`), and `DpiPrivateKeyWatcher`. |
 | `DpiDriverMode.swift` | `DpiDriverModeState`, `DpiDriverModeNeed` and the pure `DpiDriverModeBook`: when driver mode is wanted, engaged, re-checked (also as the mouse settles and on its notifications), retried and given back. |
-| `GestureDebugLog.swift` | The hidden `gestureDebugLog` trace: holds, pointer deltas, F20, HID reports (never typed keys), GATT, read-only probes, device mode and private keys, in `~/Library/Logs/MacRazer/gesture.log`. |
+| `GestureDebugLog.swift` | The hidden `gestureDebugLog` trace: holds, pointer deltas, the dock swipe method, F20, HID reports (never typed keys), GATT, read-only probes, device mode and private keys, in `~/Library/Logs/MacRazer/gesture.log`. |
 | `BatteryHistory.swift` | Sample log + learned discharge rate + time estimate. |
 | `PopoverView.swift` | Main popover UI + page navigation. |
 | `PopoverTheme.swift` | Settings › Appearance: theme, glass, the resolved look, the popover and window backdrops. |

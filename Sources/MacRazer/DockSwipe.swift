@@ -64,6 +64,14 @@ enum DockSwipe {
         case eventFields
         /// macOS 27 and later: an IOHIDEvent attached to the event (`AttachedEvent`).
         case attachedHIDEvent
+
+        /// For `GestureDebugLog`.
+        var traceDescription: String {
+            switch self {
+            case .eventFields: "CGEvent fields (macOS 26 and earlier)"
+            case .attachedHIDEvent: "attached IOHIDEvent (macOS 27 and later)"
+            }
+        }
     }
 
     /// The method this Mac takes, or nil for none: a macOS 27 or later where a private call
@@ -681,7 +689,11 @@ struct DockSwipeOutput {
     /// Posts to the session by this Mac's method (`DockSwipe.method`), or nil where it has
     /// none (`DockSwipe.isSupported`), whose system swipes stay keyboard shortcuts.
     static func system(userData: Int64) -> DockSwipeOutput? {
-        guard let method = DockSwipe.method else { return nil }
+        guard let method = DockSwipe.method else {
+            GestureDebugLog.log("SWIPE method: none, \(DockSwipe.AttachedEvent.missingSymbol ?? "a private call")"
+                + " did not resolve, so the four system swipes stay keyboard shortcuts")
+            return nil
+        }
         let poster = DockSwipePoster(userData: userData, method: method)
         return DockSwipeOutput(send: poster.post, scale: DockSwipe.Scale.current,
                                appExposeEnabled: DockGestures.appExposeEnabled)
@@ -761,6 +773,7 @@ final class DockSwipePoster: @unchecked Sendable {
         self.method = method
         self.naturalScrolling = naturalScrolling
         self.send = send
+        GestureDebugLog.log("SWIPE method: \(method.traceDescription)")
     }
 
     deinit { repeatTimers.forEach { $0.invalidate() } }
@@ -787,8 +800,18 @@ final class DockSwipePoster: @unchecked Sendable {
             return DockSwipe.events(for: frame, userData: userData)
         case .attachedHIDEvent:
             let payload = DockSwipe.HIDPayload(frame, naturalScrolling: natural)
-            // Nothing when IOKit makes no IOHIDEvent: a frame missed, not a crash.
-            return DockSwipe.AttachedEvent.event(for: payload, userData: userData).map { [$0] } ?? []
+            guard let event = DockSwipe.AttachedEvent.event(for: payload, userData: userData) else {
+                GestureDebugLog.log("SWIPE \(frame.phase): IOKit made no IOHIDEvent, nothing posted")
+                return []
+            }
+            // Not every `changed`: the tap's hot path. The ButtonRemapper's own SWIPE lines
+            // give the progress before it is signed for macOS 27.
+            if frame.phase != .changed {
+                GestureDebugLog.log("SWIPE attached \(frame.phase) motion=\(payload.motion) "
+                    + "progress=\(payload.progress) velocity=\(payload.velocity.map { "\($0)" } ?? "none") "
+                    + "natural scrolling \(natural ? "on, sign flipped" : "off, sign kept")")
+            }
+            return [event]
         }
     }
 

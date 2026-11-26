@@ -433,10 +433,10 @@ Both mice:
 - **Gesture trace.** If the DPI button or a gesture misbehaves, run
   `defaults write com.macrazer.menubar gestureDebugLog -bool true` and relaunch. MacRazer then
   writes a trace to `~/Library/Logs/MacRazer/gesture.log`: gesture holds and pointer movement,
-  F20 timing, the mouse's raw HID reports (never keyboard keys other than F13 to F20), Razer's
-  Bluetooth characteristics, read-only probes once per connection, each read and write of the
-  device mode and why (with the re-checks as the mouse settles and the notifications that call
-  for one), and the private keys. The trace itself only reads from the mouse; its HID part
+  how dock swipes are sent on this Mac, F20 timing, the mouse's raw HID reports (never keyboard
+  keys other than F13 to F20), Razer's Bluetooth characteristics, read-only probes once per
+  connection, each read and write of the device mode and why (with the re-checks as the mouse
+  settles and the notifications that call for one), and the private keys. The trace itself only reads from the mouse; its HID part
   needs Input Monitoring. Turn it off with `defaults delete com.macrazer.menubar gestureDebugLog`.
 - The device-mode key and the private-key report format were learned from other open-source
   projects (credited in [NOTICE.md](NOTICE.md)); no code from them is used.

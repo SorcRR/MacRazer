@@ -94,10 +94,10 @@ expect rough edges until 1.0.
   OpenRazer, OpenSnek, OpenSynapse and ergo-control (credited in NOTICE.md); no code from them
   is used.
 - **A gesture trace for bug reports.** The hidden `gestureDebugLog` default writes a trace to
-  `~/Library/Logs/MacRazer/gesture.log`: gesture holds, pointer movement, F20 timing, the
-  mouse's raw HID reports (never which key a keyboard typed, only F13 to F20), Razer's
-  Bluetooth characteristics, read-only probes once per connection, device-mode changes and
-  the DPI button's private keys.
+  `~/Library/Logs/MacRazer/gesture.log`: gesture holds, pointer movement, how dock swipes are
+  sent on this Mac, F20 timing, the mouse's raw HID reports (never which key a keyboard typed,
+  only F13 to F20), Razer's Bluetooth characteristics, read-only probes once per connection,
+  device-mode changes and the DPI button's private keys.
 - **More mice from test reports.**
   - **Polling confirmed with the newer command** on the Viper 8KHz, both Basilisk V4 Pro
     links and the Mouse Dock Pro, which goes up to 8000 Hz.
