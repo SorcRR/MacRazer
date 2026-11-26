@@ -38,10 +38,12 @@ private let sliderKnobWidth: CGFloat = 8
 struct HolidaySliderStripes: ViewModifier {
     let fraction: Double
     @ObservedObject var holiday: Holiday
+    /// A disabled slider goes grey underneath; stripes over it would make it look usable.
+    @Environment(\.isEnabled) private var isEnabled
 
     func body(content: Content) -> some View {
         content.overlay {
-            if holiday.isFestive {
+            if holiday.isFestive && isEnabled {
                 GeometryReader { geo in
                     let f = CGFloat(min(max(fraction, 0), 1))
                     let knobCentre = sliderKnobWidth / 2 + f * (geo.size.width - sliderKnobWidth)
