@@ -1077,6 +1077,8 @@ struct PopoverView: View {
                 ZStack(alignment: .leading) {
                     Capsule().fill(Color.primary.opacity(0.1))
                     Capsule().fill(batteryColor)
+                        // Candy cane in December, unless the colour is saying "getting low".
+                        .holidayBarStripes((controller.batteryPercent ?? 0) >= Battery.midThresholdPercent)
                         .frame(width: max(6, geo.size.width * batteryLevel))
                         .animation(.easeInOut, value: batteryLevel)
                 }
@@ -1218,6 +1220,7 @@ struct PopoverView: View {
                 }
                 .tint(.razerGreen)
                 .controlSize(.small)
+                .holidaySliderStripes((dpiValue - 100) / max(1, Double(controller.deviceMaxDPI) - 100))
                 .scrollAdjusts($dpiValue, in: 100...Double(controller.deviceMaxDPI), snap: 50, onCommit: commitDPI)
             }
             HStack(spacing: 6) {
@@ -1440,6 +1443,7 @@ struct PopoverView: View {
                 }
                 .tint(.razerGreen)
                 .controlSize(.small)
+                .holidaySliderStripes((sleepTimeoutValue - 60) / 840)
                 .scrollAdjusts($sleepTimeoutValue, in: 60...900, snap: 15) { controller.setSleepTimeout(Int($0)) }
             }
             .disabled(controller.sleepTimeout == nil)
