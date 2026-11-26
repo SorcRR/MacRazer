@@ -125,29 +125,59 @@ struct HolidayPillButton: ButtonStyle {
 public struct HolidayScoreLine: View {
     @ObservedObject private var holiday = Holiday.shared
     @ObservedObject private var game = HolidayGame.shared
-    public init() {}
+    @ObservedObject private var leaderboard = HolidayLeaderboard.shared
+    private let onLeaderboard: (() -> Void)?
+
+    /// `onLeaderboard` opens the leaderboard page; the link shows only while there is one.
+    public init(onLeaderboard: (() -> Void)? = nil) { self.onLeaderboard = onLeaderboard }
 
     public var body: some View {
-        if holiday.isFestive, game.score > 0 {
+        if holiday.isFestive, game.score > 0 || showsLink {
             VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Image(systemName: "hand.raised").font(.system(size: 10.5, weight: .semibold))
-                    Text("Score \(game.score)").font(.system(size: 11.5, weight: .semibold))
-                    Spacer(minLength: 4)
-                    Text("Level \(game.level + 1) of \(HolidayGameRules.levelThresholds.count)")
-                        .font(.system(size: 11)).foregroundStyle(.secondary)
-                }
-                .foregroundStyle(HolidayColor.red)
-                ProgressView(value: HolidayGameRules.progress(for: game.score))
-                    .progressViewStyle(.linear)
-                    .tint(HolidayColor.deepRed)
-                    .controlSize(.mini)
-                Text(breakdown).font(.system(size: 10.5)).foregroundStyle(.secondary)
-                Text(next).font(.system(size: 10.5)).foregroundStyle(.secondary)
+                if game.score > 0 { score }
+                if showsLink { link }
             }
             .padding(.horizontal, 4)
-            .accessibilityElement(children: .combine)
         }
+    }
+
+    private var showsLink: Bool { onLeaderboard != nil && leaderboard.isAvailable }
+
+    private var score: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Image(systemName: "hand.raised").font(.system(size: 10.5, weight: .semibold))
+                Text("Score \(game.score)").font(.system(size: 11.5, weight: .semibold))
+                Spacer(minLength: 4)
+                Text("Level \(game.level + 1) of \(HolidayGameRules.levelThresholds.count)")
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+            .foregroundStyle(HolidayColor.red)
+            ProgressView(value: HolidayGameRules.progress(for: game.score))
+                .progressViewStyle(.linear)
+                .tint(HolidayColor.deepRed)
+                .controlSize(.mini)
+            Text(breakdown).font(.system(size: 10.5)).foregroundStyle(.secondary)
+            Text(next).font(.system(size: 10.5)).foregroundStyle(.secondary)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private var link: some View {
+        Button { onLeaderboard?() } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "trophy.fill").font(.system(size: 10)).foregroundStyle(HolidayColor.gold)
+                Text(leaderboard.joined ? "Leaderboard" : "Join the Santa leaderboard")
+                    .font(.system(size: 11, weight: .semibold))
+                Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .foregroundStyle(HolidayColor.red)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.top, 2)
+        .accessibilityLabel(leaderboard.joined ? "Santa leaderboard" : "Join the Santa leaderboard")
     }
 
     /// Every character caught so far, Settings' ones included, so the parts add up to the score.
