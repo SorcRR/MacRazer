@@ -68,15 +68,22 @@ final class PopoverThemeTests: XCTestCase {
     }
 
     @MainActor
-    func testTwoColumnsIsOffUntilPicked() throws {
+    func testTwoColumnsDefaultsBySizeUntilPicked() throws {
         let suite = "PopoverThemeTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
 
-        let settings = AppearanceSettings(defaults: defaults)
-        XCTAssertFalse(settings.twoColumns)
+        // A 13-inch laptop (about 875 pt under the menu bar) and a big display.
+        XCTAssertTrue(AppearanceSettings(defaults: defaults, screenHeight: 875).twoColumns)
+        XCTAssertFalse(AppearanceSettings(defaults: defaults, screenHeight: 1415).twoColumns)
+        XCTAssertFalse(AppearanceSettings(defaults: defaults, screenHeight: nil).twoColumns)
+
+        // Once picked, the pick holds on any screen.
+        let settings = AppearanceSettings(defaults: defaults, screenHeight: 1415)
         settings.twoColumns = true
-        XCTAssertTrue(AppearanceSettings(defaults: defaults).twoColumns)
+        XCTAssertTrue(AppearanceSettings(defaults: defaults, screenHeight: 1415).twoColumns)
+        settings.twoColumns = false
+        XCTAssertFalse(AppearanceSettings(defaults: defaults, screenHeight: 875).twoColumns)
     }
 
     /// One column by default; two when picked, and always with more than one device.
