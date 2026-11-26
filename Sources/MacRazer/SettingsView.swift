@@ -141,6 +141,9 @@ struct SettingsView: View {
         .frame(width: Self.sidebarWidth)
         .frame(maxHeight: .infinity)
         .background(Color.primary.opacity(0.04))
+        // Elves peek out of the sidebar too: by the divider or along the bottom, never the
+        // top, where the traffic lights are.
+        .holidayPeekSpot(.settings, cornerRadius: 0, edges: [.trailing, .bottom])
         // The window is kept when closed, and closing it under the pointer never sends the
         // hover's end: without this the item would still be lit when Settings reopens.
         .onDisappear { hoveredPane = nil; tipHovered = false }

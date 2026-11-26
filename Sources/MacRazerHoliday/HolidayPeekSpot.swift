@@ -13,6 +13,8 @@ private let showing: CGFloat = 30
 struct HolidayPeekSpot: ViewModifier {
     let surface: HolidaySurface
     let cornerRadius: CGFloat
+    /// The edges a character may come out of here; one the game picks elsewhere maps onto these.
+    let edges: [PeekEdge]
     @ObservedObject var holiday: Holiday
     @ObservedObject var game: HolidayGame
     @State private var id = UUID()
@@ -22,7 +24,7 @@ struct HolidayPeekSpot: ViewModifier {
             .overlay {
                 if holiday.isFestive, let peek = game.peek, peek.spot == id {
                     GeometryReader { geo in
-                        PeekingCharacter(peek: peek, size: geo.size) { game.caught(peek.id) }
+                        PeekingCharacter(peek: peek, edge: allowed(peek.edge), size: geo.size) { game.caught(peek.id) }
                             .id(peek.id)
                     }
                     .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
@@ -37,11 +39,17 @@ struct HolidayPeekSpot: ViewModifier {
             .onAppear { game.register(id, surface: surface) }
             .onDisappear { game.unregister(id) }
     }
+
+    private func allowed(_ edge: PeekEdge) -> PeekEdge {
+        guard !edges.isEmpty, !edges.contains(edge) else { return edge }
+        return edges[(PeekEdge.allCases.firstIndex(of: edge) ?? 0) % edges.count]
+    }
 }
 
 /// One character sliding out from an edge, and back in just before its time is up.
 private struct PeekingCharacter: View {
     let peek: HolidayPeek
+    let edge: PeekEdge
     let size: CGSize
     let onCatch: () -> Void
     @State private var out = PeekingCharacter.startsOut
@@ -78,8 +86,6 @@ private struct PeekingCharacter: View {
             withAnimation(.easeIn(duration: HolidayGameRules.slideSeconds)) { out = false }
         }
     }
-
-    private var edge: PeekEdge { peek.edge }
 
     private var rotation: Angle {
         switch edge {
@@ -150,7 +156,9 @@ private struct CatchBubble: View {
 extension View {
     /// Lets the holiday characters peek out of this card. The plain card whenever the
     /// decorations are off.
-    public func holidayPeekSpot(_ surface: HolidaySurface, cornerRadius: CGFloat = 13) -> some View {
-        modifier(HolidayPeekSpot(surface: surface, cornerRadius: cornerRadius, holiday: .shared, game: .shared))
+    /// `edges` limits where they come out, for a spot with something on one of its edges.
+    public func holidayPeekSpot(_ surface: HolidaySurface, cornerRadius: CGFloat = 13,
+                                edges: [PeekEdge] = PeekEdge.allCases) -> some View {
+        modifier(HolidayPeekSpot(surface: surface, cornerRadius: cornerRadius, edges: edges, holiday: .shared, game: .shared))
     }
 }
