@@ -476,6 +476,8 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
             // No tap is coming back to see these presses' releases.
             bridgeKeyIsDown = false
             swallowedPresses = []
+            hyperShiftHeld = false
+            hyperShiftTrigger = nil
         }
         refreshCompetingTaps()
     }
