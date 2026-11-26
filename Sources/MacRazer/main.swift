@@ -27,9 +27,9 @@ if args.isEmpty {
 }
 
 let command = args.first!
-// A render in December shows the decorations from scratch storage, never the real choices.
-if command.hasPrefix("render") { Holiday.useScratchStorage() }
 if command.hasPrefix("render") {
+    // A render in December shows the decorations from scratch storage, never the real choices.
+    Holiday.useScratchStorage()
     RenderOptions.isActive = true
     AppInfo.renderVersion = args.first { $0.hasPrefix("version=") }.map { String($0.dropFirst("version=".count)) }
     if let crop = args.first(where: { $0.hasPrefix("crop=") }) {

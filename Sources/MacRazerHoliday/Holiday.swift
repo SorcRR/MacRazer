@@ -97,8 +97,15 @@ public final class Holiday: ObservableObject {
     /// The banner is in the popover's layout. It only counts as seen when the popover opens
     /// with it there: the app builds the popover ahead of time, before anyone looks.
     private var bannerInView = false
-    /// The popover is open on screen, as its delegate tells it: not just built.
+    /// The popover is open on screen with the decorations on, as its delegate tells it: not
+    /// just built. Stays false off season, so it never redraws the app's popover then.
     @Published public private(set) var popoverOpen = false
+    private var popoverOnScreen = false
+    /// This opening of the popover already counted a showing of the banner.
+    private var bannerCountedThisOpening = false
+    /// The season whose storage is current, published so the game reloads its score when a
+    /// long-running app crosses into a new season.
+    @Published public private(set) var storageSeason: Int?
 
     let defaults: UserDefaults
     private let calendar: Calendar
@@ -183,12 +190,30 @@ public final class Holiday: ObservableObject {
     }
 
     /// The banner joined or left the popover's layout.
-    func setBannerInView(_ inView: Bool) { bannerInView = inView }
+    func setBannerInView(_ inView: Bool) {
+        bannerInView = inView
+        countBannerIfSeen()
+    }
 
-    /// The popover opened or closed. Opening counts a showing of the banner if it's there.
+    /// The popover opened or closed.
     func setPopoverOpen(_ open: Bool) {
+        popoverOnScreen = open
+        if !open { bannerCountedThisOpening = false }
+        publishPopoverOpen()
+        countBannerIfSeen()
+    }
+
+    /// One showing per opening, once the popover is open and the banner is in it, whichever
+    /// of the two SwiftUI and AppKit report first.
+    private func countBannerIfSeen() {
+        guard popoverOnScreen, bannerInView, !bannerCountedThisOpening else { return }
+        bannerCountedThisOpening = true
+        bannerShown()
+    }
+
+    private func publishPopoverOpen() {
+        let open = popoverOnScreen && isFestive
         if popoverOpen != open { popoverOpen = open }
-        if open, bannerInView { bannerShown() }
     }
 
     /// The banner was on screen in an open popover. After three showings with no answer it
@@ -284,6 +309,9 @@ public final class Holiday: ObservableObject {
         if stillMode != still { stillMode = still }
         let day = calendar.startOfDay(for: now())
         if today != day { today = day }
+        publishPopoverOpen()
+        let season = storageYear
+        if storageSeason != season { storageSeason = season }
     }
 
     static func systemWantsStillness() -> Bool {

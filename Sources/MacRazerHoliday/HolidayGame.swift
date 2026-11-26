@@ -58,6 +58,8 @@ public final class HolidayGame: ObservableObject {
     @Published public private(set) var counts: [HolidayCharacter: Int] = [:]
 
     private let holiday: Holiday
+    /// For tests: whether the click monitor is in.
+    var watchingClicks: Bool { clickMonitor != nil }
     private struct Spot { let surface: HolidaySurface; var hovered = false }
     private var spots: [UUID: Spot] = [:]
     private var visibleSurfaces: Set<HolidaySurface> = []
@@ -80,8 +82,15 @@ public final class HolidayGame: ObservableObject {
         self.holiday = holiday
         self.random = random
         load()
+        // A turn later: @Published sends before the property changes, so reading `isFestive`
+        // straight away would see the old value.
         holiday.$isFestive.combineLatest(holiday.$stillMode)
-            .sink { [weak self] _, _ in self?.restartAll() }
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _, _ in MainActor.assumeIsolated { self?.restartAll() } }
+            .store(in: &cancellables)
+        // A new season starts at zero: the stored values are per season.
+        holiday.$storageSeason.removeDuplicates().dropFirst()
+            .sink { [weak self] _ in self?.load() }
             .store(in: &cancellables)
     }
 
@@ -145,6 +154,7 @@ public final class HolidayGame: ObservableObject {
     // MARK: The loop
 
     private func restartAll() {
+        updateClickMonitor()
         for surface in HolidaySurface.allCases { restart(surface) }
     }
 
@@ -198,10 +208,10 @@ public final class HolidayGame: ObservableObject {
         range.lowerBound + random() * (range.upperBound - range.lowerBound)
     }
 
-    /// Watches clicks and drags in the app's own windows, only while a game surface is open.
-    /// It only notes the time; the event goes on untouched.
+    /// Watches clicks and drags in the app's own windows, only while a game is running on an
+    /// open surface: never off season. It only notes the time; the event goes on untouched.
     private func updateClickMonitor() {
-        if visibleSurfaces.isEmpty {
+        if visibleSurfaces.isEmpty || !holiday.isFestive || holiday.stillMode {
             if let clickMonitor { NSEvent.removeMonitor(clickMonitor) }
             clickMonitor = nil
         } else if clickMonitor == nil {
@@ -224,10 +234,6 @@ public final class HolidayGame: ObservableObject {
         holiday.setStored(score, "score")
         holiday.setStored(Dictionary(uniqueKeysWithValues: counts.map { ($0.key.rawValue, $0.value) }), "counts")
     }
-
-    /// A new season starts at zero: the stored values are per season, so reading them again
-    /// on a season change gives the new season's.
-    public func reloadForSeason() { load() }
 
     #if DEBUG
     /// For tests: show a peek straight away on a registered spot.

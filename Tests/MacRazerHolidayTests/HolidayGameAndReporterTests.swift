@@ -148,4 +148,39 @@ final class HolidayGameAndReporterTests: XCTestCase {
         await reporter.reportIfNeeded()
         XCTAssertEqual(asked.count, 1)
     }
+
+    func testSwitchingDecorationsStopsAndRestartsTheGame() async {
+        let h = holiday()
+        h.keep()
+        let game = HolidayGame(holiday: h)
+        game.setVisible(.popover, true)
+        XCTAssertTrue(game.watchingClicks)
+        h.setDecorations(on: false)
+        await Task.yield(); try? await Task.sleep(for: .milliseconds(50))
+        XCTAssertFalse(game.watchingClicks, "Nothing watches clicks with the decorations off")
+        h.setDecorations(on: true)
+        try? await Task.sleep(for: .milliseconds(50))
+        XCTAssertTrue(game.watchingClicks)
+        game.setVisible(.popover, false)
+    }
+
+    func testNoClickMonitorOffSeason() {
+        clock = calendar.date(from: DateComponents(year: 2026, month: 7, day: 1, hour: 12))!
+        let game = HolidayGame(holiday: holiday())
+        game.setVisible(.popover, true)
+        XCTAssertFalse(game.watchingClicks)
+        game.setVisible(.popover, false)
+    }
+
+    func testScoreReloadsWhenTheSeasonChanges() {
+        let h = holiday()
+        let game = HolidayGame(holiday: h)
+        let spot = UUID()
+        game.register(spot, surface: .popover)
+        game.caught(game.forcePeek(.santa, spot: spot).id)
+        XCTAssertEqual(game.score, 1)
+        clock = calendar.date(from: DateComponents(year: 2027, month: 12, day: 2, hour: 12))!
+        h.refresh()
+        XCTAssertEqual(game.score, 0, "A new season starts at zero")
+    }
 }

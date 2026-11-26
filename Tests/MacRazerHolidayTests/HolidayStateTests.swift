@@ -175,4 +175,27 @@ final class HolidayStateTests: XCTestCase {
         XCTAssertNotEqual(h.today, first)
         XCTAssertEqual(h.headline, "21 sleeps until Christmas")
     }
+
+    func testBannerCountsWhicheverArrivesFirst() {
+        at(2026, 12, 3)
+        let h = make()
+        // AppKit says it opened before SwiftUI puts the banner back.
+        for _ in 0..<3 {
+            h.setPopoverOpen(true)
+            h.setBannerInView(true)
+            h.setBannerInView(false)
+            h.setBannerInView(true)
+            h.setPopoverOpen(false)
+            h.setBannerInView(false)
+        }
+        XCTAssertFalse(h.bannerPending, "Three openings, three showings: no more, no fewer")
+        XCTAssertEqual(h.pendingChanges, [.bannerIgnored])
+    }
+
+    func testPopoverOpenStaysFalseOffSeason() {
+        at(2026, 7, 1)
+        let h = make()
+        h.setPopoverOpen(true)
+        XCTAssertFalse(h.popoverOpen)
+    }
 }
