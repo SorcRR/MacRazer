@@ -747,7 +747,14 @@ USB and the 2.4 GHz dongle are not supported: the firmware handles the button on
  granted while the app runs was not on macOS 26.3 (`IOHIDCheckAccess` kept saying no until a
  reopen), so the page asks for a reopen and offers **Reopen MacRazer** (`reopenApp`: a new
  instance through `AppRelaunch`, then `NSApp.terminate` once it launched, so
- `applicationWillTerminate` gives driver mode back first).
+ `applicationWillTerminate` gives driver mode back first). The first look in a run that finds
+ Input Monitoring is what is missing asks macOS for it (`askForInputMonitoring`,
+ `IOHIDRequestAccess`, decided by the pure `asksForInputMonitoring(need:alreadyAsked:)`), so
+ that macOS lists the app with a switch; the page's Input Monitoring button asks too. It is
+ asked whatever the timer is doing: the timer is usually running already for Accessibility,
+ which is asked first, and asking only as it started left the app unlisted. On macOS 27.2.1
+ with an ad-hoc signed build, after a `tccutil reset`, the app still did not appear in the
+ list and had to be added with the + button; the cause is not established.
 - **Lifecycle** (`DpiDriverModeBook`, pure, run by `MouseController.syncDpiDriverMode` on the
  device queue from the poll and on each change). Engaged on each new connection and after each
  wake (`doubtful`), reading first so a mouse already in it isn't written; re-checked at most
@@ -862,8 +869,8 @@ USB and the 2.4 GHz dongle are not supported: the firmware handles the button on
  how the findings above were obtained.
 - **Tests.** `DpiButtonPrivateKeyTests` (report 4 and the tracker, report 5's notifications,
  the hold, Click and Hold, DPI Cycle, other actions, resets, the watcher and the notifications
- handed on from it, what driver mode needs, the reopen, the permission timer, choosing on both
- mice, the editor and the texts), `DpiDriverModeTests` (`DpiDriverModeBook`, with the settling
+ handed on from it, what driver mode needs, the reopen, the permission timer, asking for Input
+ Monitoring once, choosing on both mice, the editor and the texts), `DpiDriverModeTests` (`DpiDriverModeBook`, with the settling
  and notification checks, a disconnect dropping a pending restore and the Cobra's sleep and wake
  trace replayed, and `BluetoothDevice.setDeviceMode` with a mouse made of closures),
  `DpiCycleSoftwareBridgeTests` (the entry's checked write, the Cobra enabled over Bluetooth
@@ -1066,7 +1073,7 @@ hides the setting.
 
 | Permission | Why | How |
 |---|---|---|
-| **Input Monitoring** | Razer mice enumerate as keyboard/mouse HID; macOS gates opening them. Also how the DPI button is seen: its F20 through the tap (Basilisk V3 X) and its private keys in driver mode (Cobra, `DpiPrivateKeyWatcher`, §6.3.3). Granted while the app runs, it took effect only once the app was reopened (macOS 26.3), which the Buttons page asks for and offers. | Requested at launch via `IOHIDRequestAccess(kIOHIDRequestTypeListenEvent)`; in-app banner + settings link. |
+| **Input Monitoring** | Razer mice enumerate as keyboard/mouse HID; macOS gates opening them. Also how the DPI button is seen: its F20 through the tap (Basilisk V3 X) and its private keys in driver mode (Cobra, `DpiPrivateKeyWatcher`, §6.3.3). Granted while the app runs, it took effect only once the app was reopened (macOS 26.3), which the Buttons page asks for and offers. | Requested at launch via `IOHIDRequestAccess(kIOHIDRequestTypeListenEvent)`; in-app banner + settings link. Also asked once a run, the first time it is what the DPI button is missing (`ButtonRemapper.askForInputMonitoring`), so macOS lists the app with a switch. |
 | **Accessibility** | The `CGEvent` tap for button remapping, gestures and scroll reversal. A DPI button action on the Cobra needs it together with Input Monitoring. | `AXIsProcessTrustedWithOptions`; Open Settings / Re-check in the relevant controls. |
 
 **Signing matters for permissions.** TCC binds a grant to the app's code identity. The

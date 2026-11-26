@@ -75,7 +75,11 @@ expect rough edges until 1.0.
   Monitoring, and without them the button keeps cycling DPI. Accessibility granted while
   MacRazer runs is picked up without a relaunch; Input Monitoring took effect only after a
   reopen on macOS 26.3, so the Buttons page says so and has a Reopen MacRazer button, which
-  quits the way Quit does. Driver mode doesn't survive the mouse sleeping or reconnecting, so
+  quits the way Quit does. The first time MacRazer finds Input Monitoring is what the DPI
+  button is missing, it asks macOS for it, so that macOS lists MacRazer there with a switch;
+  the page's Input Monitoring button asks too. On macOS 27.2.1 with an ad-hoc signed build,
+  after a `tccutil reset`, MacRazer still did not appear in the list and had to be added with
+  the + button; the cause is not established. Driver mode doesn't survive the mouse sleeping or reconnecting, so
   MacRazer sets it on each connection and after a wake, checks it about every 30 seconds, and
   tries a failed change at most 3 times per connection. After waking, the Cobra accepts driver
   mode and reads it back, then resets itself to normal mode as it finishes starting, which left

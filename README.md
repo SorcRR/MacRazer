@@ -387,7 +387,10 @@ How driver mode is handled:
   of the two is all that is missing. Input Monitoring turned on while MacRazer runs takes effect
   only once it is reopened (seen on macOS 26.3), so the section says so and has a **Reopen
   MacRazer** button, which quits the way Quit does (driver mode is given back first) and opens
-  the app again.
+  the app again. The first time MacRazer finds Input Monitoring is what the DPI button is
+  missing, it asks macOS for it, so that macOS lists MacRazer there with a switch. On a Mac
+  with macOS 27.2.1 and an ad-hoc signed build, after a `tccutil reset`, MacRazer still did
+  not appear in the list and had to be added with the + button; the cause is not established.
 - **It doesn't last, and MacRazer keeps it up.** The mouse falls back to normal mode when it
   sleeps, reconnects or is switched off and on. MacRazer sets it again on each new connection
   and after each wake (reading first), reads it about every 30 seconds to put it back if it

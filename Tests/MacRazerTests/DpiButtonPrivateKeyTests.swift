@@ -806,6 +806,27 @@ final class DpiButtonPrivateKeyTests: XCTestCase {
         XCTAssertLessThanOrEqual(ButtonRemapper.permissionRecheckInterval, 10, "a few seconds")
     }
 
+    /// macOS lists an app under Input Monitoring only once it has asked. It is asked the first
+    /// time Input Monitoring is what the DPI button is missing, also when the wait began with
+    /// Accessibility (asked first, so usually the case), and only once a run, as each look
+    /// goes by. Walked through the looks of a run here: Accessibility granted, then Input
+    /// Monitoring still missing for a while, granted, and taken back later.
+    func testInputMonitoringIsAskedForOnceTheFirstTimeItIsWhatIsMissing() {
+        let looks: [DpiDriverModeNeed] = [.none, .accessibility, .accessibility, .inputMonitoring,
+                                          .inputMonitoring, .ready, .inputMonitoring, .relaunch]
+        var asked = false
+        var asks: [Int] = []
+        for (index, need) in looks.enumerated()
+        where ButtonRemapper.asksForInputMonitoring(need: need, alreadyAsked: asked) {
+            asked = true
+            asks.append(index)
+        }
+        XCTAssertEqual(asks, [3], "once, on the first look that finds it missing, with the wait already under way")
+        for need: DpiDriverModeNeed in [.none, .ready, .accessibility, .relaunch] {
+            XCTAssertFalse(ButtonRemapper.asksForInputMonitoring(need: need, alreadyAsked: false), "\(need)")
+        }
+    }
+
     /// The remapper waits for a permission exactly while the rules above say so: here, where
     /// tests have no event tap, while the DPI button has an action of MacRazer's on a
     /// connected Cobra. It stops as the action goes, the mouse goes offline or is another.
