@@ -228,7 +228,8 @@ public final class HolidayPresents: ObservableObject {
         if gifts.count != Self.count { gifts = [] }
         opened = Set(holiday.stored([Int].self, "presents.opened") ?? [])
         hidden = holiday.stored(Bool.self, "presents.hidden") ?? false
-        featured = nil
+        // The strip describes an open box after a relaunch too.
+        featured = opened.max()
     }
 
     private func save() {

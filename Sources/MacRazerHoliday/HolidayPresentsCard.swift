@@ -129,7 +129,14 @@ public struct HolidayPresentsCard: View {
 
     private func open(_ box: Int) {
         guard let gift = presents.open(box) else { return }
-        if !holiday.stillMode { openedAt[box] = Date() }
+        if !holiday.stillMode {
+            openedAt[box] = Date()
+            // Back to the still gift once it's out, so nothing keeps redrawing.
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(openingSeconds + 0.4))
+                openedAt[box] = nil
+            }
+        }
         let rarity: String
         switch gift.rarity {
         case .regular: rarity = ""
