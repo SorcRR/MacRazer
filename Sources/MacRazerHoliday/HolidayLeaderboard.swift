@@ -111,6 +111,10 @@ public final class HolidayLeaderboard: ObservableObject {
 
     public var joined: Bool { name != nil }
 
+    /// Leaving is always possible while there's a row to delete: all season, through the
+    /// rest of January when the board stands, and with the decorations switched off remotely.
+    public var canLeave: Bool { joined && source != nil && holiday.storageYear != nil }
+
     /// The board is open once enough players have joined.
     public var isOpen: Bool { (board?.playerCount ?? 0) >= Self.minimumPlayers }
 
@@ -252,7 +256,9 @@ public final class HolidayLeaderboard: ObservableObject {
                 // next time.
                 let stored = try await source.score(counts)
                 holiday.setStored(stored, "leaderboard.sent")
-                lastSynced = holiday.now()
+                // Not stored yet (the Worker keeps one every five minutes): still due, so the
+                // next update tick tries again rather than three hours on.
+                lastSynced = stored >= HolidayLeaderboard.points(counts) ? holiday.now() : nil
             } catch HolidaySantaError.notJoined {
                 // Deleted on the Worker (by the admin): this Mac isn't on the board any more.
                 name = nil

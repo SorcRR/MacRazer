@@ -360,8 +360,9 @@ struct SettingsView: View {
         settingsGroup {
             deleteDataRow
         }
-        // In season, once joined: the leaderboard's name, and leaving it.
-        if leaderboard.joined && holiday.showsSettingsRow {
+        // Once joined: the leaderboard's name, and leaving it. Through January too, and with
+        // the decorations switched off remotely: leaving must always be possible.
+        if leaderboard.canLeave {
             settingsGroup("Santa leaderboard") {
                 HolidayPrivacyRow()
                     .padding(.horizontal, 14)

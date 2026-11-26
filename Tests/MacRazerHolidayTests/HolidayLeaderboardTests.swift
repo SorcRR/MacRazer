@@ -101,6 +101,21 @@ final class HolidayLeaderboardTests: XCTestCase {
         XCTAssertEqual(parts.board.problem, "That name isn't allowed. Try another one.")
     }
 
+    func testLeavingStaysPossibleAfterTheSeasonAndWhenSwitchedOff() async {
+        let parts = make(FakeSource())
+        await parts.board.join(as: "Jolly Sprout")
+        parts.holiday.setRemoteAllowed(false)
+        XCTAssertFalse(parts.board.isAvailable)
+        XCTAssertTrue(parts.board.canLeave, "Switched off for everyone: the row can still go")
+        parts.holiday.setRemoteAllowed(true)
+        at(2027, 1, 20)
+        parts.holiday.refresh()
+        XCTAssertTrue(parts.board.canLeave, "The board stands until the 25th")
+        at(2027, 2, 2)
+        parts.holiday.refresh()
+        XCTAssertFalse(parts.board.canLeave)
+    }
+
     func testALeaveThatFailsIsTriedAgain() async {
         let source = FakeSource()
         let parts = make(source)
