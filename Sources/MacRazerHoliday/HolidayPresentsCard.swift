@@ -3,8 +3,10 @@
 
 import SwiftUI
 
-/// How long a present takes to open: three shakes, the lid off, the gift up.
-private let openingSeconds: Double = 1.2
+/// How long a present takes to open: three shakes, the lid off, the gift popping out.
+private let openingSeconds: Double = 1.5
+/// How big the gift is in the scene.
+private let giftSize: CGFloat = 40
 private let sceneHeight: CGFloat = 112
 private let nightTop = Color(hex: 0x16213A)
 private let nightBottom = Color(hex: 0x24365A)
@@ -60,8 +62,12 @@ public struct HolidayPresentsCard: View {
             header(stage)
             VStack(spacing: 0) {
                 scene(stage)
-                if let box = presents.featured, let gift = presents.gift(in: box) {
-                    GiftStrip(gift: gift)
+                // Always there, at one height, so opening a present never makes the card grow.
+                // It names a gift only once it's out of the box: no spoilers mid-shake.
+                if let box = presents.featured, openedAt[box] == nil, let gift = presents.gift(in: box) {
+                    GiftStrip(content: .gift(gift))
+                } else {
+                    GiftStrip(content: stage == .waiting ? .waiting : .unopened)
                 }
             }
             .clipShape(RoundedRectangle(cornerRadius: 10))
@@ -95,7 +101,7 @@ public struct HolidayPresentsCard: View {
         let left = HolidayPresents.count - presents.opened.count
         switch left {
         case 0: return "All opened. Merry Christmas."
-        case HolidayPresents.count: return "Three presents for you. Click one to open it."
+        case HolidayPresents.count: return "Three presents for you"
         default: return left == 1 ? "One more to open" : "\(left) more to open"
         }
     }
@@ -400,7 +406,7 @@ private struct BoxArt: View {
 }
 
 /// An opened present: while it opens, the box shakes, light leaks out, the lid flies and the
-/// gift rises; then the gift stays where the box was, its name on a dark pill.
+/// gift pops out; then the gift stays where the box was, its name on a dark pill.
 private struct OpenedPresent: View {
     let gift: HolidayGift
     let wrapping: Wrapping
@@ -441,7 +447,7 @@ private struct OpenedPresent: View {
     private var result: some View {
         Button(action: onSelect) {
             VStack(spacing: 4) {
-                GiftIcon(gift: gift, size: 30, rays: gift.rarity != .regular ? 1 : 0)
+                GiftIcon(gift: gift, size: giftSize, rays: gift.rarity != .regular ? 1 : 0)
                 NamePill(gift: gift)
             }
             .contentShape(Rectangle())
@@ -453,22 +459,24 @@ private struct OpenedPresent: View {
     }
 }
 
-/// One moment of the opening, `t` seconds in.
+/// One moment of the opening, `t` seconds in: the box shakes three times, the lid flies off,
+/// and the gift pops out, jumps up past full size and drops back into place with a bounce.
 private struct OpeningFrame: View {
     let gift: HolidayGift
     let wrapping: Wrapping
     let t: Double
     private let lidRoom: CGFloat = 56
+    private static let shakeEnd = 0.62, lidEnd = 0.82, popStart = 0.72
 
     var body: some View {
-        let shakeEnd = 0.72, lidEnd = 0.95
-        let shaking = t < shakeEnd
-        let strength = min(1, t / shakeEnd)
-        let angle = shaking ? sin(t * 3 / shakeEnd * 2 * .pi) * (3 + 7 * strength) : 0
-        let lidProgress = CGFloat(max(0, min(1, (t - shakeEnd) / (lidEnd - shakeEnd))))
-        let rise = max(0, min(1, (t - 0.8) / (openingSeconds - 0.8)))
+        let shaking = t < Self.shakeEnd
+        let strength = min(1, t / Self.shakeEnd)
+        let angle = shaking ? sin(t * 3 / Self.shakeEnd * 2 * .pi) * (3 + 7 * strength) : 0
+        let lidProgress = CGFloat(max(0, min(1, (t - Self.shakeEnd) / (Self.lidEnd - Self.shakeEnd))))
         let glow = shaking ? 0.3 + 0.7 * strength : max(0, 1 - Double(lidProgress))
-        let boxFade = t < lidEnd ? 1 : max(0, 1 - (t - lidEnd) / 0.2)
+        let boxFade = t < Self.lidEnd ? 1 : max(0, 1 - (t - Self.lidEnd) / 0.18)
+        let pop = Self.pop(max(0, min(1, (t - Self.popStart) / (openingSeconds - Self.popStart))),
+                           raysAfter: gift.rarity == .regular ? 0 : 1)
         ZStack(alignment: .bottom) {
             // Room above the box for the lid to fly into.
             BoxArt(wrapping: wrapping, lidLift: lidProgress * 44, lidTurn: Double(lidProgress) * 28,
@@ -476,18 +484,50 @@ private struct OpeningFrame: View {
                 .frame(width: wrapping.width + 60, height: wrapping.height + 16 + lidRoom)
                 .rotationEffect(.degrees(angle), anchor: .bottom)
                 .opacity(boxFade)
-            if rise > 0 {
+            if t > Self.popStart {
+                Confetti(progress: pop.burst)
+                    .frame(width: 110, height: 96)
+                    .offset(y: -18)
                 VStack(spacing: 4) {
-                    GiftIcon(gift: gift, size: 30, rays: rise)
-                    NamePill(gift: gift).opacity(rise)
+                    GiftIcon(gift: gift, size: giftSize, rays: pop.rays, spin: pop.burst * 40)
+                        .scaleEffect(pop.scale, anchor: .bottom)
+                        .offset(y: pop.lift)
+                    NamePill(gift: gift).opacity(pop.label)
                 }
-                .scaleEffect(0.4 + 0.6 * rise, anchor: .bottom)
-                .offset(y: CGFloat(1 - rise) * 12)
-                Confetti(progress: rise)
-                    .frame(width: 90, height: 80)
-                    .offset(y: -10)
             }
         }
+    }
+
+    private struct Pop {
+        var scale: CGFloat
+        var lift: CGFloat
+        var rays: Double
+        var label: Double
+        var burst: Double
+    }
+
+    /// The pop, `p` from 0 to 1: up fast to 1.25 times the size, then down with a bounce.
+    /// The rays fade to `raysAfter`, what the still gift keeps: full on a rare one.
+    private static func pop(_ p: Double, raysAfter: Double) -> Pop {
+        let up = 0.35
+        let scale: Double
+        let lift: Double
+        if p < up {
+            let k = p / up
+            let ease = 1 - (1 - k) * (1 - k)
+            scale = 0.3 + 0.95 * ease
+            lift = -16 * ease
+        } else {
+            let k = (p - up) / (1 - up)
+            // A spring settling back to its place: one big swing and a small one.
+            let settle = exp(-4.5 * k) * cos(k * 2.6 * .pi)
+            scale = 1 + 0.25 * settle
+            lift = -16 * max(0, settle)
+        }
+        return Pop(scale: CGFloat(scale), lift: CGFloat(lift),
+                   rays: p < up ? p / up : max(raysAfter, 1 - (p - up) * 1.6),
+                   label: max(0, min(1, (p - 0.45) / 0.3)),
+                   burst: min(1, p * 1.25))
     }
 
     /// White for a regular gift, cream for the golden mouse, gold for the chocolate.
@@ -500,12 +540,14 @@ private struct OpeningFrame: View {
     }
 }
 
-/// The gift itself, with rays behind it while it rises, and for good on a rare one.
+/// The gift itself, with rays behind it while it pops out, and for good on a rare one.
 private struct GiftIcon: View {
     let gift: HolidayGift
     let size: CGFloat
     /// 0 to 1: how strong the rays are.
     let rays: Double
+    /// How far the rays have turned, in degrees.
+    var spin: Double = 0
 
     var body: some View {
         ZStack {
@@ -522,6 +564,7 @@ private struct GiftIcon: View {
                     }
                 }
                 .frame(width: size * 1.6, height: size * 1.6)
+                .rotationEffect(.degrees(spin))
             }
             if gift.rarity != .regular {
                 Circle()
@@ -553,7 +596,7 @@ private struct NamePill: View {
     }
 }
 
-/// Confetti bursting up and drifting down as the gift rises.
+/// Confetti bursting up and drifting down as the gift pops out.
 private struct Confetti: View {
     let progress: Double
 
@@ -561,12 +604,14 @@ private struct Confetti: View {
         Canvas { ctx, size in
             var rng = SeededRandom(seed: 77)
             let colors = HolidayColor.lights
-            for k in 0..<16 {
-                let angle = -Double.pi / 2 + (rng.next() - 0.5) * 2.4
-                let speed = 30 + rng.next() * 22
-                let p = progress
-                let x = size.width / 2 + CGFloat(cos(angle) * speed * p)
-                let y = size.height * 0.7 + CGFloat(sin(angle) * speed * p + 40 * p * p)
+            let p = progress
+            for k in 0..<22 {
+                let angle: Double = -Double.pi / 2 + (rng.next() - 0.5) * 2.6
+                let speed: Double = 34 + rng.next() * 26
+                let dx: Double = cos(angle) * speed * p
+                let dy: Double = sin(angle) * speed * p + 44 * p * p
+                let x = size.width / 2 + CGFloat(dx)
+                let y = size.height * 0.7 + CGFloat(dy)
                 var piece = ctx
                 piece.translateBy(x: x, y: y)
                 piece.rotate(by: .degrees(rng.next() * 360 + p * 200))
@@ -579,17 +624,27 @@ private struct Confetti: View {
     }
 }
 
-/// The strip under the scene: the gift picked out, what it is, and how rare.
+/// The strip under the scene: the gift picked out, what it is, and how rare. Before any is
+/// open it says what to do. One height whatever it holds, room for a line that wraps.
 private struct GiftStrip: View {
-    let gift: HolidayGift
+    enum Content {
+        case gift(HolidayGift)
+        case unopened
+        case waiting
+    }
+
+    let content: Content
+    private static let height: CGFloat = 52
 
     var body: some View {
         HStack(spacing: 9) {
-            Text(gift.emoji).font(.system(size: 20))
+            Text(emoji).font(.system(size: 20))
+                .saturation(isGift ? 1 : 0.6)
             VStack(alignment: .leading, spacing: 1) {
-                Text(gift.name).font(.system(size: 12, weight: .semibold)).foregroundStyle(Color.white)
-                Text(gift.line).font(.system(size: 11)).foregroundStyle(Color.white.opacity(0.75))
-                    .fixedSize(horizontal: false, vertical: true)
+                Text(title).font(.system(size: 12, weight: .semibold)).foregroundStyle(Color.white)
+                Text(line).font(.system(size: 11)).foregroundStyle(Color.white.opacity(0.75))
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.9)
             }
             Spacer(minLength: 4)
             if let badge {
@@ -600,17 +655,46 @@ private struct GiftStrip: View {
                     .background(HolidayColor.paleGold, in: Capsule())
             }
         }
-        .padding(.horizontal, 10).padding(.vertical, 8)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .frame(maxWidth: .infinity, minHeight: Self.height, maxHeight: Self.height, alignment: .leading)
         .background(stripFill)
         .accessibilityElement(children: .combine)
     }
 
+    private var isGift: Bool {
+        if case .gift = content { return true }
+        return false
+    }
+
+    private var emoji: String {
+        switch content {
+        case .gift(let gift): gift.emoji
+        case .unopened, .waiting: "🎁"
+        }
+    }
+
+    private var title: String {
+        switch content {
+        case .gift(let gift): gift.name
+        case .unopened: "What's inside?"
+        case .waiting: "Wrapped and waiting"
+        }
+    }
+
+    private var line: String {
+        switch content {
+        case .gift(let gift): gift.line
+        case .unopened: "Click a present to open it. Some are rare."
+        case .waiting: "They open on Christmas Day."
+        }
+    }
+
     private var badge: String? {
+        guard case .gift(let gift) = content else { return nil }
         switch gift.rarity {
-        case .regular: nil
-        case .rare: "Rare"
-        case .veryRare: "Very rare"
+        case .regular: return nil
+        case .rare: return "Rare"
+        case .veryRare: return "Very rare"
         }
     }
 }
