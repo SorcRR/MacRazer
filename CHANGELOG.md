@@ -21,6 +21,20 @@ expect rough edges until 1.0.
     mouse and a very rare golden chocolate. They wait, wrapped, on Christmas Eve.
   - **An anonymous holiday count** for the reports page: whether the decorations are on, and
     whether they were kept or turned off. No ID for the Mac, like the daily mouse count.
+- **Gesture mode for the extra buttons.** In Configure Buttons, choose Gesture… for a button,
+  then hold it and move the mouse up, down, left or right to run a different action for each
+  direction. Press and release without moving and its Click action runs. The defaults are
+  Mission Control up, Launchpad down, the next Space left and the previous Space right, so
+  the Spaces move the way a trackpad drags the desktop; Click is what the button did before.
+  Each of the five slots takes any normal action: a shortcut preset, Launchpad, a recorded
+  shortcut, a mouse click, a media key or None. A swipe fires once per hold, as soon
+  as the movement along the stronger axis reaches 50 points. The pointer isn't frozen while
+  you hold the button, and pointer drags are only watched while a button is a gesture.
+- **Launchpad for any button.** It has no keyboard shortcut, so MacRazer opens the app itself.
+  On macOS 26 that's Apps, which replaced Launchpad, and the menus call it Apps there. It's in
+  every button's shortcut list, next to Mission Control and the Spaces, and it's the gesture's
+  default for a swipe down.
+- **An App Exposé ⌃↓ shortcut preset.** It's in the shortcut list of every button.
 - **More mice from test reports.**
   - **Polling confirmed with the newer command** on the Viper 8KHz, both Basilisk V4 Pro
     links and the Mouse Dock Pro, which goes up to 8000 Hz.
@@ -57,6 +71,13 @@ expect rough edges until 1.0.
   own pick in Settings › Appearance still wins.
 
 ### Fixed
+- **A remapped button is never left held down in an app.** A remapped button's release was
+  swallowed whenever the button was still remapped, whatever had happened to its press. A
+  press let through while the mouse was offline can bring the mapping back before the button
+  is released, and the app that saw the press then kept the button held down. The other way
+  round, remapping a button to None mid-press let a release through whose press no app had
+  seen. Each release now goes the way its press went. So do the key repeats and release of
+  the Basilisk V3 X's DPI button (F20), also when the event tap restarts while it is held.
 - **Lists on the Buttons page are English on any Mac.** On a Mac set to another language, the
   notice about side buttons saved to other functions read "Back sends ⌃V y Forward sends ⌃C"
   in Spanish, and the note naming apps that may take a side button's clicks joined them the

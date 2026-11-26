@@ -419,7 +419,29 @@ side buttons (Back/Forward = buttons 4/5) emit OS-level events and are remappabl
 buttons are handled onboard and never reach macOS.
 
 - Actions: passthrough, **keystroke** (preset shortcuts or a **custom recorder** that
- captures any combo), **mouse** (middle/double click), **media** (play/next/prev/volume/mute).
+ captures any combo), **mouse** (middle/double click), **media** (play/next/prev/volume/mute),
+ **Launchpad** (`RemapAction.launchpad`) and **gesture** (`RemapAction.gesture`, §6.3.2).
+- **Launchpad** has no default keyboard shortcut, so `LaunchpadApp.open()` opens the system
+ app through `NSWorkspace` by bundle id: `com.apple.apps.launcher` (Apps, which replaced
+ Launchpad on macOS 26, where there is no Launchpad.app), then `com.apple.launchpad.launcher`
+ (macOS 15 and earlier); nothing on a Mac with neither. The menus call it "Apps" where Apps is
+ the one installed (`LaunchpadApp.label(installed:)`, pure) and "Launchpad" otherwise, and
+ list it in the Shortcut menu after the system presets (`launchpadMenuAnchor`). It goes out
+ through `apply` like any action, so a test's `actionEmitter` catches it and nothing opens.
+- **A release follows its press.** The tap remembers which presses it swallowed
+ (`swallowedPresses`) and swallows exactly their releases, whatever changed in between
+ (paused or unpaused, remapped, a gesture's hold ended). An app must never see a press
+ without its release, which leaves the button held down there. The set survives a reinstall
+ of the tap and is cleared when Accessibility goes. The DPI button's F20 (`bridgeKeyIsDown`,
+ `handleDpiBridge`) follows the same rule, its key repeats too: a fresh press starts over, and
+ the flag survives a reinstall that still asks for the keys (`tapReplaced`). A tap without
+ them never sees the release, so there it is dropped.
+- **Tap mask** (`ButtonRemapper.eventMask(keyboard:gestures:)`, the wanted one in
+ `wantedEventMask`): always `otherMouseDown/Up`; `otherMouseDragged` only while a mapped button
+ is a gesture, since drags come at the mouse's polling rate and a tap that doesn't ask for them
+ never sees them; key down/up only for the DPI button's F20 bridge. A change in what is wanted
+ reinstalls the tap (`installTapIfNeeded`). If macOS refuses the tap with keys, it falls back
+ to the same mask without them (`keyboardEventsMask`), so gestures keep their drags.
 - Mappings persist to UserDefaults. Needs **Accessibility** permission (banner + Open
  Settings / Re-check in the UI).
 - Available both inline (popover buttons page) and as a standalone window
@@ -457,6 +479,67 @@ on other models and macOS versions still needs validation.
 
 Preview: `swift run MacRazer render-settings reversed /tmp/scrolling-settings.png`.
 The preview uses a fixed scratch defaults suite, removed before and after rendering.
+
+### 6.3.2 Gesture mode, `GestureRecognizer.swift` + `ButtonRemapper.swift`
+
+A remappable button can be set to **Gesture…** in `RemapView` (every button's menu,
+`RemapActionMenu`, has it). Held and moved, the button fires one action per direction;
+pressed and released without a swipe, it fires its Click action.
+
+- **Data model.** `RemapAction.gesture(GestureBindings)` is saved with the other actions, so a
+ gesture needs no new storage key, and a profile carries it too. `GestureBindings` holds five
+ ordinary `RemapAction`s: `click`, `up`, `down`, `left`, `right` (`GestureSlot` names them for
+ the editor, and `action(for: GestureDirection)` picks by direction). A gesture inside a
+ gesture is never offered, and `apply(_:)` ignores one that turns up in saved data.
+ `GestureBindings.defaults(click:)` puts `missionControl` up, `.launchpad` down, `spaceRight`
+ left and `spaceLeft` right: a swipe moves the Spaces the way a trackpad does, as if the hand
+ grabbed the desktop, so left brings the next Space and right the previous one. Down is not
+ App Exposé, which as a trackpad swipe does nothing while its trackpad gesture is off, as it
+ is out of the box. Only new gestures get the defaults; saved ones keep their choices.
+ `defaults(for: button)` takes `originalClick(for:)` as the click, so Back re-posts Back and
+ the wheel click re-posts a middle click. `makeGesture(_:)`
+ applies the defaults to a button that isn't a gesture yet and keeps the choices of one that
+ is, so choosing Gesture… again reopens the editor. `setGestureAction(_:for:of:)` edits one
+ slot.
+- **The recogniser** (`GestureRecognizer`, a pure struct) sums the net movement since the
+ hold began (`dx`, `dy`, CGEvent deltas with y growing downward). `move(dx:dy:)` returns a
+ `GestureDirection` the first time the larger axis reaches `GestureRecognizer.threshold` (50
+ points), and nil after that, so one swipe fires per hold, while the hand is still moving. An
+ exact diagonal goes horizontal. Net rather than travelled distance: going right and back is
+ still a click. `end()` returns whether the hold was a click and resets the value.
+- **Event pipeline** (`ButtonRemapper.handle(type:event:)`). `otherMouseDown` of a gesture
+ button calls `beginGesture(_:trigger:)`, which stores a `GestureHold` (the button, its
+ bindings and a recogniser) in `gestureHold`; one hold at a time. `otherMouseDragged` goes
+ first in `handle` and returns at once when no hold exists; otherwise `handleGestureDrag`
+ feeds the deltas to `moveGesture(dx:dy:trigger:)`, which fires the direction's action on the
+ swipe. The release (`otherMouseUp` of a swallowed press) calls `endGesture(trigger:)`, which
+ fires the click if no swipe fired. The press, the drags of the held button and the release
+ are swallowed; drags of another button go through. The pointer itself is not frozen.
+- **What ends a hold without a click**: a new `otherMouseDown` of any button, pausing
+ (`remappingPaused`), changing the button's mapping (`setAction`) or the whole table
+ (`setMappings`, a profile), switching device (`setActiveDevice`), the tap being disabled by
+ macOS (`tapDisabledByTimeout` / `tapDisabledByUserInput`) or removed, and the Mac waking
+ (`cancelGesture`). The release after such a reset is still swallowed, as its press was, and
+ fires nothing. While paused a press passes through, so the mouse's own function remains.
+- **The system presets.** `appExpose` ("App Exposé  ⌃↓", key code 125) was added for the
+ gesture and is in every button's Shortcut menu. Mission Control, App Exposé and the Spaces go
+ out as their standard shortcuts (⌃↑, ⌃↓, ⌃←, ⌃→) with the flags a real arrow key carries
+ (`postedFlags(keyCode:saved:)`), so they have to be on in System Settings › Keyboard ›
+ Keyboard Shortcuts › Mission Control.
+- **A gesture's click re-posts the button** (`mouseClickEvents(button:at:source:)`, made with
+ `postSource` so the events carry `magic` and pass the tap, and with the button number set
+ outright so Back and Forward don't come out as a middle click). It fires at release, so a
+ gesture button can't be held to drag.
+- **UI.** `RemapView.gestureEditor` lists the five slots with an action menu each (the same
+ `RemapActionMenu`, whose None does nothing in a slot and which offers the button's own click
+ under Mouse) and a key recorder. `swift run MacRazer render-remap gesture out.png` renders the
+ editor from preview data (`ButtonRemapper.loadPreviewState(gesture: true)` puts a gesture on
+ button 6).
+- **Tests.** `GestureRecognizerTests` (threshold, dominant axis, once per hold, net movement)
+ and `ButtonRemapperGestureTests` (swallowing, pass-through while paused, a release following
+ its press, the reset rules, nested gestures, defaults, persistence and migration, the tap
+ mask), driven through `handle(type:event:)` with synthetic `CGEvent`s and the `actionEmitter`
+ hook that records actions instead of posting them.
 
 ### 6.4 Device test, `DeviceTest*.swift` + the Worker
 The right-click menu's **Help Support This Mouse…** (or **Test This Mouse…** on a verified
@@ -720,6 +803,7 @@ swift run MacRazer render-ui pad color out.png # the colour page naming the pad 
 swift run MacRazer render-ui twocolumns out.png # two columns with only the mouse
 swift run MacRazer render-ui pad color twocolumns out.png # the wide colour page
 swift run MacRazer render-remap wide out.png # the two-column Buttons page
+swift run MacRazer render-remap gesture out.png # the gesture editor
 swift run MacRazer render-about [notes] out.png
 swift run MacRazer render-remap out.png
 swift run MacRazer render-support-prompt [noaccess] out.png # the support prompt window
@@ -764,8 +848,9 @@ that path draws the content but needs an explicit size, since there is no window
 | `PopoverView.swift` | Main popover UI + page navigation. |
 | `PopoverTheme.swift` | Settings › Appearance: theme, glass, the resolved look, the popover and window backdrops. |
 | `ColorPickerPage.swift` | Inline hue/sat colour wheel page + shared `BackButton`. |
-| `ButtonRemapper.swift` | CGEvent tap, action model, presets, persistence, Accessibility. |
-| `RemapView.swift` | Button-config UI (inline + window), key recorder. |
+| `ButtonRemapper.swift` | CGEvent tap, action model (`RemapAction`, `GestureBindings`, `GestureSlot`), presets, `LaunchpadApp`, gesture holds, persistence, Accessibility. |
+| `GestureRecognizer.swift` | `GestureDirection` and the pure `GestureRecognizer`: the net movement of one hold to at most one swipe. |
+| `RemapView.swift` | Button-config UI (inline + window), the shared action menu, gesture editor, key recorder. |
 | `RemapWindowController.swift` | Standalone window host for the remap UI. |
 | `DeviceProbe.swift` | The probes shared by the CLI and the device test. |
 | `DeviceProbeSession.swift` | Transaction id discovery and the recording channel. |

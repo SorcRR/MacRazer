@@ -7,20 +7,152 @@ import ApplicationServices
 import CoreGraphics
 
 /// What a remapped button does. `.passthrough` lets the original event through; `.keystroke`
-/// suppresses the button and posts a key combo instead.
+/// suppresses the button and posts a key combo instead. `.launchpad` opens Launchpad, which
+/// is Apps on macOS 26 (`LaunchpadApp`). `.gesture` makes it a gesture button: held and moved,
+/// it fires one action per direction; pressed in place, its click action. New cases:
+/// everything saved before them decodes as it did.
 enum RemapAction: Codable, Equatable, Sendable {
     case passthrough
     case keystroke(keyCode: UInt16, modifiers: UInt64, name: String)
     case mouseButton(button: Int, name: String)
     case doubleClick
     case mediaKey(code: Int, name: String)
+    case launchpad
+    indirect case gesture(GestureBindings)
 
     var label: String {
         switch self {
         case .passthrough: return "None"
         case .keystroke(_, _, let name), .mouseButton(_, let name), .mediaKey(_, let name): return name
         case .doubleClick: return "Double Click"
+        case .launchpad: return LaunchpadApp.label
+        case .gesture: return "Gesture"
         }
+    }
+
+    var isGesture: Bool {
+        if case .gesture = self { return true }
+        return false
+    }
+}
+
+/// What a gesture button does: one action for a press and release in place, and one for a
+/// swipe in each direction while it's held. Each is an ordinary `RemapAction`. A gesture
+/// inside a gesture is never offered, and does nothing if one ever turns up in saved data
+/// (`ButtonRemapper.apply` ignores it).
+struct GestureBindings: Codable, Equatable, Sendable {
+    var click: RemapAction
+    var up: RemapAction
+    var down: RemapAction
+    var left: RemapAction
+    var right: RemapAction
+
+    subscript(slot: GestureSlot) -> RemapAction {
+        get {
+            switch slot {
+            case .click: click
+            case .up: up
+            case .down: down
+            case .left: left
+            case .right: right
+            }
+        }
+        set {
+            switch slot {
+            case .click: click = newValue
+            case .up: up = newValue
+            case .down: down = newValue
+            case .left: left = newValue
+            case .right: right = newValue
+            }
+        }
+    }
+
+    /// The action a swipe in `direction` fires.
+    func action(for direction: GestureDirection) -> RemapAction { self[GestureSlot(direction)] }
+
+    /// What choosing Gesture sets, laid out like the gesture button on Logitech's MX mice:
+    /// up for Mission Control, down for Launchpad (Apps on macOS 26), and left and right to
+    /// change Space the way a trackpad does, as if the hand grabbed the desktop and moved it:
+    /// a swipe left brings the next Space (Space Right), a swipe right the previous one (Space
+    /// Left). App Exposé, the other natural choice for down, does nothing as a trackpad swipe
+    /// while its trackpad gesture is off, which it is out of the box. `click` is what a press
+    /// without a swipe does. Only new gestures get these: a saved one keeps its choices, and
+    /// the two Space slots can be swapped back in the editor.
+    static func defaults(click: RemapAction) -> GestureBindings {
+        func preset(_ id: String) -> RemapAction {
+            ButtonRemapper.presets.first { $0.id == id }?.action ?? .passthrough
+        }
+        return GestureBindings(click: click, up: preset("missionControl"), down: .launchpad,
+                               left: preset("spaceRight"), right: preset("spaceLeft"))
+    }
+
+    /// The defaults for a mouse button, whose click keeps doing what the button did before
+    /// (`ButtonRemapper.originalClick`).
+    static func defaults(for button: Int) -> GestureBindings {
+        defaults(click: ButtonRemapper.originalClick(for: button))
+    }
+}
+
+/// One of a gesture's five actions, in the order the gesture editor lists them.
+enum GestureSlot: CaseIterable, Sendable {
+    case click, up, down, left, right
+
+    init(_ direction: GestureDirection) {
+        switch direction {
+        case .up: self = .up
+        case .down: self = .down
+        case .left: self = .left
+        case .right: self = .right
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .click: "Click"
+        case .up: "Swipe Up"
+        case .down: "Swipe Down"
+        case .left: "Swipe Left"
+        case .right: "Swipe Right"
+        }
+    }
+}
+
+/// The system app that `RemapAction.launchpad` opens: Launchpad on macOS 15 and earlier, and
+/// Apps, which replaced it, on macOS 26 (there is no Launchpad.app there). It has no keyboard
+/// shortcut by default, so it is opened by bundle id rather than typed.
+enum LaunchpadApp {
+    /// Apps, macOS 26 and later (`/System/Applications/Apps.app`).
+    static let appsBundleID = "com.apple.apps.launcher"
+    /// Launchpad, macOS 15 and earlier.
+    static let launchpadBundleID = "com.apple.launchpad.launcher"
+    /// Tried in this order: a Mac with Apps has no Launchpad to open.
+    static let bundleIDs = [appsBundleID, launchpadBundleID]
+
+    /// The first of `bundleIDs` that `exists` says is installed, or nil for neither.
+    static func installedBundleID(exists: (String) -> Bool) -> String? {
+        bundleIDs.first(where: exists)
+    }
+
+    /// What the menus call it, from the bundle that is installed: "Apps" where Apps is the one
+    /// there, the name macOS 26 gives it, and "Launchpad" otherwise.
+    static func label(installed bundleID: String?) -> String {
+        bundleID == appsBundleID ? "Apps" : "Launchpad"
+    }
+
+    /// This Mac's app, looked up once: it can't change while the app runs.
+    static let installed: String? = installedBundleID { url(of: $0) != nil }
+
+    static let label = label(installed: installed)
+
+    private static func url(of bundleID: String) -> URL? {
+        NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID)
+    }
+
+    /// Opens it, or does nothing on a Mac with neither.
+    static func open() {
+        guard let installed, let url = url(of: installed) else { return }
+        NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
     }
 }
 
@@ -62,7 +194,15 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
 
     @Published private(set) var dpiCycleSoftwareAction: RemapAction?
     @Published private(set) var dpiBridgeBindingConfirmed = false
+    /// The DPI button's F20 press was swallowed and its release hasn't come yet
+    /// (`handleDpiBridge`). Kept across a reinstall of a tap that still sees the keys
+    /// (`tapReplaced`).
     private var bridgeKeyIsDown = false
+    /// Mouse buttons whose press the tap swallowed and whose release hasn't come yet: the
+    /// release is swallowed exactly when its press was (`handle`), as F20's is
+    /// (`bridgeKeyIsDown`). Kept across a reinstall of the tap; a fresh press of the button
+    /// starts over either way, and none is left once no tap is coming back.
+    private var swallowedPresses: Set<Int> = []
     private var dpiBridgeReadRequested = false
     private var dpiBridgeRestoreAttempted = false
     private var dpiObservers = Set<AnyCancellable>()
@@ -76,7 +216,21 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
 
     private var tap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
-    private var tapIncludesKeyboard = false
+    /// The events the installed tap asks for (`eventMask`), 0 with no tap. A change in what
+    /// it should ask for reinstalls it.
+    private var tapMask: CGEventMask = 0
+
+    /// A gesture button being held: which one, the movement so far and what it fires.
+    struct GestureHold: Equatable {
+        /// The CGEvent button number that started it.
+        let trigger: Int
+        let bindings: GestureBindings
+        var recognizer = GestureRecognizer()
+    }
+    /// The hold in progress, if any. One at a time: a new press ends it. Everything that ends
+    /// a hold early (the tap switched off or removed, a device change, pausing, waking, the
+    /// mapping changing, another button's press) sets this to nil, and nothing fires for it.
+    private(set) var gestureHold: GestureHold?
     /// Per-device key so each mouse keeps its own remaps.
     private var activeKey = "none"
     private var activeDeviceID: Int?
@@ -90,7 +244,11 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
     /// its mappings must not fire: the tap can't tell which device sent a click, so they'd
     /// keep remapping matching buttons on every other pointing device. Published so the
     /// remap UI can say why nothing is firing (button detection still works while paused).
-    @Published var remappingPaused = false
+    /// Pausing ends a gesture hold: its release fires nothing, and is still swallowed as its
+    /// press was.
+    @Published var remappingPaused = false {
+        didSet { if remappingPaused { gestureHold = nil } }
+    }
 
     /// Called when a mapped button is pressed while remapping is paused. The mouse is paused
     /// because the app last saw it offline, and a press of one of its mapped buttons is a good
@@ -109,11 +267,15 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         seenButtons = [] // detected buttons are per-device
         sideButtonDetected = false
         suggestedButtons = isBasiliskV3XHyperSpeed ? [3, 4] : []
+        gestureHold = nil
         loadMappings()
         loadDpiSoftwareAction()
         dpiBridgeBindingConfirmed = false
         dpiBridgeReadRequested = false
         dpiBridgeRestoreAttempted = false
+        // This mouse's mappings may have gestures where the last one's had none, or none
+        // where it had some: the drags are asked for only while one needs them.
+        installTapIfNeeded()
     }
 
     static let presets: [RemapPreset] = [
@@ -131,6 +293,8 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         .init(id: "forward", name: "Forward  ⌘]", keyCode: 30, flags: .maskCommand),
         .init(id: "missionControl", name: "Mission Control  ⌃↑", keyCode: 126,
               flags: [.maskControl, .maskSecondaryFn, .maskNumericPad]),
+        .init(id: "appExpose", name: "App Exposé  ⌃↓", keyCode: 125,
+              flags: [.maskControl, .maskSecondaryFn, .maskNumericPad]),
         .init(id: "spaceLeft", name: "Space Left  ⌃←", keyCode: 123,
               flags: [.maskControl, .maskSecondaryFn, .maskNumericPad]),
         .init(id: "spaceRight", name: "Space Right  ⌃→", keyCode: 124,
@@ -138,6 +302,10 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         .init(id: "screenshot", name: "Screenshot  ⇧⌘4", keyCode: 21, flags: [.maskCommand, .maskShift]),
         .init(id: "switchApp", name: "Switch App  ⌘Tab", keyCode: 48, flags: .maskCommand),
     ]
+
+    /// The preset the menus list Launchpad (`RemapAction.launchpad`) after: the last of the
+    /// system ones, Mission Control, App Exposé and the Spaces.
+    static let launchpadMenuAnchor = "spaceRight"
 
     // MARK: - Lifecycle
 
@@ -156,6 +324,12 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
                                                      object: nil, queue: .main) { [weak self] _ in
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { self?.refreshCompetingTaps() }
         })
+        // No hold lasts through the Mac's sleep: a release that came while it slept was never
+        // seen, and the hold would turn the first movement after waking into a swipe.
+        workspaceObservers.append(center.addObserver(forName: NSWorkspace.didWakeNotification,
+                                                     object: nil, queue: .main) { [weak self] _ in
+            self?.cancelGesture()
+        })
     }
 
     /// Re-check the Accessibility grant (call when the window appears / returns to front).
@@ -171,21 +345,38 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
             installTapIfNeeded()
         } else {
             removeTap()
+            // No tap is coming back to see these presses' releases.
+            bridgeKeyIsDown = false
+            swallowedPresses = []
         }
         refreshCompetingTaps()
     }
 
     /// Tears down the event tap and its run-loop source — called when Accessibility is revoked
-    /// while the app is running, so a stale tap isn't left registered indefinitely.
+    /// while the app is running, so a stale tap isn't left registered indefinitely, and before
+    /// a tap with another mask is installed. Ends any hold: its events may go by unseen in
+    /// between. `bridgeKeyIsDown` and `swallowedPresses` stay, so the release of a swallowed
+    /// press that reaches the new tap is still swallowed (`tapReplaced`).
     private func removeTap() {
         if let tap { CGEvent.tapEnable(tap: tap, enable: false) }
         if let runLoopSource { CFRunLoopRemoveSource(CFRunLoopGetMain(), runLoopSource, .commonModes) }
         tap = nil
         runLoopSource = nil
-        tapIncludesKeyboard = false
+        tapMask = 0
+        gestureHold = nil
         eventTapAvailable = false
         keyboardCaptureAvailable = false
-        bridgeKeyIsDown = false
+    }
+
+    /// What carries over to the tap that replaced the old one, which asks for `mask` (0 when
+    /// none could be installed). Adding the first gesture or removing the last reinstalls the
+    /// tap, and the DPI button may be held right then: its F20 release must still be
+    /// swallowed, as its press was. A tap without the keys never sees that release, though, so
+    /// it is forgotten; a later tap with them would otherwise swallow the release of a press an
+    /// app saw. Internal rather than private so tests can follow a reinstall without installing
+    /// a real tap.
+    func tapReplaced(mask: CGEventMask) {
+        if !Self.includesKeyboardEvents(mask) { bridgeKeyIsDown = false }
     }
 
     func openAccessibilitySettings() { SystemSettingsPanes.openAccessibility() }
@@ -203,21 +394,64 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
     var onManualChange: (() -> Void)?
 
     func setAction(_ action: RemapAction, for button: Int) {
+        // A hold of this button was started with what it did before.
+        if gestureHold?.trigger == button { gestureHold = nil }
         mappings[button] = action
         seenButtons.insert(button)
         saveMappings()
+        installTapIfNeeded()
         onManualChange?()
     }
 
     /// Replaces the whole mapping table at once — used when applying a saved profile (as opposed
     /// to a single-button edit from the remap UI, which goes through `setAction`).
     func setMappings(_ new: [Int: RemapAction]) {
+        gestureHold = nil
         mappings = new
         seenButtons.formUnion(new.keys)
         saveMappings()
+        installTapIfNeeded()
+    }
+
+    /// What choosing Gesture… for a button does: the defaults (`GestureBindings.defaults`)
+    /// when it isn't a gesture yet. One that already is keeps its choices, as choosing it
+    /// again is how the editor is reopened.
+    func makeGesture(_ button: Int) {
+        guard mappings[button]?.isGesture != true else { return }
+        setAction(.gesture(.defaults(for: button)), for: button)
+    }
+
+    /// A gesture button's actions, or nil when the button isn't one.
+    func gestureBindings(for button: Int) -> GestureBindings? {
+        guard case .gesture(let bindings) = mappings[button] else { return nil }
+        return bindings
+    }
+
+    /// Sets one of a gesture button's actions. Nothing changes for a button that isn't a
+    /// gesture, or for a gesture as the action: one nested in another would never fire.
+    func setGestureAction(_ action: RemapAction, for slot: GestureSlot, of button: Int) {
+        guard var bindings = gestureBindings(for: button), !action.isGesture else { return }
+        bindings[slot] = action
+        setAction(.gesture(bindings), for: button)
     }
 
     func actionLabel(for button: Int) -> String { mappings[button]?.label ?? "None" }
+
+    /// A click of `button` itself. A gesture's click re-posts it, so a press without a swipe
+    /// still does what the button did before: the wheel click still opens a link in a new
+    /// tab, Back still goes back. `.passthrough` (nothing) for the primary buttons, which have
+    /// no click of their own to post here.
+    static func originalClick(for button: Int) -> RemapAction {
+        let name: String
+        switch button {
+        case ..<2: return .passthrough
+        case 2: name = "Middle Click"
+        case 3: name = "Back Button"
+        case 4: name = "Forward Button"
+        default: name = "Button \(button + 1)"
+        }
+        return .mouseButton(button: button, name: name)
+    }
 
     /// Friendly, compact label for a raw CGEvent button number.
     static func label(for button: Int) -> String {
@@ -230,21 +464,23 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         }
     }
 
-    /// Mock state for the `render-remap` preview command.
-    func loadPreviewState() {
+    /// Mock state for the `render-remap` preview command. `gesture` adds a gesture on button
+    /// 6 (5), for `render-remap gesture`; the other previews and screenshots keep two remaps.
+    func loadPreviewState(gesture: Bool = false) {
         accessibilityGranted = true
         eventTapAvailable = true
         seenButtons = [2, 3, 4, 5]
         mappings = [3: .keystroke(keyCode: 8, modifiers: CGEventFlags.maskCommand.rawValue, name: "Copy  ⌘C"),
                     4: .keystroke(keyCode: 9, modifiers: CGEventFlags.maskCommand.rawValue, name: "Paste  ⌘V")]
+        if gesture { mappings[5] = .gesture(.defaults(for: 5)) }
     }
 
     // MARK: - Event tap
 
     private func installTapIfNeeded() {
         guard accessibilityGranted else { return }
-        let includeKeyboard = shouldCaptureKeyboard && !keyboardTapRefused
-        guard tap == nil || tapIncludesKeyboard != includeKeyboard else {
+        let mask = wantedEventMask
+        guard tap == nil || tapMask != mask else {
             if let tap {
                 if !CGEvent.tapIsEnabled(tap: tap) { CGEvent.tapEnable(tap: tap, enable: true) }
                 eventTapAvailable = CGEvent.tapIsEnabled(tap: tap)
@@ -253,7 +489,20 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
             return
         }
         removeTap()
-        installTap(includeKeyboard: includeKeyboard)
+        installTap(mask: mask)
+        // The mask it got, which lacks the keys when macOS refused them.
+        tapReplaced(mask: tapMask)
+    }
+
+    /// The mask the tap should have now (`eventMask`). A change reinstalls it. Internal rather
+    /// than private so tests can check what the mappings ask for.
+    var wantedEventMask: CGEventMask {
+        Self.eventMask(keyboard: shouldCaptureKeyboard && !keyboardTapRefused, gestures: wantsGestureEvents)
+    }
+
+    /// A gesture needs the pointer's movement while its button is held.
+    private var wantsGestureEvents: Bool {
+        mappings.values.contains { $0.isGesture }
     }
 
     /// macOS refused the keyboard-capable tap this session. Cleared by an explicit Re-check
@@ -264,24 +513,20 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         isBasiliskV3XHyperSpeed && dpiCycleSoftwareAction != nil
     }
 
-    private func installTap(includeKeyboard: Bool) {
-        // otherMouse = middle/wheel-click + extra buttons — the only events we remap.
-        // Primary left/right clicks are deliberately never tapped.
-        let types: [CGEventType] = includeKeyboard
-            ? [.otherMouseDown, .otherMouseUp, .keyDown, .keyUp]
-            : [.otherMouseDown, .otherMouseUp]
-        let mask = types.reduce(CGEventMask(0)) { $0 | (CGEventMask(1) << CGEventMask($1.rawValue)) }
+    private func installTap(mask: CGEventMask) {
         guard let tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap, place: .headInsertEventTap, options: .defaultTap,
-            eventsOfInterest: CGEventMask(mask), callback: Self.tapCallback,
+            eventsOfInterest: mask, callback: Self.tapCallback,
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else {
             // macOS may reject keyboard capture while allowing mouse events. Keep ordinary
             // button remapping available even when the optional F20 bridge cannot run, and
             // remember the refusal: otherwise every state change would tear down the working
             // mouse-only tap to try the keyboard one again.
-            if includeKeyboard {
-                installTap(includeKeyboard: false)
+            if Self.includesKeyboardEvents(mask) {
+                // The same mask without the keys, so gestures keep their drags and the next
+                // `installTapIfNeeded` finds the mask it asks for.
+                installTap(mask: mask & ~Self.keyboardEventsMask)
                 // Only a refusal if mouse events still work. When both fail, the cause is
                 // something else (Accessibility not effective yet), so try both again later.
                 keyboardTapRefused = tap != nil
@@ -294,15 +539,27 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         CGEvent.tapEnable(tap: tap, enable: true)
         self.tap = tap
         self.runLoopSource = src
-        self.tapIncludesKeyboard = includeKeyboard
+        self.tapMask = mask
         eventTapAvailable = true
         refreshKeyboardCaptureStatus()
     }
 
+    /// The events the tap asks for. otherMouse = middle/wheel-click + extra buttons, the only
+    /// buttons we remap; primary left/right clicks are deliberately never tapped. Their drags
+    /// only while a gesture needs them: they come at the mouse's polling rate, and a tap that
+    /// doesn't ask for them never sees them. Keys only for the DPI button's F20 bridge.
+    static func eventMask(keyboard: Bool, gestures: Bool) -> CGEventMask {
+        var types: [CGEventType] = [.otherMouseDown, .otherMouseUp]
+        if gestures { types.append(.otherMouseDragged) }
+        let mask = types.reduce(CGEventMask(0)) { $0 | (CGEventMask(1) << CGEventMask($1.rawValue)) }
+        return keyboard ? mask | keyboardEventsMask : mask
+    }
+
+    static let keyboardEventsMask: CGEventMask = (CGEventMask(1) << CGEventType.keyDown.rawValue)
+        | (CGEventMask(1) << CGEventType.keyUp.rawValue)
+
     static func includesKeyboardEvents(_ mask: CGEventMask) -> Bool {
-        let required = (CGEventMask(1) << CGEventType.keyDown.rawValue)
-            | (CGEventMask(1) << CGEventType.keyUp.rawValue)
-        return mask & required == required
+        mask & keyboardEventsMask == keyboardEventsMask
     }
 
     /// Every event tap on the session, or nil when macOS won't list them.
@@ -395,7 +652,8 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
     }
 
     private static let magic: Int64 = 0x52415A45 // "RAZE" — marks events we post, to skip them
-    private lazy var postSource: CGEventSource? = {
+    /// Internal rather than private so tests can check the events it makes carry `magic`.
+    lazy var postSource: CGEventSource? = {
         let s = CGEventSource(stateID: .combinedSessionState)
         s?.userData = Self.magic
         return s
@@ -405,8 +663,16 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
     /// private so tests can hand it synthetic events.
     func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            // Events went by unseen, perhaps the release that would have ended a hold.
+            gestureHold = nil
             if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
             return Unmanaged.passUnretained(event)
+        }
+        // First and short: drags come at the mouse's polling rate, on the main thread, and
+        // with no gesture held there is nothing to look at.
+        if type == .otherMouseDragged {
+            guard gestureHold != nil else { return Unmanaged.passUnretained(event) }
+            return handleGestureDrag(event)
         }
         // Skip events we ourselves posted (e.g. a remap-to-middle-click re-enters the tap).
         if event.getIntegerValueField(.eventSourceUserData) == Self.magic {
@@ -423,11 +689,29 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         guard type == .otherMouseDown || type == .otherMouseUp else {
             return Unmanaged.passUnretained(event)
         }
+        // A release goes the way its press went, whatever changed in between (paused or
+        // unpaused, remapped, the hold ended): swallowed after a swallowed press, ending that
+        // button's hold (its click, if no swipe fired), and through otherwise. An app must
+        // never see a press without its release, which leaves the button held down there.
+        if type == .otherMouseUp {
+            guard swallowedPresses.remove(button) != nil else { return Unmanaged.passUnretained(event) }
+            endGesture(trigger: button)
+            return nil
+        }
+        // A press while a gesture is held ends the hold, so one whose release went missing
+        // can't linger and swallow the next drags.
+        gestureHold = nil
+        swallowedPresses.remove(button)
 
         if let action = mappings[button], action != .passthrough {
             guard remappingPaused else {
-                if type == .otherMouseDown { apply(action) }
-                return nil // suppress the original button (both down and up)
+                if case .gesture(let bindings) = action {
+                    beginGesture(bindings, trigger: button)
+                } else {
+                    apply(action)
+                }
+                swallowedPresses.insert(button)
+                return nil // suppress the original button (its release follows, above)
             }
             // This press still goes through unchanged: the tap can't tell which device sent
             // it, so it may not be our mouse at all. The check brings the mapping back for the
@@ -443,14 +727,70 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         return Unmanaged.passUnretained(event)
     }
 
+    // MARK: - Gestures
+
+    /// A drag while a hold is in progress. Its button must be the one held: the drags of
+    /// another button held alongside are that button's, and go through.
+    private func handleGestureDrag(_ event: CGEvent) -> Unmanaged<CGEvent>? {
+        let button = Int(event.getIntegerValueField(.mouseEventButtonNumber))
+        // Read as doubles, which keeps any fraction of a point macOS reports: a slow, steady
+        // swipe would otherwise lose it on every event.
+        let moved = moveGesture(dx: event.getDoubleValueField(.mouseEventDeltaX),
+                                dy: event.getDoubleValueField(.mouseEventDeltaY), trigger: button)
+        // Swallowed while held, as the press was: an app that never saw the button go down
+        // shouldn't see it drag. The cursor still moves, so the swipe stays visible.
+        return moved ? nil : Unmanaged.passUnretained(event)
+    }
+
+    // The hold itself, apart from the events that drive it (`handle`): internal so tests can
+    // drive a hold directly. `trigger` names the hold as in `GestureHold.trigger`.
+
+    /// A gesture button went down: start a hold, replacing any other.
+    func beginGesture(_ bindings: GestureBindings, trigger: Int) {
+        gestureHold = GestureHold(trigger: trigger, bindings: bindings)
+    }
+
+    /// The pointer moved by (dx, dy), CGEvent deltas with y growing downward. Fires the
+    /// direction's action the first time the hold's movement is far enough. Returns whether a
+    /// hold of `trigger` is in progress, and so whether the movement belongs to it.
+    @discardableResult
+    func moveGesture(dx: Double, dy: Double, trigger: Int) -> Bool {
+        guard gestureHold?.trigger == trigger else { return false }
+        // Mutated in place: a copy of the hold per event would be wasted work at this rate.
+        if let direction = gestureHold?.recognizer.move(dx: dx, dy: dy), let hold = gestureHold {
+            apply(hold.bindings.action(for: direction))
+        }
+        return true
+    }
+
+    /// The gesture button came back up: fire the click, if no swipe fired. Only the button's
+    /// own release comes here: every reset of a hold sets `gestureHold` to nil instead, and
+    /// fires nothing. Returns whether a hold of `trigger` was in progress.
+    @discardableResult
+    func endGesture(trigger: Int) -> Bool {
+        guard var hold = gestureHold, hold.trigger == trigger else { return false }
+        gestureHold = nil
+        if hold.recognizer.end() { apply(hold.bindings.click) }
+        return true
+    }
+
+    /// Ends any hold without firing anything.
+    func cancelGesture() {
+        gestureHold = nil
+    }
+
     private func apply(_ action: RemapAction) {
+        // Nothing to post for `.passthrough` (a gesture's "None"). A gesture only ever runs
+        // from a hold, never as a single action, so one nested in a gesture's slot is inert.
+        guard action != .passthrough, !action.isGesture else { return }
         if let actionEmitter { actionEmitter(action); return }
         switch action {
-        case .passthrough: break
+        case .passthrough, .gesture: break
         case .keystroke(let kc, let mods, _): postKeystroke(keyCode: kc, flags: CGEventFlags(rawValue: mods))
         case .mouseButton(let b, _): postMouseClick(b)
         case .doubleClick: postDoubleClick()
         case .mediaKey(let code, _): postMediaKey(code)
+        case .launchpad: LaunchpadApp.open()
         }
     }
 
@@ -496,15 +836,25 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
 
     private func postMouseClick(_ button: Int) {
         let pos = CGEvent(source: nil)?.location ?? .zero
+        Self.mouseClickEvents(button: button, at: pos, source: postSource).forEach { $0.post(tap: .cghidEventTap) }
+    }
+
+    /// The down and up a mouse-button action posts. Made with `postSource`, they carry `magic`
+    /// and pass our own tap untouched: a gesture's click re-posts the gesture button's own
+    /// number, which the tap would otherwise take for another press of it.
+    static func mouseClickEvents(button: Int, at pos: CGPoint, source: CGEventSource?) -> [CGEvent] {
         let mb = CGMouseButton(rawValue: UInt32(button)) ?? .center
         let downType: CGEventType = button == 0 ? .leftMouseDown : (button == 1 ? .rightMouseDown : .otherMouseDown)
         let upType: CGEventType = button == 0 ? .leftMouseUp : (button == 1 ? .rightMouseUp : .otherMouseUp)
-        for (type, clickState) in [(downType, 1), (upType, 1)] {
-            let e = CGEvent(mouseEventSource: postSource, mouseType: type, mouseCursorPosition: pos, mouseButton: mb)
+        return [downType, upType].compactMap { type in
+            let e = CGEvent(mouseEventSource: source, mouseType: type, mouseCursorPosition: pos, mouseButton: mb)
+            // Set outright rather than trusting the conversion above: Back and Forward
+            // (3 and 4) must not come out as a middle click.
+            e?.setIntegerValueField(.mouseEventButtonNumber, value: Int64(button))
             // Without a click count, apps reading NSEvent.clickCount see 0 and may not
             // treat the synthesized press as a click at all (e.g. middle-click-closes-tab).
-            e?.setIntegerValueField(.mouseEventClickState, value: Int64(clickState))
-            e?.post(tap: .cghidEventTap)
+            e?.setIntegerValueField(.mouseEventClickState, value: 1)
+            return e
         }
     }
 
@@ -655,22 +1005,33 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         return "Ready"
     }
 
+    /// The DPI button's F20: a press fires the saved action. Its repeats and release go the way
+    /// the press went, as a mouse button's release does (`handle`): swallowed after a swallowed
+    /// press, whatever changed in between (paused, the binding no longer confirmed, the action
+    /// changed, the tap reinstalled), and through after a press an app saw. A fresh press
+    /// starts over, so one whose release went by unseen can't swallow the next one's action.
     private func handleDpiBridge(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         guard event.getIntegerValueField(.keyboardEventKeycode) == 90 else {
             return Unmanaged.passUnretained(event)
         }
-        if type == .keyUp, bridgeKeyIsDown {
+        if type == .keyUp {
+            guard bridgeKeyIsDown else { return Unmanaged.passUnretained(event) }
             bridgeKeyIsDown = false
             return nil
         }
-        let modifiers: CGEventFlags = [.maskCommand, .maskControl, .maskAlternate, .maskShift]
-        guard type == .keyDown, isBasiliskV3XHyperSpeed, dpiBridgeBindingConfirmed,
-              !remappingPaused, event.flags.intersection(modifiers).isEmpty,
-              let action = dpiCycleSoftwareAction else { return Unmanaged.passUnretained(event) }
-        if !bridgeKeyIsDown, event.getIntegerValueField(.keyboardEventAutorepeat) == 0 {
-            lastDetectedButton = -1
-            apply(action)
+        guard type == .keyDown else { return Unmanaged.passUnretained(event) }
+        if event.getIntegerValueField(.keyboardEventAutorepeat) != 0 {
+            return bridgeKeyIsDown ? nil : Unmanaged.passUnretained(event)
         }
+        let modifiers: CGEventFlags = [.maskCommand, .maskControl, .maskAlternate, .maskShift]
+        guard isBasiliskV3XHyperSpeed, dpiBridgeBindingConfirmed,
+              !remappingPaused, event.flags.intersection(modifiers).isEmpty,
+              let action = dpiCycleSoftwareAction else {
+            bridgeKeyIsDown = false
+            return Unmanaged.passUnretained(event)
+        }
+        lastDetectedButton = -1
+        apply(action)
         bridgeKeyIsDown = true
         return nil
     }

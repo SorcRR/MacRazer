@@ -9,9 +9,10 @@ import XCTest
 /// The flags stored with a shortcut a button sends. macOS matches its own shortcuts on them.
 final class ShortcutFlagsTests: XCTestCase {
     func testTheArrowPresetsAreStoredWithTheFlagsMacOSMatchesOn() {
-        // Mission Control and the Space shortcuts are stored by macOS as Control + Fn (0x840000).
+        // Mission Control, App Exposé and the Space shortcuts are stored by macOS as
+        // Control + Fn (0x840000).
         let arrows = ButtonRemapper.presets.filter { (123...126).contains($0.keyCode) }
-        XCTAssertEqual(arrows.map(\.id), ["missionControl", "spaceLeft", "spaceRight"])
+        XCTAssertEqual(arrows.map(\.id), ["missionControl", "appExpose", "spaceLeft", "spaceRight"])
         for preset in arrows {
             XCTAssertEqual(preset.flags, [.maskControl, .maskSecondaryFn, .maskNumericPad], preset.name)
             XCTAssertEqual(preset.action, .keystroke(keyCode: preset.keyCode, modifiers: preset.flags.rawValue,
