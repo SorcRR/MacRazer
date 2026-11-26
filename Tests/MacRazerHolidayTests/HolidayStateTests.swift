@@ -137,4 +137,42 @@ final class HolidayStateTests: XCTestCase {
         XCTAssertNil(Holiday.previewClock(["MACRAZER_HOLIDAY_DATE": "soon"]))
         XCTAssertNil(Holiday.previewClock([:]))
     }
+
+    func testBannerCountsOnlyWhenThePopoverOpensWithIt() {
+        at(2026, 12, 3)
+        let h = make()
+        // The app builds the popover ahead of time: in the layout, but nobody has looked.
+        h.setBannerInView(true)
+        h.setPopoverOpen(true); h.setPopoverOpen(false)
+        h.setPopoverOpen(true); h.setPopoverOpen(false)
+        XCTAssertTrue(h.bannerPending)
+        h.setBannerInView(false)
+        h.setPopoverOpen(true)
+        XCTAssertTrue(h.bannerPending, "Not counted while another notice took its place")
+        h.setBannerInView(true)
+        h.setPopoverOpen(true)
+        XCTAssertFalse(h.bannerPending)
+    }
+
+    func testIgnoredBannerKeepsTheFirstShowingAsKeptSince() {
+        at(2026, 12, 3)
+        let h = make()
+        h.bannerShown()
+        at(2026, 12, 10)
+        h.bannerShown(); h.bannerShown()
+        XCTAssertFalse(h.bannerPending)
+        h.setDecorations(on: false)
+        XCTAssertEqual(h.pendingChanges, [.bannerIgnored, .offLater4to7])
+    }
+
+    func testTodayChangesAtMidnightDuringAdvent() {
+        at(2026, 12, 3)
+        let h = make()
+        let first = h.today
+        XCTAssertEqual(h.headline, "22 sleeps until Christmas")
+        at(2026, 12, 4)
+        h.refresh()
+        XCTAssertNotEqual(h.today, first)
+        XCTAssertEqual(h.headline, "21 sleeps until Christmas")
+    }
 }

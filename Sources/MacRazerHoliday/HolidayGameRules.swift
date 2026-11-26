@@ -31,6 +31,16 @@ public enum HolidayCharacter: String, CaseIterable, Codable, Sendable {
     }
 
     /// The name VoiceOver reads for the character's button.
+    /// For the score's breakdown: "3 Santa", "1 elf", "2 elves".
+    func countName(_ n: Int) -> String {
+        switch self {
+        case .santa: "Santa"
+        case .reindeer: "reindeer"
+        case .elf: n == 1 ? "elf" : "elves"
+        case .krampus: "Krampus"
+        }
+    }
+
     public var spokenName: String {
         switch self {
         case .santa: "Santa"
@@ -103,8 +113,4 @@ public enum HolidayGameRules {
         return 2...12
     }
 
-    /// The fastest the score can honestly grow, in points per second, for the Worker's check
-    /// and for a sanity check here: the shortest gap, a catch the moment one appears, and every
-    /// peek the 3-point Krampus. Generous on purpose: an honest player must never hit it.
-    public static let maxPointsPerSecond = 3.0 / 1.0
 }

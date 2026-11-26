@@ -12,6 +12,7 @@ import Foundation
 import AppKit
 import ServiceManagement
 import SwiftUI
+import MacRazerHoliday
 
 let args = Array(CommandLine.arguments.dropFirst())
 
@@ -26,6 +27,8 @@ if args.isEmpty {
 }
 
 let command = args.first!
+// A render in December shows the decorations from scratch storage, never the real choices.
+if command.hasPrefix("render") { Holiday.useScratchStorage() }
 if command.hasPrefix("render") {
     RenderOptions.isActive = true
     AppInfo.renderVersion = args.first { $0.hasPrefix("version=") }.map { String($0.dropFirst("version=".count)) }

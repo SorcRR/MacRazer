@@ -7,6 +7,8 @@ import SwiftUI
 /// in the card's padding and never covers a control.
 private let characterSize: CGFloat = 26
 private let showing: CGFloat = 14
+/// Cards shorter than this never get a character on their trailing edge.
+private let tallEnoughForTrailing: CGFloat = 60
 
 /// Makes a card a place the game's characters can peek out of. Only the character itself
 /// takes clicks, and only while it's out; the card works exactly as before.
@@ -70,8 +72,14 @@ private struct PeekingCharacter: View {
         }
     }
 
+    /// Rows keep their trailing edge for their switches and chevrons: a character there would
+    /// take a click meant for the control. Short cards get it from the bottom instead.
+    private var edge: PeekEdge {
+        peek.edge == .trailing && size.height < tallEnoughForTrailing ? .bottom : peek.edge
+    }
+
     private var rotation: Angle {
-        switch peek.edge {
+        switch edge {
         case .bottom: .zero
         case .top: .degrees(180)
         case .trailing: .degrees(-90)
@@ -79,7 +87,7 @@ private struct PeekingCharacter: View {
     }
 
     private var along: CGFloat {
-        switch peek.edge {
+        switch edge {
         case .bottom, .top: min(max(peek.position * size.width, characterSize), size.width - characterSize)
         case .trailing: min(max(peek.position * size.height, characterSize / 2), max(characterSize / 2, size.height - characterSize / 2))
         }
@@ -87,7 +95,7 @@ private struct PeekingCharacter: View {
 
     private var shownCenter: CGPoint {
         let inset = characterSize / 2 - showing
-        switch peek.edge {
+        switch edge {
         case .bottom: return CGPoint(x: along, y: size.height + inset)
         case .top: return CGPoint(x: along, y: -inset)
         case .trailing: return CGPoint(x: size.width + inset, y: along)
@@ -96,7 +104,7 @@ private struct PeekingCharacter: View {
 
     private var hiddenCenter: CGPoint {
         let away = characterSize / 2 + 2
-        switch peek.edge {
+        switch edge {
         case .bottom: return CGPoint(x: along, y: size.height + away)
         case .top: return CGPoint(x: along, y: -away)
         case .trailing: return CGPoint(x: size.width + away, y: along)

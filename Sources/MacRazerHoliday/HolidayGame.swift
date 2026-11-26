@@ -29,6 +29,21 @@ public struct HolidayBubble: Equatable, Sendable {
     public let character: HolidayCharacter
 }
 
+/// What the app's popover delegate tells the module: the popover really opened or closed.
+/// SwiftUI's own appear and disappear can't say this, because the app builds the popover's
+/// views ahead of time, before anyone opens it.
+public enum HolidayPopover {
+    @MainActor public static func didShow() {
+        Holiday.shared.setPopoverOpen(true)
+        HolidayGame.shared.setVisible(.popover, true)
+    }
+
+    @MainActor public static func didClose() {
+        Holiday.shared.setPopoverOpen(false)
+        HolidayGame.shared.setVisible(.popover, false)
+    }
+}
+
 /// The catch game. Cards register as places to peek from; the game picks one at a time, keeps
 /// the score and the level, and stays out of the way of the real app: nothing peeks from the
 /// card under the pointer, nothing peeks for a few seconds after a real click or while

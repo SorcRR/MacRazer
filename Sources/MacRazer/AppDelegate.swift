@@ -908,11 +908,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
 
     func popoverDidShow(_ notification: Notification) {
         controller.setPopoverVisible(true)
+        HolidayPopover.didShow()
         // Re-reads each accessory's brightness: a keyboard's own keys change it behind the app's back.
         accessories.rescan()
     }
     func popoverDidClose(_ notification: Notification) {
         controller.setPopoverVisible(false)
+        HolidayPopover.didClose()
         // An update found while the popover was open was deliberately left alone; now that
         // it's closed, the restart is no longer disruptive — unless the close was on the way
         // to opening Settings, in which case relaunching would take that window with it.

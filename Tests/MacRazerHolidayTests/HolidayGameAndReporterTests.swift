@@ -103,4 +103,49 @@ final class HolidayGameAndReporterTests: XCTestCase {
         await reporter.reportIfNeeded()
         XCTAssertEqual(asked, 0)
     }
+
+    func testReporterBacksOffAfterAFailedReply() async {
+        let h = holiday()
+        h.keep()
+        let reporter = HolidayReporter(holiday: h)
+        var asked = 0
+        reporter.configure(base: URL(string: "https://reports.example")!, appVersion: nil) { url in
+            asked += 1
+            return (Data(), HTTPURLResponse(url: url, statusCode: 404, httpVersion: nil, headerFields: nil)!)
+        }
+        await reporter.reportIfNeeded()
+        clock = clock.addingTimeInterval(15 * 60)
+        await reporter.reportIfNeeded()
+        XCTAssertEqual(asked, 1, "No retry on the next 15-minute tick")
+        clock = clock.addingTimeInterval(50 * 60)
+        await reporter.reportIfNeeded()
+        XCTAssertEqual(asked, 2, "Tried again after an hour")
+        XCTAssertEqual(HolidayReporter.backoff(afterFailures: 2), 7200)
+        XCTAssertEqual(HolidayReporter.backoff(afterFailures: 9), 24 * 3600)
+    }
+
+    func testLastDayChangesGoOutAfterTheSeason() async throws {
+        clock = calendar.date(from: DateComponents(year: 2027, month: 1, day: 6, hour: 22))!
+        let h = holiday()
+        h.keep()
+        clock = calendar.date(from: DateComponents(year: 2027, month: 1, day: 8, hour: 9))!
+        h.refresh()
+        XCTAssertFalse(h.isFestive)
+        let reporter = HolidayReporter(holiday: h)
+        var asked: [URL] = []
+        reporter.configure(base: URL(string: "https://reports.example")!, appVersion: nil) { url in
+            asked.append(url)
+            return (Data(), HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }
+        await reporter.reportIfNeeded()
+        let items = URLComponents(url: try XCTUnwrap(asked.first), resolvingAgainstBaseURL: false)?.queryItems ?? []
+        XCTAssertEqual(items.first { $0.name == "season" }?.value, "2026")
+        XCTAssertEqual(items.first { $0.name == "state" }?.value, "ended")
+        XCTAssertEqual(items.first { $0.name == "changes" }?.value, "kept")
+        XCTAssertEqual(h.pendingChanges, [])
+        // Nothing left to send: no daily count after the season.
+        clock = clock.addingTimeInterval(86400)
+        await reporter.reportIfNeeded()
+        XCTAssertEqual(asked.count, 1)
+    }
 }

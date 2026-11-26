@@ -54,7 +54,9 @@ public struct HolidayNotice: View {
 
     public var body: some View {
         if holiday.bannerPending {
-            banner.onAppear { holiday.bannerShown() }
+            banner
+                .onAppear { holiday.setBannerInView(true) }
+                .onDisappear { holiday.setBannerInView(false) }
         } else if holiday.endingNoticePending {
             ending
         }
@@ -131,7 +133,6 @@ public struct HolidayScoreLine: View {
                 HStack(spacing: 6) {
                     Image(systemName: "hand.raised").font(.system(size: 10.5, weight: .semibold))
                     Text("Score \(game.score)").font(.system(size: 11.5, weight: .semibold))
-                    Text(breakdown).font(.system(size: 11)).foregroundStyle(.secondary)
                     Spacer(minLength: 4)
                     Text("Level \(game.level + 1) of \(HolidayGameRules.levelThresholds.count)")
                         .font(.system(size: 11)).foregroundStyle(.secondary)
@@ -141,6 +142,7 @@ public struct HolidayScoreLine: View {
                     .progressViewStyle(.linear)
                     .tint(HolidayColor.deepRed)
                     .controlSize(.mini)
+                Text(breakdown).font(.system(size: 10.5)).foregroundStyle(.secondary)
                 Text(next).font(.system(size: 10.5)).foregroundStyle(.secondary)
             }
             .padding(.horizontal, 4)
@@ -148,9 +150,12 @@ public struct HolidayScoreLine: View {
         }
     }
 
+    /// Every character caught so far, Settings' ones included, so the parts add up to the score.
     private var breakdown: String {
-        let santa = game.counts[.santa] ?? 0, reindeer = game.counts[.reindeer] ?? 0
-        return reindeer > 0 ? "\(santa) Santa · \(reindeer) reindeer" : "\(santa) Santa"
+        HolidayCharacter.allCases.compactMap { character in
+            guard let n = game.counts[character], n > 0 else { return nil }
+            return "\(n) \(character.countName(n))"
+        }.joined(separator: " · ")
     }
 
     private var next: String {

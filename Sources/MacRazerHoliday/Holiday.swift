@@ -55,11 +55,19 @@ public final class Holiday: ObservableObject {
     /// A preview keeps its own scratch storage, so it never answers the banner or adds to the
     /// score for real.
     public static let shared: Holiday = {
-        guard let clock = previewClock() else { return Holiday() }
+        let clock = previewClock()
+        guard clock != nil || scratchStorage else { return Holiday() }
         let suite = "MacRazer.holiday-preview"
         UserDefaults().removePersistentDomain(forName: suite)
-        return Holiday(defaults: UserDefaults(suiteName: suite) ?? .standard, now: clock)
+        return Holiday(defaults: UserDefaults(suiteName: suite) ?? .standard, now: clock ?? Date.init)
     }()
+
+    private static var scratchStorage = false
+
+    /// For the app's `render-*` commands: whatever a render shows, it keeps to scratch storage,
+    /// so rendering in December never answers the banner for real. Call before anything
+    /// touches `shared`.
+    public static func useScratchStorage() { scratchStorage = true }
 
     static func previewClock(_ environment: [String: String] = ProcessInfo.processInfo.environment) -> (() -> Date)? {
         guard let text = environment["MACRAZER_HOLIDAY_DATE"] else { return nil }
@@ -83,6 +91,14 @@ public final class Holiday: ObservableObject {
     @Published public private(set) var remoteAllowed = true
     /// Reduce Motion or Low Power Mode: decorations stay, but nothing moves and no one peeks.
     @Published public private(set) var stillMode = false
+    /// The start of today. Changes at midnight, so views showing the countdown redraw even
+    /// on the advent days, when the phase stays the same.
+    @Published public private(set) var today = Date.distantPast
+    /// The banner is in the popover's layout. It only counts as seen when the popover opens
+    /// with it there: the app builds the popover ahead of time, before anyone looks.
+    private var bannerInView = false
+    /// The popover is open on screen, as its delegate tells it: not just built.
+    @Published public private(set) var popoverOpen = false
 
     let defaults: UserDefaults
     private let calendar: Calendar
@@ -105,6 +121,15 @@ public final class Holiday: ObservableObject {
 
     /// The season the current day belongs to, for keys and for the Worker.
     public var seasonYear: Int? { HolidaySeason.year(of: now(), calendar: calendar) }
+
+    /// The season whose storage is current: the season itself, and for the rest of January
+    /// the one that just ended, so changes made on the last day can still be reported.
+    var storageYear: Int? {
+        if let seasonYear { return seasonYear }
+        let parts = calendar.dateComponents([.year, .month], from: now())
+        guard parts.month == 1, let year = parts.year else { return nil }
+        return year - 1
+    }
 
     /// The Settings row: shown all season, even with the decorations off, so they can come back.
     public var showsSettingsRow: Bool { phase != nil && remoteAllowed }
@@ -157,9 +182,18 @@ public final class Holiday: ObservableObject {
         refresh()
     }
 
+    /// The banner joined or left the popover's layout.
+    func setBannerInView(_ inView: Bool) { bannerInView = inView }
+
+    /// The popover opened or closed. Opening counts a showing of the banner if it's there.
+    func setPopoverOpen(_ open: Bool) {
+        if popoverOpen != open { popoverOpen = open }
+        if open, bannerInView { bannerShown() }
+    }
+
     /// The banner was on screen in an open popover. After three showings with no answer it
     /// settles as kept, so it doesn't keep asking.
-    public func bannerShown() {
+    func bannerShown() {
         guard bannerPending else { return }
         let shows = (stored(Int.self, "bannerShows") ?? 0) + 1
         setStored(shows, "bannerShows")
@@ -223,7 +257,10 @@ public final class Holiday: ObservableObject {
     private func answerBanner(_ answer: HolidayBannerAnswer, change: HolidayChange) {
         guard phase != nil, bannerAnswer == nil else { return }
         setStored(answer.rawValue, "bannerAnswer")
-        setStored(now().timeIntervalSince1970, "keptSince")
+        // Ignored means kept since the first showing, which `bannerShown` already noted.
+        if answer != .ignored || stored(Double.self, "keptSince") == nil {
+            setStored(now().timeIntervalSince1970, "keptSince")
+        }
         record(change)
         refresh()
     }
@@ -245,6 +282,8 @@ public final class Holiday: ObservableObject {
         if endingNoticePending != ending { endingNoticePending = ending }
         let still = Self.systemWantsStillness()
         if stillMode != still { stillMode = still }
+        let day = calendar.startOfDay(for: now())
+        if today != day { today = day }
     }
 
     static func systemWantsStillness() -> Bool {
@@ -286,7 +325,7 @@ public final class Holiday: ObservableObject {
 
     // MARK: Storage
 
-    private func key(_ name: String) -> String { "s\(seasonYear ?? 0).\(name)" }
+    private func key(_ name: String) -> String { "s\(storageYear ?? 0).\(name)" }
 
     func stored<T>(_ type: T.Type, _ name: String) -> T? { defaults.object(forKey: key(name)) as? T }
 

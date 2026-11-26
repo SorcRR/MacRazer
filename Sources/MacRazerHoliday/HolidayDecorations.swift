@@ -177,11 +177,10 @@ struct Fireworks: View {
 /// from Christmas Day and fireworks on New Year's Day. Off season it's the content as it was.
 struct HolidayPopoverDecorations: ViewModifier {
     @ObservedObject var holiday: Holiday
-    @State private var shown = false
 
     func body(content: Content) -> some View {
         let festive = holiday.isFestive
-        let moving = shown && !holiday.stillMode
+        let moving = holiday.popoverOpen && !holiday.stillMode
         let star = festive && (holiday.phase?.hasStar ?? false)
         content
             .padding(.horizontal, festive ? holidayBranchWidth : 0)
@@ -201,14 +200,6 @@ struct HolidayPopoverDecorations: ViewModifier {
             }
             .overlay(alignment: .top) {
                 if star { HangingStar(animating: moving) }
-            }
-            .onAppear {
-                shown = true
-                HolidayGame.shared.setVisible(.popover, true)
-            }
-            .onDisappear {
-                shown = false
-                HolidayGame.shared.setVisible(.popover, false)
             }
     }
 }
