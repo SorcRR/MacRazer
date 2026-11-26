@@ -539,7 +539,7 @@ four system presets does not fire once: it drives a swipe that follows the point
 - **The system presets as keyboard shortcuts.** `appExpose` ("App Exposé  ⌃↓", key code 125)
  was added for the gesture and is in every button's Shortcut menu. Where a system preset is
  posted as a keystroke (a button's whole mapping, or a gesture where `DockSwipe.isSupported`
- is false, below), it goes out as its standard shortcut (⌃↑, ⌃↓, ⌃←, ⌃→) with the flags a real
+ is false or `systemSwipesFollowPointer` is off, below), it goes out as its standard shortcut (⌃↑, ⌃↓, ⌃←, ⌃→) with the flags a real
  arrow key carries (`postedFlags(keyCode:saved:)`), so it has to be on in System Settings ›
  Keyboard › Keyboard Shortcuts › Mission Control.
 - **Interactive swipes, `DockSwipe.swift`.** In a gesture, the four presets (`SystemSwipe`:
