@@ -198,4 +198,14 @@ final class HolidayStateTests: XCTestCase {
         h.setPopoverOpen(true)
         XCTAssertFalse(h.popoverOpen)
     }
+
+    func testTheLastDaysCountDown() {
+        let lines = [2, 3, 4, 5, 6].map { day -> String? in
+            at(2027, 1, day)
+            return make().headline
+        }
+        XCTAssertEqual(lines, ["Decorations come down after Jan 6", "Decorations come down after Jan 6",
+                               "Decorations come down after Jan 6", "The holidays end in 2 days",
+                               "The holidays end tonight"])
+    }
 }

@@ -190,10 +190,11 @@ public final class HolidayGame: ObservableObject {
             lastSpot[surface] = spot
             self.peek = peek
             try? await Task.sleep(for: .seconds(seconds))
-            // Caught meanwhile: `caught` cancelled this loop and started a fresh one with the
-            // short gap. Anything else (its card went away) and this loop carries on.
-            if Task.isCancelled { return }
+            // Its own character goes back in, whatever ended the wait. Caught meanwhile, it's
+            // gone already and `caught` started a fresh loop; restarted for another reason (a
+            // wake, midnight), this one ends too, but never leaves a character out.
             if self.peek?.id == peek.id { self.peek = nil }
+            if Task.isCancelled { return }
         }
     }
 

@@ -47,7 +47,8 @@ public enum HolidaySeason {
     /// Hebrew or Islamic, where month 12 isn't December.
     public static var calendar: Calendar {
         var c = Calendar(identifier: .gregorian)
-        c.timeZone = .current
+        // Follows the Mac to another time zone without a relaunch.
+        c.timeZone = .autoupdatingCurrent
         return c
     }
 
@@ -84,6 +85,14 @@ public enum HolidaySeason {
               let christmas = calendar.date(from: DateComponents(year: year, month: 12, day: 25)) else { return nil }
         let today = calendar.startOfDay(for: date)
         return calendar.dateComponents([.day], from: today, to: christmas).day
+    }
+
+    /// Days left until the decorations come down, the night of January 6, counted like the
+    /// sleeps: 2 on January 5, 1 on the last day. Nil outside January 1 to 6.
+    public static func daysUntilTheEnd(from date: Date, calendar: Calendar = HolidaySeason.calendar) -> Int? {
+        let parts = calendar.dateComponents([.month, .day], from: date)
+        guard parts.month == 1, let day = parts.day, (1...6).contains(day) else { return nil }
+        return 7 - day
     }
 
     /// Where the presents are on a date, or nil when there are none.

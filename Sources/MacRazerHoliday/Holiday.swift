@@ -168,8 +168,11 @@ public final class Holiday: ObservableObject {
         case .christmasDay: return "Merry Christmas"
         case .afterChristmas: return "Season's greetings"
         case .newYearsDay: return "Happy New Year"
-        case .windDown: return "Decorations come down after Jan 6"
-        case .lastDay: return "Last day of the holidays"
+        case .windDown:
+            // A countdown for the last days, like the one to Christmas.
+            let left = HolidaySeason.daysUntilTheEnd(from: now(), calendar: calendar) ?? 0
+            return left <= 2 ? "The holidays end in \(left) days" : "Decorations come down after Jan 6"
+        case .lastDay: return "The holidays end tonight"
         }
     }
 
