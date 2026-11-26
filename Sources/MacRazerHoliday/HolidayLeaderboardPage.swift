@@ -27,10 +27,8 @@ public struct HolidayLeaderboardPage: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .onAppear {
-            board.refresh()
-            board.syncNow()
-        }
+        .onAppear { board.setPageVisible(true) }
+        .onDisappear { board.setPageVisible(false) }
         .onChange(of: game.score) { _, _ in board.refresh() }
     }
 
@@ -125,6 +123,12 @@ public struct HolidayLeaderboardPage: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text("Playing as \(board.name ?? "")").font(.system(size: 12.5, weight: .semibold))
                 Text(youLine).font(.system(size: 11)).foregroundStyle(.secondary)
+                if let onBoard = board.board?.you?.score, game.score > onBoard {
+                    // The Worker keeps a score every five minutes: say so rather than look stuck.
+                    Text("The board has \(onBoard) so far. Newer catches reach it within a few minutes.")
+                        .font(.system(size: 10.5)).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             Spacer(minLength: 4)
             Menu {

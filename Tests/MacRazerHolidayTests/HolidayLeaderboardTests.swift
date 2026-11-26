@@ -139,6 +139,23 @@ final class HolidayLeaderboardTests: XCTestCase {
         XCTAssertEqual(source.calls.filter { $0 == "score" }.count, sent)
     }
 
+    func testAScoreTheWorkerDidntTakeGoesAgain() async {
+        let source = FakeSource()
+        let parts = make(source)
+        await parts.board.join(as: "Jolly Sprout")
+        let spot = UUID()
+        parts.game.register(spot, surface: .popover)
+        parts.game.caught(parts.game.forcePeek(.santa, spot: spot).id)
+        // Within five minutes of the last one: the Worker answers what it had.
+        source.storesScores = false
+        await parts.board.sync()
+        source.storesScores = true
+        await parts.board.sync()
+        XCTAssertEqual(source.calls.filter { $0 == "score" }.count, 2)
+        await parts.board.sync()
+        XCTAssertEqual(source.calls.filter { $0 == "score" }.count, 2, "Stored now: nothing more to send")
+    }
+
     func testDeletedByTheAdminMeansNotJoined() async {
         let source = FakeSource()
         let parts = make(source)
@@ -312,6 +329,7 @@ private final class FakeSource: HolidayBoardSource {
     var joinError: HolidaySantaError?
     var scoreError: HolidaySantaError?
     var failing = false
+    var storesScores = true
     var stored: [HolidayCharacter: Int] = [:]
     var sentCounts: [HolidayCharacter: Int]?
     var gifts: [HolidayGift] = []
@@ -327,7 +345,8 @@ private final class FakeSource: HolidayBoardSource {
         calls.append("score")
         if let scoreError { throw scoreError }
         sentCounts = counts
-        return HolidayLeaderboard.points(counts)
+        if storesScores { stored = counts }
+        return HolidayLeaderboard.points(stored)
     }
 
     func leave() async throws {

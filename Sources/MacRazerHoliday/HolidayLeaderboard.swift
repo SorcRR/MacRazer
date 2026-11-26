@@ -54,8 +54,9 @@ public final class HolidayLeaderboard: ObservableObject {
     /// The rows shown above your own.
     public static let topRows = 10
     static let nameLength = 3...24
-    /// How often a changed score goes to the Worker. It stores one at most every five minutes.
-    static let syncInterval: TimeInterval = 5 * 60
+    /// How often a changed score goes to the Worker. It stores one at most every five minutes,
+    /// counted in whole minutes, so a little more than that.
+    static let syncInterval: TimeInterval = 5 * 60 + 30
 
     /// The name you play under, once joined. Per season.
     @Published public private(set) var name: String?
@@ -75,6 +76,8 @@ public final class HolidayLeaderboard: ObservableObject {
     private var cancellables: Set<AnyCancellable> = []
     private var syncLoop: Task<Void, Never>?
     private var syncing = false
+    /// The page is on screen: only then is the board fetched, also after each tick.
+    private var pageVisible = false
 
     init(holiday: Holiday, game: HolidayGame, presents: HolidayPresents, source: HolidayBoardSource?,
          random: @escaping () -> Double = { Double.random(in: 0..<1) }) {
@@ -210,8 +213,11 @@ public final class HolidayLeaderboard: ObservableObject {
         if game.score != holiday.stored(Int.self, "leaderboard.sent") ?? 0 {
             let counts = game.counts
             do {
-                _ = try await source.score(counts)
-                holiday.setStored(HolidayLeaderboard.points(counts), "leaderboard.sent")
+                // What the Worker stored, not what went: it keeps one score every five minutes
+                // and answers the older one in between, so a score it didn't take goes again
+                // next time.
+                let stored = try await source.score(counts)
+                holiday.setStored(stored, "leaderboard.sent")
             } catch HolidaySantaError.notJoined {
                 // Deleted on the Worker (by the admin): this Mac isn't on the board any more.
                 name = nil
@@ -229,9 +235,18 @@ public final class HolidayLeaderboard: ObservableObject {
         presents.adopt(reply.gifts)
     }
 
-    /// For the page: send what's waiting now rather than at the next tick.
-    public func syncNow() {
-        Task { await sync() }
+    /// The page came or went.
+    public func setPageVisible(_ visible: Bool) {
+        pageVisible = visible
+        if visible { syncThenRefresh() }
+    }
+
+    /// For the page: send what's waiting, then fetch the board, so it shows the newest score.
+    public func syncThenRefresh() {
+        Task {
+            await sync()
+            await refreshNow()
+        }
     }
 
     /// For the presents card: a box was opened, or the card appeared.
@@ -245,6 +260,7 @@ public final class HolidayLeaderboard: ObservableObject {
         syncLoop = Task { [weak self] in
             while !Task.isCancelled {
                 await self?.sync()
+                if self?.pageVisible == true { await self?.refreshNow() }
                 try? await Task.sleep(for: .seconds(Self.syncInterval))
             }
         }
