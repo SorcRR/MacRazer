@@ -22,8 +22,8 @@ expect rough edges until 1.0.
   - **A Santa leaderboard**, if you join: pick a festive name (or shuffle for one) from the
     score line's link. The top ten and your own place, with everyone's presents. Only players
     who join send anything: the name, the score, the catches and the presents, under a key
-    made from this Mac that can't be matched with anything else. Leave any time, from the board or Settings › Privacy, and your
-    row is deleted. A new board starts each December.
+    made from this Mac that can't be matched with anything else. Leave any time, from the
+    board or Settings › Privacy, and your row is deleted. A new board starts each December.
   - **An anonymous holiday count** for the reports page: whether the decorations are on, and
     whether they were kept or turned off. No ID for the Mac, like the daily mouse count.
 - **More mice from test reports.**
