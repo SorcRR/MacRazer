@@ -56,9 +56,9 @@ enum SupportPromptPolicy {
 /// The one check-up ask for a fully supported mouse. Only for someone new: it waits for two
 /// days of use, days the app ran with the mouse connected, and asks on the next one. So it
 /// lands once they've used it a little, however far apart those days are. It comes once per
-/// Mac, not once per mouse. Someone who updated from a version without it is
-/// never asked (`SupportPrompt.noteLaunch`). The test's thank-you screen, where it ends, has
-/// the tip button.
+/// Mac, not once per mouse. Someone who updated from a version without it is never asked
+/// (`SupportPrompt.noteLaunch`). The test's thank-you screen, where it ends, has the tip
+/// button.
 enum CheckupPolicy {
     /// Days of use before the one it asks on.
     static let daysBefore = 2
