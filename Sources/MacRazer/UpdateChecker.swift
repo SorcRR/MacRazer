@@ -363,6 +363,13 @@ final class UpdateChecker: ObservableObject {
         installedNotes = Self.installedNotes(current: current, defaults: defaults)
     }
 
+    /// No version of MacRazer has run on this Mac before. Only true until this launch's
+    /// `loadInstalledVersionState` and the login-item default write their keys, so it's read
+    /// first thing at launch (the support prompt's check-up clock).
+    static func isFirstRun(defaults: UserDefaults = .standard) -> Bool {
+        defaults.string(forKey: lastRunVersionKey) == nil && !hasRunBefore(defaults)
+    }
+
     /// Evidence that some version of MacRazer has run on this machine before.
     ///
     /// Asked only when no version was recorded, which happens exactly once per install: the
@@ -372,13 +379,6 @@ final class UpdateChecker: ObservableObject {
     /// from an installed bundle once. Someone who has done neither is announced nothing, which
     /// is the same thing a genuinely new install gets, and the About window still has the
     /// notes.
-    /// No version of MacRazer has run on this Mac before. Only true until this launch's
-    /// `loadInstalledVersionState` and the login-item default write their keys, so it's read
-    /// first thing at launch (the support prompt's check-up clock).
-    static func isFirstRun(defaults: UserDefaults = .standard) -> Bool {
-        defaults.string(forKey: lastRunVersionKey) == nil && !hasRunBefore(defaults)
-    }
-
     private static func hasRunBefore(_ defaults: UserDefaults) -> Bool {
         defaults.object(forKey: lastCheckKey) != nil
             || defaults.object(forKey: LaunchAtLogin.appliedDefaultKey) != nil
