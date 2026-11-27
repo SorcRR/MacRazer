@@ -493,7 +493,7 @@ case "render-about":
 case "render-leaderboard":
     _ = NSApplication.shared
     // The Santa leaderboard page as the popover shows it. Needs
-    // `MACRAZER_HOLIDAY_LEADERBOARD=mock` (or `few`) and a season date in
+    // `MACRAZER_HOLIDAY_LEADERBOARD=mock` (or `few`, `empty`) and a season date in
     // `MACRAZER_HOLIDAY_DATE`; `joined` plays as a festive name first.
     if args.contains("joined") { HolidayLeaderboard.shared.previewJoin("Frosty Gingerbread") } else { HolidayLeaderboard.shared.previewBoard() }
     writeHostedPNG(HolidayLeaderboardPage(onBack: {}).frame(width: PopoverLayout.oneColumnWidth),

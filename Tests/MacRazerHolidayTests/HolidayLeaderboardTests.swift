@@ -228,7 +228,7 @@ final class HolidayLeaderboardTests: XCTestCase {
     func testYourRowIsSlottedInWithAGapBelowTheTopTen() async throws {
         let parts = make()
         parts.board.previewJoin("Jolly Sprout")
-        XCTAssertTrue(parts.board.isOpen)
+        XCTAssertTrue(parts.board.hasPlayers)
         XCTAssertEqual(parts.board.board?.playerCount, 129)
         let rows = parts.board.visibleRows
         XCTAssertEqual(rows.count, HolidayLeaderboard.topRows + 1)
@@ -277,13 +277,21 @@ final class HolidayLeaderboardTests: XCTestCase {
         XCTAssertFalse(parts.board.boardUnreachable)
     }
 
-    func testBelowThirtyNobodySeesAnyNames() {
-        let parts = make(HolidayMockBoard(players: 17))
+    func testAFewPlayersShowFromTheFirst() {
+        let parts = make(HolidayMockBoard(players: 4))
         parts.board.previewJoin("Jolly Sprout")
-        XCTAssertFalse(parts.board.isOpen)
-        XCTAssertEqual(parts.board.board?.playerCount, 18)
-        XCTAssertTrue(parts.board.board?.top.isEmpty ?? false)
-        XCTAssertNil(parts.board.rank)
+        XCTAssertTrue(parts.board.hasPlayers)
+        XCTAssertEqual(parts.board.board?.playerCount, 5)
+        XCTAssertEqual(parts.board.visibleRows.count, 5)
+        XCTAssertNotNil(parts.board.rank)
+        XCTAssertTrue(parts.board.visibleRows.contains { $0.player.isYou })
+    }
+
+    func testAnEmptyBoardHasNoRows() {
+        let parts = make(HolidayMockBoard(players: 0))
+        parts.board.previewBoard()
+        XCTAssertFalse(parts.board.hasPlayers)
+        XCTAssertEqual(parts.board.board?.playerCount, 0)
         XCTAssertTrue(parts.board.visibleRows.isEmpty)
     }
 

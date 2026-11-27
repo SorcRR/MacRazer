@@ -178,7 +178,7 @@ final class HolidaySantaClient: HolidayBoardSource {
 }
 
 /// Made-up players, the same ones every time, with you slotted in by your score. Debug only:
-/// `MACRAZER_HOLIDAY_LEADERBOARD=mock` (128 players) or `few` (17, below the 30 it needs).
+/// `MACRAZER_HOLIDAY_LEADERBOARD=mock` (128 players), `few` (4) or `empty` (none).
 @MainActor
 final class HolidayMockBoard: HolidayBoardSource {
     let players: Int
@@ -219,7 +219,6 @@ final class HolidayMockBoard: HolidayBoardSource {
                                       isYou: false))
         }
         let total = players + (you == nil ? 0 : 1)
-        guard total >= HolidayLeaderboard.minimumPlayers else { return HolidayBoard(playerCount: total) }
         if let you { rows.append(you) }
         rows.sort { $0.score != $1.score ? $0.score > $1.score : $0.isYou && !$1.isYou }
         let rank = rows.firstIndex(where: \.isYou).map { $0 + 1 }

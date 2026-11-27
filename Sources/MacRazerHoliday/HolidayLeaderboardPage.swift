@@ -25,7 +25,7 @@ public struct HolidayLeaderboardPage: View {
                     offlineCard
                 } else {
                     if board.boardUnreachable { offlineNote }
-                    if board.isOpen { rows } else { waitingCard }
+                    if board.hasPlayers { rows } else { emptyCard }
                 }
                 footnote
             }
@@ -156,16 +156,12 @@ public struct HolidayLeaderboardPage: View {
 
     // MARK: The board
 
-    private var waitingCard: some View {
-        let count = board.board?.playerCount ?? 0
-        return VStack(alignment: .leading, spacing: 6) {
-            Text("The board opens at \(HolidayLeaderboard.minimumPlayers) players")
+    /// Nobody has joined this season yet.
+    private var emptyCard: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Nobody on the board yet")
                 .font(.system(size: 12.5, weight: .semibold))
-            ProgressView(value: Double(min(count, HolidayLeaderboard.minimumPlayers)),
-                         total: Double(HolidayLeaderboard.minimumPlayers))
-                .progressViewStyle(.linear)
-                .tint(HolidayColor.deepRed)
-            Text("\(count) of \(HolidayLeaderboard.minimumPlayers) so far. Until then nobody sees any names.")
+            Text(board.joined ? "Your score shows here in a moment." : "Join with a festive name and be the first.")
                 .font(.system(size: 11)).foregroundStyle(.secondary)
         }
         .padding(12)
@@ -236,7 +232,7 @@ public struct HolidayLeaderboardPage: View {
 extension HolidayLeaderboardPage {
     private var footnoteText: String {
         if board.isFinalDay { return "Scores stand at midnight. A new board starts next December." }
-        return board.isOpen ? "Scores count until Jan 6. Click a row for the catches." : "Scores count until Jan 6."
+        return board.hasPlayers ? "Scores count until Jan 6. Click a row for the catches." : "Scores count until Jan 6."
     }
 }
 

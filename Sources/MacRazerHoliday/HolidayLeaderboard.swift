@@ -30,11 +30,11 @@ extension HolidayGiftRarity {
     }
 }
 
-/// What the Worker sends back: how many have joined, and from 30 the top ten, plus your own
-/// row and place when you're joined. Below `HolidayLeaderboard.minimumPlayers` only the count.
+/// What the Worker sends back: how many have joined and the top ten, plus your own row and
+/// place when you're joined.
 public struct HolidayBoard: Equatable, Sendable {
     public var playerCount: Int
-    /// Best first. Empty until the board opens.
+    /// Best first. Empty until someone joins.
     public var top: [HolidayPlayer] = []
     public var you: HolidayPlayer?
     public var yourRank: Int?
@@ -49,8 +49,6 @@ public final class HolidayLeaderboard: ObservableObject {
     public static let shared = HolidayLeaderboard(holiday: .shared, game: .shared, presents: .shared,
                                                   source: HolidayLeaderboard.debugSource())
 
-    /// Hidden for everyone until this many have joined.
-    public static let minimumPlayers = 30
     /// The rows shown above your own.
     public static let topRows = 10
     static let nameLength = 3...24
@@ -115,18 +113,18 @@ public final class HolidayLeaderboard: ObservableObject {
     /// rest of January when the board stands, and with the decorations switched off remotely.
     public var canLeave: Bool { joined && source != nil && holiday.storageYear != nil }
 
-    /// The board is open once enough players have joined.
-    public var isOpen: Bool { (board?.playerCount ?? 0) >= Self.minimumPlayers }
+    /// Someone is on the board: from the first player who joins.
+    public var hasPlayers: Bool { !(board?.top.isEmpty ?? true) || board?.you != nil }
 
     /// From the end of Jan 6 the scores stand; until then they're still moving.
     public var isFinalDay: Bool { holiday.phase == .lastDay }
 
-    /// Your place, 1 for the top, once joined and the board is open.
-    public var rank: Int? { isOpen ? board?.yourRank : nil }
+    /// Your place, 1 for the top, once joined.
+    public var rank: Int? { board?.yourRank }
 
     /// The rows to show: the top ten, then yours with a gap above it if it's further down.
     public var visibleRows: [(rank: Int, player: HolidayPlayer, gapAbove: Bool)] {
-        guard isOpen, let board else { return [] }
+        guard let board else { return [] }
         let me = board.you.map(current)
         var top = board.top.map(current)
         // Caught up into the top ten since the Worker last stored your score: in you go.
@@ -388,12 +386,13 @@ public final class HolidayLeaderboard: ObservableObject {
     }
 
     /// `MACRAZER_HOLIDAY_LEADERBOARD=mock` fills the board with made-up players, for trying the
-    /// page without the Worker; `=few` stays below the 30 the board needs. Debug only.
+    /// page without the Worker; `=few` has 4 players and `=empty` none yet. Debug only.
     static func debugSource() -> HolidayBoardSource? {
         #if DEBUG
         switch ProcessInfo.processInfo.environment["MACRAZER_HOLIDAY_LEADERBOARD"] {
         case "mock": return HolidayMockBoard(players: 128)
-        case "few": return HolidayMockBoard(players: 17)
+        case "few": return HolidayMockBoard(players: 4)
+        case "empty": return HolidayMockBoard(players: 0)
         default: return nil
         }
         #else
