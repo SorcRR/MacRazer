@@ -53,6 +53,29 @@ enum SupportPromptPolicy {
     }
 }
 
+/// The one check-up ask for a fully supported mouse. Only for someone new: it waits for two
+/// days of use, days the app ran with the mouse connected, and asks on the next one. So it
+/// lands once they've used it a little, however far apart those days are. It comes once per
+/// Mac, not once per mouse. Someone who updated from a version without it is never asked
+/// (`SupportPrompt.noteLaunch`). The test's thank-you screen, where it ends, has the tip
+/// button.
+enum CheckupPolicy {
+    /// Days of use before the one it asks on.
+    static let daysBefore = 2
+
+    /// `daysUsed` counts today once the mouse has been connected today; nil when the app ran
+    /// before this version, so the person isn't new.
+    static func shouldAsk(pid: Int, daysUsed: Int?, asked: Bool, record: SupportPromptRecord,
+                          enabled: Bool) -> Bool {
+        guard enabled, !asked, let daysUsed, daysUsed > daysBefore else { return false }
+        // Fully supported everywhere: a mouse that still needs a report gets the support
+        // prompt instead. Not over Bluetooth, where the test only reads.
+        guard RazerDevices.support(pid: pid) == .full, !RazerDevices.needsReport(pid: pid),
+              RazerDevices.connection(pid: pid) != .bluetooth else { return false }
+        return !record.declined && !record.reported
+    }
+}
+
 /// The prompt's settings and per-model records, kept in `UserDefaults`.
 @MainActor
 final class SupportPrompt: ObservableObject {
@@ -60,6 +83,10 @@ final class SupportPrompt: ObservableObject {
 
     static let enabledKey = "supportPrompt.enabled"
     static let recordsKey = "supportPrompt.records"
+    static let checkupFirstUseKey = "supportPrompt.checkupFirstUse"
+    static let checkupDaysKey = "supportPrompt.checkupDays"
+    static let checkupLastDayKey = "supportPrompt.checkupLastDay"
+    static let checkupAskedKey = "supportPrompt.checkupAsked"
 
     private let defaults: UserDefaults
     @Published private(set) var records: [Int: SupportPromptRecord]
@@ -78,6 +105,36 @@ final class SupportPrompt: ObservableObject {
     }
 
     func record(pid: Int) -> SupportPromptRecord { records[pid] ?? SupportPromptRecord() }
+
+    /// Starts the check-up's clock on the first run on this Mac. `firstRun` is read before
+    /// anything else marks the app as having run (`LaunchAtLogin.appliedDefaultKey`), so an
+    /// update from a version without the check-up never starts it, and is never asked.
+    func noteLaunch(firstRun: Bool, now: Date = Date()) {
+        guard firstRun, defaults.object(forKey: Self.checkupFirstUseKey) == nil else { return }
+        defaults.set(now, forKey: Self.checkupFirstUseKey)
+    }
+
+    /// Counts today as a day of use, once, for someone whose check-up clock has started.
+    /// Called while a mouse is connected.
+    func noteUse(now: Date = Date(), calendar: Calendar = .current) {
+        guard defaults.object(forKey: Self.checkupFirstUseKey) != nil,
+              !defaults.bool(forKey: Self.checkupAskedKey) else { return }
+        let parts = calendar.dateComponents([.year, .month, .day], from: now)
+        let day = "\(parts.year ?? 0)-\(parts.month ?? 0)-\(parts.day ?? 0)"
+        guard defaults.string(forKey: Self.checkupLastDayKey) != day else { return }
+        defaults.set(day, forKey: Self.checkupLastDayKey)
+        defaults.set(defaults.integer(forKey: Self.checkupDaysKey) + 1, forKey: Self.checkupDaysKey)
+    }
+
+    func shouldAskCheckup(pid: Int) -> Bool {
+        let daysUsed = defaults.object(forKey: Self.checkupFirstUseKey) == nil
+            ? nil : defaults.integer(forKey: Self.checkupDaysKey)
+        return CheckupPolicy.shouldAsk(pid: pid, daysUsed: daysUsed, asked: defaults.bool(forKey: Self.checkupAskedKey),
+                                       record: record(pid: pid), enabled: isEnabled)
+    }
+
+    /// Once shown, never again, whatever the answer.
+    func markCheckupAsked() { defaults.set(true, forKey: Self.checkupAskedKey) }
 
     func shouldAsk(pid: Int, now: Date = Date()) -> Bool {
         SupportPromptPolicy.shouldAsk(pid: pid, record: record(pid: pid), enabled: isEnabled, now: now)
