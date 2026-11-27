@@ -118,7 +118,7 @@ public struct HolidayLeaderboardPage: View {
                 if let rank = board.rank {
                     Text("#\(rank)").font(.system(size: 18, weight: .bold, design: .rounded))
                 } else {
-                    // No place until the board opens.
+                    // No place until the board has answered.
                     Image(systemName: "person.fill").font(.system(size: 16))
                 }
             }
