@@ -490,6 +490,15 @@ case "render-about":
                                  : []),
                    look: renderLook(args), to: aboutPath)
 
+case "render-leaderboard":
+    _ = NSApplication.shared
+    // The Santa leaderboard page as the popover shows it. Needs
+    // `MACRAZER_HOLIDAY_LEADERBOARD=mock` (or `few`, `empty`) and a season date in
+    // `MACRAZER_HOLIDAY_DATE`; `joined` plays as a festive name first.
+    if args.contains("joined") { HolidayLeaderboard.shared.previewJoin("Frosty Gingerbread") } else { HolidayLeaderboard.shared.previewBoard() }
+    writeHostedPNG(HolidayLeaderboardPage(onBack: {}).frame(width: PopoverLayout.oneColumnWidth),
+                   look: renderLook(args), to: outputPath(args.dropFirst(), default: "leaderboard-preview.png"))
+
 case "render-device-test":
     // One screen of the device test, for checking layout and wording without a mouse:
     // `render-device-test <stage> [unknown|partly|unlit|wiredonly|dock] [several] [ran] [sent|failed] [path.png]`, stage one of

@@ -174,6 +174,11 @@ public final class HolidayPresents: ObservableObject {
 
     private let holiday: Holiday
     private let random: () -> Double
+    /// A box was opened: the leaderboard tells the Worker, once joined.
+    var onOpened: (() -> Void)?
+    /// The leaderboard is asking the Worker for the picks: the boxes wait a moment, so the
+    /// first one opened shows what the board will.
+    @Published public internal(set) var awaitingPicks = false
     private var cancellables: Set<AnyCancellable> = []
 
     init(holiday: Holiday, random: @escaping () -> Double = { Double.random(in: 0..<1) }) {
@@ -204,12 +209,21 @@ public final class HolidayPresents: ObservableObject {
     /// Opens a box, on Christmas Day or the day after. Returns what was inside.
     @discardableResult
     public func open(_ box: Int) -> HolidayGift? {
-        guard stage == .open, (0..<Self.count).contains(box), !opened.contains(box) else { return nil }
+        guard stage == .open, !awaitingPicks, (0..<Self.count).contains(box), !opened.contains(box) else { return nil }
         if gifts.count != Self.count { gifts = HolidayGift.pickThree(random: random) }
         opened.insert(box)
         featured = box
         save()
+        onOpened?()
         return gifts[box]
+    }
+
+    /// The Worker's three picks, once joined: taken while no box is open yet, so a gift shown
+    /// never changes. A box opened before joining keeps what it showed.
+    func adopt(_ picked: [HolidayGift]) {
+        guard opened.isEmpty, picked.count == Self.count, Set(picked).count == Self.count, picked != gifts else { return }
+        gifts = picked
+        save()
     }
 
     /// The card's close button, or the Settings switch.

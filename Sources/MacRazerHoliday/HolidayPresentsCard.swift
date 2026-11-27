@@ -39,6 +39,7 @@ private struct Wrapping {
 public struct HolidayPresentsCard: View {
     @ObservedObject private var holiday = Holiday.shared
     @ObservedObject private var presents = HolidayPresents.shared
+    @ObservedObject private var leaderboard = HolidayLeaderboard.shared
     /// When each box started opening in this view, for the animation.
     @State private var openedAt: [Int: Date] = [:]
     @State private var undoShown = false
@@ -53,6 +54,8 @@ public struct HolidayPresentsCard: View {
                 if undoShown { hiddenNotice }
             } else {
                 card(stage)
+                    // Once joined, the Worker picks what's inside: asked before a box opens.
+                    .onAppear { HolidayLeaderboard.shared.presentsChanged() }
             }
         }
     }
@@ -67,7 +70,7 @@ public struct HolidayPresentsCard: View {
                 if let box = presents.featured, openedAt[box] == nil, let gift = presents.gift(in: box) {
                     GiftStrip(content: .gift(gift))
                 } else {
-                    GiftStrip(content: stage == .waiting ? .waiting : .unopened)
+                    GiftStrip(content: stage == .waiting ? .waiting : leaderboard.presentsOffBoard.map(GiftStrip.Content.offBoard) ?? .unopened)
                 }
             }
             .clipShape(RoundedRectangle(cornerRadius: 10))
@@ -128,8 +131,8 @@ public struct HolidayPresentsCard: View {
                 presents.featured = box
             }
         } else {
-            WrappedPresent(wrapping: wrapping, waiting: stage == .waiting, still: holiday.stillMode,
-                           number: box + 1) { open(box) }
+            WrappedPresent(wrapping: wrapping, waiting: stage == .waiting, holding: presents.awaitingPicks,
+                           still: holiday.stillMode, number: box + 1) { open(box) }
         }
     }
 
@@ -256,6 +259,8 @@ private struct NightScene: View {
 private struct WrappedPresent: View {
     let wrapping: Wrapping
     let waiting: Bool
+    /// A moment while the board's picks load, once joined: not openable yet, looks the same.
+    let holding: Bool
     let still: Bool
     let number: Int
     let onOpen: () -> Void
@@ -267,15 +272,15 @@ private struct WrappedPresent: View {
                 .frame(width: wrapping.width + 8, height: wrapping.height + 16)
                 // The drawing ignores the pointer, so the button needs a shape of its own to click.
                 .contentShape(Rectangle())
-                .offset(y: hovered && !waiting ? -3 : 0)
+                .offset(y: hovered && !waiting && !holding ? -3 : 0)
                 .animation(still ? nil : .easeOut(duration: 0.15), value: hovered)
         }
         .buttonStyle(.plain)
-        .disabled(waiting)
+        .disabled(waiting || holding)
         .saturation(waiting ? 0.25 : 1)
         .opacity(waiting ? 0.6 : 1)
         .onHover { hovered = $0 }
-        .help(waiting ? "Do not open until Christmas" : "Open this present")
+        .help(waiting ? "Do not open until Christmas" : holding ? "Getting your presents…" : "Open this present")
         .accessibilityLabel("Present \(number) of 3, \(wrapping.spoken)")
         .accessibilityHint(waiting ? "Opens on Christmas Day" : "Opens it")
     }
@@ -630,6 +635,8 @@ private struct GiftStrip: View {
     enum Content {
         case gift(HolidayGift)
         case unopened
+        /// Joined, but these open on this Mac's own picks: they won't show on the board.
+        case offBoard(HolidayLeaderboard.PresentsOffBoard)
         case waiting
     }
 
@@ -669,14 +676,14 @@ private struct GiftStrip: View {
     private var emoji: String {
         switch content {
         case .gift(let gift): gift.emoji
-        case .unopened, .waiting: "🎁"
+        case .unopened, .offBoard, .waiting: "🎁"
         }
     }
 
     private var title: String {
         switch content {
         case .gift(let gift): gift.name
-        case .unopened: "What's inside?"
+        case .unopened, .offBoard: "What's inside?"
         case .waiting: "Wrapped and waiting"
         }
     }
@@ -685,6 +692,8 @@ private struct GiftStrip: View {
         switch content {
         case .gift(let gift): gift.line
         case .unopened: "Click a present to open it. Some are rare."
+        case .offBoard(.onBreak): "The board is taking a break. Presents opened now won't show on it."
+        case .offBoard(.macPicks): "These open on this Mac's own picks, so they won't show on the board."
         case .waiting: "They open on Christmas Day."
         }
     }

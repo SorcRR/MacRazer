@@ -377,4 +377,6 @@ public final class Holiday: ObservableObject {
     func stored<T>(_ type: T.Type, _ name: String) -> T? { defaults.object(forKey: key(name)) as? T }
 
     func setStored(_ value: Any, _ name: String) { defaults.set(value, forKey: key(name)) }
+
+    func removeStored(_ name: String) { defaults.removeObject(forKey: key(name)) }
 }

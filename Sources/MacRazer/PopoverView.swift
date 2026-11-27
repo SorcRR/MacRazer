@@ -79,7 +79,7 @@ struct PopoverView: View {
     /// For `render-ui stages`: open with the DPI card in Edit mode.
     var previewEditingStages = false
 
-    enum Page { case main, color, buttons, usage, profiles, whatsNew }
+    enum Page { case main, color, buttons, usage, profiles, whatsNew, leaderboard }
     @State private var page: Page = .main
     /// The popover is on screen. Its hosting controller outlives each showing, so views here
     /// stay mounted while it's closed; anything periodic has to check this.
@@ -178,6 +178,7 @@ struct PopoverView: View {
             case .usage: usagePage.transition(.move(edge: .trailing))
             case .profiles: profilesPage.transition(.move(edge: .trailing))
             case .whatsNew: whatsNewPage.transition(.move(edge: .trailing))
+            case .leaderboard: leaderboardPage.transition(.move(edge: .trailing))
             }
         }
         .frame(width: popoverWidth)
@@ -299,6 +300,15 @@ struct PopoverView: View {
         }
     }
 
+    /// The Santa leaderboard, Dec 1 to Jan 6, from the score line's link.
+    private var leaderboardPage: some View {
+        ScrollView {
+            HolidayLeaderboardPage(onBack: { page = .main })
+                .frame(width: subPageWidth)
+                .frame(maxWidth: .infinity)
+        }
+    }
+
     private var profilesPage: some View {
         ScrollView {
             ProfilesView(controller: controller, remapper: remapper, onBack: { page = .main }, width: subPageWidth)
@@ -363,7 +373,7 @@ struct PopoverView: View {
                 accessoriesSection
                 HolidayPresentsCard()
             }
-            HolidayScoreLine()
+            HolidayScoreLine(onLeaderboard: { page = .leaderboard })
             footer
         }
         .padding(12)
