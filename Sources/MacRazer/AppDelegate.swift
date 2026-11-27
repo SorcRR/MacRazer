@@ -4,6 +4,7 @@
 import AppKit
 import SwiftUI
 import Combine
+import MacRazerHoliday
 import Network
 import UserNotifications
 
@@ -240,6 +241,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
             }
             .store(in: &cancellables)
 
+        // December's tree in the menu bar, in the normal state only (`menuBarIcon`). Follows
+        // the decorations switching on or off, the star going up, and the mouse coming and
+        // going, since a disconnected mouse keeps the real icon.
+        Publishers.CombineLatest4(Holiday.shared.$isFestive, Holiday.shared.$phase,
+                                  controller.$charging, controller.$connected)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _, _, charging, _ in
+                self?.statusItem.button?.image = self?.menuBarIcon(charging: charging)
+            }
+            .store(in: &cancellables)
+        HolidayReporter.shared.configure(base: WorkerEndpoint.base, appVersion: AppInfo.version,
+                                         fetch: { try await WorkerSession.shared.data(from: $0) })
+
         controller.start()
 
         // Instant plug/unplug detection via IOKit; polling remains the fallback for the
@@ -398,6 +412,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         Task { await updateChecker.checkForUpdatesIfDue() }
         Task { await supportList.refreshIfDue() }
         Task { await countReporter.reportIfNeeded() }
+        // December only: the anonymous holiday count, whose reply can switch the decorations off.
+        Task { await HolidayReporter.shared.reportIfNeeded() }
     }
 
     /// Everything that asks "is a check due?" after launch. Each only asks: the throttle in
@@ -892,6 +908,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
 
     func popoverDidShow(_ notification: Notification) {
         controller.setPopoverVisible(true)
+        HolidayPopover.didShow()
         // Re-reads each accessory's brightness: a keyboard's own keys change it behind the app's back.
         accessories.rescan()
         // A permission granted since the last look, which macOS doesn't announce, takes effect
@@ -901,6 +918,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     }
     func popoverDidClose(_ notification: Notification) {
         controller.setPopoverVisible(false)
+        HolidayPopover.didClose()
         // An update found while the popover was open was deliberately left alone; now that
         // it's closed, the restart is no longer disruptive — unless the close was on the way
         // to opening Settings, in which case relaunching would take that window with it.
@@ -1044,7 +1062,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     private static let chargingIcon = MenuBarIcon.mouse(pointSize: 21, razerCutout: false, charging: true)
 
     private func menuBarIcon(charging: Bool) -> NSImage {
-        charging ? Self.chargingIcon : Self.idleIcon
+        if charging { return Self.chargingIcon }
+        // The tree only stands in for the plain icon: charging and a disconnected mouse keep
+        // the marks they mean.
+        let holiday = Holiday.shared
+        if holiday.isFestive, controller.connected {
+            return HolidayMenuBarIcon.tree(pointSize: 21, star: holiday.phase?.hasStar ?? false)
+        }
+        return Self.idleIcon
     }
 
     // MARK: - Notifications
