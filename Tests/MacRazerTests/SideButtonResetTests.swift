@@ -152,6 +152,15 @@ final class SideButtonResetTests: XCTestCase {
         XCTAssertFalse(text.contains("—"))
     }
 
+    /// The lists inside the page's English sentences are English on a Mac set to any language:
+    /// in Spanish the Mac's own formatting made it "Back sends ⌃V y Forward sends ⌃C".
+    func testListsInsideEnglishSentencesAreEnglishWhateverTheMacsLanguage() {
+        XCTAssertEqual(ListFormatter.english(["Back"]), "Back")
+        XCTAssertEqual(ListFormatter.english(["Back", "Forward"]), "Back and Forward")
+        XCTAssertEqual(ListFormatter.english(["A", "B", "C"]), "A, B, and C")
+        XCTAssertTrue(RemapView.competingAppsText(["SteerMouse", "BetterMouse"]).contains("SteerMouse and BetterMouse"))
+    }
+
     func testOnlyTheCobraOverBluetoothIsChecked() {
         XCTAssertTrue(RazerDevices.detectsOnboardSideButtonRemaps(pid: 0x00DC))
         XCTAssertFalse(RazerDevices.detectsOnboardSideButtonRemaps(pid: 0x00DB))

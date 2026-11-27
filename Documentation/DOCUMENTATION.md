@@ -1031,6 +1031,7 @@ that path draws the content but needs an explicit size, since there is no window
 | `ReleaseNotes.swift` / `ReleaseSpan.swift` / `VersionedNotes.swift` | Parsing and picking release notes. |
 | `WhatsNewPage.swift` | The popover's What's new page and the shared notes list. |
 | `VersionCompare.swift` | Dotted-integer version compare. |
+| `EnglishList.swift` | Joins a list in English ("A, B, and C") whatever the Mac's language. |
 | `AppLocation.swift` | Whether the app is at a stable, writable install location. |
 | `AppRelaunch.swift` | Opens a new instance, for updates and the permission relaunch. |
 | `LaunchAtLogin.swift` | Start at login via `SMAppService`. |
