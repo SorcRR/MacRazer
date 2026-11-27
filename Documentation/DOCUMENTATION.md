@@ -480,11 +480,13 @@ on other models and macOS versions still needs validation.
 Preview: `swift run MacRazer render-settings reversed /tmp/scrolling-settings.png`.
 The preview uses a fixed scratch defaults suite, removed before and after rendering.
 
-### 6.3.2 Gesture mode, `GestureRecognizer.swift` + `ButtonRemapper.swift`
+### 6.3.2 Gesture mode, `GestureRecognizer.swift` + `DockSwipe.swift` + `ButtonRemapper.swift`
 
 A remappable button can be set to **Gesture…** in `RemapView` (every button's menu,
 `RemapActionMenu`, has it). Held and moved, the button fires one action per direction;
-pressed and released without a swipe, it fires its Click action.
+pressed and released without a swipe, it fires its Click action. A slot that holds one of
+four system presets does not fire once: it drives a swipe that follows the pointer (the
+"Interactive swipes" bullet below). Every other action is the discrete swipe described here.
 
 - **Data model.** `RemapAction.gesture(GestureBindings)` is saved with the other actions, so a
  gesture needs no new storage key, and a profile carries it too. `GestureBindings` holds five
@@ -501,7 +503,7 @@ pressed and released without a swipe, it fires its Click action.
  applies the defaults to a button that isn't a gesture yet and keeps the choices of one that
  is, so choosing Gesture… again reopens the editor. `setGestureAction(_:for:of:)` edits one
  slot.
-- **The recogniser** (`GestureRecognizer`, a pure struct) sums the net movement since the
+- **The recogniser** (`GestureRecognizer`, a pure struct; the discrete swipe) sums the net movement since the
  hold began (`dx`, `dy`, CGEvent deltas with y growing downward). `move(dx:dy:)` returns a
  `GestureDirection` the first time the larger axis reaches `GestureRecognizer.threshold` (50
  points), and nil after that, so one swipe fires per hold, while the hand is still moving. An
@@ -513,7 +515,7 @@ pressed and released without a swipe, it fires its Click action.
  first in `handle` and returns at once when no hold exists; otherwise `handleGestureDrag`
  feeds the deltas to `moveGesture(dx:dy:trigger:)`, which fires the direction's action on the
  swipe. The release (`otherMouseUp` of a swallowed press) calls `endGesture(trigger:)`, which
- fires the click if no swipe fired. The press, the drags of the held button and the release
+ fires the click if no swipe fired (no direction fired and no dock swipe began). The press, the drags of the held button and the release
  are swallowed; drags of another button go through. The pointer itself is not frozen.
 - **What ends a hold without a click**: a new `otherMouseDown` of any button, pausing
  (`remappingPaused`), changing the button's mapping (`setAction`) or the whole table
@@ -521,25 +523,167 @@ pressed and released without a swipe, it fires its Click action.
  macOS (`tapDisabledByTimeout` / `tapDisabledByUserInput`) or removed, and the Mac waking
  (`cancelGesture`). The release after such a reset is still swallowed, as its press was, and
  fires nothing. While paused a press passes through, so the mouse's own function remains.
-- **The system presets.** `appExpose` ("App Exposé  ⌃↓", key code 125) was added for the
- gesture and is in every button's Shortcut menu. Mission Control, App Exposé and the Spaces go
- out as their standard shortcuts (⌃↑, ⌃↓, ⌃←, ⌃→) with the flags a real arrow key carries
- (`postedFlags(keyCode:saved:)`), so they have to be on in System Settings › Keyboard ›
- Keyboard Shortcuts › Mission Control.
+- **The system presets as keyboard shortcuts.** `appExpose` ("App Exposé  ⌃↓", key code 125)
+ was added for the gesture and is in every button's Shortcut menu. Where a system preset is
+ posted as a keystroke (a button's whole mapping, or a gesture where `DockSwipe.isSupported`
+ is false or `systemSwipesFollowPointer` is off, below), it goes out as its standard shortcut (⌃↑, ⌃↓, ⌃←, ⌃→) with the flags a real
+ arrow key carries (`postedFlags(keyCode:saved:)`), so it has to be on in System Settings ›
+ Keyboard › Keyboard Shortcuts › Mission Control.
+- **Interactive swipes, `DockSwipe.swift`.** In a gesture, the four presets (`SystemSwipe`:
+ `missionControl`, `appExpose`, `spaceLeft`, `spaceRight`) are not typed. They are driven as
+ the trackpad's "dock swipe" gesture events, so the Spaces transition, Mission Control or App
+ Exposé follows the pointer while the button is held and the Dock finishes or cancels it on
+ release. Other slot actions (a custom shortcut, a media key, a mouse click) still fire once at
+ 50 points. A slot is a system swipe only when it holds the very value the menu put there
+ (`SystemSwipe.init?(_:)` compares key code, name and the posted flags with the preset), so the
+ same keys recorded as a custom shortcut stay a plain keystroke. Launchpad is never a swipe:
+ it opens an app, once at 50 points. The event format is undocumented macOS behaviour, learned
+ from Mac Mouse Fix (credited in NOTICE.md, with InstantSpaceSwitcher for the direction) and
+ written independently: facts only, no code taken.
+  - **App Exposé needs the Dock's trackpad gesture.** The Dock ignores an App Exposé swipe
+   while System Settings › Trackpad › More Gestures › App Exposé is off, which it is out of the
+   box (`showAppExposeGestureEnabled` in the `com.apple.dock` domain; on macOS 26.3 the swipe
+   did nothing there). So `dockSwipeTracker(for:)` asks `DockSwipeOutput.appExposeEnabled`
+   (`DockGestures.appExposeEnabled`, read fresh at every hold) and, while it is off, takes App
+   Exposé out of the slots (`SystemSwipeSlots.removing`): the slot is then its ⌃↓ shortcut,
+   fired once at 50 points by the discrete swipe. Mission Control's and the Spaces' trackpad
+   gestures are on out of the box, and those swipes are always sent.
+  - **Tracker** (`DockSwipeTracker`, a pure struct fed every pointer move with a time).
+   `SystemSwipeSlots` (made once at `beginGesture` by `dockSwipeTracker(for:)`, nil when no slot
+   is a system swipe) says which swipe each direction holds. Inside `deadZone` (12 points)
+   nothing happens, so a click's drift is still a click. Past it, the larger axis is locked for
+   the rest of the hold (an exact diagonal goes horizontal), and the direction decides: a system
+   swipe there sends `began` at once, with the dead zone's movement counted; any other action
+   leaves the hold to `GestureRecognizer` (state `discrete`). Once swiping, it follows every
+   movement along the locked axis, backwards too. `changed` frames are at most
+   `minimumFrameInterval` (1/240 s) apart; the end always carries the latest progress.
+  - **Sign.** It follows the slots, not the screen: moving towards the slot that holds Space
+   Left heads for the Space on the left, whichever slot that is (`progressSign`: Mission
+   Control and Space Left -1, App Exposé and Space Right +1). Moving back past the start goes on
+   into the opposite slot's swipe only when that slot holds the same swipe the other way
+   (`opposite`). Otherwise (another action, None, or the other kind of swipe, which cannot take
+   over a swipe under way) the progress is clamped at zero (`keepSign`). With the default
+   gesture (Space Right left, Space Left right) the desktop moves with the pointer, as on a
+   trackpad: moving right heads for the previous Space. And its vertical axis is mixed:
+   Mission Control up is a swipe, Launchpad down an ordinary action, so moving down from the
+   start fires Launchpad once at 50 points, while a swipe up taken back down stops at the start
+   and fires nothing.
+  - **End or cancel, velocity.** `end(at:)` sends `ended` with an exit velocity: a time-weighted
+   average of the pointer's speed (`velocitySmoothing`, 0.05 s) times the gain, faded by how
+   long the pointer has been still, so a flick finishes a short swipe and a stop leaves it to
+   the progress. It sends `cancelled` instead when the progress is zero or the velocity opposes
+   it, which is the pointer coming back towards the start, so the swipe snaps back. `cancel()`
+   cancels with no velocity.
+  - **Progress and scale** (`DockSwipe.Frame.progress`, `DockSwipe.Scale`). Every event carries
+   the total so far, not a step. Horizontally one Space is `perSpace(spaces)`: 2 for one or two
+   Spaces, else 1 + 1/(n - 1); 3 is assumed (`assumedSpaces`) when the count is unknown. The
+   scale is `perSpace / (screen width + 63)` per point (`spaceGap`, the gap the Dock draws
+   between Spaces), so the desktop slides about a screen width for a Space. Vertically it is
+   `1 / screen height`, so Mission Control is fully open over the height; negative heads for
+   Mission Control, positive for App Exposé. The screen is the one under the pointer when the
+   hold starts (`Scale.current()`). The Spaces count comes from a private window server call,
+   `CGSCopyManagedDisplaySpaces` (with `CGSMainConnectionID`), looked up with `dlsym` in
+   `ManagedSpaces` so a macOS without it only loses the count.
+  - **Method** (`DockSwipe.Method`, `DockSwipe.method`, worked out once). macOS 26 and earlier
+   take the CGEvent fields below (`eventFields`); macOS 27 and later ignore them and take an
+   attached IOHIDEvent (`attachedHIDEvent`, below), but only when every private call it needs
+   resolves (`DockSwipe.AttachedEvent.missingSymbol`). The pure
+   `method(majorVersion:missingSymbol:)` decides, and asks for the symbols only on 27 or later,
+   so an earlier macOS never looks them up. `DockSwipe.isSupported` is `method != nil`.
+  - **Event format, macOS 26 and earlier** (`DockSwipe.events(for:userData:)`, pure). Each frame
+   is two CGEvents, both tagged with `userData` (`ButtonRemapper.magic`) so the tap skips them.
+   The first is event type 30 (`swipeEventType`) with gesture type 23 (field 110, the dock
+   swipe `IOHIDEventType`); the phase (`Phase`: began 1, changed 2, ended 4, cancelled 8) in
+   fields 132 and 134; the kind (`Kind`: horizontal 1, vertical 2) in fields 123 and 165 and,
+   as the 32-bit float with those bits, in 119 and 139; the progress as a double in 124 and as
+   float bits in integer field 135; field 136 (inverted from device) 1 for vertical and 0 for
+   horizontal; on `ended` and `cancelled`, the velocity in 129 and 130; and field 41 set to
+   33231, whose meaning is unknown and which is copied because it costs nothing. The second
+   event is type 29 (`gestureEventType`) with field 41 alone. The field numbers are
+   `CGEventField` raw values and none of this is public API.
+  - **Event format, macOS 27 and later** (`DockSwipe.HIDPayload`, pure, and
+   `DockSwipe.AttachedEvent`). Each frame is one CGEvent: type 30 (field 55) and the
+   `userData` tag, nothing else of the old format, no type 29 event. Attached to it is an
+   IOHIDEvent of type 23 (kIOHIDEventTypeDockSwipe) with the phase in its event flags
+   (`phase << 24`), the kind as its motion (field `0x170001`), flavor 3
+   (kIOHIDGestureFlavorDockPrimary, field `0x170005`) and the progress as a double (field
+   `0x170002`, kept by IOKit in 16.16 fixed point). On `ended` and `cancelled` it has a child
+   IOHIDEvent of type 9 (velocity) with the velocity in X and Y (`0x90000`, `0x90001`). The
+   field numbers are Apple's, from IOHIDFamily's open-source IOHIDEventTypes.h. The progress and
+   the velocity are signed for macOS 27 (`HIDPayload.orientation`): flipped while Natural
+   scrolling is on (`com.apple.swipescrolldirection` in the global domain, on when absent,
+   `DockGestures.naturalScrolling`), kept while it is off, so the swipe goes the same way as
+   on macOS 26 and follows the slots. The poster reads the setting as each swipe begins, so one
+   swipe keeps one sign. The calls are `IOHIDEventCreate`, `IOHIDEventSetEventFlags`,
+   `IOHIDEventSetIntegerValue`, `IOHIDEventSetDoubleValue` and `IOHIDEventAppendEvent` from
+   IOKit and `SLEventSetIOHIDEvent` from SkyLight, opened with `dlopen` and looked up with
+   `dlsym` once. Ownership: IOHIDEventCreate is a Create-rule call, so each IOHIDEvent made is
+   released by `event(for:userData:)`; the parent retains its velocity child; and
+   SLEventSetIOHIDEvent keeps a copy in the CGEvent (measured on macOS 27.2.1), so the CGEvent
+   owns all a frame needs and nothing leaks per frame. The CGEvent's fields are written
+   before the attach: written after it, a field didn't keep its value. The facts come from Mac
+   Mouse Fix's macOS 27 path and OpenLogi's hardware-tested sign (NOTICE.md); the code is this
+   project's own.
+  - **Posting** (`DockSwipePoster`, main thread, session tap, with the `method` it was given).
+   Under load the Dock can miss an end and leave the desktop stuck between two Spaces, so each
+   end goes out again after 0.2 s and 0.5 s (`endRepeats`), with either method; the next
+   swipe's `began`, or another end, stops the repeats still waiting. `ButtonRemapper` keeps the
+   last frame of an open swipe (`openDockSwipe`) and `gestureHold`'s `didSet` cancels it on
+   every reset that ends a hold, so the Dock is never left halfway; the ends that finish a swipe
+   send theirs first. A remapper made for tests (`actionEmitter` set) never posts to the
+   session: it takes a recording `DockSwipeOutput`, or has none.
+  - **macOS 27 without the calls.** When one of the private calls is missing,
+   `DockSwipe.method` is nil, `DockSwipe.isSupported` is false, `DockSwipeOutput.system` returns
+   nil, no tracker is made, and the four presets are the keyboard shortcuts above, firing once
+   at 50 points.
+  - **Hardware.** Tried on a real mouse on macOS 26.3: the Spaces animation follows the
+   pointer for horizontal swipes, and a vertical swipe was driven. App Exposé as a swipe did
+   nothing there with its trackpad gesture off, hence the fallback above; with the gesture on
+   it has not been tried. On macOS 27.2.1 (a Cobra HyperSpeed over Bluetooth) the Spaces and
+   Mission Control swipes follow the pointer with the attached method. Not yet tried on macOS
+   27: App Exposé as a swipe with its trackpad gesture on, and Natural scrolling turned off.
+   Building 200,000 attached events without posting them grew the heap by under 200 bytes. The
+   constants (the scale, the dead zone) have not been tuned.
+  - **Turning it off** (`ButtonRemapper.systemSwipesFollowPointer`, `RemapView`'s checkbox titled
+   `followPointerToggleTitle`, "Mission Control and Spaces follow the pointer"). On by default.
+   Off, `dockSwipeTracker(for:)` returns nil, so no tracker is made and the four presets are
+   the keyboard shortcuts their slots hold, fired once at 50 points like any other action. One
+   global setting: saved in the defaults key `systemSwipesFollowPointerKey`
+   (`gestureSystemSwipesFollowPointer`), not per mouse and not in profiles; absent reads as on.
+   Holds read it as they start, so a change sets `gestureHold` to nil, which ends the hold and
+   cancels an open swipe; writing the value it already has changes nothing. The checkbox shows
+   only `if DockSwipe.isSupported`, and the editor's explanation goes by
+   `systemSwipesFollowPointerHere` (`dockSwipes != nil` and the setting on). The page is at
+   least as tall as the open editor (`gestureEditorHeight`), so the checkbox is never clipped.
 - **A gesture's click re-posts the button** (`mouseClickEvents(button:at:source:)`, made with
  `postSource` so the events carry `magic` and pass the tap, and with the button number set
  outright so Back and Forward don't come out as a middle click). It fires at release, so a
  gesture button can't be held to drag.
 - **UI.** `RemapView.gestureEditor` lists the five slots with an action menu each (the same
  `RemapActionMenu`, whose None does nothing in a slot and which offers the button's own click
- under Mouse) and a key recorder. `swift run MacRazer render-remap gesture out.png` renders the
+ under Mouse), a key recorder, and the follow-the-pointer checkbox where dock swipes work. `swift run MacRazer render-remap gesture out.png` renders the
  editor from preview data (`ButtonRemapper.loadPreviewState(gesture: true)` puts a gesture on
  button 6).
 - **Tests.** `GestureRecognizerTests` (threshold, dominant axis, once per hold, net movement)
  and `ButtonRemapperGestureTests` (swallowing, pass-through while paused, a release following
  its press, the reset rules, nested gestures, defaults, persistence and migration, the tap
  mask), driven through `handle(type:event:)` with synthetic `CGEvent`s and the `actionEmitter`
- hook that records actions instead of posting them.
+ hook that records actions instead of posting them. `DockSwipeTests` (the preset-to-swipe
+ match, the tracker's dead zone, axis lock, sign, clamp, end versus cancel and velocity, the
+ scale, the event fields, the poster's repeated end, the method by macOS version, the attached
+ payload and its sign by Natural scrolling, and the attached IOHIDEvent read back, the poster
+ sending one event a frame, a cancel keeping the sign the swipe began with, and attached events
+ leaving nothing on the heap; those last run only where the app uses that method, macOS 27 and
+ later with the calls present (`skipUnlessAttachedMethod`), skip elsewhere, and post nothing)
+ and `InteractiveSwipeTests` (the same
+ through the tap with a recording `DockSwipeOutput` and a clock the test moves: the swipe
+ following a hold, other actions still firing once, no swipe without dock swipes, every reset
+ cancelling an open swipe, App Exposé as a swipe or a shortcut by the Dock's setting, the
+ default gesture's mixed vertical axis and its Spaces following the hand) and
+ `SystemSwipesFollowPointerTests` (the setting: on out of the box, each preset firing its
+ shortcut once at 50 points when off, turning it off mid-swipe cancelling the swipe and
+ changing it mid-hold ending the hold without firing, the saved key being global, and the
+ editor's text).
 
 ### 6.4 Device test, `DeviceTest*.swift` + the Worker
 The right-click menu's **Help Support This Mouse…** (or **Test This Mouse…** on a verified
@@ -850,6 +994,7 @@ that path draws the content but needs an explicit size, since there is no window
 | `ColorPickerPage.swift` | Inline hue/sat colour wheel page + shared `BackButton`. |
 | `ButtonRemapper.swift` | CGEvent tap, action model (`RemapAction`, `GestureBindings`, `GestureSlot`), presets, `LaunchpadApp`, gesture holds, persistence, Accessibility. |
 | `GestureRecognizer.swift` | `GestureDirection` and the pure `GestureRecognizer`: the net movement of one hold to at most one swipe. |
+| `DockSwipe.swift` | The trackpad's dock swipe from a mouse: the event format (`DockSwipe`), `SystemSwipe` and `SystemSwipeSlots`, the pure `DockSwipeTracker`, `DockSwipeOutput` and `DockSwipePoster`, `DockGestures` (the Dock's App Exposé trackpad setting, Natural scrolling). Mission Control, App Exposé and Spaces follow the pointer in a gesture: CGEvent fields on macOS 26 and earlier, an attached IOHIDEvent on macOS 27 and later. |
 | `RemapView.swift` | Button-config UI (inline + window), the shared action menu, gesture editor, key recorder. |
 | `RemapWindowController.swift` | Standalone window host for the remap UI. |
 | `DeviceProbe.swift` | The probes shared by the CLI and the device test. |

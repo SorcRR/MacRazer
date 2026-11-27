@@ -208,10 +208,45 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
     private var dpiObservers = Set<AnyCancellable>()
     private let defaults: UserDefaults
     private let actionEmitter: ((RemapAction) -> Void)?
+    /// Where a gesture's system swipes go as they follow the pointer (`DockSwipeTracker`).
+    /// Nil leaves them keyboard shortcuts that fire once, as every other slot's action does.
+    private let dockSwipes: DockSwipeOutput?
+    /// Where `systemSwipesFollowPointer` is saved: one setting for the app, not per device,
+    /// and not part of a profile.
+    static let systemSwipesFollowPointerKey = "gestureSystemSwipesFollowPointer"
+    /// Whether a gesture's four system presets (Mission Control, App Exposé and the Spaces)
+    /// follow the pointer as dock swipes where this Mac takes them (`dockSwipes`). On unless
+    /// turned off in the gesture editor. Off, a hold is exactly what it is on a Mac without
+    /// dock swipes: no tracker, and each preset is the keyboard shortcut its slot holds, fired
+    /// once at 50 points. Holds read it as they start (`dockSwipeTracker(for:)`), so a change
+    /// ends the one in progress, which cancels its open swipe (`gestureHold`): the Dock never
+    /// stays halfway, and no hold goes on the other way from how it began.
+    @Published var systemSwipesFollowPointer: Bool {
+        didSet {
+            guard systemSwipesFollowPointer != oldValue else { return }
+            defaults.set(systemSwipesFollowPointer, forKey: Self.systemSwipesFollowPointerKey)
+            gestureHold = nil
+        }
+    }
+    /// A new hold's system swipes follow the pointer: this Mac takes dock swipes, and
+    /// `systemSwipesFollowPointer` is on. What the gesture editor's explanation goes by.
+    var systemSwipesFollowPointerHere: Bool { dockSwipes != nil && systemSwipesFollowPointer }
+    /// Seconds on a monotonic clock, for a swipe's velocity. Tests pass their own.
+    private let clock: () -> TimeInterval
 
-    init(defaults: UserDefaults = .standard, actionEmitter: ((RemapAction) -> Void)? = nil) {
+    /// `dockSwipes`: by default the session's own (`DockSwipeOutput.system`), but only when
+    /// actions are posted for real too. A test that catches the actions (`actionEmitter`)
+    /// never reaches the session: it passes its own recorder, or has no swipes follow the
+    /// pointer.
+    init(defaults: UserDefaults = .standard, actionEmitter: ((RemapAction) -> Void)? = nil,
+         dockSwipes: DockSwipeOutput? = nil,
+         clock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
         self.defaults = defaults
         self.actionEmitter = actionEmitter
+        self.dockSwipes = dockSwipes ?? (actionEmitter == nil ? .system(userData: Self.magic) : nil)
+        // Never written until first changed, and on out of the box.
+        self.systemSwipesFollowPointer = defaults.object(forKey: Self.systemSwipesFollowPointerKey) as? Bool ?? true
+        self.clock = clock
     }
 
     private var tap: CFMachPort?
@@ -226,11 +261,26 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         let trigger: Int
         let bindings: GestureBindings
         var recognizer = GestureRecognizer()
+        /// The swipe that follows the pointer when the hold heads for a system swipe. Nil when
+        /// none of its directions is one, or system swipes don't follow the pointer here
+        /// (`dockSwipes`, `systemSwipesFollowPointer`): the hold is then only `recognizer`'s.
+        var swipe: DockSwipeTracker? = nil
     }
-    /// The hold in progress, if any. One at a time: a new press ends it. Everything that ends
-    /// a hold early (the tap switched off or removed, a device change, pausing, waking, the
-    /// mapping changing, another button's press) sets this to nil, and nothing fires for it.
-    private(set) var gestureHold: GestureHold?
+    /// The hold in progress, if any. One at a time: a new press ends it.
+    ///
+    /// Whatever ends or replaces a hold cancels its dock swipe here, so every reset that sets
+    /// this to nil (the tap switched off or removed, a device change, pausing, waking, the
+    /// mapping changing, another button's press) does too, and the Dock is never left
+    /// halfway. Nothing fires for such a reset. The end that finishes a swipe sends its own
+    /// first (`endGesture`). Cheap enough for the pointer's rate: a hold mutated in place goes
+    /// by a nil check.
+    private(set) var gestureHold: GestureHold? {
+        didSet {
+            if openDockSwipe != nil, gestureHold?.swipe?.isSwiping != true { cancelOpenDockSwipe() }
+        }
+    }
+    /// The last frame posted of a dock swipe that hasn't ended: what a reset cancels.
+    private var openDockSwipe: DockSwipe.Frame?
     /// Per-device key so each mouse keeps its own remaps.
     private var activeKey = "none"
     private var activeDeviceID: Int?
@@ -747,15 +797,35 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
 
     /// A gesture button went down: start a hold, replacing any other.
     func beginGesture(_ bindings: GestureBindings, trigger: Int) {
-        gestureHold = GestureHold(trigger: trigger, bindings: bindings)
+        gestureHold = GestureHold(trigger: trigger, bindings: bindings, swipe: dockSwipeTracker(for: bindings))
     }
 
-    /// The pointer moved by (dx, dy), CGEvent deltas with y growing downward. Fires the
-    /// direction's action the first time the hold's movement is far enough. Returns whether a
-    /// hold of `trigger` is in progress, and so whether the movement belongs to it.
+    /// The tracker for a hold of `bindings`: nil when no direction holds a system swipe, or
+    /// they don't follow the pointer here (no `dockSwipes`, or `systemSwipesFollowPointer`
+    /// off). The scale is the screen's as the hold starts.
+    ///
+    /// App Exposé is a swipe only while the Dock's trackpad gesture for it is on: off, which it
+    /// is out of the box, the Dock ignores the swipe and nothing at all would happen. So then it
+    /// stays out of the tracker and is the ⌃↓ shortcut its slot holds, fired once at 50 points
+    /// like any other action. Asked at every hold, so a change in System Settings counts from
+    /// the next press.
+    private func dockSwipeTracker(for bindings: GestureBindings) -> DockSwipeTracker? {
+        guard let dockSwipes, systemSwipesFollowPointer else { return nil }
+        var slots = SystemSwipeSlots(bindings)
+        if slots.contains(.appExpose), !dockSwipes.appExposeEnabled() { slots = slots.removing(.appExpose) }
+        guard !slots.isEmpty else { return nil }
+        return DockSwipeTracker(slots: slots, scale: dockSwipes.scale(), at: clock())
+    }
+
+    /// The pointer moved by (dx, dy), CGEvent deltas with y growing downward. When the hold
+    /// heads for a system swipe, the swipe follows it (`DockSwipeTracker`); otherwise this
+    /// fires the direction's action the first time the hold's movement is far enough.
+    /// Returns whether a hold of `trigger` is in progress, and so whether the movement
+    /// belongs to it.
     @discardableResult
     func moveGesture(dx: Double, dy: Double, trigger: Int) -> Bool {
         guard gestureHold?.trigger == trigger else { return false }
+        if gestureHold?.swipe != nil, moveDockSwipe(dx: dx, dy: dy) { return true }
         // Mutated in place: a copy of the hold per event would be wasted work at this rate.
         if let direction = gestureHold?.recognizer.move(dx: dx, dy: dy), let hold = gestureHold {
             apply(hold.bindings.action(for: direction))
@@ -763,12 +833,43 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         return true
     }
 
-    /// The gesture button came back up: fire the click, if no swipe fired. Only the button's
+    /// Feeds a movement to the hold's dock swipe and posts what it makes. Returns whether
+    /// the swipe has the movement, so the discrete swipe mustn't see it: the hold has begun
+    /// one. Before that (the dead zone) and when the hold went another way, it's still
+    /// `recognizer`'s, which has to count it from the press.
+    private func moveDockSwipe(dx: Double, dy: Double) -> Bool {
+        let frame = gestureHold?.swipe?.move(dx: dx, dy: dy, at: clock())
+        guard gestureHold?.swipe?.isSwiping == true else { return false }
+        if let frame { sendDockSwipe(frame) }
+        return true
+    }
+
+    /// Posts a dock swipe frame, keeping the swipe that's open for a reset to cancel.
+    private func sendDockSwipe(_ frame: DockSwipe.Frame) {
+        openDockSwipe = frame.phase.isEnd ? nil : frame
+        dockSwipes?.send(frame)
+    }
+
+    /// A hold ended early with its swipe still open: cancel it, so the Dock snaps back
+    /// instead of staying halfway.
+    private func cancelOpenDockSwipe() {
+        guard let open = openDockSwipe else { return }
+        sendDockSwipe(DockSwipe.Frame(kind: open.kind, phase: .cancelled, progress: open.progress))
+    }
+
+    /// The gesture button came back up: end the swipe that follows the pointer, so the Dock
+    /// finishes it or snaps back, or else fire the click, if no swipe fired. Only the button's
     /// own release comes here: every reset of a hold sets `gestureHold` to nil instead, and
     /// fires nothing. Returns whether a hold of `trigger` was in progress.
     @discardableResult
     func endGesture(trigger: Int) -> Bool {
         guard var hold = gestureHold, hold.trigger == trigger else { return false }
+        // Sent before the hold goes, which would otherwise cancel it.
+        if let end = hold.swipe?.end(at: clock()) {
+            sendDockSwipe(end)
+            gestureHold = nil
+            return true
+        }
         gestureHold = nil
         if hold.recognizer.end() { apply(hold.bindings.click) }
         return true
