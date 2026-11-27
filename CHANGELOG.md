@@ -67,6 +67,9 @@ expect rough edges until 1.0.
   - **Basilisk:** lighting works now, so it's fully supported.
   - **Mouse Dock V2 Pro** and the **Basilisk V4 HyperSpeed on its cable:** polling
     confirmed. The dock goes up to 8000 Hz.
+  - **Orochi V2 on its other dongle:** battery, DPI and polling all passed.
+  - **Mamba 2015 Wireless on its dock:** battery, charging, DPI and polling work. Its
+    lighting needs older commands the app doesn't send yet.
 - **Cynosa Lite tested.** It lost its UNTESTED tag after passing the lighting test.
 - **Joro keyboard.** It gets its own lighting card, with brightness and a static colour
   tested. Before, the app took it for a mouse.
