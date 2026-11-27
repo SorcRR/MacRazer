@@ -39,6 +39,7 @@ private struct Wrapping {
 public struct HolidayPresentsCard: View {
     @ObservedObject private var holiday = Holiday.shared
     @ObservedObject private var presents = HolidayPresents.shared
+    @ObservedObject private var leaderboard = HolidayLeaderboard.shared
     /// When each box started opening in this view, for the animation.
     @State private var openedAt: [Int: Date] = [:]
     @State private var undoShown = false
@@ -69,7 +70,7 @@ public struct HolidayPresentsCard: View {
                 if let box = presents.featured, openedAt[box] == nil, let gift = presents.gift(in: box) {
                     GiftStrip(content: .gift(gift))
                 } else {
-                    GiftStrip(content: stage == .waiting ? .waiting : .unopened)
+                    GiftStrip(content: stage == .waiting ? .waiting : leaderboard.presentsOffBoard ? .offBoard : .unopened)
                 }
             }
             .clipShape(RoundedRectangle(cornerRadius: 10))
@@ -634,6 +635,8 @@ private struct GiftStrip: View {
     enum Content {
         case gift(HolidayGift)
         case unopened
+        /// Joined, but the board is taking a break: these open on this Mac's own picks.
+        case offBoard
         case waiting
     }
 
@@ -673,14 +676,14 @@ private struct GiftStrip: View {
     private var emoji: String {
         switch content {
         case .gift(let gift): gift.emoji
-        case .unopened, .waiting: "🎁"
+        case .unopened, .offBoard, .waiting: "🎁"
         }
     }
 
     private var title: String {
         switch content {
         case .gift(let gift): gift.name
-        case .unopened: "What's inside?"
+        case .unopened, .offBoard: "What's inside?"
         case .waiting: "Wrapped and waiting"
         }
     }
@@ -689,6 +692,7 @@ private struct GiftStrip: View {
         switch content {
         case .gift(let gift): gift.line
         case .unopened: "Click a present to open it. Some are rare."
+        case .offBoard: "The board is taking a break, so these won't show on it."
         case .waiting: "They open on Christmas Day."
         }
     }

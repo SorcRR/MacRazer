@@ -243,16 +243,80 @@ final class HolidayLeaderboardTests: XCTestCase {
         source.boardError = .paused
         await parts.board.sync()
         XCTAssertFalse(parts.board.isDue, "Paused: no retry on every tick")
-        XCTAssertTrue(parts.board.hasSomethingToSend, "The score still waits to go")
+        XCTAssertFalse(parts.board.hasSomethingToSend, "Nothing to send at quit during the break")
         await parts.board.refreshNow()
         XCTAssertTrue(parts.board.paused)
         XCTAssertNil(parts.board.board)
         XCTAssertFalse(parts.board.boardUnreachable)
+        // The page opened during the break: only the board is asked, not the score.
+        source.calls = []
+        await parts.board.syncThenRefreshNow()
+        XCTAssertEqual(source.calls, ["board"])
+        // Back: the next page open sends the score that waited, at once.
         source.scoreError = nil
         source.boardError = nil
-        await parts.board.refreshNow()
+        source.calls = []
+        await parts.board.syncThenRefreshNow()
         XCTAssertFalse(parts.board.paused)
         XCTAssertNotNil(parts.board.board)
+        XCTAssertEqual(source.calls.filter { $0 == "score" }.count, 1)
+        XCTAssertFalse(parts.board.hasSomethingToSend)
+    }
+
+    func testAfterThreeHoursAPausedScoreIsTriedAgain() async {
+        let source = FakeSource()
+        let parts = make(source)
+        await parts.board.join(as: "Jolly Sprout")
+        let spot = UUID()
+        parts.game.register(spot, surface: .popover)
+        parts.game.caught(parts.game.forcePeek(.santa, spot: spot).id)
+        source.scoreError = .paused
+        await parts.board.sync()
+        source.scoreError = nil
+        clock = clock.addingTimeInterval(3 * 3600)
+        XCTAssertTrue(parts.board.isDue)
+        XCTAssertTrue(parts.board.hasSomethingToSend)
+        await parts.board.sync()
+        XCTAssertFalse(parts.board.hasSomethingToSend)
+    }
+
+    func testAPauseThenNoConnectionSaysNoConnection() async {
+        let source = FakeSource()
+        let parts = make(source)
+        source.boardError = .paused
+        await parts.board.refreshNow()
+        XCTAssertTrue(parts.board.paused)
+        source.boardError = nil
+        source.boardFails = true
+        await parts.board.refreshNow()
+        XCTAssertFalse(parts.board.paused)
+        XCTAssertTrue(parts.board.boardUnreachable)
+    }
+
+    func testPresentsWaitOutAPauseAndTheCardSaysSo() async {
+        at(2026, 12, 25)
+        let source = FakeSource()
+        source.gifts = [.goldenMouse, .socks, .banana]
+        let parts = make(source)
+        await parts.board.join(as: "Jolly Sprout")
+        parts.holiday.removeStored("leaderboard.presentsGifts")
+        // Paused just after joining: everything but leaving answers "paused".
+        source.presentsError = .paused
+        source.boardError = .paused
+        await parts.board.syncPresents()
+        XCTAssertTrue(parts.board.presentsOffBoard, "Boxes opened now won't show on the board")
+        XCTAssertFalse(parts.presents.awaitingPicks, "The boxes don't wait hours for the board")
+        // A box opened during the break asks nothing more of the Worker.
+        source.calls = []
+        _ = parts.presents.open(0)
+        await parts.board.syncPresents()
+        await parts.board.sync()
+        XCTAssertEqual(source.calls, [])
+        // Once the board is back, a fresh request is allowed again.
+        source.presentsError = nil
+        source.boardError = nil
+        clock = clock.addingTimeInterval(3 * 3600)
+        XCTAssertFalse(parts.board.presentsOffBoard)
     }
 
     func testQuittingWaitsAtMostAMoment() async {
@@ -597,6 +661,7 @@ private final class FakeSource: HolidayBoardSource {
     var gifts: [HolidayGift] = []
     var openedSent: Set<Int> = []
     var presentsFail = false
+    var presentsError: HolidaySantaError?
     /// Seconds before the presents or a leave answer.
     var presentsDelay: Double = 0
     var leaveDelay: Double = 0
@@ -634,6 +699,7 @@ private final class FakeSource: HolidayBoardSource {
         calls.append("presents")
         if presentsDelay > 0 { try await Task.sleep(for: .seconds(presentsDelay)) }
         if presentsFail { throw HolidaySantaError.unavailable }
+        if let presentsError { throw presentsError }
         openedSent = opened
         return HolidayPresentsReply(gifts: gifts, opened: opened)
     }

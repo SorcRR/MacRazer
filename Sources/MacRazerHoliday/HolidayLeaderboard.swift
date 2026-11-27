@@ -69,8 +69,12 @@ public final class HolidayLeaderboard: ObservableObject {
     @Published public private(set) var problem: String?
     /// The last try to fetch the board didn't reach the Worker: no connection, most likely.
     @Published public private(set) var boardUnreachable = false
-    /// The Worker paused the board (too much traffic): the page says it's taking a break.
+    /// The board's last answer was "paused" (too much traffic): the page says it's taking a break.
     @Published public private(set) var paused = false
+    /// When a send was last told the board is paused. For three hours from then nothing but a
+    /// leave goes, at launch, at quit or on the page either: only the page's fetch of the board,
+    /// which says when it's back.
+    @Published private var pausedAt: Date?
 
     private let holiday: Holiday
     private let game: HolidayGame
@@ -207,6 +211,9 @@ public final class HolidayLeaderboard: ObservableObject {
         holiday.removeStored("leaderboard.leaving")
         do {
             let reply = try await source.join(name: clean)
+            // Taken, so the board isn't paused any more.
+            pausedAt = nil
+            paused = false
             name = reply.name
             holiday.setStored(reply.name, "leaderboard.name")
             game.adopt(reply.counts)
@@ -248,13 +255,35 @@ public final class HolidayLeaderboard: ObservableObject {
             board = try await source.board(you: you)
             boardUnreachable = false
             paused = false
+            pausedAt = nil
         } catch HolidaySantaError.paused {
             board = nil
             boardUnreachable = false
             paused = true
         } catch {
+            // Not a pause this time: the page says there's no connection instead.
             boardUnreachable = true
+            paused = false
         }
+    }
+
+    /// The board was paused less than three hours ago: the score and the presents wait.
+    var onBreak: Bool {
+        guard let pausedAt else { return false }
+        return holiday.now().timeIntervalSince(pausedAt) < Self.syncInterval
+    }
+
+    private func pausedOnSend() {
+        paused = true
+        pausedAt = holiday.now()
+        lastSynced = holiday.now()
+    }
+
+    /// Dec 25 and 26: the boxes open on this Mac's picks while the board is on its break, so
+    /// what's in them won't show on the board. The presents card says so.
+    public var presentsOffBoard: Bool {
+        joined && onBreak && presents.opened.count < HolidayPresents.count
+            && (holiday.stored([String].self, "leaderboard.presentsGifts") ?? []).count != HolidayPresents.count
     }
 
     /// Sends what's waiting: a leave, a grown score, the presents. With the update check (at
@@ -296,6 +325,8 @@ public final class HolidayLeaderboard: ObservableObject {
             }
         }
         guard joined, isAvailable else { lastSynced = holiday.now(); return }
+        // Paused for traffic: nothing more until three hours have passed or the board is back.
+        if onBreak { return }
         if hasScoreToSend {
             let counts = game.counts
             let before = holiday.stored(Int.self, "leaderboard.sent") ?? 0
@@ -316,10 +347,10 @@ public final class HolidayLeaderboard: ObservableObject {
                 let throttled = previous.map { holiday.now().timeIntervalSince($0) < Self.workerScoreGap } ?? false
                 lastSynced = short && (stored > before || throttled) ? nil : holiday.now()
             } catch HolidaySantaError.paused {
-                // Paused for traffic: wait the full three hours, not the next tick. The score
-                // keeps counting here and goes once the board is back.
-                paused = true
-                lastSynced = holiday.now()
+                // Paused for traffic: wait the full three hours, not the next tick, and send
+                // no presents either. The score keeps counting here and goes once it's back.
+                pausedOnSend()
+                return
             } catch HolidaySantaError.notJoined {
                 // Deleted on the Worker (by the admin): this Mac isn't on the board any more.
                 name = nil
@@ -339,7 +370,7 @@ public final class HolidayLeaderboard: ObservableObject {
     /// Something to tell the Worker: a leave, or a score it hasn't stored.
     public var hasSomethingToSend: Bool {
         source != nil && holiday.storageYear != nil
-            && (leavePending || (joined && isAvailable && hasScoreToSend))
+            && (leavePending || (joined && isAvailable && !onBreak && hasScoreToSend))
     }
 
     /// At launch, like the update check: unthrottled.
@@ -392,7 +423,7 @@ public final class HolidayLeaderboard: ObservableObject {
     }
 
     private func syncPresentsOnce() async {
-        guard let source, joined, presents.stage == .open else { return }
+        guard let source, joined, presents.stage == .open, !onBreak else { return }
         var picks = (holiday.stored([String].self, "leaderboard.presentsGifts") ?? []).compactMap(HolidayGift.init(rawValue:))
         if picks.count != HolidayPresents.count {
             // The boxes wait for the answer, a few seconds at most, so the first one opened
@@ -403,7 +434,15 @@ public final class HolidayLeaderboard: ObservableObject {
                 guard (try? await Task.sleep(for: .seconds(Self.presentsHold))) != nil else { return }
                 self?.presents.awaitingPicks = false
             }
-            let reply = try? await source.presents(opened: [])
+            let reply: HolidayPresentsReply?
+            do {
+                reply = try await source.presents(opened: [])
+            } catch HolidaySantaError.paused {
+                pausedOnSend()
+                reply = nil
+            } catch {
+                reply = nil
+            }
             release.cancel()
             presents.awaitingPicks = false
             guard let reply, reply.gifts.count == HolidayPresents.count else { return }
@@ -414,9 +453,15 @@ public final class HolidayLeaderboard: ObservableObject {
         guard presents.gifts == picks else { return }
         // Only when a box opened since the Worker last heard. Not on every tick.
         let sent = Set(holiday.stored([Int].self, "leaderboard.presentsSent") ?? [])
-        guard !sent.isSuperset(of: presents.opened),
-              let reply = try? await source.presents(opened: presents.opened) else { return }
-        holiday.setStored(reply.opened.sorted(), "leaderboard.presentsSent")
+        guard !sent.isSuperset(of: presents.opened) else { return }
+        do {
+            let reply = try await source.presents(opened: presents.opened)
+            holiday.setStored(reply.opened.sorted(), "leaderboard.presentsSent")
+        } catch HolidaySantaError.paused {
+            pausedOnSend()
+        } catch {
+            // Not reached: goes with the next sync, or the next box opened.
+        }
     }
 
     /// A new row on the Worker (after leaving) gets presents of its own.
@@ -432,10 +477,15 @@ public final class HolidayLeaderboard: ObservableObject {
 
     /// For the page: send what's waiting, then fetch the board, so it shows the newest score.
     public func syncThenRefresh() {
-        Task {
-            await sync()
-            await refreshNow()
-        }
+        Task { await syncThenRefreshNow() }
+    }
+
+    func syncThenRefreshNow() async {
+        await sync()
+        let wasOnBreak = onBreak
+        await refreshNow()
+        // The board is back: what waited through the pause goes now, not hours from now.
+        if wasOnBreak && !onBreak { await sync() }
     }
 
     /// For the presents card: a box was opened, or the card appeared.

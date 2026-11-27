@@ -198,7 +198,8 @@ public struct HolidayLeaderboardPage: View {
         VStack(alignment: .leading, spacing: 4) {
             Text("The board is taking a break")
                 .font(.system(size: 12.5, weight: .semibold))
-            Text("Your score keeps counting on this Mac and goes up once the board is back.")
+            Text("Your score keeps counting on this Mac. Once the board is back, it goes up within a few hours, "
+                 + "or as soon as you open this page.")
                 .font(.system(size: 11)).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
