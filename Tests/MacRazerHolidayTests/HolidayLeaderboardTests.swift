@@ -85,8 +85,20 @@ final class HolidayLeaderboardTests: XCTestCase {
         parts.board.leave()
         XCTAssertNil(parts.board.name)
         await parts.board.sync()
-        XCTAssertEqual(source.calls.last, "leave")
+        XCTAssertTrue(source.calls.contains("leave"))
         XCTAssertNil(make(source, holiday: holiday()).board.name)
+    }
+
+    func testLeavingFetchesTheBoardAgain() async {
+        let source = FakeSource()
+        let parts = make(source)
+        await parts.board.join(as: "Jolly Sprout")
+        XCTAssertNotNil(parts.board.board)
+        parts.board.leave()
+        XCTAssertNil(parts.board.board, "The page shows Loading, not an empty board")
+        for _ in 0..<100 where parts.board.board == nil { await Task.yield() }
+        XCTAssertNotNil(parts.board.board, "The board comes back without you")
+        XCTAssertTrue(source.calls.contains("leave"))
     }
 
     func testTheWorkersNameWinsAndARefusedNameSaysWhy() async {

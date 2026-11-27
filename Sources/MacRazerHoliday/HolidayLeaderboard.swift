@@ -210,8 +210,9 @@ public final class HolidayLeaderboard: ObservableObject {
         holiday.removeStored("leaderboard.name")
         forgetPresentsSent()
         holiday.setStored(true, "leaderboard.leaving")
+        // The page shows "Loading" until the board answers without you.
         board = nil
-        Task { await sync() }
+        syncThenRefresh()
     }
 
     /// Fetches the board. Only while its page is open.

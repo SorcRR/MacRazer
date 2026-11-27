@@ -23,6 +23,8 @@ public struct HolidayLeaderboardPage: View {
                 if !board.joined || renaming { joinCard } else { youCard }
                 if board.boardUnreachable && board.board == nil {
                     offlineCard
+                } else if board.board == nil {
+                    loadingCard
                 } else {
                     if board.boardUnreachable { offlineNote }
                     if board.hasPlayers { rows } else { emptyCard }
@@ -163,6 +165,18 @@ public struct HolidayLeaderboardPage: View {
                 .font(.system(size: 12.5, weight: .semibold))
             Text(board.joined ? "Your score shows here in a moment." : "Join with a festive name and be the first.")
                 .font(.system(size: 11)).foregroundStyle(.secondary)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+        .accessibilityElement(children: .combine)
+    }
+
+    /// The board hasn't answered yet: after launch, or right after leaving.
+    private var loadingCard: some View {
+        HStack(spacing: 8) {
+            ProgressView().controlSize(.small)
+            Text("Loading the board…").font(.system(size: 11)).foregroundStyle(.secondary)
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
