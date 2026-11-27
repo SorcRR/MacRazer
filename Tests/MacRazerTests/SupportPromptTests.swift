@@ -223,3 +223,100 @@ final class SupportPromptMouseWithoutAccessTests: XCTestCase {
                      "with access the mouse connects, and the connected path asks instead")
     }
 }
+
+/// The one check-up ask for a fully supported mouse, for someone new to the app.
+final class CheckupPolicyTests: XCTestCase {
+    /// The Cobra HyperSpeed: verified on every link, over its dongle.
+    private let everyLinkVerified = 0x00DB
+    private let unknown = 0xFFFE
+    private let start = Date(timeIntervalSince1970: 1_800_000_000)
+    private var later: Date { start.addingTimeInterval(CheckupPolicy.waitAfterFirstUse) }
+
+    private func ask(_ pid: Int, firstUse: Date?, asked: Bool = false, _ record: SupportPromptRecord = .init(),
+                     enabled: Bool = true, at time: Date? = nil) -> Bool {
+        CheckupPolicy.shouldAsk(pid: pid, firstUse: firstUse, asked: asked, record: record,
+                                enabled: enabled, now: time ?? later)
+    }
+
+    func testAsksTwoDaysAfterFirstUse() {
+        XCTAssertFalse(ask(everyLinkVerified, firstUse: start, at: later.addingTimeInterval(-60)), "not before two days")
+        XCTAssertTrue(ask(everyLinkVerified, firstUse: start))
+    }
+
+    func testNeverForSomeoneWhoUpdated() {
+        XCTAssertFalse(ask(everyLinkVerified, firstUse: nil), "no first-use date: the app ran before this version")
+    }
+
+    func testOnlyOnce() {
+        XCTAssertFalse(ask(everyLinkVerified, firstUse: start, asked: true))
+    }
+
+    func testOnlyForAMouseNoReportWouldHelp() throws {
+        XCTAssertFalse(ask(unknown, firstUse: start), "an unknown mouse gets the support prompt")
+        guard let verifiedHere = RazerDevices.known.first(where: {
+            $0.fullySupported && !RazerDevices.linksToTest(besides: $0.pid).isEmpty
+        })?.pid else { throw XCTSkip("every verified row has all its links verified") }
+        XCTAssertFalse(ask(verifiedHere, firstUse: start), "another link still needs a report")
+    }
+
+    func testNotOverBluetooth() throws {
+        guard let bluetooth = RazerDevices.known.first(where: {
+            $0.connection == .bluetooth && $0.fullySupported && !RazerDevices.needsReport(pid: $0.pid)
+        })?.pid else { throw XCTSkip("no fully supported Bluetooth row") }
+        XCTAssertFalse(ask(bluetooth, firstUse: start), "the test there only reads")
+    }
+
+    func testSettingOffDeclinedOrReportedSilenceIt() {
+        XCTAssertFalse(ask(everyLinkVerified, firstUse: start, enabled: false))
+        XCTAssertFalse(ask(everyLinkVerified, firstUse: start, SupportPromptRecord(declined: true)))
+        XCTAssertFalse(ask(everyLinkVerified, firstUse: start, SupportPromptRecord(reported: true)))
+    }
+}
+
+@MainActor
+final class CheckupStorageTests: XCTestCase {
+    private static let suite = "MacRazerTests.Checkup"
+    private var defaults: UserDefaults { UserDefaults(suiteName: Self.suite)! }
+    private let pid = 0x00DB
+    private let start = Date(timeIntervalSince1970: 1_800_000_000)
+
+    override func setUp() {
+        super.setUp()
+        UserDefaults().removePersistentDomain(forName: Self.suite)
+    }
+
+    override func tearDown() {
+        UserDefaults().removePersistentDomain(forName: Self.suite)
+        super.tearDown()
+    }
+
+    func testFirstRunStartsTheClockOnce() {
+        let prompt = SupportPrompt(defaults: defaults)
+        prompt.noteLaunch(firstRun: true, now: start)
+        // A second launch that still looks new (no other key written yet) keeps the first date.
+        prompt.noteLaunch(firstRun: true, now: start.addingTimeInterval(CheckupPolicy.waitAfterFirstUse))
+        XCTAssertFalse(prompt.shouldAskCheckup(pid: pid, now: start.addingTimeInterval(CheckupPolicy.waitAfterFirstUse - 60)))
+        XCTAssertTrue(prompt.shouldAskCheckup(pid: pid, now: start.addingTimeInterval(CheckupPolicy.waitAfterFirstUse)))
+    }
+
+    func testAnUpdateNeverStartsIt() {
+        let prompt = SupportPrompt(defaults: defaults)
+        prompt.noteLaunch(firstRun: false, now: start)
+        XCTAssertFalse(prompt.shouldAskCheckup(pid: pid, now: start.addingTimeInterval(365 * 24 * 3600)))
+    }
+
+    func testAskedSurvivesARelaunch() {
+        let first = SupportPrompt(defaults: defaults)
+        first.noteLaunch(firstRun: true, now: start)
+        first.markCheckupAsked()
+        let second = SupportPrompt(defaults: defaults)
+        XCTAssertFalse(second.shouldAskCheckup(pid: pid, now: start.addingTimeInterval(CheckupPolicy.waitAfterFirstUse)))
+        XCTAssertEqual(second.record(pid: pid), SupportPromptRecord(), "the per-model record is left alone")
+    }
+
+    func testFirstRunNeedsNoEarlierKeys() {
+        XCTAssertTrue(UpdateChecker.isFirstRun(defaults: defaults))
+        defaults.set("0.10.0", forKey: "lastRunVersion")
+        XCTAssertFalse(UpdateChecker.isFirstRun(defaults: defaults))
+    }
+}

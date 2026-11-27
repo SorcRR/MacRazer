@@ -464,14 +464,18 @@ case "render-usage-consent":
 case "render-support-prompt":
     // The window asking to test a mouse. `noaccess` shows the Input Monitoring version, with a
     // made-up mouse. `partly` shows a partly verified one (the Basilisk V4 Pro), and `links` one
-    // verified on its dongle whose cable still needs a test (the Naga Pro).
+    // verified on its dongle whose cable still needs a test (the Naga Pro). `checkup` shows the
+    // one-time check-up ask for a fully supported mouse (the Cobra HyperSpeed).
     _ = NSApplication.shared
-    let mouse = args.contains("partly")
+    let checkup = args.contains("checkup")
+    let mouse = checkup
+        ? UnsupportedMouse(pid: 0x00DB, name: "Razer Cobra HyperSpeed", canControl: true)
+        : args.contains("partly")
         ? UnsupportedMouse(pid: 0x00E3, name: "Razer Basilisk V4 Pro", canControl: true)
         : args.contains("links")
         ? UnsupportedMouse(pid: 0x0090, name: "Razer Naga Pro", canControl: true)
         : UnsupportedMouse(pid: 0xFFFE, name: "Razer DeathAdder V3 Pro", canControl: !args.contains("noaccess"))
-    writeHostedPNG(SupportPromptView(mouse: mouse, onRunTest: {}, onNotNow: {}, onDontAsk: {}),
+    writeHostedPNG(SupportPromptView(mouse: mouse, checkup: checkup, onRunTest: {}, onNotNow: {}, onDontAsk: {}),
                    look: renderLook(args), to: outputPath(args.dropFirst(), default: "support-prompt-preview.png"))
 
 case "render-about":
@@ -528,6 +532,8 @@ case "render-device-test":
             .init(key: .init(pid: 0x0088, locationID: 0x1200000), name: "Razer Basilisk Ultimate Dongle", index: 1),
         ])
     }
+    // `checkup` shows the intro as the check-up ask opens it.
+    if args.contains("checkup") { model.checkup = true }
     if args.contains("sent") { model.previewSendState(.sent) }
     if args.contains("failed") { model.previewSendState(.failed(.tooMany)) }
     writeHostedPNG(DeviceTestView(model: model, onClose: {}), look: renderLook(args), to: path)

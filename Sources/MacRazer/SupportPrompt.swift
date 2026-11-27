@@ -53,6 +53,25 @@ enum SupportPromptPolicy {
     }
 }
 
+/// The one check-up ask for a fully supported mouse. Only for someone new: it waits until the
+/// app has been on this Mac for two days, so it lands once they've used it a little, and it
+/// comes once per Mac, not once per mouse. Someone who updated from a version without it is
+/// never asked (`SupportPrompt.noteLaunch`). The test's thank-you screen, where it ends, has
+/// the tip button.
+enum CheckupPolicy {
+    static let waitAfterFirstUse: TimeInterval = 2 * 24 * 60 * 60
+
+    static func shouldAsk(pid: Int, firstUse: Date?, asked: Bool, record: SupportPromptRecord,
+                          enabled: Bool, now: Date) -> Bool {
+        guard enabled, !asked, let firstUse, now.timeIntervalSince(firstUse) >= waitAfterFirstUse else { return false }
+        // Fully supported everywhere: a mouse that still needs a report gets the support
+        // prompt instead. Not over Bluetooth, where the test only reads.
+        guard RazerDevices.support(pid: pid) == .full, !RazerDevices.needsReport(pid: pid),
+              RazerDevices.connection(pid: pid) != .bluetooth else { return false }
+        return !record.declined && !record.reported
+    }
+}
+
 /// The prompt's settings and per-model records, kept in `UserDefaults`.
 @MainActor
 final class SupportPrompt: ObservableObject {
@@ -60,6 +79,8 @@ final class SupportPrompt: ObservableObject {
 
     static let enabledKey = "supportPrompt.enabled"
     static let recordsKey = "supportPrompt.records"
+    static let checkupFirstUseKey = "supportPrompt.checkupFirstUse"
+    static let checkupAskedKey = "supportPrompt.checkupAsked"
 
     private let defaults: UserDefaults
     @Published private(set) var records: [Int: SupportPromptRecord]
@@ -78,6 +99,23 @@ final class SupportPrompt: ObservableObject {
     }
 
     func record(pid: Int) -> SupportPromptRecord { records[pid] ?? SupportPromptRecord() }
+
+    /// Starts the check-up's clock on the first run on this Mac. `firstRun` is read before
+    /// anything else marks the app as having run (`LaunchAtLogin.appliedDefaultKey`), so an
+    /// update from a version without the check-up never starts it, and is never asked.
+    func noteLaunch(firstRun: Bool, now: Date = Date()) {
+        guard firstRun, defaults.object(forKey: Self.checkupFirstUseKey) == nil else { return }
+        defaults.set(now, forKey: Self.checkupFirstUseKey)
+    }
+
+    func shouldAskCheckup(pid: Int, now: Date = Date()) -> Bool {
+        CheckupPolicy.shouldAsk(pid: pid, firstUse: defaults.object(forKey: Self.checkupFirstUseKey) as? Date,
+                                asked: defaults.bool(forKey: Self.checkupAskedKey),
+                                record: record(pid: pid), enabled: isEnabled, now: now)
+    }
+
+    /// Once shown, never again, whatever the answer.
+    func markCheckupAsked() { defaults.set(true, forKey: Self.checkupAskedKey) }
 
     func shouldAsk(pid: Int, now: Date = Date()) -> Bool {
         SupportPromptPolicy.shouldAsk(pid: pid, record: record(pid: pid), enabled: isEnabled, now: now)

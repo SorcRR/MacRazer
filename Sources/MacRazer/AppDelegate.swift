@@ -85,8 +85,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     /// Closing it re-asks the auto-install gate, for the same reason as `updatedWindow`.
     private lazy var supportPromptWindow = SupportPromptWindowController(
         prompt: supportPrompt,
-        onRunTest: { [weak self] in
+        onRunTest: { [weak self] checkup in
             guard let self else { return }
+            // Set before it opens: the intro reads it to invite the test.
+            self.deviceTestWindow.model.checkup = checkup
             self.present(self.deviceTestWindow)
         },
         onClosed: { [weak self] in self?.autoInstallIfEnabled() })
@@ -123,6 +125,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         // Button remapping additionally needs Accessibility (optional; surfaced in the same window).
         // A mouse MacRazer controls over Bluetooth needs neither, so it doesn't trigger the window.
         permissions.recheck()
+        // Before anything records that the app has run: the check-up is for new installs only.
+        supportPrompt.noteLaunch(firstRun: UpdateChecker.isFirstRun())
         // Before any mouse is read, so the first prompt decision already has the kept list.
         startSupportList()
         // Explicit, not a side effect of constructing the model — see the doc comment there.
@@ -861,12 +865,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         // one at a time, and a tick between them could pair its id with the last one's name
         // or link, and spend the ask on that. Read on every tick, clear or not, so the last
         // reading is never one from before a window was open.
-        let mouse = unsupportedMouse
+        let mouse = unsupportedMouse ?? supportedMouse
         defer { lastUnsupportedMouse = mouse }
         guard let mouse, mouse == lastUnsupportedMouse,
-              !isShowingAWindow, !popover.isShown, !appMenuOpen,
-              supportPrompt.shouldAsk(pid: mouse.pid) else { return }
-        supportPromptWindow.show(for: mouse)
+              !isShowingAWindow, !popover.isShown, !appMenuOpen else { return }
+        if supportPrompt.shouldAsk(pid: mouse.pid) {
+            supportPromptWindow.show(for: mouse)
+        } else if supportPrompt.shouldAskCheckup(pid: mouse.pid) {
+            supportPromptWindow.show(for: mouse, checkup: true)
+        }
+    }
+
+    /// The connected mouse when no report would help, for the one check-up ask
+    /// (`CheckupPolicy`).
+    private var supportedMouse: UnsupportedMouse? {
+        guard controller.connected, let pid = controller.deviceID, !RazerDevices.needsReport(pid: pid) else { return nil }
+        return UnsupportedMouse(pid: pid, name: controller.deviceName ?? "Razer Mouse", canControl: true)
     }
 
     /// The connected mouse if a report would still help, else one plugged in that the app can't
