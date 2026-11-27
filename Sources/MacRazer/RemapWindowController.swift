@@ -7,7 +7,7 @@ import SwiftUI
 /// Hosts the button-remapping UI in a normal window (the popover is for quick controls only).
 /// An accessory app can show a window; we just activate first so it comes to the front.
 @MainActor
-final class RemapWindowController: AppWindowPresenter {
+final class RemapWindowController: NSObject, AppWindowPresenter, NSWindowDelegate {
     private var window: NSWindow?
     private let remapper: ButtonRemapper
     private let controller: MouseController
@@ -16,6 +16,16 @@ final class RemapWindowController: AppWindowPresenter {
         self.remapper = remapper
         self.controller = controller
     }
+
+    /// Let go of the window, and the page in it, once it closes: a page left alive behind a
+    /// closed window would still react to the remapper, and could use up the one tip note
+    /// (`RemapTip`) with nobody looking. The next `show()` builds a fresh one.
+    func windowWillClose(_ notification: Notification) {
+        window?.delegate = nil
+        window = nil
+    }
+
+    private static let frameName = "ConfigureButtons"
 
     var isVisible: Bool { window?.isVisible ?? false }
 
@@ -29,7 +39,10 @@ final class RemapWindowController: AppWindowPresenter {
             w.isReleasedWhenClosed = false
             // Themed like the popover per Settings › Appearance, kept up to date when it changes.
             AppearanceSettings.shared.track(w)
-            w.center()
+            w.delegate = self
+            // Rebuilt on every open (see `windowWillClose`), so where it was is kept by name.
+            if !w.setFrameUsingName(Self.frameName) { w.center() }
+            w.setFrameAutosaveName(Self.frameName)
             window = w
         }
         NSApp.activate(ignoringOtherApps: true)

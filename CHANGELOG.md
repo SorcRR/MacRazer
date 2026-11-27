@@ -44,6 +44,9 @@ expect rough edges until 1.0.
   your mouse, it asks once whether you'd like to check that everything works on your Mac. The
   report helps catch anything a firmware update breaks. Anyone who updated from an earlier
   version isn't asked, and Settings › "Ask me to help test my mouse" turns it off.
+- **A thank-you in Configure Buttons.** The first time a button you remapped does its new
+  job, Configure Buttons shows a short note with a Leave a Tip button, once. Anyone who had
+  mappings before this version doesn't see it.
 - **An App Exposé ⌃↓ shortcut preset.** It's in the shortcut list of every button.
 - **More mice from test reports.**
   - **Polling confirmed with the newer command** on the Viper 8KHz, both Basilisk V4 Pro

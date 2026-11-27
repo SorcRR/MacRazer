@@ -24,6 +24,8 @@ struct RemapView: View {
     var twoColumns = false
     /// For the `render-remap gesture` preview: the button whose gesture editor is open.
     var previewGestureEditor: Int?
+    /// For the `render-remap tip` preview: the tip note showing.
+    var previewTipNote = false
     @State private var recordingButton: Int?
     @State private var recordingDpiCycleShortcut = false
     @State private var recorderError: String?
@@ -31,6 +33,8 @@ struct RemapView: View {
     @State private var editingGesture: Int?
     /// The slot of `editingGesture` a custom shortcut is being recorded for.
     @State private var recordingSlot: GestureSlot?
+    /// The one tip note (`RemapTip`), kept up for as long as this page is open once it shows.
+    @State private var showsTipNote = false
 
     private var buttons: [Int] {
         Array(remapper.seenButtons.union(remapper.suggestedButtons).union(remapper.mappings.keys)).sorted()
@@ -74,9 +78,13 @@ struct RemapView: View {
         .frame(minHeight: gestureEditorButton == nil ? nil : 400, alignment: .top)
         .onAppear {
             remapper.refreshAccessibility(prompt: false)
+            showTipNoteIfDue()
             if let previewGestureEditor { editingGesture = previewGestureEditor }
+            if previewTipNote { showsTipNote = true }
         }
         .overlay { if let button = gestureEditorButton { gestureEditor(button) } }
+        // A mapping fired with the page open, the usual way someone tries a new one out.
+        .onChange(of: remapper.tipNoteDue) { _, _ in showTipNoteIfDue() }
         // A button that stopped being a gesture under the open editor closes it for good, so
         // it can't pop up again if the button becomes one later.
         .onChange(of: gestureEditorButton) { _, now in
@@ -92,6 +100,7 @@ struct RemapView: View {
 
     /// The permission banner, or the paused note and the "press a button" hint.
     @ViewBuilder private var notices: some View {
+        if showsTipNote { tipNote }
         if let controller { SideButtonResetNotice(controller: controller) }
         if !remapper.remappingPermissionsGranted {
             accessibilityBanner
@@ -100,6 +109,45 @@ struct RemapView: View {
             if remapper.showsCompetingApps { competingAppsNote }
             detectionHint
         }
+    }
+
+    private func showTipNoteIfDue() {
+        guard remapper.tipNoteDue else { return }
+        showsTipNote = true
+        remapper.markTipNoteShown()
+    }
+
+    /// Once, after the first mapping that works: the moment a tip ask fits here.
+    private var tipNote: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "checkmark.circle.fill").foregroundStyle(Color.razerGreenText)
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Your button works. MacRazer is free and built in my spare time, and a tip keeps it going.")
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Link(destination: ProjectLinks.tip) {
+                    Label("Leave a Tip", systemImage: "heart")
+                }
+                .font(.system(size: 11))
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .tint(.razerGreenText)
+                .help("Opens MacRazer's Ko-fi page in your browser")
+            }
+            Spacer(minLength: 0)
+            Button {
+                showsTipNote = false
+            } label: {
+                Image(systemName: "xmark").font(.system(size: 9, weight: .semibold))
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.tertiary)
+            .help("Hide")
+            .accessibilityLabel("Hide")
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.razerGreenText.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
     }
 
     /// Another app can take a button's clicks before MacRazer sees them, and then the button
