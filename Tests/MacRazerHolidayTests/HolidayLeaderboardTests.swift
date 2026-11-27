@@ -296,15 +296,13 @@ final class HolidayLeaderboardTests: XCTestCase {
     func testPresentsWaitOutAPauseAndTheCardSaysSo() async {
         at(2026, 12, 25)
         let source = FakeSource()
-        source.gifts = [.goldenMouse, .socks, .banana]
         let parts = make(source)
+        // No picks yet when joining, then paused: everything but leaving answers "paused".
         await parts.board.join(as: "Jolly Sprout")
-        parts.holiday.removeStored("leaderboard.presentsGifts")
-        // Paused just after joining: everything but leaving answers "paused".
         source.presentsError = .paused
         source.boardError = .paused
         await parts.board.syncPresents()
-        XCTAssertTrue(parts.board.presentsOffBoard, "Boxes opened now won't show on the board")
+        XCTAssertEqual(parts.board.presentsOffBoard, .onBreak, "Boxes opened now won't show on the board")
         XCTAssertFalse(parts.presents.awaitingPicks, "The boxes don't wait hours for the board")
         // A box opened during the break asks nothing more of the Worker.
         source.calls = []
@@ -312,11 +310,35 @@ final class HolidayLeaderboardTests: XCTestCase {
         await parts.board.syncPresents()
         await parts.board.sync()
         XCTAssertEqual(source.calls, [])
-        // Once the board is back, a fresh request is allowed again.
+        // The break outlasts a relaunch.
+        let again = HolidayLeaderboard(holiday: parts.holiday, game: parts.game, presents: parts.presents, source: source)
+        XCTAssertTrue(again.onBreak)
+        XCTAssertFalse(again.hasSomethingToSend)
+        await again.sync()
+        XCTAssertEqual(source.calls, [])
+        // Back after the break: the picks come, but box 1 is already open on the Mac's own, so
+        // the two left stay the Mac's too, and the card still says so.
         source.presentsError = nil
         source.boardError = nil
+        source.gifts = [.goldenMouse, .socks, .banana]
         clock = clock.addingTimeInterval(3 * 3600)
-        XCTAssertFalse(parts.board.presentsOffBoard)
+        XCTAssertFalse(parts.board.onBreak)
+        await parts.board.syncPresents()
+        XCTAssertEqual(source.calls, ["presents"])
+        if parts.presents.gifts != source.gifts {
+            XCTAssertEqual(parts.board.presentsOffBoard, .macPicks)
+        }
+    }
+
+    func testPresentsOnTheWorkersPicksNeedNoNote() async {
+        at(2026, 12, 25)
+        let source = FakeSource()
+        source.gifts = [.goldenMouse, .socks, .banana]
+        let parts = make(source)
+        await parts.board.join(as: "Jolly Sprout")
+        XCTAssertNil(parts.board.presentsOffBoard)
+        _ = parts.presents.open(0)
+        XCTAssertNil(parts.board.presentsOffBoard)
     }
 
     func testQuittingWaitsAtMostAMoment() async {

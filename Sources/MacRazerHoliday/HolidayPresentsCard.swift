@@ -70,7 +70,7 @@ public struct HolidayPresentsCard: View {
                 if let box = presents.featured, openedAt[box] == nil, let gift = presents.gift(in: box) {
                     GiftStrip(content: .gift(gift))
                 } else {
-                    GiftStrip(content: stage == .waiting ? .waiting : leaderboard.presentsOffBoard ? .offBoard : .unopened)
+                    GiftStrip(content: stage == .waiting ? .waiting : leaderboard.presentsOffBoard.map(GiftStrip.Content.offBoard) ?? .unopened)
                 }
             }
             .clipShape(RoundedRectangle(cornerRadius: 10))
@@ -635,8 +635,8 @@ private struct GiftStrip: View {
     enum Content {
         case gift(HolidayGift)
         case unopened
-        /// Joined, but the board is taking a break: these open on this Mac's own picks.
-        case offBoard
+        /// Joined, but these open on this Mac's own picks: they won't show on the board.
+        case offBoard(HolidayLeaderboard.PresentsOffBoard)
         case waiting
     }
 
@@ -692,7 +692,8 @@ private struct GiftStrip: View {
         switch content {
         case .gift(let gift): gift.line
         case .unopened: "Click a present to open it. Some are rare."
-        case .offBoard: "The board is taking a break, so these won't show on it."
+        case .offBoard(.onBreak): "The board is taking a break. Presents opened now won't show on it."
+        case .offBoard(.macPicks): "These open on this Mac's own picks, so they won't show on the board."
         case .waiting: "They open on Christmas Day."
         }
     }

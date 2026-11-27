@@ -73,8 +73,16 @@ public final class HolidayLeaderboard: ObservableObject {
     @Published public private(set) var paused = false
     /// When a send was last told the board is paused. For three hours from then nothing but a
     /// leave goes, at launch, at quit or on the page either: only the page's fetch of the board,
-    /// which says when it's back.
-    @Published private var pausedAt: Date?
+    /// which says when it's back. Kept across a relaunch.
+    private var pausedAt: Date? {
+        didSet {
+            guard pausedAt != oldValue else { return }
+            if let pausedAt { holiday.setStored(pausedAt, "leaderboard.pausedAt") } else { holiday.removeStored("leaderboard.pausedAt") }
+            scheduleBreakEnd()
+        }
+    }
+    /// Redraws once the break is over, so the presents card's note goes with it.
+    private var breakEnd: Task<Void, Never>?
 
     private let holiday: Holiday
     private let game: HolidayGame
@@ -273,17 +281,35 @@ public final class HolidayLeaderboard: ObservableObject {
         return holiday.now().timeIntervalSince(pausedAt) < Self.syncInterval
     }
 
+    private func scheduleBreakEnd() {
+        breakEnd?.cancel()
+        objectWillChange.send()
+        guard let pausedAt else { return }
+        let left = Self.syncInterval - holiday.now().timeIntervalSince(pausedAt)
+        guard left > 0 else { return }
+        breakEnd = Task { [weak self] in
+            guard (try? await Task.sleep(for: .seconds(left + 1))) != nil else { return }
+            self?.objectWillChange.send()
+        }
+    }
+
     private func pausedOnSend() {
         paused = true
         pausedAt = holiday.now()
         lastSynced = holiday.now()
     }
 
-    /// Dec 25 and 26: the boxes open on this Mac's picks while the board is on its break, so
-    /// what's in them won't show on the board. The presents card says so.
-    public var presentsOffBoard: Bool {
-        joined && onBreak && presents.opened.count < HolidayPresents.count
-            && (holiday.stored([String].self, "leaderboard.presentsGifts") ?? []).count != HolidayPresents.count
+    /// Dec 25 and 26, once joined: why the boxes still wrapped won't show on the board, if they
+    /// won't. The presents card says so.
+    public enum PresentsOffBoard: Equatable { case onBreak, macPicks }
+
+    public var presentsOffBoard: PresentsOffBoard? {
+        guard joined, presents.stage == .open, presents.opened.count < HolidayPresents.count else { return nil }
+        let picks = (holiday.stored([String].self, "leaderboard.presentsGifts") ?? []).compactMap(HolidayGift.init(rawValue:))
+        // The Worker's picks came after a box was opened on the Mac's: the rest stay the Mac's too.
+        if picks.count == HolidayPresents.count { return presents.gifts == picks ? nil : .macPicks }
+        // No picks yet, and none coming during the break: a box opened now won't show.
+        return onBreak ? .onBreak : nil
     }
 
     /// Sends what's waiting: a leave, a grown score, the presents. With the update check (at
@@ -517,6 +543,7 @@ public final class HolidayLeaderboard: ObservableObject {
 
     private func load() {
         name = holiday.stored(String.self, "leaderboard.name")
+        pausedAt = holiday.stored(Date.self, "leaderboard.pausedAt")
         board = nil
     }
 
