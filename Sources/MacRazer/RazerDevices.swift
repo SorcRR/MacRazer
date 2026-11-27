@@ -714,12 +714,6 @@ enum RazerDevices {
         // ZERO_LED alone, didn't show. Its zones are recorded below, so the next test sends the
         // red to each and dims the side grid too.
         .init(pid: 0x0096, name: "Razer Naga X", unverified: [.lighting], hasBattery: false, hasLighting: false, maxDPI: 18000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
-        // Mamba Tournament Edition (in-app report on firmware v1.3, no credit given): DPI and
-        // polling passed with 0x1f. It's wired only: the battery read answers with zeros. Every
-        // LED group answers brightness with 0 and ignores writes, as on the Naga Hex V2:
-        // OpenRazer drives it with the older standard-matrix commands, which nothing here
-        // builds, so lighting stays hidden. The stage table read returns 0x03, so the popover
-        // shows no stages. 16000 is the vendor spec.
         // Mamba 2015 Wireless on its charging dock (in-app report on 0.10.0, firmware v1.0,
         // 2026-11-27, no credit given; the device calls itself "Razer Mamba Dock"): battery
         // (charging read included), DPI and polling passed with 0x1f, and every id answers.
@@ -728,7 +722,13 @@ enum RazerDevices {
         // Like the Mamba Tournament Edition, OpenRazer drives it with the older standard-matrix
         // commands, so lighting stays hidden. Its cable mode (0x0044) has no row yet. 16000 is
         // the vendor spec.
-        .init(pid: 0x0045, name: "Razer Mamba 2015 (Wireless)", unverified: [.lighting], hasBattery: true, hasLighting: false, maxDPI: 16000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil, hasCableLink: false),
+        .init(pid: 0x0045, name: "Razer Mamba 2015 (Wireless)", unverified: [.lighting], hasBattery: true, hasLighting: false, maxDPI: 16000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wirelessDongle, silhouette: .cobra, dischargeCurveModelKey: nil),
+        // Mamba Tournament Edition (in-app report on firmware v1.3, no credit given): DPI and
+        // polling passed with 0x1f. It's wired only: the battery read answers with zeros. Every
+        // LED group answers brightness with 0 and ignores writes, as on the Naga Hex V2:
+        // OpenRazer drives it with the older standard-matrix commands, which nothing here
+        // builds, so lighting stays hidden. The stage table read returns 0x03, so the popover
+        // shows no stages. 16000 is the vendor spec.
         .init(pid: 0x0046, name: "Razer Mamba Tournament Edition", unverified: [.lighting], hasBattery: false, hasLighting: false, maxDPI: 16000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
         // Mamba Elite (in-app report on firmware v1.1, no credit given): DPI and stages, and
         // polling passed with 0x1f. No battery. LOGO and SCROLL answer brightness, but the

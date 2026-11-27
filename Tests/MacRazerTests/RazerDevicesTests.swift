@@ -427,7 +427,10 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertEqual(RazerDevices.support(pid: 0x0094), .full)
         XCTAssertTrue(RazerDevices.hasBattery(pid: 0x0094))
         XCTAssertFalse(RazerDevices.canCharge(pid: 0x0094), "AA cell, no charging read")
+        XCTAssertFalse(RazerDevices.hasLighting(pid: 0x0094))
         XCTAssertEqual(RazerDevices.notOnMouse(pid: 0x0094), [.lighting])
+        XCTAssertEqual(RazerDevices.maxDPI(pid: 0x0094), 18000)
+        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x0094), [], "no cable, and no Bluetooth row yet")
     }
 
     /// The Mamba 2015 on its dock passed battery, DPI and polling. Lighting failed.
@@ -437,6 +440,8 @@ final class RazerDevicesTests: XCTestCase {
         XCTAssertTrue(RazerDevices.canCharge(pid: 0x0045), "the dock charges it")
         XCTAssertFalse(RazerDevices.hasLighting(pid: 0x0045))
         XCTAssertEqual(RazerDevices.maxDPI(pid: 0x0045), 16000)
+        XCTAssertEqual(RazerDevices.linksToTest(besides: 0x0045).map(\.connection), [.wired],
+                       "its cable mode has no row yet, so the test asks for it")
     }
 
     /// A polling_rate2 mouse is asked about polling like any other: the test sends the newer
