@@ -25,6 +25,8 @@ final class RemapWindowController: NSObject, AppWindowPresenter, NSWindowDelegat
         window = nil
     }
 
+    private static let frameName = "ConfigureButtons"
+
     var isVisible: Bool { window?.isVisible ?? false }
 
     func show() {
@@ -38,7 +40,9 @@ final class RemapWindowController: NSObject, AppWindowPresenter, NSWindowDelegat
             // Themed like the popover per Settings › Appearance, kept up to date when it changes.
             AppearanceSettings.shared.track(w)
             w.delegate = self
-            w.center()
+            // Rebuilt on every open (see `windowWillClose`), so where it was is kept by name.
+            if !w.setFrameUsingName(Self.frameName) { w.center() }
+            w.setFrameAutosaveName(Self.frameName)
             window = w
         }
         NSApp.activate(ignoringOtherApps: true)
