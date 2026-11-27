@@ -578,7 +578,10 @@ case "render-remap":
     // `wide`: the popover's two-column Buttons page, with the DPI button section.
     // `side-buttons`: the window with the notice for side buttons saved to other functions.
     // `gesture`: the window with the gesture editor open on a gesture button.
-    if args.contains("gesture") {
+    // `tip`: the window with the one tip note, after the first mapping that works.
+    if args.contains("tip") {
+        writeHostedPNG(RemapView(remapper: r, previewTipNote: true), look: renderLook(args), to: path)
+    } else if args.contains("gesture") {
         writeHostedPNG(RemapView(remapper: r, previewGestureEditor: 5), look: renderLook(args), to: path)
     } else if args.contains("side-buttons") {
         let mouse = MouseController()

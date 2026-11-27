@@ -180,6 +180,8 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
     @Published private(set) var seenButtons: Set<Int> = []
     @Published private(set) var suggestedButtons: Set<Int> = []
     @Published private(set) var mappings: [Int: RemapAction] = [:]
+    /// The one tip note in Configure Buttons is waiting to be seen (`RemapTip`).
+    @Published private(set) var tipNoteDue = false
     /// Other apps with an event tap that can swallow extra-button clicks (Synapse, Mac Mouse
     /// Fix, …). One that gets a click first leaves nothing for ours to see, so the page names
     /// them. Refreshed with the Accessibility check.
@@ -212,6 +214,20 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
     init(defaults: UserDefaults = .standard, actionEmitter: ((RemapAction) -> Void)? = nil) {
         self.defaults = defaults
         self.actionEmitter = actionEmitter
+        // Before any table is saved under this version, so it sees only the older ones.
+        RemapTip.start(defaults)
+        tipNoteDue = RemapTip.state(defaults) == .due
+    }
+
+    #if DEBUG
+    /// What a mapped button's press runs, for the tip note's tests.
+    func fireForTesting(_ action: RemapAction) { apply(action) }
+    #endif
+
+    /// Configure Buttons showed the tip note: it won't come again.
+    func markTipNoteShown() {
+        RemapTip.markShown(defaults)
+        tipNoteDue = false
     }
 
     private var tap: CFMachPort?
@@ -783,6 +799,8 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         // Nothing to post for `.passthrough` (a gesture's "None"). A gesture only ever runs
         // from a hold, never as a single action, so one nested in a gesture's slot is inert.
         guard action != .passthrough, !action.isGesture else { return }
+        // The first mapping that works. On the main thread, like the tap callback.
+        if RemapTip.fired(defaults) { tipNoteDue = true }
         if let actionEmitter { actionEmitter(action); return }
         switch action {
         case .passthrough, .gesture: break
