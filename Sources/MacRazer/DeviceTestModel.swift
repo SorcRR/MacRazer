@@ -623,8 +623,8 @@ final class DeviceTestModel: ObservableObject {
     }
 
     func runPolling() async {
-        let rate2 = testedPID.map(RazerDevices.usesPollingRate2(pid:)) ?? false
-        await run(\.polling) { DeviceTestSteps.polling($0, usesPollingRate2: rate2) }
+        let command = RazerDevices.pollingCommand(pid: testedPID)
+        await run(\.polling) { DeviceTestSteps.polling($0, command: command) }
     }
 
     /// A light with effects but no brightness (the Pro Click V2 Vertical Edition) gets the
@@ -635,6 +635,7 @@ final class DeviceTestModel: ObservableObject {
 
     func runLighting() async {
         let sweep = lightSweep
+        let splitRead = RazerDevices.brightnessSplitRead(pid: testedPID)
         let restore = controller.lightingRestoreReports(pid: testedPID)
         // Red on every zone the tested mouse takes effects on, as the popover sends them.
         let red = RazerCommands.effect(.staticColor, color: RGB(r: 255, g: 0, b: 0),
@@ -645,7 +646,7 @@ final class DeviceTestModel: ObservableObject {
         dimmed = nil
         turnedRed = nil
         await run(\.lighting) {
-            DeviceTestSteps.lighting($0, sweep: sweep, restoreEffect: restore, red: red,
+            DeviceTestSteps.lighting($0, sweep: sweep, splitRead: splitRead, restoreEffect: restore, red: red,
                                      zoneGroups: zoneGroups, colourOnly: colourOnly, seconds: 3)
         }
     }

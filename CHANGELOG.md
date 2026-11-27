@@ -135,12 +135,41 @@ expect rough edges until 1.0.
   and tilt scrolling on Razer mice while trackpads and other mice keep their directions.
   Off by default, saved once for the app, and active while MacRazer is running with
   Accessibility permission. The macOS Natural scrolling preference stays as set.
+- **Basilisk V4 Pro: its own settings, profiles and remaps.** From fn-milans's work in
+  #55, tested on the mouse. Thanks!
+  - **Bluetooth:** a new row. Battery, DPI and stages, brightness and the sleep timer work.
+  - **Mouse settings:** the sleep timer and low-battery level on every link, and the wheel
+    mode, Smart-Reel and its sensitivity and scroll acceleration on the cable and dongle.
+  - **Lighting per zone:** the logo, wheel and underglow each get their own effect, colour
+    and brightness, with Reactive added to the effects.
+  - **DPI up to 50,000**, its sensor's top, with Single or Stages modes kept in the mouse.
+  - **Profiles are the mouse's onboard slots.** Up to 5, each with its DPI, lighting, wheel
+    settings and remaps, so they work with MacRazer closed. Add, switch, rename, reset or
+    delete them from the Profiles menu. A switch made on the mouse is followed.
+  - **Remaps saved in the mouse, like Synapse does it.** Configure Buttons writes each remap
+    into the mouse and reads it back. They work with MacRazer closed, on any link and on other
+    computers. The HyperShift layer is saved there too. MacRazer only changes buttons it
+    remapped itself, and clearing a remap puts the factory function back.
+- **Basilisk V4 HyperSpeed: lighting, remaps and polling.** From k4ton's work in #55,
+  tested on the mouse over its dongle. Thanks!
+  - **Lighting and brightness** work now. This mouse reads brightness from a different zone
+    than it writes, so MacRazer used to think it had no lighting. The device test checks it too.
+  - **Thumb-button remaps over the dongle.** Side Front and Side Trigger send nothing to the
+    Mac, so they could not be remapped before. Configure Buttons now saves remaps in the
+    mouse, as on the Basilisk V4 Pro, and they keep working with MacRazer closed. Remaps
+    you made before the update stay, and are written into the mouse.
+  - **Polling rate over the dongle.** There the mouse refuses both polling commands MacRazer
+    knew, so profiles failed on the polling step. It now gets its own command, with 125, 500
+    and 1000 Hz. The cable keeps the one it passed with.
+  - **Profiles are the mouse's onboard slots** over the dongle, as on the V4 Pro. Each keeps
+    its own polling rate and remaps, and the Cycle Profile button switches them in the app
+    too.
 - **Reset side buttons saved in the mouse.** If Razer Synapse saved other functions to a
   Cobra HyperSpeed's side buttons (a keyboard shortcut, say), they never reach Configure
   Buttons as buttons. On Bluetooth the page now says what they send and offers Reset Side
   Buttons, which puts Back and Forward back in the mouse itself. No Windows needed.
-- **Polling rate on the HyperPolling mice.** The Basilisk V4 Pro and V4 HyperSpeed, Viper
-  V4 Pro, Viper 8KHz, DeathAdder V3 and both Mouse Docks refuse the classic polling command.
+- **Polling rate on the HyperPolling mice.** The Basilisk V4 Pro, Viper V4 Pro, Viper
+  8KHz, DeathAdder V3 and both Mouse Docks refuse the classic polling command.
   They now get the newer one, so the polling picker shows on them. The 8000 Hz models offer
   2K, 4K and 8K too. Each change is read back, and the device test checks polling there as
   well, so a report can confirm it. The command comes from fn-milans's Basilisk V4 Pro work.
@@ -183,6 +212,8 @@ expect rough edges until 1.0.
   show up in its report.
 
 ### Fixed
+- **The Basilisk V4 HyperSpeed goes up to 33,000 DPI**, its sensor's top. The slider
+  stopped at 26,000.
 - **Colours on mice that ignore the all-zones light.** Some mice say yes to a colour sent to
   every zone at once, then keep their old one. Device tests showed it on the Viper Ultimate,
   Basilisk Ultimate, Basilisk, DeathAdder V2 Mini and Basilisk V3 Pro 35K. Brightness still

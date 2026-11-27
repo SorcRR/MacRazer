@@ -338,6 +338,13 @@ case "render-ui":
     if args.contains("held-at-launch") { controller.setPreviewHeldAtLaunch() }
     if args.contains("bluetooth") { controller.setPreviewBluetooth() }
     if args.contains("bluetooth-connected") { controller.setPreviewBluetoothConnected() }
+    if args.contains("dpi-stages") { controller.setPreviewDpiModes(single: false) }
+    if args.contains("dpi-single") { controller.setPreviewDpiModes(single: true) }
+    if args.contains("zones") {
+        // The Basilisk V4 Pro's lighting zones, with the Lighting row open.
+        controller.setPreviewZonedLighting()
+        UserDefaults.standard.set("lighting", forKey: "popoverExpandedSections")
+    }
     let updateChecker = UpdateChecker()
     if args.contains("update") { updateChecker.loadPreviewState(notes: PreviewNotes.releaseBody) }
     if args.contains("updated") { updateChecker.loadPreviewUpdated(notes: PreviewNotes.releaseBody) }
@@ -407,7 +414,10 @@ case "render-ui":
                               onOpenDeviceTest: {}, onTestAccessory: { _ in }, // no windows in a render
                               previewEditingStages: args.contains("stages")))
     // `hosted` draws native controls (segmented pickers, switches) instead of placeholders.
-    if args.contains("hosted") { writeHostedPNG(rootView, look: renderLook(args), to: path) } else { writeViewPNG(rootView, look: renderLook(args), to: path) }
+    // Segmented controls only draw when hosted, so the zone and DPI previews always are.
+    if args.contains("hosted") || args.contains("zones") || args.contains("dpi-stages") || args.contains("dpi-single") {
+        writeHostedPNG(rootView, look: renderLook(args), to: path)
+    } else { writeViewPNG(rootView, look: renderLook(args), to: path) }
 
 case "render-settings":
     _ = NSApplication.shared
@@ -574,7 +584,8 @@ case "render-remap":
     _ = NSApplication.shared
     let path = outputPath(args.dropFirst(), default: "remap-preview.png")
     let r = ButtonRemapper()
-    r.loadPreviewState(gesture: args.contains("gesture"))
+    // `--v4pro` previews the Basilisk V4 Pro's list, saved in the mouse.
+    r.loadPreviewState(pid: args.contains("--v4pro") ? 0x00E3 : nil, gesture: args.contains("gesture"))
     // `wide`: the popover's two-column Buttons page, with the DPI button section.
     // `side-buttons`: the window with the notice for side buttons saved to other functions.
     // `gesture`: the window with the gesture editor open on a gesture button.
@@ -753,12 +764,12 @@ case "poll":
     guard let dev = openDevice() else { exit(1) }
     defer { dev.close() }
     do {
-        let rate2 = RazerDevices.usesPollingRate2(pid: dev.productID)
+        let command = RazerDevices.pollingCommand(pid: dev.productID)
         // 250 Hz too on the classic command: not in OpenRazer's table, but the byte is 1000
         // over the rate.
-        let rates = rate2 ? RazerDevices.pollingRates(pid: dev.productID)
+        let rates = command != .classic ? RazerDevices.pollingRates(pid: dev.productID)
                           : (RazerCommands.supportedPollingRates + [250]).sorted()
-        let before = try DeviceProbe.readPollingRate(dev, usesPollingRate2: rate2).value
+        let before = try DeviceProbe.readPollingRate(dev, command: command).value
         print("Current polling rate: \(before)Hz")
         if let arg = args.dropFirst().first, let hz = Int(arg) {
             guard rates.contains(hz) else {
@@ -766,7 +777,7 @@ case "poll":
                 exit(64)
             }
             print("Setting polling rate to \(hz)Hz …")
-            let check = try DeviceProbe.writePollingRate(dev, hz: hz, usesPollingRate2: rate2)
+            let check = try DeviceProbe.writePollingRate(dev, hz: hz, command: command)
             print("  set status = 0x\(String(check.setResponse.status, radix: 16))")
             print("Read-back: \(check.readBack.value)Hz")
             print(check.confirmed ? "✓ Polling rate write confirmed" : "⚠︎ Read-back doesn't match.")
@@ -802,14 +813,15 @@ case "brightness":
         }
         if let arg = args.dropFirst().first, let pct = Int(arg) {
             let led = RazerDevices.brightnessLed(pid: dev.productID)
+            let readLed = RazerDevices.brightnessReadLed(pid: dev.productID)
             // The sweep records a refusal per group and carries on; this write throws on one
             // instead, because here it is a real failure to report, not a group that simply
             // doesn't answer.
             let raw = RazerCommands.brightnessRaw(fromPercent: pct)
             print("SET brightness \(pct)% (raw \(raw)) on led 0x\(String(format: "%02x", led)) …")
-            let check = try DeviceProbe.writeBrightness(dev, raw: raw, led: led)
+            let check = try DeviceProbe.writeBrightness(dev, raw: raw, led: led, readLed: readLed)
             print("  set: \(dump(check.setResponse))")
-            print("  read-back: \(dump(check.readBack.response)) → \(RazerCommands.brightnessPercent(fromRaw: check.readBack.value))%")
+            print("  read-back (led 0x\(String(format: "%02x", readLed))): \(dump(check.readBack.response)) → \(RazerCommands.brightnessPercent(fromRaw: check.readBack.value))%")
         }
     } catch {
         // The sweep above handles its own refusals per LED, so only the optional write can
@@ -875,9 +887,10 @@ case "devicetest":
         identify: identify,
         battery: step { DeviceTestSteps.battery($0, expectsBattery: info?.hasBattery) },
         dpi: step { DeviceTestSteps.dpi($0, maxProbe: false, singleAxis: RazerDevices.singleAxisDPI(pid: dev.productID)) },
-        polling: step { DeviceTestSteps.polling($0, usesPollingRate2: RazerDevices.usesPollingRate2(pid: dev.productID)) },
+        polling: step { DeviceTestSteps.polling($0, command: RazerDevices.pollingCommand(pid: dev.productID)) },
         lighting: step {
-            DeviceTestSteps.lighting($0, sweep: lightSweep, restoreEffect: nil,
+            DeviceTestSteps.lighting($0, sweep: lightSweep, splitRead: RazerDevices.brightnessSplitRead(pid: dev.productID),
+                                     restoreEffect: nil,
                                      zoneGroups: DeviceProbe.effectZoneGroups(effectLeds: RazerDevices.effectLeds(pid: dev.productID)),
                                      seconds: 2)
         },

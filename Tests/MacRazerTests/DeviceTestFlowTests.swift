@@ -80,7 +80,7 @@ final class DeviceTestFlowTests: XCTestCase {
         }
         XCTAssertEqual(missing(0x00DB), [], "Cobra HyperSpeed")
         XCTAssertEqual(missing(0x0053), [.lighting], "Naga Chroma")
-        XCTAssertEqual(missing(0x00EA), [.polling], "Basilisk V4 HyperSpeed: polling, which the test checks with polling_rate2")
+        XCTAssertEqual(missing(0x00EA), [.polling, .lighting], "Basilisk V4 HyperSpeed: polling with its own command, and lighting")
         XCTAssertEqual(missing(0x7FFF), RazerFeature.allCases, "not on record")
         XCTAssertEqual(missing(nil), RazerFeature.allCases, "no mouse connected")
     }
@@ -106,7 +106,7 @@ final class DeviceTestFlowTests: XCTestCase {
             return model.support
         }
         XCTAssertEqual(support(0x00DB), .full, "Cobra HyperSpeed")
-        XCTAssertEqual(support(0x00EA), .partly(works: [.battery, .dpi], missing: [.polling]), "Basilisk V4 HyperSpeed")
+        XCTAssertEqual(support(0x00EA), .partly(works: [.battery, .dpi], missing: [.polling, .lighting]), "Basilisk V4 HyperSpeed")
         XCTAssertEqual(support(0x0053), .partly(works: [.dpi, .polling], missing: [.lighting]), "Naga Chroma")
         XCTAssertEqual(support(0x0034), .partly(works: [.dpi, .polling], missing: [.lighting]), "Taipan")
         XCTAssertEqual(support(0x008F), .full, "Naga Pro (Wired)")

@@ -17,6 +17,30 @@ enum RemapAction: Codable, Equatable, Sendable {
     case mouseButton(button: Int, name: String)
     case doubleClick
     case mediaKey(code: Int, name: String)
+    /// Held, it switches every other button to its HyperShift mapping
+    /// (`ButtonRemapper.hyperShiftKey`), like Synapse's HyperShift. Does nothing by itself.
+    case hyperShift
+    /// Moves the mouse to its next (or previous) onboard profile slot (`OnboardSlots`).
+    /// The mouse does it itself; on mice without slots it is never offered.
+    case cycleProfile(up: Bool)
+    // The rest are done by the mouse itself and only offered on a mouse that keeps its
+    // remaps (`OnboardButtons.nativeBlock`).
+    /// A mouse button (0 left ... 4 forward) clicked over and over while held, every
+    /// `intervalMs`.
+    case turboClick(button: Int, intervalMs: Int, name: String)
+    /// A key or combination pressed over and over while held, every `intervalMs`.
+    case turboKey(keyCode: UInt16, modifiers: UInt64, name: String, intervalMs: Int)
+    /// The mouse runs at `dpi` while held, then goes back (Synapse's Sensitivity Clutch).
+    case dpiClutch(dpi: Int)
+    /// Cycles the wheel's modes, the wheel-mode button's factory job.
+    case cycleScrollMode
+    /// A wheel step, once per press or `repeating` while held. Sideways the mouse only
+    /// repeats (`OnboardButtons.scrollBlock`).
+    case scroll(direction: ScrollRemapDirection, repeating: Bool)
+    /// One DPI stage up or down, stopping at the ends.
+    case dpiStage(up: Bool)
+    /// The button does nothing.
+    case disabled
     case launchpad
     indirect case gesture(GestureBindings)
 
@@ -25,6 +49,16 @@ enum RemapAction: Codable, Equatable, Sendable {
         case .passthrough: return "None"
         case .keystroke(_, _, let name), .mouseButton(_, let name), .mediaKey(_, let name): return name
         case .doubleClick: return "Double Click"
+        case .hyperShift: return "HyperShift"
+        case .cycleProfile(let up): return up ? "Cycle Up Profile" : "Cycle Down Profile"
+        case .turboClick(_, let ms, let name): return "Turbo \(name) (\(Self.perSecond(ms))/s)"
+        case .turboKey(_, _, let name, let ms): return "Turbo \(name) (\(Self.perSecond(ms))/s)"
+        case .dpiClutch(let dpi): return "DPI Clutch \(dpi)"
+        case .cycleScrollMode: return "Cycle Scroll Mode"
+        case .scroll(let direction, let repeating):
+            return (repeating && direction.isVertical ? "Repeat " : "") + direction.label
+        case .dpiStage(let up): return up ? "DPI Stage Up" : "DPI Stage Down"
+        case .disabled: return "Disabled"
         case .launchpad: return LaunchpadApp.label
         case .gesture: return "Gesture"
         }
@@ -33,6 +67,31 @@ enum RemapAction: Codable, Equatable, Sendable {
     var isGesture: Bool {
         if case .gesture = self { return true }
         return false
+    }
+
+    /// Whether MacRazer itself can fire it from the event tap, so it can go in a gesture's
+    /// slot. HyperShift is a modifier, and the rest are done by the mouse alone.
+    var firesInApp: Bool {
+        switch self {
+        case .passthrough, .keystroke, .mouseButton, .doubleClick, .mediaKey, .launchpad: return true
+        default: return false
+        }
+    }
+
+    /// The turbo rates the remap menu offers, as presses per second.
+    static let turboRates = [5, 10, 20]
+    /// The DPI values the remap menu offers for the clutch.
+    static let clutchDPIs = [400, 800, 1200, 1600]
+
+    static func intervalMs(perSecond rate: Int) -> Int { 1000 / rate }
+    static func perSecond(_ intervalMs: Int) -> Int { intervalMs > 0 ? 1000 / intervalMs : 0 }
+
+    /// The actions 0.9.0 and earlier know (`RemapStorage`).
+    var isLegacy: Bool {
+        switch self {
+        case .passthrough, .keystroke, .mouseButton, .doubleClick, .mediaKey: return true
+        default: return false
+        }
     }
 }
 
@@ -118,6 +177,68 @@ enum GestureSlot: CaseIterable, Sendable {
     }
 }
 
+/// Remap tables as stored. 0.9.0 and earlier decode a whole `[Int: RemapAction]` or nothing,
+/// so one action they don't know would cost every remap, and in a profile every profile. The
+/// actions they know stay where they always were; the rest go in a table of their own
+/// (`Extended`), which an older build never reads and which is decoded entry by entry, so a
+/// later action can't take the others down either.
+enum RemapStorage {
+    static func split(_ table: [Int: RemapAction]) -> (legacy: [Int: RemapAction], extended: [Int: RemapAction]) {
+        let old = table.filter { isLegacy(button: $0.key, action: $0.value) }
+        return (old, table.filter { !isLegacy(button: $0.key, action: $0.value) })
+    }
+
+    /// An entry 0.9.0 can show: an action it knows, on a button it lists. It knows the DPI
+    /// button (-1) and real button numbers, not the hardware controls (`HardwareButton`) or
+    /// the HyperShift layer, which it would list as stray "Button" rows.
+    private static func isLegacy(button: Int, action: RemapAction) -> Bool {
+        action.isLegacy && button >= -1 && !ButtonRemapper.isHyperShiftKey(button)
+    }
+
+    /// The two tables as one. Where both have a button, the older build's edit is the newer.
+    static func merge(legacy: [Int: RemapAction], extended: [Int: RemapAction]) -> [Int: RemapAction] {
+        extended.merging(legacy) { _, legacy in legacy }
+    }
+
+    /// The table of newer actions, skipping any entry this build can't read.
+    struct Extended: Codable, Equatable {
+        var table: [Int: RemapAction]
+
+        init(_ table: [Int: RemapAction]) { self.table = table }
+
+        private struct Key: CodingKey {
+            var stringValue: String
+            var intValue: Int? { Int(stringValue) }
+            init(stringValue: String) { self.stringValue = stringValue }
+            init?(intValue: Int) { stringValue = String(intValue) }
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: Key.self)
+            var table: [Int: RemapAction] = [:]
+            for key in container.allKeys {
+                guard let button = key.intValue,
+                      let action = try? container.decode(RemapAction.self, forKey: key) else { continue }
+                table[button] = action
+            }
+            self.table = table
+        }
+
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: Key.self)
+            for (button, action) in table { try container.encode(action, forKey: Key(stringValue: String(button))) }
+        }
+    }
+}
+
+/// Which way a `.scroll` remap scrolls.
+enum ScrollRemapDirection: String, Codable, CaseIterable, Sendable {
+    case up, down, left, right
+
+    var label: String { "Scroll " + rawValue.capitalized }
+    var isVertical: Bool { self == .up || self == .down }
+}
+
 /// The system app that `RemapAction.launchpad` opens: Launchpad on macOS 15 and earlier, and
 /// Apps, which replaced it, on macOS 26 (there is no Launchpad.app there). It has no keyboard
 /// shortcut by default, so it is opened by bundle id rather than typed.
@@ -169,9 +290,9 @@ struct RemapPreset: Identifiable {
 /// Software button remapping via a CGEvent tap. Detects which extra mouse buttons fire and,
 /// for mapped ones, suppresses the original event and posts a key combo instead.
 ///
-/// This is the legal/portable approach (no Razer protocol). It only works while the app runs
-/// and needs Accessibility permission. Onboard remapping would require reverse-engineering
-/// Synapse, which Razer's EULA forbids — see the research notes.
+/// It only works while the app runs and needs Accessibility permission. A mouse whose
+/// function table is known (`OnboardButtons`) keeps its remaps itself; the tap then only
+/// handles what the mouse can't store (Double Click).
 final class ButtonRemapper: ObservableObject, @unchecked Sendable {
     @Published private(set) var accessibilityGranted = false
     @Published private(set) var eventTapAvailable = false
@@ -179,7 +300,9 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
     @Published private(set) var lastDetectedButton: Int?
     @Published private(set) var seenButtons: Set<Int> = []
     @Published private(set) var suggestedButtons: Set<Int> = []
-    @Published private(set) var mappings: [Int: RemapAction] = [:]
+    @Published private(set) var mappings: [Int: RemapAction] = [:] {
+        didSet { refreshOnboardPlan() }
+    }
     /// Other apps with an event tap that can swallow extra-button clicks (Synapse, Mac Mouse
     /// Fix, …). One that gets a click first leaves nothing for ours to see, so the page names
     /// them. Refreshed with the Accessibility check.
@@ -239,6 +362,8 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
     }
     var remappingPermissionsGranted: Bool { accessibilityGranted && eventTapAvailable }
     private var defaultsKey: String { "buttonMappings-\(activeKey)" }
+    /// Where the actions 0.9.0 doesn't know are kept (`RemapStorage`).
+    private var extendedDefaultsKey: String { "buttonMappingsExtended-\(activeKey)" }
     /// Mirrors `MouseController.connected` (wired in AppDelegate; main-thread, same as the
     /// tap callback). While the mouse is offline — powered off, asleep, dongle unplugged —
     /// its mappings must not fire: the tap can't tell which device sent a click, so they'd
@@ -265,8 +390,11 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         activeKey = k
         if deviceID != nil || k == "none" { activeDeviceID = deviceID }
         seenButtons = [] // detected buttons are per-device
+        hyperShiftHeld = false
+        hyperShiftTrigger = nil
         sideButtonDetected = false
-        suggestedButtons = isBasiliskV3XHyperSpeed ? [3, 4] : []
+        // Side buttons that are plain Back/Forward clicks, listed before the first press.
+        suggestedButtons = isBasiliskV3XHyperSpeed || hasHardwareButtonLayout ? [3, 4] : []
         gestureHold = nil
         loadMappings()
         loadDpiSoftwareAction()
@@ -348,6 +476,8 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
             // No tap is coming back to see these presses' releases.
             bridgeKeyIsDown = false
             swallowedPresses = []
+            hyperShiftHeld = false
+            hyperShiftTrigger = nil
         }
         refreshCompetingTaps()
     }
@@ -407,7 +537,7 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
     /// to a single-button edit from the remap UI, which goes through `setAction`).
     func setMappings(_ new: [Int: RemapAction]) {
         gestureHold = nil
-        mappings = new
+        mappings = withoutUnremappable(new)
         seenButtons.formUnion(new.keys)
         saveMappings()
         installTapIfNeeded()
@@ -417,7 +547,7 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
     /// when it isn't a gesture yet. One that already is keeps its choices, as choosing it
     /// again is how the editor is reopened.
     func makeGesture(_ button: Int) {
-        guard mappings[button]?.isGesture != true else { return }
+        guard canBeGesture(button), mappings[button]?.isGesture != true else { return }
         setAction(.gesture(.defaults(for: button)), for: button)
     }
 
@@ -427,15 +557,181 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         return bindings
     }
 
+    /// Whether a button can be a gesture: the tap must see its presses and drags. So a real
+    /// extra button (the tap never sees left and right clicks, the DPI button or a hardware
+    /// control), one MacRazer sees on a mouse that keeps its remaps (`appSees`), and on the
+    /// standard layer only: HyperShift mappings are for single actions.
+    func canBeGesture(_ button: Int) -> Bool {
+        button >= 2 && !Self.isHyperShiftKey(button) && appSees(button)
+    }
+
     /// Sets one of a gesture button's actions. Nothing changes for a button that isn't a
-    /// gesture, or for a gesture as the action: one nested in another would never fire.
+    /// gesture, for a gesture as the action (one nested in another would never fire), or for
+    /// one the tap can't fire (`firesInApp`).
     func setGestureAction(_ action: RemapAction, for slot: GestureSlot, of button: Int) {
-        guard var bindings = gestureBindings(for: button), !action.isGesture else { return }
+        guard var bindings = gestureBindings(for: button), !action.isGesture, action.firesInApp else { return }
         bindings[slot] = action
         setAction(.gesture(bindings), for: button)
     }
 
-    func actionLabel(for button: Int) -> String { mappings[button]?.label ?? "None" }
+    // MARK: Onboard (remaps saved in the mouse)
+
+    /// Where each control of the connected mouse has its remap (`OnboardButtons.plan`),
+    /// empty for a mouse without a known function table.
+    @Published private(set) var onboardPlan: [OnboardButtons.Entry] = []
+
+    /// The id the active mouse's remaps are saved under (`setActiveDevice`), nil with none.
+    var activeDeviceKey: String? { activeKey == "none" ? nil : activeKey }
+
+    /// The active mouse's function table, if it has a known one.
+    private var onboardLayout: [OnboardButtons.Control]? {
+        guard activeKey != "none", let pid = activeDeviceID else { return nil }
+        return OnboardButtons.layout(pid: pid)
+    }
+
+    /// Whether the connected mouse keeps its remaps itself.
+    var mappingsLiveInMouse: Bool { onboardLayout != nil }
+    /// The active mouse's remappable controls, for the remap window.
+    var onboardControls: Set<Int> { Set(onboardLayout?.map(\.button) ?? []) }
+    /// Whether a control is HyperShift from the factory (the side trigger,
+    /// `OnboardButtons.isHyperShiftOnFactory`).
+    func hyperShiftIsDefault(_ button: Int) -> Bool {
+        onboardLayout?.first { $0.button == button }.map(OnboardButtons.isHyperShiftOnFactory) ?? false
+    }
+
+    /// The highest DPI the active mouse takes, for the custom DPI Clutch.
+    var activeMaxDPI: Int { activeDeviceID.map(RazerDevices.maxDPI(pid:)) ?? 26000 }
+
+    /// Whether an action is what a control already does from the factory, so its menu
+    /// needn't offer it (HyperShift on the side trigger, Cycle Scroll Mode on Scroll Mode).
+    func isDefault(_ action: RemapAction, for button: Int) -> Bool {
+        guard let control = onboardLayout?.first(where: { $0.button == button }) else { return false }
+        return OnboardButtons.isFactory(action, on: control)
+    }
+
+    /// Whether a control is the HyperShift clutch: set to HyperShift, or left on a factory
+    /// HyperShift.
+    func isHyperShiftClutch(_ button: Int) -> Bool {
+        if let action = mappings[button], action != .passthrough { return action == .hyperShift }
+        return hyperShiftIsDefault(button)
+    }
+    /// Controls whose remap is saved in the mouse: what they send is already the remapped
+    /// action, so the tap lets it through untouched.
+    private var savedInMouse: Set<Int> = []
+
+    /// Whether any remap needs the event tap, and so the Accessibility permission.
+    var needsEventTap: Bool {
+        !mappingsLiveInMouse || onboardPlan.contains { $0.placement == .app }
+    }
+
+    /// Whether MacRazer sees this control's presses, so it can be given an action only
+    /// MacRazer can do (Double Click, HyperShift, a HyperShift mapping). Every button of a
+    /// mouse without a function table; on one with, only those that are a mouse button while
+    /// on their factory function (`OnboardButtons.appSees`).
+    func appSees(_ button: Int) -> Bool {
+        guard let control = onboardLayout?.first(where: { $0.button == button }) else { return true }
+        return OnboardButtons.appSees(control)
+    }
+
+    /// A remap that can't fire: only MacRazer can do it, but it never sees the control.
+    func remapCantFire(_ button: Int) -> Bool {
+        onboardPlan.contains { $0.control.button == button && $0.placement == .app } && !appSees(button)
+    }
+
+    /// The order the remap window lists the active mouse's controls in, empty for none.
+    var activeRowOrder: [Int] { onboardLayout == nil ? [] : activeDeviceID.flatMap(OnboardButtons.rowOrder(pid:)) ?? [] }
+
+    private func refreshOnboardPlan() {
+        let plan = activeDeviceID.map { OnboardButtons.plan(pid: $0, mappings: activeKey == "none" ? [:] : mappings) } ?? []
+        if plan != onboardPlan { onboardPlan = plan }
+        savedInMouse = Set(plan.compactMap { entry in
+            if case .mouse = entry.placement { return entry.control.button }
+            return nil
+        })
+    }
+
+    // MARK: HyperShift
+
+    /// HyperShift mappings live in `mappings` too, under the button's id plus this offset, so
+    /// they are saved, and captured by profiles, with everything else. Button ids run from
+    /// -18 (`HardwareButton`) to a few dozen (CGEvent numbers), far from it either way.
+    static let hyperShiftOffset = 100_000
+    static func hyperShiftKey(_ button: Int) -> Int { button + hyperShiftOffset }
+    static func isHyperShiftKey(_ key: Int) -> Bool { key >= hyperShiftOffset / 2 }
+
+    /// A button mapped to `.hyperShift` is held down. Main thread.
+    @Published private(set) var hyperShiftHeld = false
+    /// The button whose press turned `hyperShiftHeld` on: only its release turns it off,
+    /// whatever the button is mapped to by then.
+    private var hyperShiftTrigger: Int?
+    /// Whether any button is the HyperShift key, so the remap window offers the second layer.
+    /// A mouse with an onboard HyperShift layer (`OnboardButtons.shiftedPlan`) always has
+    /// one: its side trigger.
+    var hasHyperShiftKey: Bool { mappingsLiveInMouse || mappings.values.contains(.hyperShift) }
+
+    /// What a button does right now: its HyperShift mapping while HyperShift is held (when
+    /// it has one), otherwise its normal one. Nil means its own default behaviour.
+    func activeAction(for button: Int) -> RemapAction? {
+        if hyperShiftHeld, mappings[button] != .hyperShift,
+           let shifted = mappings[Self.hyperShiftKey(button)], shifted != .passthrough {
+            return shifted
+        }
+        guard let action = mappings[button], action != .passthrough else { return nil }
+        return action
+    }
+
+    /// What a mapping slot does: its remap, or what the button does without one
+    /// (`defaultLabel`).
+    func actionLabel(for button: Int) -> String {
+        guard let action = mappings[button], action != .passthrough else { return defaultLabel(for: button) }
+        return action.label
+    }
+
+    /// What a slot does with no remap. A mouse that keeps its remaps runs the control's
+    /// factory function on both layers (`OnboardButtons.shiftedPlan`); with the event tap, a
+    /// HyperShift slot falls back to the button's standard mapping.
+    func defaultLabel(for button: Int) -> String {
+        if Self.isHyperShiftKey(button) {
+            let standard = button - Self.hyperShiftOffset
+            return mappingsLiveInMouse ? defaultLabel(for: standard) : actionLabel(for: standard)
+        }
+        if let control = onboardLayout?.first(where: { $0.button == button }) { return OnboardButtons.factoryLabel(control) }
+        switch button {
+        case -1: return "DPI Cycle"
+        case 2: return "Middle Click"
+        case 3: return "Back"
+        case 4: return "Forward"
+        default: return "Default"
+        }
+    }
+
+    /// Whether a slot does something other than its default: a remap that isn't what the
+    /// control does from the factory anyway (Left Index set to Cycle Up Profile isn't).
+    func isRemapped(_ button: Int) -> Bool {
+        guard let action = mappings[button], action != .passthrough else { return false }
+        let control = Self.isHyperShiftKey(button) ? button - Self.hyperShiftOffset : button
+        if let factory = onboardLayout?.first(where: { $0.button == control })?.factory,
+           OnboardButtons.nativeBlock(for: action) == factory { return false }
+        return true
+    }
+
+    /// Whether the active mouse has a known function table (`OnboardButtons.layout`).
+    private var hasHardwareButtonLayout: Bool { onboardLayout != nil }
+
+    /// `label(for:)`, with the active mouse's own names for its side buttons where they're known.
+    func displayLabel(for button: Int) -> String {
+        if Self.isHyperShiftKey(button) { return "HyperShift + " + displayLabel(for: button - Self.hyperShiftOffset) }
+        if hasHardwareButtonLayout {
+            switch button {
+            case 1: return "Right Click"
+            case 2: return "Scroll Click"
+            case 3: return "Side Back"
+            case 4: return "Side Middle"
+            default: break
+            }
+        }
+        return Self.label(for: button)
+    }
 
     /// A click of `button` itself. A gesture's click re-posts it, so a press without a swipe
     /// still does what the button did before: the wheel click still opens a link in a new
@@ -455,6 +751,7 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
 
     /// Friendly, compact label for a raw CGEvent button number.
     static func label(for button: Int) -> String {
+        if let hardware = HardwareButton(rawValue: button) { return hardware.label }
         switch button {
         case -1: return "DPI Cycle"
         case 2: return "Wheel Click"
@@ -464,12 +761,16 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         }
     }
 
-    /// Mock state for the `render-remap` preview command. `gesture` adds a gesture on button
-    /// 6 (5), for `render-remap gesture`; the other previews and screenshots keep two remaps.
-    func loadPreviewState(gesture: Bool = false) {
+    /// Mock state for the `render-remap` preview command; `pid` previews that mouse's own list.
+    /// `gesture` adds a gesture on button 6 (5), for `render-remap gesture`.
+    func loadPreviewState(pid: Int? = nil, gesture: Bool = false) {
         accessibilityGranted = true
         eventTapAvailable = true
-        seenButtons = [2, 3, 4, 5]
+        if let pid {
+            activeKey = "preview"
+            activeDeviceID = pid
+        }
+        seenButtons = pid == nil ? [2, 3, 4, 5] : []
         mappings = [3: .keystroke(keyCode: 8, modifiers: CGEventFlags.maskCommand.rawValue, name: "Copy  ⌘C"),
                     4: .keystroke(keyCode: 9, modifiers: CGEventFlags.maskCommand.rawValue, name: "Paste  ⌘V")]
         if gesture { mappings[5] = .gesture(.defaults(for: 5)) }
@@ -695,6 +996,12 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         // never see a press without its release, which leaves the button held down there.
         if type == .otherMouseUp {
             guard swallowedPresses.remove(button) != nil else { return Unmanaged.passUnretained(event) }
+            // The HyperShift key's own release lets go of the layer. Others pressed while it
+            // was held are swallowed even if it was let go first, as their press was.
+            if hyperShiftTrigger == button {
+                hyperShiftHeld = false
+                hyperShiftTrigger = nil
+            }
             endGesture(trigger: button)
             return nil
         }
@@ -703,12 +1010,25 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         gestureHold = nil
         swallowedPresses.remove(button)
 
-        if let action = mappings[button], action != .passthrough {
+        // Saved in the mouse: what arrives is already the remapped action (or the button's
+        // own job). Remapping it again here would act twice. Only presses get here: a
+        // release went the way its press did, above.
+        if savedInMouse.contains(button) {
+            if type == .otherMouseDown, lastDetectedButton != button || !seenButtons.contains(button) {
+                lastDetectedButton = button
+                seenButtons.insert(button)
+            }
+            return Unmanaged.passUnretained(event)
+        }
+
+        if let action = activeAction(for: button) {
             guard remappingPaused else {
-                if case .gesture(let bindings) = action {
-                    beginGesture(bindings, trigger: button)
-                } else {
-                    apply(action)
+                switch action {
+                case .hyperShift:
+                    hyperShiftHeld = true
+                    hyperShiftTrigger = button
+                case .gesture(let bindings): beginGesture(bindings, trigger: button)
+                default: apply(action)
                 }
                 swallowedPresses.insert(button)
                 return nil // suppress the original button (its release follows, above)
@@ -790,6 +1110,10 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         case .mouseButton(let b, _): postMouseClick(b)
         case .doubleClick: postDoubleClick()
         case .mediaKey(let code, _): postMediaKey(code)
+        case .hyperShift: break // a modifier: `hyperShiftHeld` is set where its presses arrive
+        case .cycleProfile, .turboClick, .turboKey, .dpiClutch, .cycleScrollMode, .scroll, .dpiStage:
+            break // the mouse does these itself
+        case .disabled: break // the press is swallowed and nothing is sent
         case .launchpad: LaunchpadApp.open()
         }
     }
@@ -1043,8 +1367,14 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
         // a disconnect would otherwise be saved under the meaningless "none" key and
         // silently dropped on reconnect.
         guard activeKey != "none" else { return }
-        if let data = try? JSONEncoder().encode(mappings) {
+        let (legacy, extended) = RemapStorage.split(mappings)
+        if let data = try? JSONEncoder().encode(legacy) {
             defaults.set(data, forKey: defaultsKey)
+        }
+        if extended.isEmpty {
+            defaults.removeObject(forKey: extendedDefaultsKey)
+        } else if let data = try? JSONEncoder().encode(RemapStorage.Extended(extended)) {
+            defaults.set(data, forKey: extendedDefaultsKey)
         }
     }
 
@@ -1062,9 +1392,27 @@ final class ButtonRemapper: ObservableObject, @unchecked Sendable {
             defaults.removeObject(forKey: defaultsKey)
             return
         }
-        guard let data = defaults.data(forKey: defaultsKey),
-              let decoded = try? JSONDecoder().decode([Int: RemapAction].self, from: data) else { return }
-        mappings = decoded
-        seenButtons.formUnion(decoded.keys)
+        let legacy = defaults.data(forKey: defaultsKey)
+            .flatMap { try? JSONDecoder().decode([Int: RemapAction].self, from: $0) } ?? [:]
+        let extended = defaults.data(forKey: extendedDefaultsKey)
+            .flatMap { try? JSONDecoder().decode(RemapStorage.Extended.self, from: $0) }?.table ?? [:]
+        let decoded = RemapStorage.merge(legacy: legacy, extended: extended)
+        guard !decoded.isEmpty else { return }
+        let kept = withoutUnremappable(decoded)
+        mappings = kept
+        seenButtons.formUnion(kept.keys)
+        if kept != decoded { saveMappings() }
+    }
+
+    /// `mappings` minus remaps the active mouse can't take: on a mouse that keeps its remaps,
+    /// its HyperShift layer lives in the mouse, so a HyperShift action has to be one the mouse
+    /// can do. A button set to HyperShift is a clutch the mouse keeps itself, on the standard
+    /// layer only.
+    private func withoutUnremappable(_ table: [Int: RemapAction]) -> [Int: RemapAction] {
+        guard onboardLayout != nil else { return table }
+        return table.filter { key, action in
+            guard Self.isHyperShiftKey(key) else { return true }
+            return action == .passthrough || (action != .hyperShift && OnboardButtons.nativeBlock(for: action) != nil)
+        }
     }
 }

@@ -107,7 +107,7 @@ final class RazerAccessoriesTests: XCTestCase {
         for kb in RazerAccessories.known where kb.kind == .keyboard {
             XCTAssertEqual(kb.effectLed, kb.pid == 0x02CD ? Razer.zeroLed : Razer.backlightLed, kb.name)
             XCTAssertEqual(kb.brightnessLed, Razer.backlightLed, kb.name)
-            XCTAssertEqual(kb.effects, LightingEffect.allCases, kb.name)
+            XCTAssertEqual(kb.effects, LightingEffect.classic, kb.name)
         }
     }
 

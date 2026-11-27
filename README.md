@@ -118,6 +118,7 @@ says so.
 | Razer Cobra HyperSpeed (wired + wireless) | Everything, continuously — the development mouse | maintainer |
 | Razer Atheris | Battery, DPI, polling | maintainer |
 | Razer Basilisk V3 X HyperSpeed | Battery, DPI, DPI stages, polling, lighting, brightness | [@joelday](https://github.com/joelday) |
+| Razer Basilisk V4 Pro (wired, wireless + Bluetooth) | Battery, DPI, DPI stages, lighting per zone, brightness, sleep timer, low-battery level, wheel mode, Smart-Reel and its sensitivity, scroll acceleration, onboard profiles and button remaps. Over Bluetooth everything but polling and the wheel settings. Polling up to 8000 Hz over USB | [@fn-milans](https://github.com/fn-milans), by_hlz, Maude and anonymous reports |
 | Razer Basilisk Mobile (Wireless) | Battery, DPI, DPI stages, polling, static color, brightness | [@oss3](https://github.com/oss3) |
 | Razer Viper Ultimate (Wireless) | Battery, DPI, polling, brightness | [@raphaelchenouard](https://github.com/raphaelchenouard) |
 | Razer Naga Pro (Wireless) | Battery, DPI, DPI stages, polling, lighting, brightness | [@sidneylopes](https://github.com/sidneylopes) |
@@ -158,10 +159,9 @@ says so.
 | Razer DeathAdder V2 Pro (Wired) | Battery, DPI, DPI stages, polling, lighting, brightness | anonymous reports |
 | Razer Viper Ultimate (Wired) | Battery, DPI, polling, lighting | anonymous report |
 | Razer Taipan | DPI, polling; lighting not working yet | anonymous report |
-| Razer Basilisk V4 HyperSpeed (wired + wireless) | Battery, DPI, DPI stages; polling confirmed on the cable, not yet over the dongle | anonymous reports |
+| Razer Basilisk V4 HyperSpeed (wired + wireless) | Battery, DPI, DPI stages, thumb-button remaps saved in the mouse over the dongle. Polling confirmed on the cable. Lighting and brightness work over the dongle but wait on a test report to confirm, as do the dongle's polling and the cable's lighting | [@k4ton](https://github.com/k4ton) and anonymous reports |
 | Razer Viper V4 Pro (wired + wireless) | Battery, DPI, DPI stages; polling up to 8000 Hz on the cable; over the dongle the rate doesn't change yet, so the picker is hidden there | Robotxm, Kartas and an anonymous report |
 | Razer Viper 8KHz | DPI, DPI stages, polling up to 8000 Hz, lighting, brightness (wired only) | anonymous reports |
-| Razer Basilisk V4 Pro (wired + wireless) | Battery, DPI, DPI stages, polling up to 8000 Hz, lighting, brightness | by_hlz, Maude and anonymous reports |
 | Razer Mouse Dock Pro (with a Naga V3 Pro or Basilisk V4 HyperSpeed) | Battery, DPI, polling up to 8000 Hz; lighting and brightness with a Naga V3 Pro (the dock lights only what the mouse has) | maesta2, Kartas and an anonymous report |
 | Razer Mouse Dock V2 Pro (with a Basilisk V4 Pro) | Battery, DPI, DPI stages, polling up to 8000 Hz, lighting, brightness | cparedes and an anonymous report |
 | Razer HyperFlux V2 (with the mouse on it) | Battery, DPI, DPI stages, polling; lighting not confirmed yet | anonymous report |
@@ -290,8 +290,14 @@ watching every HID interface the mouse exposes while it was pressed.
 To make it remappable, reassign it from Hypershift to a normal key or mouse button in
 Razer Synapse (Windows only — Razer dropped macOS support). The assignment is stored in the
 mouse's onboard memory, so it persists on the Mac afterwards and MacRazer will then see the
-button like any other. MacRazer deliberately does not reprogram onboard assignments itself;
-that would mean reverse-engineering Synapse, which Razer's EULA forbids.
+button like any other.
+
+The exception is a mouse whose button table MacRazer knows, today the **Basilisk V4 Pro** and
+the **Basilisk V4 HyperSpeed** over its dongle.
+There MacRazer writes each remap into the mouse's onboard memory itself, the way Synapse
+does, and the remaps keep working with MacRazer closed, on any link and on other computers.
+The side trigger is the HyperShift key until you remap it (any other button can take that
+job), and the HyperShift layer is saved in the mouse too. The table was learned from the mouse's own replies, not from Synapse.
 
 ### Known limitation: two identical mice without a hardware serial
 
