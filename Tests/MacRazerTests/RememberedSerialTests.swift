@@ -133,11 +133,24 @@ final class RememberedSerialTests: XCTestCase {
         XCTAssertEqual(DeviceIdentity.classify(.success(reply("PM2219H12345678"))), .serial("PM2219H12345678"))
     }
 
-    func testBlanksZerosAndRefusalsMeanNoSerial() {
+    func testBlanksAndZerosMeanNoSerial() {
         XCTAssertEqual(DeviceIdentity.classify(.success(reply(""))), .absent)
         XCTAssertEqual(DeviceIdentity.classify(.success(reply("000000000000"))), .absent)
-        XCTAssertEqual(DeviceIdentity.classify(.failure(HIDDevice.HIDError.commandFailed)), .absent)
-        XCTAssertEqual(DeviceIdentity.classify(.failure(HIDDevice.HIDError.notSupported)), .absent)
+    }
+
+    func testARefusalIsItsOwnAnswer() {
+        XCTAssertEqual(DeviceIdentity.classify(.failure(HIDDevice.HIDError.commandFailed)), .refused)
+        XCTAssertEqual(DeviceIdentity.classify(.failure(HIDDevice.HIDError.notSupported)), .refused)
+    }
+
+    /// A mouse waking after a restart can refuse for a while: the first refusals stay on the
+    /// short retry, or its settings stay hidden for minutes. Only one that keeps refusing backs off.
+    func testRefusalsBackOffOnlyOnceTheyKeepComing() {
+        for count in 1..<DeviceIdentity.refusalsBeforeBackoff {
+            XCTAssertFalse(DeviceIdentity.refusalsBackOff(count), "refusal \(count)")
+        }
+        XCTAssertTrue(DeviceIdentity.refusalsBackOff(DeviceIdentity.refusalsBeforeBackoff))
+        XCTAssertTrue(DeviceIdentity.refusalsBackOff(DeviceIdentity.refusalsBeforeBackoff + 1))
     }
 
     /// An asleep mouse must stay on the short retry, or the restart bug comes back.

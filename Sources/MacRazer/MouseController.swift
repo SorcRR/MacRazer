@@ -682,6 +682,7 @@ final class MouseController: ObservableObject, @unchecked Sendable {
             // already know, so the cached serial is no longer evidence of which mouse it is.
             self.knownSerial = nil
             self.serialAbsent = nil
+            self.serialRefusals = nil
             // A cable plugged in may take a few seconds to answer (`scheduleCableRecheck`).
             self.cableRechecksLeft = Self.cableRechecks
             // Not mid-test: the steps must all talk to the device the test started on. Read
@@ -2034,9 +2035,12 @@ final class MouseController: ObservableObject, @unchecked Sendable {
     private var lastSerialAttempt: Date?
 
     /// io-queue only. A link whose mouse answered the serial read without a usable serial
-    /// (refused it, or sent blanks or zeros). Asked again only rarely
+    /// (sent blanks or zeros, or kept refusing it). Asked again only rarely
     /// (`DeviceIdentity.absentSerialRetryInterval`), since most such mice never have one.
     private var serialAbsent: (locationID: Int, pid: Int)?
+
+    /// io-queue only. How many times in a row a link refused the serial read.
+    private var serialRefusals: (locationID: Int, pid: Int, count: Int)?
 
     /// io-queue only. Reads the serial from the open link; remembers it when it answers.
     private func probeSerial(_ d: any RazerTransport) -> String? {
@@ -2044,11 +2048,18 @@ final class MouseController: ObservableObject, @unchecked Sendable {
         switch DeviceIdentity.classify(Result { try d.sendWithRetry(RazerCommands.getSerial()) }) {
         case .serial(let serial):
             serialAbsent = nil
+            serialRefusals = nil
             knownSerial = (d.locationID, d.productID, serial)
             rememberedSerials.remember(serial, pid: d.productID, locationID: d.locationID)
             return serial
         case .absent:
             serialAbsent = (d.locationID, d.productID)
+            return nil
+        case .refused:
+            let sameLink = serialRefusals.map { $0.locationID == d.locationID && $0.pid == d.productID } ?? false
+            let count = (sameLink ? serialRefusals?.count ?? 0 : 0) + 1
+            serialRefusals = (d.locationID, d.productID, count)
+            if DeviceIdentity.refusalsBackOff(count) { serialAbsent = (d.locationID, d.productID) }
             return nil
         case .noAnswer:
             return nil

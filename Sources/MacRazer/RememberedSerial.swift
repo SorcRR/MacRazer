@@ -47,6 +47,16 @@ enum DeviceIdentity {
     /// not never: a mouse waking up can refuse commands or answer with zeros (the battery
     /// read sees both), and that is the very case remembered serials exist for.
     static let absentSerialRetryInterval: TimeInterval = 300
+    /// How many refusals in a row a link gets on the short retry before it backs off to
+    /// `absentSerialRetryInterval`. A mouse waking after the Mac starts can refuse for a while,
+    /// and backing off on the first refusal would hide its settings for minutes. About a
+    /// minute of asking, then rarely: a mouse that keeps refusing likely has no serial command.
+    static let refusalsBeforeBackoff = 6
+
+    /// Whether this many refusals in a row move a link to the long retry.
+    static func refusalsBackOff(_ count: Int) -> Bool {
+        count >= refusalsBeforeBackoff
+    }
 
     /// The serial the mouse reported wins. Then the key this session uses on this same link (a
     /// failed read on a reconnect is not a new mouse). Then the serial last seen on this link,
@@ -60,8 +70,11 @@ enum DeviceIdentity {
     /// What a serial read found.
     enum SerialProbe: Equatable {
         case serial(String)
-        /// The mouse answered without a usable serial: refused it, or sent blanks or zeros.
+        /// The mouse answered with blanks or zeros: most such mice never have a serial.
         case absent
+        /// The mouse refused the read. A waking mouse does this too, so it counts as absent
+        /// only once it keeps refusing (`refusalsBeforeBackoff`).
+        case refused
         /// No answer (a timeout, a failed transfer): likely asleep, so worth asking again soon.
         case noAnswer
     }
@@ -71,7 +84,7 @@ enum DeviceIdentity {
         case .success(let reply):
             return RazerCommands.parseSerial(reply).map(SerialProbe.serial) ?? .absent
         case .failure(HIDDevice.HIDError.commandFailed), .failure(HIDDevice.HIDError.notSupported):
-            return .absent
+            return .refused
         case .failure:
             return .noAnswer
         }
