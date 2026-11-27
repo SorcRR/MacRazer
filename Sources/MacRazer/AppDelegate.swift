@@ -911,6 +911,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         HolidayPopover.didShow()
         // Re-reads each accessory's brightness: a keyboard's own keys change it behind the app's back.
         accessories.rescan()
+        // A permission granted since the last look, which macOS doesn't announce, takes effect
+        // now: the event tap, and the DPI button's driver mode. Opening the popover doesn't
+        // always make the app active (it may already be), so this doesn't wait for that.
+        remapper.refreshAccessibility(prompt: false)
     }
     func popoverDidClose(_ notification: Notification) {
         controller.setPopoverVisible(false)
@@ -1039,6 +1043,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
         monitor?.invalidate()
         updateTimer?.invalidate()
         updatePathMonitor?.cancel()
+        // Puts the DPI button back to normal mode, so it cycles DPI with MacRazer closed. Only
+        // acts when this run may have switched a mouse's DPI button to driver mode.
+        controller.restoreDpiDriverModeForQuit()
         controller.flushHistoryToDisk()
     }
 

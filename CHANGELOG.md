@@ -27,14 +27,95 @@ expect rough edges until 1.0.
   Mission Control up, Launchpad down, the next Space left and the previous Space right, so
   the Spaces move the way a trackpad drags the desktop; Click is what the button did before.
   Each of the five slots takes any normal action: a shortcut preset, Launchpad, a recorded
-  shortcut, a mouse click, a media key or None. A swipe fires once per hold, as soon
-  as the movement along the stronger axis reaches 50 points. The pointer isn't frozen while
-  you hold the button, and pointer drags are only watched while a button is a gesture.
+  shortcut, a mouse click, a media key or None. A swipe fires once per hold, as soon as the
+  movement along the stronger axis reaches 50 points, and Mission Control, the Spaces and,
+  where its trackpad gesture is on, App Exposé follow the pointer instead (see the entry
+  below). The pointer isn't frozen while you hold the button, and pointer drags are only
+  watched while a button is a gesture.
+- **Gestures that follow the pointer.** In a gesture, Mission Control, Space Left and Space
+  Right don't type a keyboard shortcut. They are driven as the trackpad's own dock swipe
+  events, so the Spaces transition or Mission Control follows the pointer while the button is
+  held, and the Dock finishes it or snaps it back when you let go. With the default slots the
+  desktop moves with the hand, as on a trackpad. After a 12 point dead zone the stronger axis
+  is locked. The direction follows your slots: moving towards the slot that holds Space Left
+  goes to the Space on the left. Moving back past the start goes into the opposite slot's
+  swipe only when that is the same swipe the other way, and otherwise stops at the start, so
+  a swipe up taken back down never turns into the Launchpad below it. Letting go sends the end
+  with the hand's velocity, so a flick finishes a short swipe, and cancels when the pointer
+  was coming back. The end is sent again after 0.2 s and 0.5 s in case the Dock misses it,
+  and a hold that ends early cancels an open swipe. App Exposé follows the pointer only while
+  its trackpad gesture is on (System Settings › Trackpad › More Gestures, off out of the box),
+  as the Dock ignores the swipe otherwise; then it is the ⌃↓ shortcut, fired once at 50
+  points. Launchpad, a custom shortcut, a media key or a mouse click in a slot fire once at
+  50 points too. macOS 27 ignores these event fields, so there each frame goes out as one
+  event with the swipe attached as an IOHIDEvent, through private IOKit and SkyLight calls
+  looked up at run time, and signed by the Natural scrolling setting so it still goes the way
+  of your slots. If one of those calls is missing, the four presets stay keyboard shortcuts
+  (⌃↑ ⌃↓ ⌃← ⌃→), which have to be on in System Settings › Keyboard › Keyboard Shortcuts ›
+  Mission Control. The event formats are undocumented macOS behaviour, learned from Mac Mouse
+  Fix, the macOS 27 sign from OpenLogi (both credited in NOTICE.md), and written
+  independently. Tried on a real mouse on macOS 26.3: the Spaces animation follows the pointer
+  for horizontal swipes and a vertical swipe was driven; App Exposé as a swipe did nothing
+  there, with its trackpad gesture off. On macOS 27.2.1, with a Cobra HyperSpeed over
+  Bluetooth, the Spaces and Mission Control swipes follow the pointer too. Not tried on macOS
+  27: App Exposé as a swipe with its trackpad gesture on, and Natural scrolling turned off.
+  The constants have not been tuned.
+- **A setting to turn off the swipes that follow the pointer.** The gesture editor has a
+  checkbox, "Mission Control and Spaces follow the pointer", on by default. Off, in a gesture
+  Mission Control, App Exposé and the two Space presets fire once as their keyboard shortcuts
+  when the pointer has moved 50 points, like any other action, for mouse buttons and for the
+  DPI button's long press alike. It is one setting for the app, not per mouse and not part of
+  a profile. Changing it during a hold ends the hold and cancels an open swipe. The checkbox
+  shows only where macOS can do the swipes that follow the pointer.
 - **Launchpad for any button.** It has no keyboard shortcut, so MacRazer opens the app itself.
   On macOS 26 that's Apps, which replaced Launchpad, and the menus call it Apps there. It's in
   every button's shortcut list, next to Mission Control and the Spaces, and it's the gesture's
   default for a swipe down.
 - **An App Exposé ⌃↓ shortcut preset.** It's in the shortcut list of every button.
+- **The Cobra HyperSpeed's DPI button over Bluetooth.** It can be remapped as the Basilisk V3
+  X HyperSpeed's can: a function the mouse can do itself (a mouse button, a key it can type)
+  is written to the button's entry (0x60) and works without MacRazer. Anything else, a gesture
+  included, works through the mouse's driver mode: while the button has such an action,
+  MacRazer switches the mouse to it, and the firmware stops acting on the button and reports
+  it as two private keys, one when a short press is let go and one held from about a second
+  into a long press until the release. A gesture is hold and swipe: hold the button until it
+  starts, then swipe, and Mission Control and the Spaces follow the pointer. A short press
+  runs the gesture's Click, a long press let go without a swipe its Hold, a sixth slot only
+  this button has. Both start as None, and DPI Cycle is a choice of its own there, which
+  MacRazer carries out by stepping the DPI stage, as the firmware no longer does in driver
+  mode. The entry keeps DPI Cycle, so with MacRazer closed the button cycles DPI as it came.
+  The Basilisk V3 X keeps its F20 bridge, unchanged, and driver mode isn't used there.
+- **Driver mode is set up, kept up and given back.** It needs Accessibility and Input
+  Monitoring, and without them the button keeps cycling DPI. Accessibility granted while
+  MacRazer runs is picked up without a relaunch; Input Monitoring took effect only after a
+  reopen on macOS 26.3, so the Buttons page says so and has a Reopen MacRazer button, which
+  quits the way Quit does. The first time MacRazer finds Input Monitoring is what the DPI
+  button is missing, it asks macOS for it, so that macOS lists MacRazer there with a switch;
+  the page's Input Monitoring button asks too. On macOS 27.2.1 with an ad-hoc signed build,
+  after a `tccutil reset`, MacRazer still did not appear in the list and had to be added with
+  the + button; the cause is not established. Driver mode doesn't survive the mouse sleeping or reconnecting, so
+  MacRazer sets it on each connection and after a wake, checks it about every 30 seconds, and
+  tries a failed change at most 3 times per connection. After waking, the Cobra accepts driver
+  mode and reads it back, then resets itself to normal mode as it finishes starting, which left
+  gestures dead and the button cycling DPI for up to 30 seconds. So MacRazer reads the mode
+  again 1 second and 3 seconds after setting it on a new connection or after a wake, and puts
+  it back if it went. While it is on, the mouse's own notifications that it is starting up or
+  going to sleep, or that its firmware changed the DPI, have it read at once, at most once a
+  second; a DPI change MacRazer made in the last 2 seconds doesn't count. Normal mode is
+  written back when the action is cleared and when MacRazer quits, while the mouse is
+  connected, and no longer to a mouse that just reconnected: the mode doesn't outlast a
+  disconnect. After a crash the button does nothing until the mouse sleeps or MacRazer runs
+  again and gives the mode back. On a real Cobra a trace captured the mode write taken and
+  read back, the link staying up, the two keys as described and normal mode restored on quit,
+  and the finished feature was then used on it. The fix for the wake came from a trace and
+  hasn't been tried on the mouse yet. The device-mode key and the key report were learned from
+  OpenRazer, OpenSnek, OpenSynapse and ergo-control (credited in NOTICE.md); no code from them
+  is used.
+- **A gesture trace for bug reports.** The hidden `gestureDebugLog` default writes a trace to
+  `~/Library/Logs/MacRazer/gesture.log`: gesture holds, pointer movement, how dock swipes are
+  sent on this Mac, F20 timing, the mouse's raw HID reports (never which key a keyboard typed,
+  only F13 to F20), Razer's Bluetooth characteristics, read-only probes once per connection,
+  device-mode changes and the DPI button's private keys.
 - **More mice from test reports.**
   - **Polling confirmed with the newer command** on the Viper 8KHz, both Basilisk V4 Pro
     links and the Mouse Dock Pro, which goes up to 8000 Hz.
@@ -69,6 +150,12 @@ expect rough edges until 1.0.
 - **Two columns by default on a smaller screen.** On a screen under 1000 points tall, the
   popover now starts in two columns, so it stays on the screen with a few sections open. Your
   own pick in Settings › Appearance still wins.
+- **The DPI button's write checks first.** On both mice, MacRazer reads the DPI button's entry
+  before every write and writes nothing if it can't confirm the entry is the DPI button or
+  doesn't recognise what is saved there, or while the mouse is on an onboard profile other
+  than 1, which the write doesn't reach. It reads the entry back after, and says plainly if
+  the mouse didn't take the change. The section is called DPI Button now, since DPI Cycle is
+  also a choice in it.
 
 ### Fixed
 - **A remapped button is never left held down in an app.** A remapped button's release was

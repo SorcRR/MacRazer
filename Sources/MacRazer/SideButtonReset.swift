@@ -13,7 +13,10 @@ import Foundation
 /// (`BLEProtocol.ButtonFunction`, #55).
 ///
 /// Only models with `RazerDeviceInfo.detectsOnboardSideButtonRemaps` are checked. A mouse
-/// whose remaps MacRazer writes to the table itself (#55) must not have them offered for reset.
+/// whose side-button remaps MacRazer writes to the table itself (#55) must not have them
+/// offered for reset. Only the side buttons' own entries (`ids`) are ever read or written
+/// here, so the DPI button's entry 0x60, which MacRazer may write on the same mouse
+/// (`supportsDpiButtonBinding`), is never taken for a remap to reset.
 enum SideButtonReset {
     /// The function table entries of the side buttons, which are also their HID button
     /// numbers (4 back, 5 forward).

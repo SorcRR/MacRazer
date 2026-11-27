@@ -44,9 +44,13 @@ Razer mice that use the same HID protocol family, but those are untested, so tre
 - **Button remapping** for the side Back/Forward buttons (software, via a CGEvent tap):
   keyboard shortcuts (presets or a custom recorder), mouse clicks, media keys, Launchpad, or a
   **gesture**: hold the button and move the mouse to run a different action for each
-  direction (see [Gesture mode](#gesture-mode)). Saved per device. If another mouse app (Mac
+  direction, with Mission Control and the Spaces following the pointer like a trackpad swipe
+  (see [Gesture mode](#gesture-mode)). Saved per device. If another mouse app (Mac
   Mouse Fix, SteerMouse, BetterMouse) takes the side buttons' clicks first, the page names it
   so you know which one to quit.
+- **DPI button remap** over Bluetooth on the Basilisk V3 X HyperSpeed and the Cobra
+  HyperSpeed. On the Cobra it takes any action, a gesture included, through the mouse's driver
+  mode (see [The DPI button](#the-dpi-button)).
 - **Reverse scrolling on Razer mice**, under Settings › General. Reverses wheel and tilt
   scrolling on Razer mice while trackpads and other mice keep their directions. Off by
   default and saved once for the app. Requires Accessibility and MacRazer running; it does
@@ -258,12 +262,56 @@ moving and the **Click** action runs.
 - **Each of the five slots** takes any ordinary action: a shortcut preset, Launchpad, a
   recorded shortcut, a mouse click, a media key, or None. A gesture can't be nested inside a
   gesture.
-- **A swipe fires once per hold**, as soon as the movement along the stronger axis reaches 50
-  points, not at release, so Mission Control opens while your hand is still moving. Going right
-  and then back again counts as no movement, so it is still a click.
-- **Mission Control, App Exposé and the Spaces** are sent as their keyboard shortcuts (⌃↑, ⌃↓,
-  ⌃←, ⌃→), so they have to be on in System Settings › Keyboard › Keyboard Shortcuts › Mission
-  Control. App Exposé ⌃↓ is also a new preset in every button's Shortcut menu.
+- **Other actions fire once per hold**, as soon as the movement along the stronger axis reaches
+  50 points, not at release. This is what Launchpad, a custom shortcut, a media key or a mouse
+  click in a slot does. Going right and then back again counts as no movement, so it is still
+  a click.
+- **Mission Control, Space Left and Space Right follow the pointer.** In a gesture, these
+  presets don't type a shortcut. MacRazer sends the same kind of swipe events a trackpad does,
+  so the Spaces transition or Mission Control moves with the pointer while you hold the
+  button, and finishes or snaps back when you release. With the default slots the desktop
+  moves with your hand, as on a trackpad. A flick finishes it even if it hasn't gone far;
+  moving back to where you started cancels it.
+  - Nothing happens until the pointer has moved 12 points. Then the stronger axis is locked for
+    the rest of the hold, as on a trackpad.
+  - Which way is forward follows your slots: moving towards the slot that holds Space Left goes
+    to the Space on the left, whichever slot that is. You can move back past the start into the
+    opposite slot's swipe only when that slot holds the same swipe the other way (Space Right
+    opposite Space Left, App Exposé opposite Mission Control). Otherwise the swipe stops at its
+    start: you can take it back, but not turn it into something else. With the defaults, a
+    swipe up taken back down stops at the start rather than opening Launchpad.
+  - **App Exposé** follows the pointer too, but only while its trackpad gesture is on (System
+    Settings › Trackpad › More Gestures › App Exposé, off out of the box): the Dock ignores the
+    swipe otherwise. While it is off, App Exposé in a slot is the ⌃↓ shortcut, fired once at 50
+    points. MacRazer looks at that setting each time you press the button.
+  - How far you have to move scales with the screen under the pointer: about one screen width
+    for a Space, and the screen's height for Mission Control. These numbers are untuned
+    starting points.
+  - **On macOS 27 and later** the event fields above are ignored. macOS reads the swipe from an
+    IOHIDEvent attached to the event instead, so MacRazer sends it that way there, through
+    private IOKit and SkyLight calls it looks up at run time. macOS 27 reads that swipe's sign
+    by the Natural scrolling setting, which MacRazer reads as each swipe begins, so the
+    direction still follows your slots. If one of those calls is missing, the presets go back
+    to sending their keyboard shortcuts (⌃↑, ⌃↓, ⌃←, ⌃→). They then fire once at 50 points
+    like any other action, and have to be on in System Settings › Keyboard › Keyboard
+    Shortcuts › Mission Control. App Exposé ⌃↓ is also a new preset in every button's Shortcut
+    menu.
+  - The event formats are undocumented macOS behaviour. They were learned from
+    [Mac Mouse Fix](https://github.com/noah-nuebling/mac-mouse-fix), the macOS 27 sign from
+    [OpenLogi](https://github.com/AprilNEA/OpenLogi) (see [NOTICE.md](NOTICE.md)), and written
+    independently here; no code from either is used.
+  - **Tried on real hardware** on macOS 26.3: the Spaces animation follows the pointer for
+    horizontal swipes, and a vertical swipe was driven. App Exposé as a swipe did nothing
+    there, with its trackpad gesture off, which is why it falls back to the shortcut. On macOS
+    27.2.1, with a Cobra HyperSpeed over Bluetooth, the Spaces and Mission Control swipes
+    follow the pointer too. Not yet tried on macOS 27: App Exposé as a swipe with its trackpad
+    gesture on, and Natural scrolling turned off.
+  - **Turning it off.** The gesture editor has a checkbox, "Mission Control and Spaces follow
+    the pointer", on by default and shown only where macOS can do these swipes. Off, in a
+    gesture Mission Control, App Exposé and the two Space presets fire once as their keyboard
+    shortcuts when the pointer has moved 50 points, like any other action, for mouse buttons
+    and for the DPI button's long press alike. It is one setting for the app, not per mouse and
+    not part of a profile. Changing it during a hold ends the hold and cancels an open swipe.
 - **Launchpad** has no keyboard shortcut, so MacRazer opens the app itself. On macOS 26 that is
   **Apps**, which replaced Launchpad, and the menus call it that. It's in every button's
   Shortcut menu, next to the system presets, not only in a gesture.
@@ -271,9 +319,130 @@ moving and the **Click** action runs.
   press, drag events and release are swallowed, so the app under the pointer doesn't see them.
 - **Only the extra buttons** (the ones macOS reports as "other" mouse buttons) can be gestures,
   not the left and right buttons. The Click action fires when the button comes back up, so a
-  gesture button can't be held to drag.
+  gesture button can't be held to drag. The Cobra HyperSpeed's DPI button can be a gesture too,
+  over Bluetooth (see [The DPI button](#the-dpi-button)).
 - Like every remap, it works while MacRazer is running and the mouse is connected, and needs
   Accessibility. MacRazer only watches pointer drags while at least one button is a gesture.
+
+### The DPI button
+
+Over Bluetooth, the DPI button of the **Basilisk V3 X HyperSpeed** and the **Cobra
+HyperSpeed** can be set to another action, in a section of Configure Buttons that appears only
+for those mice on Bluetooth. A function the mouse can do itself (DPI Cycle, a mouse button, a
+keyboard shortcut it can type) is written to the button's entry (`0x60`) in the mouse's
+function table, and keeps working without MacRazer. The two mice differ in what else they
+take and how MacRazer carries it out:
+
+- **Basilisk V3 X:** Double Click and the media keys, as before. The mouse types **F20** and
+  MacRazer turns it into the action, which needs Accessibility and Input Monitoring. Nothing
+  about it changes here.
+- **Cobra HyperSpeed:** also Launchpad, keys the mouse can't type, and **Gesture…**, through
+  the mouse's **driver mode**, described next. Its entry keeps DPI Cycle, so with MacRazer
+  closed the button cycles DPI as it came.
+
+#### Why the Cobra needs driver mode
+
+The Cobra HyperSpeed's DPI button is a tap/hold button: a short press cycles DPI, and a long
+press invokes a function only Synapse knows. So in normal mode whatever is in entry `0x60` only
+fires when a **short press is released**, and a hold can't be seen. The long press has its own
+entry, `0x80`, off from the factory.
+
+The mouse also supports Razer's **device mode** over Bluetooth (read `01 82 00 00`, set
+`01 02 00 00` with `03 00` for driver mode and `00 00` for normal). In driver mode the firmware
+stops acting on the DPI button and reports it as "private keys" in HID input report 4:
+
+- **Key `0xD2`** goes down when the firmware recognises a long press, about a second after the
+  press, and stays down until the button is released. The delay is the firmware's, and MacRazer
+  can't shorten it.
+- **Key `0x52`** arrives as a pulse of about 55 ms when a short press is released.
+
+#### What you get on the Cobra over Bluetooth
+
+- **Gesture: hold the button until the gesture starts (about a second), then swipe.** It is a
+  true hold that lasts until you release. Mission Control and the Spaces follow the pointer as
+  in [Gesture mode](#gesture-mode), and other actions fire once. A new DPI gesture has the same
+  swipes as any other: up Mission Control, down Launchpad, left the next Space, right the
+  previous Space.
+- **A short press** runs the gesture's **Click** slot, where **DPI Cycle** and **None** are
+  separate choices. With DPI Cycle, MacRazer cycles the DPI stage itself, because in driver
+  mode the firmware no longer does: it reads the stage table, moves to the next stage (the
+  first after the last) and writes it back. With None, what a new gesture starts with, a short
+  press does nothing. A swipe direction can hold DPI Cycle too.
+- **A long press released without a swipe** runs the gesture's **Hold** slot, once, when you
+  let go. It offers the same choices as Click and starts as None. If a swipe started, Hold
+  doesn't run, and neither does it when something else ends the hold first (a disconnect,
+  driver mode lost, a pause, another button). Only this button has Hold: any other button's
+  press without a swipe is its Click.
+- **Other actions** on the DPI button (a media key, Double Click, Launchpad, a key the mouse
+  can't type) fire on the short press. A long press does nothing for them.
+
+How driver mode is handled:
+
+- **When it is on.** Only while the Cobra is connected over Bluetooth, the DPI button has an
+  action MacRazer carries out, and Accessibility and Input Monitoring are both granted (without
+  them the button keeps cycling DPI in the firmware rather than doing nothing). The section
+  shows where it stands, and why when it couldn't be set.
+- **Accessibility applies at once; Input Monitoring needs a reopen.** MacRazer looks at the
+  permissions again when the popover or the Buttons page opens, and every 3 seconds while one
+  of the two is all that is missing. Input Monitoring turned on while MacRazer runs takes effect
+  only once it is reopened (seen on macOS 26.3), so the section says so and has a **Reopen
+  MacRazer** button, which quits the way Quit does (driver mode is given back first) and opens
+  the app again. The first time MacRazer finds Input Monitoring is what the DPI button is
+  missing, it asks macOS for it, so that macOS lists MacRazer there with a switch. On a Mac
+  with macOS 27.2.1 and an ad-hoc signed build, after a `tccutil reset`, MacRazer still did
+  not appear in the list and had to be added with the + button; the cause is not established.
+- **It doesn't last, and MacRazer keeps it up.** The mouse falls back to normal mode when it
+  sleeps, reconnects or is switched off and on. MacRazer sets it again on each new connection
+  and after each wake (reading first), reads it about every 30 seconds to put it back if it
+  fell out, and retries a failed change at most three times per connection.
+- **It is checked again as the mouse wakes.** Just after waking, the Cobra accepts driver mode
+  and reads it back, then resets itself to normal mode a few hundred milliseconds later as it
+  finishes starting up. Before this was known, gestures stopped working and the button cycled
+  DPI in the firmware until the next check, up to 30 seconds later. So after setting driver
+  mode on a new connection or after a wake, MacRazer reads it again 1 second and 3 seconds
+  later and puts it back if it went (and then checks 1 and 3 seconds after that, up to three
+  rounds). While driver mode is on, the mouse's own notifications that it is starting up or
+  going to sleep, or that its firmware changed the DPI, also make MacRazer read the mode at
+  once, at most once a second. A DPI change MacRazer made itself in the last 2 seconds (its DPI
+  cycle, a DPI picked in the app) doesn't count. These are single reads, not a timer, and stop
+  when the mouse disconnects or the action is cleared.
+- **It is given back.** Normal mode is written back when the DPI button's action is cleared
+  (DPI Cycle) and when MacRazer quits (waiting at most 3 seconds), while the mouse is
+  connected. When the mouse disconnects, driver mode goes with it, so nothing is written to it
+  when it comes back. If MacRazer crashes or is killed, the DPI button **does nothing** until
+  the mouse sleeps, reconnects or is switched off and on, or until MacRazer runs again, reads
+  the mode once and writes normal mode back.
+
+Both mice:
+
+- **Safety.** Before every write of the entry MacRazer reads it, and if it can't confirm that
+  the entry is the DPI button, or doesn't recognise what is saved there, it writes nothing.
+  After a write it reads the entry back and says so if it differs. The write goes to the
+  mouse's onboard profile 1, so MacRazer only writes while the mouse is on that profile and asks
+  you to switch to it otherwise. The device mode is the only other thing written, and only to
+  the Cobra.
+- **Not supported:** the USB cable and the 2.4 GHz dongle. There the firmware handles the DPI
+  button onboard.
+- **What has been tried on a real Cobra:** the entry write, with the read before and the read
+  back. A trace on a Cobra over Bluetooth captured the device mode write accepted and read back,
+  the link staying stable, the two keys behaving as described and normal mode restored on quit.
+  The finished feature was then used on that mouse: hold and swipe on the DPI button, the short
+  press doing Click, the software DPI cycle stepping one stage per press, and the periodic
+  check finding the mouse still in driver mode over a session of about an hour. A trace of the
+  mouse sleeping and waking then showed driver mode lost for up to 30 seconds after a wake.
+  Re-arming after sleep was fixed from that trace (see *It is checked again as the mouse
+  wakes* above), and the fix itself has not been tried on the mouse yet. Not yet tried: the
+  Hold slot.
+- **Gesture trace.** If the DPI button or a gesture misbehaves, run
+  `defaults write com.macrazer.menubar gestureDebugLog -bool true` and relaunch. MacRazer then
+  writes a trace to `~/Library/Logs/MacRazer/gesture.log`: gesture holds and pointer movement,
+  how dock swipes are sent on this Mac, F20 timing, the mouse's raw HID reports (never keyboard
+  keys other than F13 to F20), Razer's Bluetooth characteristics, read-only probes once per
+  connection, each read and write of the device mode and why (with the re-checks as the mouse
+  settles and the notifications that call for one), and the private keys. The trace itself only reads from the mouse; its HID part
+  needs Input Monitoring. Turn it off with `defaults delete com.macrazer.menubar gestureDebugLog`.
+- The device-mode key and the private-key report format were learned from other open-source
+  projects (credited in [NOTICE.md](NOTICE.md)); no code from them is used.
 
 ### Buttons MacRazer cannot see
 
@@ -308,7 +477,8 @@ macOS 14 or later, on Apple Silicon or Intel.
 
 **Connect over the 2.4 GHz dongle or a USB-C cable.** That's where Razer exposes its full
 control protocol. The **Cobra HyperSpeed and Basilisk V3 X HyperSpeed also work over
-Bluetooth**: battery, DPI stages, brightness and a static lighting colour. Polling rate, other
+Bluetooth**: battery, DPI stages, brightness, a static lighting colour and the DPI button
+remap. Polling rate, other
 lighting effects, custom DPI values and profiles still need the dongle or a cable. On the
 Basilisk V3 Pro 35K and Basilisk V4 HyperSpeed, only the battery is confirmed over Bluetooth so far. MacRazer asks for Bluetooth access the
 first time it finds the mouse there.
@@ -364,6 +534,9 @@ The screenshots in this README and on the website come from preview data, no mou
 
 - **Input Monitoring** is required to send and receive HID reports to the mouse. The app
   requests it on launch; grant it in System Settings > Privacy & Security > Input Monitoring.
+  It is also what lets MacRazer see the DPI button's private keys on the Cobra (see
+  [The DPI button](#the-dpi-button)); granted while MacRazer runs, it takes effect once
+  MacRazer is reopened.
 - **Accessibility** is required for button remapping and scroll reversal (the event tap). The remap screen
   has a button to open the right settings pane.
 

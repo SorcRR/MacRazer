@@ -202,4 +202,113 @@ final class BLEProtocolTests: XCTestCase {
         XCTAssertNil(BLEProtocol.request(for: RazerCommands.getChargingStatus(), stages: nil),
                      "unknown over BLE: the poll treats it as 'charging unknown'")
     }
+
+    func testAssemblerSaysWhichFramesItTook() {
+        var a = BLEProtocol.Assembler(id: 0x30)
+        XCTAssertFalse(a.add(data("01 00 00 00 00 00 00 03")), "the mouse's own frame")
+        XCTAssertTrue(a.add(data("30 01 00 00 00 00 00 02")))
+        XCTAssertTrue(a.add(data("61")))
+        XCTAssertFalse(a.add(data("05 05 02 03 84 03 84")), "after the reply is complete")
+    }
+
+    // MARK: Gesture trace
+
+    func testTraceProbesAreTheListedReadsInOrder() {
+        XCTAssertEqual(BLEProtocol.traceProbeKeys.map(\.bytes), [
+            [0x01, 0x82, 0x00, 0x00], [0x01, 0x80, 0x00, 0x00],
+            [0x08, 0x80, 0x00, 0x00], [0x08, 0x80, 0x01, 0x00], [0x08, 0x83, 0x01, 0x00],
+            [0x08, 0x84, 0x00, 0x60], [0x08, 0x84, 0x01, 0x60], [0x08, 0x84, 0x02, 0x60],
+            [0x08, 0x84, 0x03, 0x60], [0x08, 0x84, 0x04, 0x60], [0x08, 0x84, 0x05, 0x60],
+            [0x08, 0x84, 0x00, 0x80], [0x08, 0x84, 0x01, 0x80],
+            [0x03, 0x82, 0x00, 0x00], [0x0B, 0x81, 0x00, 0x00],
+        ])
+        for key in BLEProtocol.traceProbeKeys {
+            let request = BLEProtocol.traceReadRequest(key)
+            XCTAssertEqual(request?.payload, [], "\(key.bytes)")
+            XCTAssertEqual(request.map { BLEProtocol.frames(id: 0x30, request: $0).count }, 1, "a header and nothing else")
+        }
+    }
+
+    func testTraceReadRefusesAnyKeyWithoutTheReadBit() {
+        for key in [BLEProtocol.Key.deviceModeSet, .dpiButtonSet, .dpiStagesSet, .staticColor, .powerTimeoutSet,
+                    BLEProtocol.Key(0x01, 0x04, 0x00, 0x00)] {
+            XCTAssertNil(BLEProtocol.traceReadRequest(key), "\(key.bytes)")
+        }
+    }
+
+    func testDeviceModeRequestWritesOnlyNormalOrDriverMode() {
+        XCTAssertEqual(BLEProtocol.frames(id: 0x41, request: BLEProtocol.deviceModeRequest(.driver)),
+                       [data("41 02 00 00 01 02 00 00"), data("03 00")])
+        XCTAssertEqual(BLEProtocol.frames(id: 0x42, request: BLEProtocol.deviceModeRequest(.normal)),
+                       [data("42 02 00 00 01 02 00 00"), data("00 00")])
+        XCTAssertEqual((0...255).compactMap { BLEProtocol.DeviceMode(rawValue: UInt8($0)) }, [.normal, .driver])
+        XCTAssertEqual(BLEProtocol.Key.deviceModeGet.bytes, [0x01, 0x82, 0x00, 0x00])
+    }
+
+    /// The mode is read with `01 82 00 00` and no payload, and answers a little-endian u16:
+    /// `03 00` driver, `00 00` normal. Anything shorter is no answer.
+    func testDeviceModeIsReadAsALittleEndianU16() {
+        XCTAssertEqual(BLEProtocol.frames(id: 0x43, request: BLEProtocol.deviceModeReadRequest),
+                       [data("43 00 00 00 01 82 00 00")])
+        XCTAssertEqual(BLEProtocol.parseDeviceMode([0x03, 0x00]), 3)
+        XCTAssertEqual(BLEProtocol.parseDeviceMode([0x00, 0x00]), 0)
+        XCTAssertEqual(BLEProtocol.parseDeviceMode([0x03, 0x00, 0xFF]), 3, "past the value")
+        XCTAssertEqual(BLEProtocol.parseDeviceMode([0x00, 0x01]), 0x0100)
+        XCTAssertNil(BLEProtocol.parseDeviceMode([0x03]))
+        XCTAssertNil(BLEProtocol.parseDeviceMode([UInt8]()))
+        XCTAssertEqual(BLEProtocol.DeviceMode.driver.value, 3)
+        XCTAssertEqual(BLEProtocol.DeviceMode.normal.value, 0)
+    }
+
+    /// A short press in driver mode steps to the next stage, back to the first after the
+    /// last, as the button does in normal mode, and leaves the stages as they are. With one
+    /// stage there is nothing to step to.
+    func testTheNextStageWrapsAndKeepsTheStages() throws {
+        let stages = [400, 800, 1600, 3200, 6400]
+        XCTAssertEqual(BLEProtocol.DPIStageTable(active: 0, values: stages).nextStage(),
+                       BLEProtocol.DPIStageTable(active: 1, values: stages))
+        XCTAssertEqual(BLEProtocol.DPIStageTable(active: 3, values: stages).nextStage()?.active, 4)
+        XCTAssertEqual(BLEProtocol.DPIStageTable(active: 4, values: stages).nextStage()?.active, 0, "after the last, the first")
+        XCTAssertEqual(BLEProtocol.DPIStageTable(active: 0, values: [800, 800]).nextStage()?.active, 1,
+                       "by position, so two stages at the same DPI don't stop it")
+        XCTAssertNil(BLEProtocol.DPIStageTable(active: 0, values: [1600]).nextStage())
+        let next = try XCTUnwrap(BLEProtocol.DPIStageTable(active: 2, values: stages).nextStage())
+        XCTAssertEqual(next.encoded().first, 4, "the active stage's id, from 1")
+        XCTAssertEqual(try BLEProtocol.DPIStageTable(decoding: next.encoded()), next)
+    }
+
+    func testTraceAssemblerKeepsTheWholeReply() {
+        var a = BLEProtocol.TraceAssembler(id: 0x30)
+        XCTAssertFalse(a.add(data("01 00 00 00 00 00 00 03")))
+        XCTAssertTrue(a.add(data("30 02 00 00 00 00 00 02 00 00 00 00 00 00 00 00 00 00 00 00")))
+        XCTAssertFalse(a.isComplete)
+        XCTAssertTrue(a.add(data("03 00 ff")))
+        XCTAssertTrue(a.isSuccess)
+        XCTAssertEqual(a.payload, [0x03, 0x00, 0xFF], "past the declared length too")
+        XCTAssertEqual(a.header?.count, 20)
+        XCTAssertFalse(a.add(data("30 00 00 00 00 00 00 02")), "nothing after a success")
+    }
+
+    func testTraceAssemblerReadsA24BitLength() {
+        var a = BLEProtocol.TraceAssembler(id: 0x31)
+        a.add(data("31 2c 01 00 00 00 00 02"))
+        XCTAssertEqual(a.declaredLength, 300, "an Assembler would take 0x2c")
+        for _ in 0..<14 { a.add(Data(repeating: 0xAB, count: 20)) }
+        XCTAssertFalse(a.isComplete)
+        a.add(Data(repeating: 0xAB, count: 20))
+        XCTAssertTrue(a.isSuccess)
+        XCTAssertEqual(a.payload.count, 300)
+    }
+
+    func testTraceAssemblerLetsALaterSuccessReplaceARefusal() {
+        var a = BLEProtocol.TraceAssembler(id: 0x32)
+        a.add(data("32 00 00 00 00 00 00 03"))
+        XCTAssertTrue(a.isComplete)
+        XCTAssertFalse(a.isSuccess)
+        XCTAssertTrue(a.add(data("32 02 00 00 00 00 00 02")))
+        a.add(data("00 00"))
+        XCTAssertTrue(a.isSuccess)
+        XCTAssertEqual(a.replacedStatuses, [0x03])
+        XCTAssertEqual(a.payload, [0x00, 0x00])
+    }
 }

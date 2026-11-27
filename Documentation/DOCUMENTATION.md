@@ -160,6 +160,16 @@ on the Cobra HyperSpeed (Bluetooth PID `0x00DC`, vendor `0x068E`).
 - **Stage table.** `[activeID, count]` then per stage `[id, x_lo, x_hi, y_lo, y_hi, 0, 0]`,
  ids from 1, little-endian. Replies drop the last reserved byte. There is no direct "set
  DPI", so selecting a DPI rewrites the table with a new active stage, then reads it back.
+- **Device mode** (`BLEProtocol.DeviceMode`): read `01 82 00 00`, set `01 02 00 00` with the
+ little-endian u16 `03 00` (driver) or `00 00` (normal). In driver mode the firmware reports its
+ special buttons to the host as "private keys" instead of acting on them (§6.3.3). It is
+ volatile: the mouse is back in normal mode after it sleeps, reconnects or is switched off and
+ on, and just after a wake the Cobra took it, read it back and then dropped it as it finished
+ starting (§6.3.3). Only `DeviceMode` values can be built into the write
+ (`deviceModeRequest(_:)`), it is only sent to a mouse with `RazerDevices.dpiButtonPrivateKeys`,
+ and `BluetoothDevice.setDeviceMode(_:readFirst:)` reads first, writes once and reads back
+ (`DeviceModeError`), through an exchange that is sent once and never retried.
+ `DPIStageTable.nextStage()` is the stage after the active one, for the software DPI cycle.
 - `BLEProtocol` translates `RazerReport` requests and replies, so `MouseController` and the
  `RazerCommands` parsers are shared with USB. Commands without a BLE equivalent (polling
  rate, effects other than static) throw `notSupported`, and the popover hides them.
@@ -420,7 +430,9 @@ buttons are handled onboard and never reach macOS.
 
 - Actions: passthrough, **keystroke** (preset shortcuts or a **custom recorder** that
  captures any combo), **mouse** (middle/double click), **media** (play/next/prev/volume/mute),
- **Launchpad** (`RemapAction.launchpad`) and **gesture** (`RemapAction.gesture`, §6.3.2).
+ **Launchpad** (`RemapAction.launchpad`), **gesture** (`RemapAction.gesture`, §6.3.2) and
+ **DPI Cycle** (`RemapAction.dpiCycle`, only in the DPI button's gesture on a mouse with
+ private keys, §6.3.3, and inert anywhere else).
 - **Launchpad** has no default keyboard shortcut, so `LaunchpadApp.open()` opens the system
  app through `NSWorkspace` by bundle id: `com.apple.apps.launcher` (Apps, which replaced
  Launchpad on macOS 26, where there is no Launchpad.app), then `com.apple.launchpad.launcher`
@@ -436,10 +448,11 @@ buttons are handled onboard and never reach macOS.
  `handleDpiBridge`) follows the same rule, its key repeats too: a fresh press starts over, and
  the flag survives a reinstall that still asks for the keys (`tapReplaced`). A tap without
  them never sees the release, so there it is dropped.
-- **Tap mask** (`ButtonRemapper.eventMask(keyboard:gestures:)`, the wanted one in
- `wantedEventMask`): always `otherMouseDown/Up`; `otherMouseDragged` only while a mapped button
- is a gesture, since drags come at the mouse's polling rate and a tap that doesn't ask for them
- never sees them; key down/up only for the DPI button's F20 bridge. A change in what is wanted
+- **Tap mask** (`ButtonRemapper.eventMask(keyboard:gestures:privateKeyGesture:)`, the wanted one
+ in `wantedEventMask`): always `otherMouseDown/Up`; `otherMouseDragged` only while a mapped
+ button is a gesture, since drags come at the mouse's polling rate and a tap that doesn't ask
+ for them never sees them; key down/up only for the DPI button's F20 bridge; `mouseMoved` only
+ while the DPI button of a mouse with private keys is a gesture (§6.3.3), never with keys. A change in what is wanted
  reinstalls the tap (`installTapIfNeeded`). If macOS refuses the tap with keys, it falls back
  to the same mask without them (`keyboardEventsMask`), so gestures keep their drags.
 - Mappings persist to UserDefaults. Needs **Accessibility** permission (banner + Open
@@ -480,11 +493,13 @@ on other models and macOS versions still needs validation.
 Preview: `swift run MacRazer render-settings reversed /tmp/scrolling-settings.png`.
 The preview uses a fixed scratch defaults suite, removed before and after rendering.
 
-### 6.3.2 Gesture mode, `GestureRecognizer.swift` + `ButtonRemapper.swift`
+### 6.3.2 Gesture mode, `GestureRecognizer.swift` + `DockSwipe.swift` + `ButtonRemapper.swift`
 
 A remappable button can be set to **Gesture…** in `RemapView` (every button's menu,
 `RemapActionMenu`, has it). Held and moved, the button fires one action per direction;
-pressed and released without a swipe, it fires its Click action.
+pressed and released without a swipe, it fires its Click action. A slot that holds one of
+four system presets does not fire once: it drives a swipe that follows the pointer (the
+"Interactive swipes" bullet below). Every other action is the discrete swipe described here.
 
 - **Data model.** `RemapAction.gesture(GestureBindings)` is saved with the other actions, so a
  gesture needs no new storage key, and a profile carries it too. `GestureBindings` holds five
@@ -501,7 +516,7 @@ pressed and released without a swipe, it fires its Click action.
  applies the defaults to a button that isn't a gesture yet and keeps the choices of one that
  is, so choosing Gesture… again reopens the editor. `setGestureAction(_:for:of:)` edits one
  slot.
-- **The recogniser** (`GestureRecognizer`, a pure struct) sums the net movement since the
+- **The recogniser** (`GestureRecognizer`, a pure struct; the discrete swipe) sums the net movement since the
  hold began (`dx`, `dy`, CGEvent deltas with y growing downward). `move(dx:dy:)` returns a
  `GestureDirection` the first time the larger axis reaches `GestureRecognizer.threshold` (50
  points), and nil after that, so one swipe fires per hold, while the hand is still moving. An
@@ -513,7 +528,7 @@ pressed and released without a swipe, it fires its Click action.
  first in `handle` and returns at once when no hold exists; otherwise `handleGestureDrag`
  feeds the deltas to `moveGesture(dx:dy:trigger:)`, which fires the direction's action on the
  swipe. The release (`otherMouseUp` of a swallowed press) calls `endGesture(trigger:)`, which
- fires the click if no swipe fired. The press, the drags of the held button and the release
+ fires the click if no swipe fired (no direction fired and no dock swipe began). The press, the drags of the held button and the release
  are swallowed; drags of another button go through. The pointer itself is not frozen.
 - **What ends a hold without a click**: a new `otherMouseDown` of any button, pausing
  (`remappingPaused`), changing the button's mapping (`setAction`) or the whole table
@@ -521,25 +536,347 @@ pressed and released without a swipe, it fires its Click action.
  macOS (`tapDisabledByTimeout` / `tapDisabledByUserInput`) or removed, and the Mac waking
  (`cancelGesture`). The release after such a reset is still swallowed, as its press was, and
  fires nothing. While paused a press passes through, so the mouse's own function remains.
-- **The system presets.** `appExpose` ("App Exposé  ⌃↓", key code 125) was added for the
- gesture and is in every button's Shortcut menu. Mission Control, App Exposé and the Spaces go
- out as their standard shortcuts (⌃↑, ⌃↓, ⌃←, ⌃→) with the flags a real arrow key carries
- (`postedFlags(keyCode:saved:)`), so they have to be on in System Settings › Keyboard ›
- Keyboard Shortcuts › Mission Control.
+- **The system presets as keyboard shortcuts.** `appExpose` ("App Exposé  ⌃↓", key code 125)
+ was added for the gesture and is in every button's Shortcut menu. Where a system preset is
+ posted as a keystroke (a button's whole mapping, or a gesture where `DockSwipe.isSupported`
+ is false or `systemSwipesFollowPointer` is off, below), it goes out as its standard shortcut (⌃↑, ⌃↓, ⌃←, ⌃→) with the flags a real
+ arrow key carries (`postedFlags(keyCode:saved:)`), so it has to be on in System Settings ›
+ Keyboard › Keyboard Shortcuts › Mission Control.
+- **Interactive swipes, `DockSwipe.swift`.** In a gesture, the four presets (`SystemSwipe`:
+ `missionControl`, `appExpose`, `spaceLeft`, `spaceRight`) are not typed. They are driven as
+ the trackpad's "dock swipe" gesture events, so the Spaces transition, Mission Control or App
+ Exposé follows the pointer while the button is held and the Dock finishes or cancels it on
+ release. Other slot actions (a custom shortcut, a media key, a mouse click) still fire once at
+ 50 points. A slot is a system swipe only when it holds the very value the menu put there
+ (`SystemSwipe.init?(_:)` compares key code, name and the posted flags with the preset), so the
+ same keys recorded as a custom shortcut stay a plain keystroke. Launchpad is never a swipe:
+ it opens an app, once at 50 points. The event format is undocumented macOS behaviour, learned
+ from Mac Mouse Fix (credited in NOTICE.md, with InstantSpaceSwitcher for the direction) and
+ written independently: facts only, no code taken.
+  - **App Exposé needs the Dock's trackpad gesture.** The Dock ignores an App Exposé swipe
+   while System Settings › Trackpad › More Gestures › App Exposé is off, which it is out of the
+   box (`showAppExposeGestureEnabled` in the `com.apple.dock` domain; on macOS 26.3 the swipe
+   did nothing there). So `dockSwipeTracker(for:)` asks `DockSwipeOutput.appExposeEnabled`
+   (`DockGestures.appExposeEnabled`, read fresh at every hold) and, while it is off, takes App
+   Exposé out of the slots (`SystemSwipeSlots.removing`): the slot is then its ⌃↓ shortcut,
+   fired once at 50 points by the discrete swipe. Mission Control's and the Spaces' trackpad
+   gestures are on out of the box, and those swipes are always sent.
+  - **Tracker** (`DockSwipeTracker`, a pure struct fed every pointer move with a time).
+   `SystemSwipeSlots` (made once at `beginGesture` by `dockSwipeTracker(for:)`, nil when no slot
+   is a system swipe) says which swipe each direction holds. Inside `deadZone` (12 points)
+   nothing happens, so a click's drift is still a click. Past it, the larger axis is locked for
+   the rest of the hold (an exact diagonal goes horizontal), and the direction decides: a system
+   swipe there sends `began` at once, with the dead zone's movement counted; any other action
+   leaves the hold to `GestureRecognizer` (state `discrete`). Once swiping, it follows every
+   movement along the locked axis, backwards too. `changed` frames are at most
+   `minimumFrameInterval` (1/240 s) apart; the end always carries the latest progress.
+  - **Sign.** It follows the slots, not the screen: moving towards the slot that holds Space
+   Left heads for the Space on the left, whichever slot that is (`progressSign`: Mission
+   Control and Space Left -1, App Exposé and Space Right +1). Moving back past the start goes on
+   into the opposite slot's swipe only when that slot holds the same swipe the other way
+   (`opposite`). Otherwise (another action, None, or the other kind of swipe, which cannot take
+   over a swipe under way) the progress is clamped at zero (`keepSign`). With the default
+   gesture (Space Right left, Space Left right) the desktop moves with the pointer, as on a
+   trackpad: moving right heads for the previous Space. And its vertical axis is mixed:
+   Mission Control up is a swipe, Launchpad down an ordinary action, so moving down from the
+   start fires Launchpad once at 50 points, while a swipe up taken back down stops at the start
+   and fires nothing.
+  - **End or cancel, velocity.** `end(at:)` sends `ended` with an exit velocity: a time-weighted
+   average of the pointer's speed (`velocitySmoothing`, 0.05 s) times the gain, faded by how
+   long the pointer has been still, so a flick finishes a short swipe and a stop leaves it to
+   the progress. It sends `cancelled` instead when the progress is zero or the velocity opposes
+   it, which is the pointer coming back towards the start, so the swipe snaps back. `cancel()`
+   cancels with no velocity.
+  - **Progress and scale** (`DockSwipe.Frame.progress`, `DockSwipe.Scale`). Every event carries
+   the total so far, not a step. Horizontally one Space is `perSpace(spaces)`: 2 for one or two
+   Spaces, else 1 + 1/(n - 1); 3 is assumed (`assumedSpaces`) when the count is unknown. The
+   scale is `perSpace / (screen width + 63)` per point (`spaceGap`, the gap the Dock draws
+   between Spaces), so the desktop slides about a screen width for a Space. Vertically it is
+   `1 / screen height`, so Mission Control is fully open over the height; negative heads for
+   Mission Control, positive for App Exposé. The screen is the one under the pointer when the
+   hold starts (`Scale.current()`). The Spaces count comes from a private window server call,
+   `CGSCopyManagedDisplaySpaces` (with `CGSMainConnectionID`), looked up with `dlsym` in
+   `ManagedSpaces` so a macOS without it only loses the count.
+  - **Method** (`DockSwipe.Method`, `DockSwipe.method`, worked out once). macOS 26 and earlier
+   take the CGEvent fields below (`eventFields`); macOS 27 and later ignore them and take an
+   attached IOHIDEvent (`attachedHIDEvent`, below), but only when every private call it needs
+   resolves (`DockSwipe.AttachedEvent.missingSymbol`). The pure
+   `method(majorVersion:missingSymbol:)` decides, and asks for the symbols only on 27 or later,
+   so an earlier macOS never looks them up. `DockSwipe.isSupported` is `method != nil`.
+  - **Event format, macOS 26 and earlier** (`DockSwipe.events(for:userData:)`, pure). Each frame
+   is two CGEvents, both tagged with `userData` (`ButtonRemapper.magic`) so the tap skips them.
+   The first is event type 30 (`swipeEventType`) with gesture type 23 (field 110, the dock
+   swipe `IOHIDEventType`); the phase (`Phase`: began 1, changed 2, ended 4, cancelled 8) in
+   fields 132 and 134; the kind (`Kind`: horizontal 1, vertical 2) in fields 123 and 165 and,
+   as the 32-bit float with those bits, in 119 and 139; the progress as a double in 124 and as
+   float bits in integer field 135; field 136 (inverted from device) 1 for vertical and 0 for
+   horizontal; on `ended` and `cancelled`, the velocity in 129 and 130; and field 41 set to
+   33231, whose meaning is unknown and which is copied because it costs nothing. The second
+   event is type 29 (`gestureEventType`) with field 41 alone. The field numbers are
+   `CGEventField` raw values and none of this is public API.
+  - **Event format, macOS 27 and later** (`DockSwipe.HIDPayload`, pure, and
+   `DockSwipe.AttachedEvent`). Each frame is one CGEvent: type 30 (field 55) and the
+   `userData` tag, nothing else of the old format, no type 29 event. Attached to it is an
+   IOHIDEvent of type 23 (kIOHIDEventTypeDockSwipe) with the phase in its event flags
+   (`phase << 24`), the kind as its motion (field `0x170001`), flavor 3
+   (kIOHIDGestureFlavorDockPrimary, field `0x170005`) and the progress as a double (field
+   `0x170002`, kept by IOKit in 16.16 fixed point). On `ended` and `cancelled` it has a child
+   IOHIDEvent of type 9 (velocity) with the velocity in X and Y (`0x90000`, `0x90001`). The
+   field numbers are Apple's, from IOHIDFamily's open-source IOHIDEventTypes.h. The progress and
+   the velocity are signed for macOS 27 (`HIDPayload.orientation`): flipped while Natural
+   scrolling is on (`com.apple.swipescrolldirection` in the global domain, on when absent,
+   `DockGestures.naturalScrolling`), kept while it is off, so the swipe goes the same way as
+   on macOS 26 and follows the slots. The poster reads the setting as each swipe begins, so one
+   swipe keeps one sign. The calls are `IOHIDEventCreate`, `IOHIDEventSetEventFlags`,
+   `IOHIDEventSetIntegerValue`, `IOHIDEventSetDoubleValue` and `IOHIDEventAppendEvent` from
+   IOKit and `SLEventSetIOHIDEvent` from SkyLight, opened with `dlopen` and looked up with
+   `dlsym` once. Ownership: IOHIDEventCreate is a Create-rule call, so each IOHIDEvent made is
+   released by `event(for:userData:)`; the parent retains its velocity child; and
+   SLEventSetIOHIDEvent keeps a copy in the CGEvent (measured on macOS 27.2.1), so the CGEvent
+   owns all a frame needs and nothing leaks per frame. The CGEvent's fields are written
+   before the attach: written after it, a field didn't keep its value. The facts come from Mac
+   Mouse Fix's macOS 27 path and OpenLogi's hardware-tested sign (NOTICE.md); the code is this
+   project's own.
+  - **Posting** (`DockSwipePoster`, main thread, session tap, with the `method` it was given).
+   Under load the Dock can miss an end and leave the desktop stuck between two Spaces, so each
+   end goes out again after 0.2 s and 0.5 s (`endRepeats`), with either method; the next
+   swipe's `began`, or another end, stops the repeats still waiting. `ButtonRemapper` keeps the
+   last frame of an open swipe (`openDockSwipe`) and `gestureHold`'s `didSet` cancels it on
+   every reset that ends a hold, so the Dock is never left halfway; the ends that finish a swipe
+   send theirs first. A remapper made for tests (`actionEmitter` set) never posts to the
+   session: it takes a recording `DockSwipeOutput`, or has none.
+  - **macOS 27 without the calls.** When one of the private calls is missing,
+   `DockSwipe.method` is nil, `DockSwipe.isSupported` is false, `DockSwipeOutput.system` returns
+   nil, no tracker is made, and the four presets are the keyboard shortcuts above, firing once
+   at 50 points.
+  - **Hardware.** Tried on a real mouse on macOS 26.3: the Spaces animation follows the
+   pointer for horizontal swipes, and a vertical swipe was driven. App Exposé as a swipe did
+   nothing there with its trackpad gesture off, hence the fallback above; with the gesture on
+   it has not been tried. On macOS 27.2.1 (a Cobra HyperSpeed over Bluetooth) the Spaces and
+   Mission Control swipes follow the pointer with the attached method. Not yet tried on macOS
+   27: App Exposé as a swipe with its trackpad gesture on, and Natural scrolling turned off.
+   Building 200,000 attached events without posting them grew the heap by under 200 bytes. The
+   constants (the scale, the dead zone) have not been tuned.
+  - **Turning it off** (`ButtonRemapper.systemSwipesFollowPointer`, `RemapView`'s checkbox titled
+   `followPointerToggleTitle`, "Mission Control and Spaces follow the pointer"). On by default.
+   Off, `dockSwipeTracker(for:)` returns nil, so no tracker is made and the four presets are
+   the keyboard shortcuts their slots hold, fired once at 50 points like any other action, for
+   a mouse button's hold and the DPI button's long press alike. One global setting: saved in the defaults key `systemSwipesFollowPointerKey`
+   (`gestureSystemSwipesFollowPointer`), not per mouse and not in profiles; absent reads as on.
+   Holds read it as they start, so a change sets `gestureHold` to nil, which ends the hold and
+   cancels an open swipe; writing the value it already has changes nothing. The checkbox shows
+   only `if DockSwipe.isSupported`, and the editor's explanation goes by
+   `systemSwipesFollowPointerHere` (`dockSwipes != nil` and the setting on). The page is at
+   least as tall as the open editor (`gestureEditorHeight`), so the checkbox is never clipped.
 - **A gesture's click re-posts the button** (`mouseClickEvents(button:at:source:)`, made with
  `postSource` so the events carry `magic` and pass the tap, and with the button number set
  outright so Back and Forward don't come out as a middle click). It fires at release, so a
  gesture button can't be held to drag.
 - **UI.** `RemapView.gestureEditor` lists the five slots with an action menu each (the same
  `RemapActionMenu`, whose None does nothing in a slot and which offers the button's own click
- under Mouse) and a key recorder. `swift run MacRazer render-remap gesture out.png` renders the
+ under Mouse), a key recorder, and the follow-the-pointer checkbox where dock swipes work. `swift run MacRazer render-remap gesture out.png` renders the
  editor from preview data (`ButtonRemapper.loadPreviewState(gesture: true)` puts a gesture on
  button 6).
 - **Tests.** `GestureRecognizerTests` (threshold, dominant axis, once per hold, net movement)
  and `ButtonRemapperGestureTests` (swallowing, pass-through while paused, a release following
  its press, the reset rules, nested gestures, defaults, persistence and migration, the tap
  mask), driven through `handle(type:event:)` with synthetic `CGEvent`s and the `actionEmitter`
- hook that records actions instead of posting them.
+ hook that records actions instead of posting them. `DockSwipeTests` (the preset-to-swipe
+ match, the tracker's dead zone, axis lock, sign, clamp, end versus cancel and velocity, the
+ scale, the event fields, the poster's repeated end, the method by macOS version, the attached
+ payload and its sign by Natural scrolling, and the attached IOHIDEvent read back, the poster
+ sending one event a frame, a cancel keeping the sign the swipe began with, and attached events
+ leaving nothing on the heap; those last run only where the app uses that method, macOS 27 and
+ later with the calls present (`skipUnlessAttachedMethod`), skip elsewhere, and post nothing)
+ and `InteractiveSwipeTests` (the same
+ through the tap with a recording `DockSwipeOutput` and a clock the test moves: the swipe
+ following a hold, other actions still firing once, no swipe without dock swipes, every reset
+ cancelling an open swipe, App Exposé as a swipe or a shortcut by the Dock's setting, the
+ default gesture's mixed vertical axis and its Spaces following the hand) and
+ `SystemSwipesFollowPointerTests` (the setting: on out of the box, each preset firing its
+ shortcut once at 50 points when off for a mouse button and for the Cobra's long press,
+ turning it off mid-swipe cancelling the swipe for both, changing it mid-hold ending the hold
+ without firing, the saved key being global, and the editor's text).
+
+### 6.3.3 The DPI button and driver mode, `ButtonRemapper.swift` + `DpiDriverMode.swift` + `DpiPrivateKeys.swift` + `BluetoothDevice.swift`
+
+On a mouse with `RazerDevices.supportsDpiButtonBinding` over Bluetooth (the Basilisk V3 X
+HyperSpeed `0x00BA` and the Cobra HyperSpeed `0x00DC`) the DPI button's assignment is entry
+`0x60` of the mouse's onboard function table, and the Buttons page has a "DPI Button" section
+(`DpiCycleBindingSection`, the shared `RemapActionMenu` with the mouse's own functions added).
+USB and the 2.4 GHz dongle are not supported: the firmware handles the button onboard there.
+
+- **Choosing** (`ButtonRemapper.dpiButtonAssignment(for:privateKeys:)`, pure): None and
+ `.dpiCycle` are the firmware's DPI Cycle (`dpiCycleBlock`); a keystroke whose key
+ `BLEProtocol.hidUsage(forMacKeyCode:)` knows, or a mouse button 1 to 5, is written as the
+ mouse's own function. Everything else is MacRazer's, saved as `dpiCycleSoftwareAction`
+ (`dpiCycleSoftwareAction-<device key>`), in one of two ways:
+  - **F20 bridge** (the Basilisk V3 X, `usesDpiBridge`): Double Click and the media keys, as
+   before this change, with `.softwareBridge` (F20) written to the entry and `handleDpiBridge`
+   firing the action on the key-down. The assignment is nil for anything else there (a key the
+   mouse can't type, Launchpad, a gesture), so the menu doesn't offer Gesture… or Launchpad and
+   the recorder refuses such a key: the bridge behaves exactly as it did.
+  - **Driver mode** (the Cobra, `RazerDevices.dpiButtonPrivateKeys` is
+   `DpiButtonPrivateKeys.cobraHyperSpeed`): any action, a gesture included. The entry keeps
+   DPI Cycle (an entry already reading it isn't written again), the mouse is put in driver mode
+   while the action is saved, and the button's private keys are watched. No F20 and no key
+   events in the tap on this mouse.
+- **Why driver mode.** The Cobra's DPI button is a tap/hold button: a short press cycles DPI and
+ a long press invokes a function only Synapse knows. In normal mode entry `0x60` only fires at
+ the release of a short press (an F20 pulse of about 50 ms, nothing while held), and the long
+ press has its own entry, `0x80`, off from the factory. A raw HID and Bluetooth trace showed
+ nothing at all while the button is held in normal mode. In driver mode (`BLEProtocol.DeviceMode`,
+ §4) the firmware stops acting on the button and reports it in HID input report 4
+ (`PrivateKeyReport`, an array of the keys held): `short` `0x52`, a pulse of about 55 ms when a
+ short press is released; `long` `0xD2`, down once the firmware recognises a long press (about
+ a second in; the delay is the firmware's) and held until the release. Over Bluetooth the
+ report arrives with its id twice (`04 04 d2 00 ...`), so up to two leading ids are dropped.
+ The mouse matches as two HID devices, each delivering every frame and not always in step, so
+ `PrivateKeyTracker` counts the frames of the first device to deliver one, until it goes away
+ (`sourceGone`, whose releases are marked `deviceGone`).
+- **Wanting driver mode** (`DpiDriverModeNeed`, pure): `none` without private keys or a saved
+ action; `accessibility` without the tap; `inputMonitoring` without `IOHIDCheckAccess` granted
+ (asked last); `relaunch` when it reads as granted but the keys couldn't be watched in this run
+ (`privateKeyInputBlocked`); `ready` otherwise, the only one that wants it. Without the rest the
+ button is better left cycling DPI than doing nothing. `refreshDpiDriverModeWant` tells
+ `MouseController.setDpiDriverModeWanted(_:)` once per change; it runs on every change of
+ device, action or tap and wherever the permissions are looked at (`refreshAccessibility`: the
+ Buttons page, the popover opening, Re-check). macOS says nothing when a permission is granted,
+ so while only one is missing and the mouse is connected a timer looks every
+ `permissionRecheckInterval` (3 s). Accessibility is picked up that way; Input Monitoring
+ granted while the app runs was not on macOS 26.3 (`IOHIDCheckAccess` kept saying no until a
+ reopen), so the page asks for a reopen and offers **Reopen MacRazer** (`reopenApp`: a new
+ instance through `AppRelaunch`, then `NSApp.terminate` once it launched, so
+ `applicationWillTerminate` gives driver mode back first). The first look in a run that finds
+ Input Monitoring is what is missing asks macOS for it (`askForInputMonitoring`,
+ `IOHIDRequestAccess`, decided by the pure `asksForInputMonitoring(need:alreadyAsked:)`), so
+ that macOS lists the app with a switch; the page's Input Monitoring button asks too. It is
+ asked whatever the timer is doing: the timer is usually running already for Accessibility,
+ which is asked first, and asking only as it started left the app unlisted. On macOS 27.2.1
+ with an ad-hoc signed build, after a `tccutil reset`, the app still did not appear in the
+ list and had to be added with the + button; the cause is not established.
+- **Lifecycle** (`DpiDriverModeBook`, pure, run by `MouseController.syncDpiDriverMode` on the
+ device queue from the poll and on each change). Engaged on each new connection and after each
+ wake (`doubtful`), reading first so a mouse already in it isn't written; re-checked at most
+ every `recheckInterval` (30 s) to put it back if the mouse fell out (an unanswered check
+ changes nothing); a failed change retried at that interval at most `maxAttempts` (3) times
+ per connection. Normal mode is written back and read back when it is no longer wanted, where
+ this run may have set it (`maybeSet`), and at quit (`restoreDpiDriverModeForQuit`, at most
+ `driverModeRestoreTimeout`, 3 s). After a crash nothing writes it back: the button does
+ nothing until the mouse sleeps or is power-cycled, or the next run, which reads the mode once
+ (`checkLeftover`, `leftoverCheckDelay` 10 s after the connection answers) and writes normal mode
+ only if it reads driver mode. Never during a device test. `dpiDriverModeErrorText` gives the
+ page a plain sentence for a failure.
+- **Settling checks.** Just after a reconnect or a wake the Cobra hasn't finished starting. A
+ trace of a real one over Bluetooth showed it accept driver mode and read it back, then reset
+ itself to normal mode a few hundred milliseconds later, around its own start-up notifications
+ (`0c`, `31`, below): gestures stopped and the button cycled DPI in the firmware until the next
+ check, 30 s later. So the first engage after `connectionChanged` or `doubtful` (`fresh`) is
+ followed by two quiet checks, `firstSettlingCheckDelay` (1 s) and `secondSettlingCheckDelay`
+ (3 s) after it (`engaged(at:wrote:)`). A check that has to write driver mode again (the mouse
+ dropped it) starts the two over from that write, at most `maxSettlingRounds` (3) rounds per
+ connection or wake; a fall-back the 30 s check finds does the same. They are the book's
+ `earlyChecks`, run by a one-shot `asyncAfter` on the device queue
+ (`MouseController.scheduleDpiDriverModeEarlyCheck`, occasion `.earlyCheck`), never a timer,
+ and called off through a generation counter once the book drops them: a connection change, a
+ wake, a change of mind (`setWanted`) or a failed change. An early check only ever checks (it
+ never engages, restores or looks for a leftover), gives way to a command waiting on the queue
+ and tries again `driverModeEarlyCheckRetryDelay` (0.5 s) later, and keeps the limits of any
+ check: a failed write counts against `maxAttempts`, and one that goes unanswered isn't
+ repeated (the round's later check still goes).
+- **Notifications.** HID input report 5 carries the mouse's own notifications, `05 05 <code>
+ ...` over Bluetooth with the id twice (`MouseNoticeReport.notice`, up to two leading ids
+ dropped as for report 4). Codes matched (from other projects' notes and the trace, not relied
+ on): `02` DPI changed, followed by X and Y big-endian; `09` availability (`09 02` seen at
+ sleep, `09 03` documented as wake); `0c` power or connection state; `10` heartbeat; `31`
+ battery. The key watcher takes them too and hands them on (`ButtonRemapper.onMouseNotice`,
+ `MouseController.dpiDriverModeNoticed`). While driver mode is taken for engaged and the last
+ check was answered, `noticed(_:at:)` turns `0c`, `09` and `02` (`MouseNotice.suggestsModeLost`)
+ into an immediate check, at most one per `noticeCheckSpacing` (1 s; each notification comes
+ from both HID devices and several come together). MacRazer's own DPI changes are told apart by
+ time: a `02` that arrives within `ownDpiChangeWindow` (2 s), either side, of its own DPI write
+ is that write and calls for nothing. `MouseController.noteOwnDpiChange` stamps the time as
+ each DPI write starts and again as it ends (`cycleDpiStage`, `setDPI`, `setDPIStageValue`,
+ `applyProfile`). Time rather than the DPI value, since stages can share a value and the
+ firmware's next stage could be the one MacRazer last set.
+- **A disconnect drops a pending restore.** Driver mode doesn't outlast a connection, so
+ `connectionChanged` clears `maybeSet` and with it any restore pending for the connection that
+ went (it returns whether one was, traced as dropped). The trace showed why: "no longer wanted"
+ came only because the mouse slept and its device went away, and the reconnect then got
+ `00 00` before driver mode was wanted again. Quitting writes nothing until driver mode is
+ engaged on the new connection. In case only MacRazer's own connection was reopened with the
+ mouse still in driver mode, the leftover read is armed again (`leftoverChecked` false). A wake
+ (`doubtful`) keeps a pending restore, as it is the same connection, and clearing the action or
+ quitting while connected restores as before. An observed removal of the mouse's HID device
+ (`beginWakeRecovery` with `discardBluetoothSession`) ends the connection for driver mode at
+ once (`dpiDriverModeConnectionLost`).
+- **The keys** (`DpiPrivateKeyWatcher`, an `IOHIDManager` on vendor `0x068E` and the product id,
+ main thread, Input Monitoring) are watched exactly while `dpiDriverMode` is `.engaged`
+ (`privateKeysActive`). A watch that can't start (`startWorks`: no device opened, or the manager
+ refused) sets `privateKeyInputBlocked`, so driver mode is no longer wanted; every look at the
+ permissions tries an open and close (`canWatch`, nothing sent to the mouse) to lift it. The
+ same callbacks take report 5, the mouse's notifications (`MouseNoticeReport`, above).
+- **What the keys do** (`handlePrivateKey`, only while engaged, connected and not paused):
+ with a gesture, the long key's press starts a hold (`beginGesture` with trigger
+ `ButtonRemapper.dpiButton`, -1, and `releaseSlot` `.hold`), the pointer's `.mouseMoved` events
+ are the swipe (`handleDpiGestureMove`, never swallowed; the tap asks for them only while this
+ button is a gesture, `eventMask(...privateKeyGesture:)`), and the long key's release ends it:
+ a dock swipe ends, or, if no swipe happened, the **Hold** slot fires once. The short key fires
+ the **Click** slot. `.dpiCycle` there (or in Hold, or in a direction) calls
+ `MouseController.cycleDpiStage()` through `perform`: it reads the stage table, writes
+ `DPIStageTable.nextStage()` (the first after the last) and publishes it, since the firmware no
+ longer cycles DPI in driver mode. Anywhere else `.dpiCycle` is inert. Any other action fires on
+ the short key, and a long press does nothing for it.
+- **Gesture data.** `GestureBindings.hold` is offered only for this button
+ (`gestureSlots(of:)`); a missing `hold` key decodes as None, and it is encoded only when it
+ isn't None, so gestures and profiles saved before it are written exactly as before. A new DPI
+ gesture (`newDpiGesture`) has the usual swipes and Click and Hold on None, so a short press
+ leaves DPI alone until DPI Cycle is chosen; the slot menus offer None and DPI Cycle as separate
+ choices (`gestureSlotLeadingChoices`).
+- **Writing the entry** (`BluetoothDevice.writeDpiCycleBinding`, both mice): nothing is read or
+ written while the mouse says it's on an onboard profile other than 1
+ (`DPIButtonEntryError.otherProfileInUse`), since the write goes to profile 1 and the reads see
+ the profile in use. The entry is read first, and nothing is written unless it parses
+ (`parseDpiButtonBinding`, which also refuses a factory block other than DPI Cycle,
+ `.notTheDpiButton`); the write is sent once (`DPIButtonWriteError.notTaken`) and read back
+ (`.notReadBack`), with no second write. `MouseController.dpiButtonErrorText` turns each into a
+ plain sentence. Entry `0x60` and `SideButtonReset`'s entries `0x04` and `0x05` never overlap.
+- **Hardware.** On a Cobra over Bluetooth: the entry write with its read before and after; and,
+ through the trace, the device-mode write accepted and read back, the link staying up, the two
+ keys as described and normal mode restored on quit. The product code path was then used on
+ that mouse: hold and swipe, the short press doing Click, the software DPI cycle stepping one
+ stage per press, and the periodic check finding driver mode still set over about an hour. A
+ trace of a sleep and wake then showed the mouse dropping driver mode just after it was engaged
+ on the new connection. Re-arming after sleep was fixed from that trace (the settling and
+ notification checks above, with unit tests), and the fix itself has not yet been re-tried on
+ the mouse. Not yet tried: the Hold slot. Driver mode is not enabled on the Basilisk:
+ unverified there, and another project saw its link fail writing it.
+- **Gesture trace** (`GestureDebugLog.swift`). Off by default; `defaults write
+ com.macrazer.menubar gestureDebugLog -bool true` and a relaunch make it append to
+ `~/Library/Logs/MacRazer/gesture.log`: holds and pointer deltas, dock swipe frames, the dock
+ swipe method once as its poster is made (`SWIPE method: ...`, or `SWIPE method: none, ...`
+ with the call that was missing), with the attached method each swipe's `began`, `ended` and
+ `cancelled` as sent (`SWIPE attached ...`, with the signed progress, the velocity and the
+ Natural scrolling setting), each change of the follow-the-pointer setting, F20
+ timing, the mouse's HID input reports other than pointer movement (`GestureDebugHIDWatch`,
+ `HIDREPORT`; a keyboard report only when its keys are F13 to F20,
+ `GestureDebugReportFilter`), Razer's GATT characteristics and unsolicited notifications,
+ read-only probes once per connection (`BLEProtocol.traceProbeKeys`, `BLEREAD`, built only
+ from read keys), each device-mode read and write and why (`DEVMODE`: also the settling
+ re-checks scheduled and what each found, a notification that called for a re-check, with its
+ code, or was MacRazer's own DPI change, an early re-check called off, and a restore dropped
+ because its connection went), the private keys (`PRIVKEY`) and the software DPI cycle. It is
+ how the findings above were obtained.
+- **Tests.** `DpiButtonPrivateKeyTests` (report 4 and the tracker, report 5's notifications,
+ the hold, Click and Hold, DPI Cycle, other actions, resets, the watcher and the notifications
+ handed on from it, what driver mode needs, the reopen, the permission timer, asking for Input
+ Monitoring once, choosing on both mice, the editor and the texts), `DpiDriverModeTests` (`DpiDriverModeBook`, with the settling
+ and notification checks, a disconnect dropping a pending restore and the Cobra's sleep and wake
+ trace replayed, and `BluetoothDevice.setDeviceMode` with a mouse made of closures),
+ `DpiCycleSoftwareBridgeTests` (the entry's checked write, the Cobra enabled over Bluetooth
+ only, error texts), `InteractiveSwipeTests` (the Cobra's long press driving a dock swipe),
+ `BLEProtocolTests` (device mode, `nextStage`, the trace's reads) and
+ `GestureDebugTraceTests`. No test touches a real mouse.
 
 ### 6.4 Device test, `DeviceTest*.swift` + the Worker
 The right-click menu's **Help Support This Mouse…** (or **Test This Mouse…** on a verified
@@ -736,8 +1073,8 @@ hides the setting.
 
 | Permission | Why | How |
 |---|---|---|
-| **Input Monitoring** | Razer mice enumerate as keyboard/mouse HID; macOS gates opening them. | Requested at launch via `IOHIDRequestAccess(kIOHIDRequestTypeListenEvent)`; in-app banner + settings link. |
-| **Accessibility** | The `CGEvent` tap for button remapping and scroll reversal. | `AXIsProcessTrustedWithOptions`; Open Settings / Re-check in the relevant controls. |
+| **Input Monitoring** | Razer mice enumerate as keyboard/mouse HID; macOS gates opening them. Also how the DPI button is seen: its F20 through the tap (Basilisk V3 X) and its private keys in driver mode (Cobra, `DpiPrivateKeyWatcher`, §6.3.3). Granted while the app runs, it took effect only once the app was reopened (macOS 26.3), which the Buttons page asks for and offers. | Requested at launch via `IOHIDRequestAccess(kIOHIDRequestTypeListenEvent)`; in-app banner + settings link. Also asked once a run, the first time it is what the DPI button is missing (`ButtonRemapper.askForInputMonitoring`), so macOS lists the app with a switch. |
+| **Accessibility** | The `CGEvent` tap for button remapping, gestures and scroll reversal. A DPI button action on the Cobra needs it together with Input Monitoring. | `AXIsProcessTrustedWithOptions`; Open Settings / Re-check in the relevant controls. |
 
 **Signing matters for permissions.** TCC binds a grant to the app's code identity. The
 build is **ad-hoc signed by default, so every rebuild changes the identity and breaks the
@@ -836,21 +1173,25 @@ that path draws the content but needs an explicit size, since there is no window
 | `AccessoryController.swift` | `Accessories`, the list of plugged-in accessories, and one `AccessoryController` each: its own device and queue, follow-the-mouse, who sets colours while Synapse runs. |
 | `AccessoryCard.swift` | An accessory's popover card, and the lighting controls it shares with the mouse's row (swatches, sliders). |
 | `RazerTransport.swift` | Transport protocol shared by USB and Bluetooth, plus the shared retry ladder. |
-| `BLEProtocol.swift` | Bluetooth LE framing and `RazerReport` translation. |
-| `BluetoothDevice.swift` | CoreBluetooth connection to Razer's vendor GATT service. |
+| `BLEProtocol.swift` | Bluetooth LE framing and `RazerReport` translation, the DPI button's entry 0x60 (`DPIButtonBinding`, `parseDpiButtonBinding`), device mode (`DeviceMode`), `DPIStageTable.nextStage()`, the trace's reads. |
+| `BluetoothDevice.swift` | CoreBluetooth connection to Razer's vendor GATT service; the DPI button's checked write (`writeDpiCycleBinding`), `setDeviceMode`, the trace's GATT and probe hooks. |
 | `BluetoothProbe.swift` | The device test's own Bluetooth connection: GATT services, PnP ID, battery, read-only keys. |
 | `StatusItemClick.swift` | Whether a menu bar icon click opens the popover or the right-click menu. |
 | `FormControls.swift` | The windows' text fields, comment boxes and choice buttons. |
 | `RazerReport.swift` | 90-byte `razer_report` struct + CRC. |
 | `RazerCommands.swift` | Command-byte builders (battery/DPI/poll/RGB/brightness) + Razer constants. |
-| `RazerDevices.swift` | PID to {name, supported, hasBattery} registry. |
+| `RazerDevices.swift` | PID to {name, supported, hasBattery} registry; `dpiButtonPrivateKeys` marks a mouse whose DPI button reports private keys in driver mode (the Cobra HyperSpeed). |
+| `DpiPrivateKeys.swift` | The DPI button's private keys (`DpiButtonPrivateKeys`), report 4 (`PrivateKeyReport`), `PrivateKeyTracker`, the mouse's notifications in report 5 (`MouseNotice`, `MouseNoticeReport`), and `DpiPrivateKeyWatcher`. |
+| `DpiDriverMode.swift` | `DpiDriverModeState`, `DpiDriverModeNeed` and the pure `DpiDriverModeBook`: when driver mode is wanted, engaged, re-checked (also as the mouse settles and on its notifications), retried and given back. |
+| `GestureDebugLog.swift` | The hidden `gestureDebugLog` trace: holds, pointer deltas, the dock swipe method, F20, HID reports (never typed keys), GATT, read-only probes, device mode and private keys, in `~/Library/Logs/MacRazer/gesture.log`. |
 | `BatteryHistory.swift` | Sample log + learned discharge rate + time estimate. |
 | `PopoverView.swift` | Main popover UI + page navigation. |
 | `PopoverTheme.swift` | Settings › Appearance: theme, glass, the resolved look, the popover and window backdrops. |
 | `ColorPickerPage.swift` | Inline hue/sat colour wheel page + shared `BackButton`. |
-| `ButtonRemapper.swift` | CGEvent tap, action model (`RemapAction`, `GestureBindings`, `GestureSlot`), presets, `LaunchpadApp`, gesture holds, persistence, Accessibility. |
+| `ButtonRemapper.swift` | CGEvent tap, action model (`RemapAction`, `GestureBindings`, `GestureSlot`), presets, `LaunchpadApp`, gesture holds, the DPI button (F20 on the Basilisk V3 X, private keys and driver mode on the Cobra), persistence, Accessibility. |
 | `GestureRecognizer.swift` | `GestureDirection` and the pure `GestureRecognizer`: the net movement of one hold to at most one swipe. |
-| `RemapView.swift` | Button-config UI (inline + window), the shared action menu, gesture editor, key recorder. |
+| `DockSwipe.swift` | The trackpad's dock swipe from a mouse: the event format (`DockSwipe`), `SystemSwipe` and `SystemSwipeSlots`, the pure `DockSwipeTracker`, `DockSwipeOutput` and `DockSwipePoster`, `DockGestures` (the Dock's App Exposé trackpad setting, Natural scrolling). Mission Control, App Exposé and Spaces follow the pointer in a gesture: CGEvent fields on macOS 26 and earlier, an attached IOHIDEvent on macOS 27 and later. |
+| `RemapView.swift` | Button-config UI (inline + window), the shared action menu, gesture editor, DPI button section, key recorder. |
 | `RemapWindowController.swift` | Standalone window host for the remap UI. |
 | `DeviceProbe.swift` | The probes shared by the CLI and the device test. |
 | `DeviceProbeSession.swift` | Transaction id discovery and the recording channel. |
