@@ -319,6 +319,22 @@ mouse on Bluetooth.
 
 ## Install
 
+The quickest way is one line in Terminal:
+
+```sh
+curl -fsSL https://macrazer.com/install.sh | bash
+```
+
+It downloads the latest release from GitHub, checks it against GitHub's SHA-256 checksum,
+puts MacRazer into Applications and opens it. A file curl downloads isn't marked as coming
+from the internet, so macOS doesn't stop the first launch with "MacRazer Not Opened" and
+there's no trip to Privacy & Security. It's the same build as the DMG, not re-signed or
+changed. Run it again later and it updates the copy you have. On a standard (non-admin)
+account it installs to `~/Applications` instead. [Read the script](https://macrazer.com/install.sh)
+first if you like: it's short, plain bash.
+
+### Or install it by hand
+
 Download [`MacRazer.dmg`](https://reports.macrazer.com/v1/download?via=site&page=readme)
 (release notes on the [latest release](../../releases/latest) page), open it, and drag
 **MacRazer** into Applications.
@@ -339,7 +355,9 @@ You only need to do this once. Getting rid of this step for good needs a paid Ap
 ID ($99 a year). If you'd like to help with that, tips go to
 [ko-fi.com/sorcrr](https://ko-fi.com/sorcrr).
 
-After that it launches like any other app. It will then ask for **Input Monitoring**
+### First launch
+
+Either way, from then on it launches like any other app. It will ask for **Input Monitoring**
 permission (and **Accessibility** for button remapping or scroll reversal); see [Permissions](#permissions)
 below.
 
