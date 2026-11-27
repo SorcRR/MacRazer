@@ -26,6 +26,8 @@ public enum HolidaySantaError: Error, Equatable, Sendable {
     case notChristmas
     /// Too many requests, or the day's limit: try again later.
     case busy
+    /// Paused from the admin page, for too much traffic: ask again hours from now.
+    case paused
     /// No network, or the Worker is down.
     case unavailable
 }
@@ -154,6 +156,7 @@ final class HolidaySantaClient: HolidayBoardSource {
         case (404, "not_joined"): .notJoined
         case (409, _): .notChristmas
         case (429, _): .busy
+        case (503, "paused"): .paused
         default: .unavailable
         }
     }
