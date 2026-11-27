@@ -10,6 +10,9 @@ import SwiftUI
 /// `SupportPromptPolicy` for how often.
 struct SupportPromptView: View {
     let mouse: UnsupportedMouse
+    /// The one check-up ask for a fully supported mouse (`CheckupPolicy`), not a request for
+    /// a report.
+    var checkup = false
     var onRunTest: () -> Void
     var onNotNow: () -> Void
     var onDontAsk: () -> Void
@@ -19,9 +22,10 @@ struct SupportPromptView: View {
     private var links: [RazerDevices.LinkToTest] { ask.links }
     private var nothingToRunHere: Bool { ask.nothingToRunHere }
 
-    init(mouse: UnsupportedMouse, onRunTest: @escaping () -> Void, onNotNow: @escaping () -> Void,
-         onDontAsk: @escaping () -> Void) {
+    init(mouse: UnsupportedMouse, checkup: Bool = false, onRunTest: @escaping () -> Void,
+         onNotNow: @escaping () -> Void, onDontAsk: @escaping () -> Void) {
         self.mouse = mouse
+        self.checkup = checkup
         self.onRunTest = onRunTest
         self.onNotNow = onNotNow
         self.onDontAsk = onDontAsk
@@ -32,7 +36,9 @@ struct SupportPromptView: View {
         VStack(alignment: .leading, spacing: 16) {
             header
             Divider()
-            if !mouse.canControl {
+            if checkup {
+                checkupBody
+            } else if !mouse.canControl {
                 needsAccessBody
             } else {
                 switch support {
@@ -43,33 +49,69 @@ struct SupportPromptView: View {
                 case .unknown: readyBody
                 }
             }
-            HStack(spacing: 10) {
-                Button("Don't ask for this mouse", action: onDontAsk)
-                    .buttonStyle(.plain)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                Spacer()
-                if mouse.canControl && nothingToRunHere {
-                    // Nothing to run on this link. Got It ends the ask, like "Don't ask", but
-                    // reads as the answer to a note rather than a refusal.
-                    Button("Got It", action: onDontAsk)
-                        .keyboardShortcut(.cancelAction)
-                        .buttonStyle(RazerProminentButtonStyle())
-                } else {
-                    Button("Not Now", action: onNotNow)
-                        .keyboardShortcut(.cancelAction)
-                    // Not the default action: the window opens on its own, and Return pressed for
-                    // something else shouldn't start a test.
-                    Button(mouse.canControl ? "Run the Test" : "Get Started", action: onRunTest)
-                        .buttonStyle(RazerProminentButtonStyle())
-                }
+            if checkup {
+                checkupButtons
+            } else {
+                askButtons
             }
         }
         .padding(22)
         .frame(width: 440)
     }
 
+    /// Asked once, so there's nothing to turn off: No Thanks is the whole answer.
+    private var checkupButtons: some View {
+        HStack(spacing: 10) {
+            Spacer()
+            Button("No Thanks", action: onNotNow)
+                .keyboardShortcut(.cancelAction)
+            // Not the default action, like Run the Test: the window opens on its own.
+            Button("Run Check-up", action: onRunTest)
+                .buttonStyle(RazerProminentButtonStyle())
+        }
+    }
+
+    private var checkupBody: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("MacRazer fully supports this mouse. A quick check-up confirms that everything works on your Mac too, and the report helps catch anything a firmware update breaks.")
+                .font(.system(size: 13))
+                .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 8) {
+                point("clock", "About 2 minutes. You click a few buttons when asked.")
+                point("eye", "You see the full report before anything is sent.")
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 10))
+        }
+    }
+
+    private var askButtons: some View {
+        HStack(spacing: 10) {
+            Button("Don't ask for this mouse", action: onDontAsk)
+                .buttonStyle(.plain)
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+            Spacer()
+            if mouse.canControl && nothingToRunHere {
+                // Nothing to run on this link. Got It ends the ask, like "Don't ask", but
+                // reads as the answer to a note rather than a refusal.
+                Button("Got It", action: onDontAsk)
+                    .keyboardShortcut(.cancelAction)
+                    .buttonStyle(RazerProminentButtonStyle())
+            } else {
+                Button("Not Now", action: onNotNow)
+                    .keyboardShortcut(.cancelAction)
+                // Not the default action: the window opens on its own, and Return pressed for
+                // something else shouldn't start a test.
+                Button(mouse.canControl ? "Run the Test" : "Get Started", action: onRunTest)
+                    .buttonStyle(RazerProminentButtonStyle())
+            }
+        }
+    }
+
     private var title: String {
+        if checkup { return "Check that everything works" }
         guard mouse.canControl else { return "We found a new Razer mouse" }
         if nothingToRunHere {
             return links.count > 1 ? "Test your mouse's other connections" : "Test your mouse's other connection"
@@ -304,12 +346,13 @@ struct SupportPromptView: View {
 @MainActor
 final class SupportPromptWindowController: NSObject, AppWindowPresenter, NSWindowDelegate {
     private let prompt: SupportPrompt
-    private let onRunTest: () -> Void
+    /// True when the run starts from the check-up ask.
+    private let onRunTest: (_ checkup: Bool) -> Void
     /// Called a turn after the window closes, once it no longer counts as open.
     private let onClosed: () -> Void
     private var window: NSWindow?
 
-    init(prompt: SupportPrompt, onRunTest: @escaping () -> Void, onClosed: @escaping () -> Void) {
+    init(prompt: SupportPrompt, onRunTest: @escaping (_ checkup: Bool) -> Void, onClosed: @escaping () -> Void) {
         self.prompt = prompt
         self.onRunTest = onRunTest
         self.onClosed = onClosed
@@ -321,15 +364,16 @@ final class SupportPromptWindowController: NSObject, AppWindowPresenter, NSWindo
     /// is how the app opens it.
     func show() { window?.makeKeyAndOrderFront(nil) }
 
-    func show(for mouse: UnsupportedMouse) {
+    func show(for mouse: UnsupportedMouse, checkup: Bool = false) {
         // Rebuilt each time: the mouse, and with it the whole message, can differ.
         window?.delegate = nil
         window?.close()
         let controller = NSHostingController(rootView: SupportPromptView(
             mouse: mouse,
+            checkup: checkup,
             onRunTest: { [weak self] in
                 self?.window?.close()
-                self?.onRunTest()
+                self?.onRunTest(checkup)
             },
             onNotNow: { [weak self] in self?.window?.close() },
             onDontAsk: { [weak self] in
@@ -338,14 +382,15 @@ final class SupportPromptWindowController: NSObject, AppWindowPresenter, NSWindo
             }))
         controller.sizingOptions = [.preferredContentSize]
         let w = NSWindow(contentViewController: controller)
-        w.title = "Help Support This Mouse"
+        w.title = checkup ? "Mouse Check-up" : "Help Support This Mouse"
         w.styleMask = [.titled, .closable]
         w.isReleasedWhenClosed = false
         AppearanceSettings.shared.track(w)
         w.delegate = self
         w.center()
         window = w
-        prompt.markAsked(pid: mouse.pid)
+        // The check-up is its own one-time ask: it leaves the per-model record alone.
+        if checkup { prompt.markCheckupAsked() } else { prompt.markAsked(pid: mouse.pid) }
         w.orderFrontRegardless()
     }
 

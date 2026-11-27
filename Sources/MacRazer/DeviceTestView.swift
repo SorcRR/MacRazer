@@ -96,6 +96,11 @@ struct DeviceTestView: View {
                                                    ? nil : model.controller.deviceName))
             }
             switch model.support {
+            case .full where model.checkup:
+                tag("Fully supported", color: .razerGreenText)
+                reportTitle("A check-up for your \(model.deviceName)")
+                reportNote("Everything MacRazer controls has been tested on this mouse. This run checks that it all works on your Mac too. About two minutes. Keep the mouse on and nearby.")
+                privacyNotes
             case .full:
                 tag("Fully supported", color: .razerGreenText)
                 reportTitle("Your \(model.deviceName) doesn't need a test")
@@ -644,6 +649,11 @@ struct DeviceTestView: View {
     @ViewBuilder private var footerRow: some View {
         HStack {
             switch model.stage {
+            case .intro where model.support == .full && model.checkup:
+                Button("Cancel", action: onClose)
+                Spacer()
+                Button("Start") { model.start() }.keyboardShortcut(.defaultAction).buttonStyle(RazerProminentButtonStyle())
+                    .disabled(model.running)
             case .intro where model.support == .full:
                 Button("Test anyway") { model.start() }.disabled(model.running)
                 Spacer()

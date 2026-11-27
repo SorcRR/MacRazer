@@ -223,3 +223,123 @@ final class SupportPromptMouseWithoutAccessTests: XCTestCase {
                      "with access the mouse connects, and the connected path asks instead")
     }
 }
+
+/// The one check-up ask for a fully supported mouse, for someone new to the app.
+final class CheckupPolicyTests: XCTestCase {
+    /// The Cobra HyperSpeed: verified on every link, over its dongle.
+    private let everyLinkVerified = 0x00DB
+    private let unknown = 0xFFFE
+    /// Today is the third day of use: two before it.
+    private let third = CheckupPolicy.daysBefore + 1
+
+    private func ask(_ pid: Int, daysUsed: Int?, asked: Bool = false, _ record: SupportPromptRecord = .init(),
+                     enabled: Bool = true) -> Bool {
+        CheckupPolicy.shouldAsk(pid: pid, daysUsed: daysUsed, asked: asked, record: record, enabled: enabled)
+    }
+
+    func testAsksOnTheDayAfterTwoDaysOfUse() {
+        XCTAssertFalse(ask(everyLinkVerified, daysUsed: 1), "not on the first day")
+        XCTAssertFalse(ask(everyLinkVerified, daysUsed: 2), "not on the second")
+        XCTAssertTrue(ask(everyLinkVerified, daysUsed: third))
+    }
+
+    func testNeverForSomeoneWhoUpdated() {
+        XCTAssertFalse(ask(everyLinkVerified, daysUsed: nil), "no clock: the app ran before this version")
+    }
+
+    func testOnlyOnce() {
+        XCTAssertFalse(ask(everyLinkVerified, daysUsed: third, asked: true))
+    }
+
+    func testOnlyForAMouseNoReportWouldHelp() throws {
+        XCTAssertFalse(ask(unknown, daysUsed: third), "an unknown mouse gets the support prompt")
+        guard let verifiedHere = RazerDevices.known.first(where: {
+            $0.fullySupported && !RazerDevices.linksToTest(besides: $0.pid).isEmpty
+        })?.pid else { throw XCTSkip("every verified row has all its links verified") }
+        XCTAssertFalse(ask(verifiedHere, daysUsed: third), "another link still needs a report")
+    }
+
+    func testNotOverBluetooth() throws {
+        guard let bluetooth = RazerDevices.known.first(where: {
+            $0.connection == .bluetooth && $0.fullySupported && !RazerDevices.needsReport(pid: $0.pid)
+        })?.pid else { throw XCTSkip("no fully supported Bluetooth row") }
+        XCTAssertFalse(ask(bluetooth, daysUsed: third), "the test there only reads")
+    }
+
+    func testSettingOffDeclinedOrReportedSilenceIt() {
+        XCTAssertFalse(ask(everyLinkVerified, daysUsed: third, enabled: false))
+        XCTAssertFalse(ask(everyLinkVerified, daysUsed: third, SupportPromptRecord(declined: true)))
+        XCTAssertFalse(ask(everyLinkVerified, daysUsed: third, SupportPromptRecord(reported: true)))
+    }
+}
+
+@MainActor
+final class CheckupStorageTests: XCTestCase {
+    private static let suite = "MacRazerTests.Checkup"
+    private var defaults: UserDefaults { UserDefaults(suiteName: Self.suite)! }
+    private let pid = 0x00DB
+    private let start = Date(timeIntervalSince1970: 1_800_000_000)
+    private let day: TimeInterval = 24 * 60 * 60
+    private var calendar: Calendar {
+        var c = Calendar(identifier: .gregorian)
+        c.timeZone = TimeZone(identifier: "UTC")!
+        return c
+    }
+
+    override func setUp() {
+        super.setUp()
+        UserDefaults().removePersistentDomain(forName: Self.suite)
+    }
+
+    override func tearDown() {
+        UserDefaults().removePersistentDomain(forName: Self.suite)
+        super.tearDown()
+    }
+
+    private func use(_ prompt: SupportPrompt, at time: Date) { prompt.noteUse(now: time, calendar: calendar) }
+
+    func testCountsSeparateDaysOfUse() {
+        let prompt = SupportPrompt(defaults: defaults)
+        prompt.noteLaunch(firstRun: true, now: start)
+        use(prompt, at: start)
+        use(prompt, at: start.addingTimeInterval(60))
+        use(prompt, at: start.addingTimeInterval(3600))
+        XCTAssertFalse(prompt.shouldAskCheckup(pid: pid), "many ticks on one day are one day")
+        // A week away doesn't count: only the days it ran.
+        use(prompt, at: start.addingTimeInterval(7 * day))
+        XCTAssertFalse(prompt.shouldAskCheckup(pid: pid), "two days of use so far")
+        use(prompt, at: start.addingTimeInterval(9 * day))
+        XCTAssertTrue(prompt.shouldAskCheckup(pid: pid), "the third day of use")
+    }
+
+    func testFirstRunStartsTheClockOnce() {
+        let prompt = SupportPrompt(defaults: defaults)
+        prompt.noteLaunch(firstRun: true, now: start)
+        prompt.noteLaunch(firstRun: true, now: start.addingTimeInterval(day))
+        XCTAssertEqual(defaults.object(forKey: SupportPrompt.checkupFirstUseKey) as? Date, start)
+    }
+
+    func testAnUpdateNeverStartsIt() {
+        let prompt = SupportPrompt(defaults: defaults)
+        prompt.noteLaunch(firstRun: false, now: start)
+        for n in 0..<10 { use(prompt, at: start.addingTimeInterval(Double(n) * day)) }
+        XCTAssertFalse(prompt.shouldAskCheckup(pid: pid))
+        XCTAssertEqual(defaults.integer(forKey: SupportPrompt.checkupDaysKey), 0, "no days counted without a clock")
+    }
+
+    func testAskedSurvivesARelaunch() {
+        let first = SupportPrompt(defaults: defaults)
+        first.noteLaunch(firstRun: true, now: start)
+        for n in 0..<3 { use(first, at: start.addingTimeInterval(Double(n) * day)) }
+        first.markCheckupAsked()
+        let second = SupportPrompt(defaults: defaults)
+        XCTAssertFalse(second.shouldAskCheckup(pid: pid))
+        XCTAssertEqual(second.record(pid: pid), SupportPromptRecord(), "the per-model record is left alone")
+    }
+
+    func testFirstRunNeedsNoEarlierKeys() {
+        XCTAssertTrue(UpdateChecker.isFirstRun(defaults: defaults))
+        defaults.set("0.10.0", forKey: "lastRunVersion")
+        XCTAssertFalse(UpdateChecker.isFirstRun(defaults: defaults))
+    }
+}

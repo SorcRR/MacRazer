@@ -40,6 +40,10 @@ expect rough edges until 1.0.
   On macOS 26 that's Apps, which replaced Launchpad, and the menus call it Apps there. It's in
   every button's shortcut list, next to Mission Control and the Spaces, and it's the gesture's
   default for a swipe down.
+- **A one-time check-up for a fully supported mouse.** After two days of using MacRazer with
+  your mouse, it asks once whether you'd like to check that everything works on your Mac. The
+  report helps catch anything a firmware update breaks. Anyone who updated from an earlier
+  version isn't asked, and Settings › "Ask me to help test my mouse" turns it off.
 - **A thank-you in Configure Buttons.** The first time a button you remapped does its new
   job, Configure Buttons shows a short note with a Leave a Tip button, once. Anyone who had
   mappings before this version doesn't see it.

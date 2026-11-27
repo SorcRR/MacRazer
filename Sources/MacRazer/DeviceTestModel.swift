@@ -176,6 +176,10 @@ final class DeviceTestModel: ObservableObject {
         pinned?.elsewhere ?? testedPID.map { RazerDevices.ask(pid: $0).elsewhere } ?? []
     }
 
+    /// Opened from the check-up ask (`CheckupPolicy`): a fully supported mouse's intro invites
+    /// the test instead of saying there's nothing to check. Cleared when the window closes.
+    @Published var checkup = false
+
     /// Whether the connected model is already on the verified list. Decides the window title.
     var isKnownSupported: Bool { support == .full }
     /// The connected mouse's other links still worth a report, for the intro.
@@ -981,6 +985,7 @@ final class DeviceTestModel: ObservableObject {
     func reset() {
         endSession()
         stage = .intro
+        checkup = false
         lacking = []
         pinned = nil
         focus = nil
