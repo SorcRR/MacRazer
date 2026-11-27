@@ -40,8 +40,8 @@ expect rough edges until 1.0.
   On macOS 26 that's Apps, which replaced Launchpad, and the menus call it Apps there. It's in
   every button's shortcut list, next to Mission Control and the Spaces, and it's the gesture's
   default for a swipe down.
-- **A one-time check-up for a fully supported mouse.** Two days after MacRazer is first
-  installed, it asks once whether you'd like to check that everything works on your Mac. The
+- **A one-time check-up for a fully supported mouse.** After two days of using MacRazer with
+  your mouse, it asks once whether you'd like to check that everything works on your Mac. The
   report helps catch anything a firmware update breaks. Anyone who updated from an earlier
   version isn't asked, and Settings › "Ask me to help test my mouse" turns it off.
 - **An App Exposé ⌃↓ shortcut preset.** It's in the shortcut list of every button.

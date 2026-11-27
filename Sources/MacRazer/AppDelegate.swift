@@ -860,6 +860,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     private var needsRazerMiceList: Bool { supportPrompt.isEnabled && !DeviceTestModel.inputMonitoringGranted }
 
     private func askForDeviceTestIfClear() {
+        // A day with the mouse connected counts toward the check-up (`CheckupPolicy`).
+        if controller.connected { supportPrompt.noteUse() }
         guard supportPrompt.isEnabled else { return }
         // The same mouse on two ticks in a row. The controller publishes a new mouse's fields
         // one at a time, and a tick between them could pair its id with the last one's name

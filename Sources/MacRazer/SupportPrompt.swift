@@ -53,17 +53,21 @@ enum SupportPromptPolicy {
     }
 }
 
-/// The one check-up ask for a fully supported mouse. Only for someone new: it waits until the
-/// app has been on this Mac for two days, so it lands once they've used it a little, and it
-/// comes once per Mac, not once per mouse. Someone who updated from a version without it is
+/// The one check-up ask for a fully supported mouse. Only for someone new: it waits for two
+/// days of use, days the app ran with the mouse connected, and asks on the next one. So it
+/// lands once they've used it a little, however far apart those days are. It comes once per
+/// Mac, not once per mouse. Someone who updated from a version without it is
 /// never asked (`SupportPrompt.noteLaunch`). The test's thank-you screen, where it ends, has
 /// the tip button.
 enum CheckupPolicy {
-    static let waitAfterFirstUse: TimeInterval = 2 * 24 * 60 * 60
+    /// Days of use before the one it asks on.
+    static let daysBefore = 2
 
-    static func shouldAsk(pid: Int, firstUse: Date?, asked: Bool, record: SupportPromptRecord,
-                          enabled: Bool, now: Date) -> Bool {
-        guard enabled, !asked, let firstUse, now.timeIntervalSince(firstUse) >= waitAfterFirstUse else { return false }
+    /// `daysUsed` counts today once the mouse has been connected today; nil when the app ran
+    /// before this version, so the person isn't new.
+    static func shouldAsk(pid: Int, daysUsed: Int?, asked: Bool, record: SupportPromptRecord,
+                          enabled: Bool) -> Bool {
+        guard enabled, !asked, let daysUsed, daysUsed > daysBefore else { return false }
         // Fully supported everywhere: a mouse that still needs a report gets the support
         // prompt instead. Not over Bluetooth, where the test only reads.
         guard RazerDevices.support(pid: pid) == .full, !RazerDevices.needsReport(pid: pid),
@@ -80,6 +84,8 @@ final class SupportPrompt: ObservableObject {
     static let enabledKey = "supportPrompt.enabled"
     static let recordsKey = "supportPrompt.records"
     static let checkupFirstUseKey = "supportPrompt.checkupFirstUse"
+    static let checkupDaysKey = "supportPrompt.checkupDays"
+    static let checkupLastDayKey = "supportPrompt.checkupLastDay"
     static let checkupAskedKey = "supportPrompt.checkupAsked"
 
     private let defaults: UserDefaults
@@ -108,10 +114,23 @@ final class SupportPrompt: ObservableObject {
         defaults.set(now, forKey: Self.checkupFirstUseKey)
     }
 
-    func shouldAskCheckup(pid: Int, now: Date = Date()) -> Bool {
-        CheckupPolicy.shouldAsk(pid: pid, firstUse: defaults.object(forKey: Self.checkupFirstUseKey) as? Date,
-                                asked: defaults.bool(forKey: Self.checkupAskedKey),
-                                record: record(pid: pid), enabled: isEnabled, now: now)
+    /// Counts today as a day of use, once, for someone whose check-up clock has started.
+    /// Called while a mouse is connected.
+    func noteUse(now: Date = Date(), calendar: Calendar = .current) {
+        guard defaults.object(forKey: Self.checkupFirstUseKey) != nil,
+              !defaults.bool(forKey: Self.checkupAskedKey) else { return }
+        let parts = calendar.dateComponents([.year, .month, .day], from: now)
+        let day = "\(parts.year ?? 0)-\(parts.month ?? 0)-\(parts.day ?? 0)"
+        guard defaults.string(forKey: Self.checkupLastDayKey) != day else { return }
+        defaults.set(day, forKey: Self.checkupLastDayKey)
+        defaults.set(defaults.integer(forKey: Self.checkupDaysKey) + 1, forKey: Self.checkupDaysKey)
+    }
+
+    func shouldAskCheckup(pid: Int) -> Bool {
+        let daysUsed = defaults.object(forKey: Self.checkupFirstUseKey) == nil
+            ? nil : defaults.integer(forKey: Self.checkupDaysKey)
+        return CheckupPolicy.shouldAsk(pid: pid, daysUsed: daysUsed, asked: defaults.bool(forKey: Self.checkupAskedKey),
+                                       record: record(pid: pid), enabled: isEnabled)
     }
 
     /// Once shown, never again, whatever the answer.
