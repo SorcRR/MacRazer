@@ -69,6 +69,8 @@ public final class HolidayLeaderboard: ObservableObject {
     @Published public private(set) var problem: String?
     /// The last try to fetch the board didn't reach the Worker: no connection, most likely.
     @Published public private(set) var boardUnreachable = false
+    /// The Worker paused the board (too much traffic): the page says it's taking a break.
+    @Published public private(set) var paused = false
 
     private let holiday: Holiday
     private let game: HolidayGame
@@ -84,6 +86,10 @@ public final class HolidayLeaderboard: ObservableObject {
     private var presentsAgain = false
     /// When everything waiting last reached the Worker, for the three-hour rhythm.
     private var lastSynced: Date?
+    /// When a score last went, to tell the Worker's five-minute wait from its other refusals.
+    private var lastScoreSent: Date?
+    /// The Worker keeps one score every five minutes (`MIN_MINUTES_BETWEEN` in src/santa.ts).
+    static let workerScoreGap: TimeInterval = 5 * 60
 
     init(holiday: Holiday, game: HolidayGame, presents: HolidayPresents, source: HolidayBoardSource?,
          random: @escaping () -> Double = { Double.random(in: 0..<1) }) {
@@ -167,13 +173,19 @@ public final class HolidayLeaderboard: ObservableObject {
 
     /// A name that's fit to show: trimmed, 3 to 24 letters, digits, spaces, hyphens or
     /// apostrophes. Nil when it isn't. The Worker checks it again against its word list.
+    /// A letter may carry accents, but not a stack of them that would spill over other rows.
     public static func cleaned(_ name: String) -> String? {
         let trimmed = name.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+            .precomposedStringWithCanonicalMapping
         guard nameLength.contains(trimmed.count) else { return nil }
         let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: " -'"))
         guard trimmed.unicodeScalars.allSatisfy(allowed.contains) else { return nil }
+        guard trimmed.allSatisfy({ $0.unicodeScalars.count <= maxScalarsPerLetter }) else { return nil }
         return trimmed
     }
+
+    /// A letter and up to two marks: enough for any language's accents once composed.
+    static let maxScalarsPerLetter = 3
 
     /// Joins, or renames once joined. True once the Worker has it. After a reinstall the
     /// Worker's catches come back, where they're more than this Mac has.
@@ -235,6 +247,11 @@ public final class HolidayLeaderboard: ObservableObject {
         do {
             board = try await source.board(you: you)
             boardUnreachable = false
+            paused = false
+        } catch HolidaySantaError.paused {
+            board = nil
+            boardUnreachable = false
+            paused = true
         } catch {
             boardUnreachable = true
         }
@@ -281,15 +298,28 @@ public final class HolidayLeaderboard: ObservableObject {
         guard joined, isAvailable else { lastSynced = holiday.now(); return }
         if hasScoreToSend {
             let counts = game.counts
+            let before = holiday.stored(Int.self, "leaderboard.sent") ?? 0
+            let previous = lastScoreSent
+            lastScoreSent = holiday.now()
             do {
                 // What the Worker stored, not what went: it keeps one score every five minutes
                 // and answers the older one in between, so a score it didn't take goes again
                 // next time.
                 let stored = try await source.score(counts)
                 holiday.setStored(stored, "leaderboard.sent")
-                // Not stored yet (the Worker keeps one every five minutes): still due, so the
-                // next update tick tries again rather than three hours on.
-                lastSynced = stored >= HolidayLeaderboard.points(counts) ? holiday.now() : nil
+                // Less than sent: still due on the next update tick, rather than three hours
+                // on, while that can help. It can within five minutes of the last score (the
+                // Worker's wait), or when it took some of it (it lets a score grow only so fast,
+                // so a big one catches up over a few sends). Taking none otherwise means its
+                // daily limit: back to the three-hour rhythm.
+                let short = stored < HolidayLeaderboard.points(counts)
+                let throttled = previous.map { holiday.now().timeIntervalSince($0) < Self.workerScoreGap } ?? false
+                lastSynced = short && (stored > before || throttled) ? nil : holiday.now()
+            } catch HolidaySantaError.paused {
+                // Paused for traffic: wait the full three hours, not the next tick. The score
+                // keeps counting here and goes once the board is back.
+                paused = true
+                lastSynced = holiday.now()
             } catch HolidaySantaError.notJoined {
                 // Deleted on the Worker (by the admin): this Mac isn't on the board any more.
                 name = nil
@@ -430,6 +460,7 @@ public final class HolidayLeaderboard: ObservableObject {
         case .badName: "That name isn't allowed. Try another one."
         case .seasonClosed: "This season's board is closed."
         case .busy: "The leaderboard is busy. Try again in a minute."
+        case .paused: "The leaderboard is taking a break. Try again later."
         case .notJoined, .notChristmas, .unavailable: "Couldn't reach the leaderboard. Try again in a moment."
         }
     }

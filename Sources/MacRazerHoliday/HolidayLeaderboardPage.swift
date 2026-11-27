@@ -13,6 +13,7 @@ public struct HolidayLeaderboardPage: View {
     @State private var expanded: String?
     @State private var renaming = false
     @State private var draft = ""
+    @State private var confirmingLeave = false
 
     public init(onBack: @escaping () -> Void) { self.onBack = onBack }
 
@@ -21,7 +22,9 @@ public struct HolidayLeaderboardPage: View {
             header
             if board.isAvailable {
                 if !board.joined || renaming { joinCard } else { youCard }
-                if board.boardUnreachable && board.board == nil {
+                if board.paused && board.board == nil {
+                    pausedCard
+                } else if board.boardUnreachable && board.board == nil {
                     offlineCard
                 } else if board.board == nil {
                     loadingCard
@@ -136,7 +139,7 @@ public struct HolidayLeaderboardPage: View {
                     draft = board.name ?? ""
                     renaming = true
                 }
-                Button("Leave the board", role: .destructive) { board.leave() }
+                Button("Leave the board…", role: .destructive) { confirmingLeave = true }
             } label: {
                 Image(systemName: "ellipsis.circle").font(.system(size: 14))
             }
@@ -148,6 +151,12 @@ public struct HolidayLeaderboardPage: View {
         .padding(12)
         .background(HolidayColor.red.opacity(0.10), in: RoundedRectangle(cornerRadius: 12))
         .accessibilityElement(children: .contain)
+        // The same question as Settings asks.
+        .confirmationDialog(HolidayPrivacyRow.leaveTitle, isPresented: $confirmingLeave) {
+            Button("Leave", role: .destructive) { board.leave() }
+        } message: {
+            Text(HolidayPrivacyRow.leaveMessage)
+        }
     }
 
     private var youLine: String {
@@ -177,6 +186,21 @@ public struct HolidayLeaderboardPage: View {
         HStack(spacing: 8) {
             ProgressView().controlSize(.small)
             Text("Loading the board…").font(.system(size: 11)).foregroundStyle(.secondary)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+        .accessibilityElement(children: .combine)
+    }
+
+    /// The board is paused on the Worker, for too much traffic.
+    private var pausedCard: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("The board is taking a break")
+                .font(.system(size: 12.5, weight: .semibold))
+            Text("Your score keeps counting on this Mac and goes up once the board is back.")
+                .font(.system(size: 11)).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -400,6 +424,9 @@ public struct HolidayPrivacyRow: View {
 
     public init() {}
 
+    static let leaveTitle = "Leave the Santa leaderboard?"
+    static let leaveMessage = "Your row is deleted from the board. You can join again any time this season."
+
     public var body: some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: "trophy.fill").font(.system(size: 13)).foregroundStyle(HolidayColor.gold)
@@ -407,7 +434,7 @@ public struct HolidayPrivacyRow: View {
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Playing as \(board.name ?? "")").font(.system(size: 13))
-                Text("Your name, score, catches and presents are on the board until January. "
+                Text("Your name, score, catches and presents are on this season's board. "
                      + "Leaving deletes them there. Your score stays on this Mac.")
                     .font(.system(size: 11)).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -416,10 +443,10 @@ public struct HolidayPrivacyRow: View {
             Button("Leave…") { confirming = true }
                 .controlSize(.small)
         }
-        .confirmationDialog("Leave the Santa leaderboard?", isPresented: $confirming) {
+        .confirmationDialog(Self.leaveTitle, isPresented: $confirming) {
             Button("Leave", role: .destructive) { board.leave() }
         } message: {
-            Text("Your row is deleted from the board. You can join again any time this season.")
+            Text(Self.leaveMessage)
         }
     }
 }

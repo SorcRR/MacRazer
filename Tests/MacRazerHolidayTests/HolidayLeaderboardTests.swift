@@ -52,6 +52,9 @@ final class HolidayLeaderboardTests: XCTestCase {
         XCTAssertNil(HolidayLeaderboard.cleaned(String(repeating: "x", count: 25)), "Too long")
         XCTAssertNil(HolidayLeaderboard.cleaned("<script>"))
         XCTAssertNil(HolidayLeaderboard.cleaned("https://spam.example"))
+        XCTAssertEqual(HolidayLeaderboard.cleaned("Jose\u{301} Noe\u{308}l"), "Jos\u{E9} No\u{EB}l", "Accents, composed")
+        XCTAssertEqual(HolidayLeaderboard.cleaned("Ti\u{1EBF}ng Vi\u{1EC7}t"), "Ti\u{1EBF}ng Vi\u{1EC7}t")
+        XCTAssertNil(HolidayLeaderboard.cleaned("a" + String(repeating: "\u{301}\u{308}", count: 40) + "bc"), "A stack of marks")
     }
 
     func testNotThereWithoutASourceOrOutOfSeason() async {
@@ -183,6 +186,25 @@ final class HolidayLeaderboardTests: XCTestCase {
         XCTAssertEqual(source.calls.filter { $0 == "score" }.count, 2, "Stored now: nothing more to send")
     }
 
+    func testAScoreTheWorkerWontTakeWaitsForTheUsualRhythm() async {
+        let source = FakeSource()
+        let parts = make(source)
+        await parts.board.join(as: "Jolly Sprout")
+        let spot = UUID()
+        parts.game.register(spot, surface: .popover)
+        parts.game.caught(parts.game.forcePeek(.santa, spot: spot).id)
+        source.storesScores = false
+        // Nothing taken, and no score in the last five minutes: its daily limit, so not on
+        // every tick.
+        clock += 10 * 60
+        await parts.board.sync()
+        XCTAssertFalse(parts.board.isDue)
+        // Nothing taken within five minutes of the last score: its wait, so the next tick.
+        clock += 60
+        await parts.board.sync()
+        XCTAssertTrue(parts.board.isDue)
+    }
+
     func testTheScoreGoesEveryThreeHoursLikeTheUpdateCheck() async {
         let source = FakeSource()
         let parts = make(source)
@@ -205,6 +227,32 @@ final class HolidayLeaderboardTests: XCTestCase {
         await parts.board.sync()
         XCTAssertFalse(parts.board.isDue)
         XCTAssertFalse(parts.board.hasSomethingToSend)
+    }
+
+    func testAPausedBoardSaysSoAndWaitsTheFullThreeHours() async {
+        XCTAssertEqual(HolidaySantaClient.error(status: 503, code: "paused"), .paused)
+        XCTAssertEqual(HolidaySantaClient.error(status: 503, code: "unavailable"), .unavailable)
+        let source = FakeSource()
+        let parts = make(source)
+        await parts.board.join(as: "Jolly Sprout")
+        let spot = UUID()
+        parts.game.register(spot, surface: .popover)
+        parts.game.caught(parts.game.forcePeek(.santa, spot: spot).id)
+        clock = clock.addingTimeInterval(3 * 3600)
+        source.scoreError = .paused
+        source.boardError = .paused
+        await parts.board.sync()
+        XCTAssertFalse(parts.board.isDue, "Paused: no retry on every tick")
+        XCTAssertTrue(parts.board.hasSomethingToSend, "The score still waits to go")
+        await parts.board.refreshNow()
+        XCTAssertTrue(parts.board.paused)
+        XCTAssertNil(parts.board.board)
+        XCTAssertFalse(parts.board.boardUnreachable)
+        source.scoreError = nil
+        source.boardError = nil
+        await parts.board.refreshNow()
+        XCTAssertFalse(parts.board.paused)
+        XCTAssertNotNil(parts.board.board)
     }
 
     func testQuittingWaitsAtMostAMoment() async {
@@ -540,6 +588,7 @@ private final class FakeSource: HolidayBoardSource {
     var storesScores = true
     var board: HolidayBoard?
     var boardFails = false
+    var boardError: HolidaySantaError?
     var boardScoreSent: Int?
     /// Answers only after a long wait, or when cancelled.
     var slow = false
@@ -576,6 +625,7 @@ private final class FakeSource: HolidayBoardSource {
     func board(you: HolidayPlayer?) async throws -> HolidayBoard {
         calls.append("board")
         if boardFails { throw HolidaySantaError.unavailable }
+        if let boardError { throw boardError }
         boardScoreSent = you?.score
         return board ?? HolidayBoard(playerCount: 3)
     }
