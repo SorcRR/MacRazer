@@ -130,8 +130,8 @@ public struct HolidayPresentsCard: View {
                 presents.featured = box
             }
         } else {
-            WrappedPresent(wrapping: wrapping, waiting: stage == .waiting, still: holiday.stillMode,
-                           number: box + 1) { open(box) }
+            WrappedPresent(wrapping: wrapping, waiting: stage == .waiting, holding: presents.awaitingPicks,
+                           still: holiday.stillMode, number: box + 1) { open(box) }
         }
     }
 
@@ -258,6 +258,8 @@ private struct NightScene: View {
 private struct WrappedPresent: View {
     let wrapping: Wrapping
     let waiting: Bool
+    /// A moment while the board's picks load, once joined: not openable yet, looks the same.
+    let holding: Bool
     let still: Bool
     let number: Int
     let onOpen: () -> Void
@@ -269,15 +271,15 @@ private struct WrappedPresent: View {
                 .frame(width: wrapping.width + 8, height: wrapping.height + 16)
                 // The drawing ignores the pointer, so the button needs a shape of its own to click.
                 .contentShape(Rectangle())
-                .offset(y: hovered && !waiting ? -3 : 0)
+                .offset(y: hovered && !waiting && !holding ? -3 : 0)
                 .animation(still ? nil : .easeOut(duration: 0.15), value: hovered)
         }
         .buttonStyle(.plain)
-        .disabled(waiting)
+        .disabled(waiting || holding)
         .saturation(waiting ? 0.25 : 1)
         .opacity(waiting ? 0.6 : 1)
         .onHover { hovered = $0 }
-        .help(waiting ? "Do not open until Christmas" : "Open this present")
+        .help(waiting ? "Do not open until Christmas" : holding ? "Getting your presents…" : "Open this present")
         .accessibilityLabel("Present \(number) of 3, \(wrapping.spoken)")
         .accessibilityHint(waiting ? "Opens on Christmas Day" : "Opens it")
     }

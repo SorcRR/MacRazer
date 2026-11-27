@@ -76,7 +76,12 @@ public final class HolidayLeaderboard: ObservableObject {
     private var source: HolidayBoardSource?
     private var random: () -> Double
     private var cancellables: Set<AnyCancellable> = []
-    private var syncing = false
+    /// The sync running now, if any (`sync()`).
+    private var syncTask: Task<Void, Never>?
+    private var syncGeneration = 0
+    /// A presents request on its way, and whether another was asked for meanwhile.
+    private var presentsSyncing = false
+    private var presentsAgain = false
     /// When everything waiting last reached the Worker, for the three-hour rhythm.
     private var lastSynced: Date?
 
@@ -182,9 +187,14 @@ public final class HolidayLeaderboard: ObservableObject {
         joining = true
         problem = nil
         defer { joining = false }
+        // A leave still waiting goes first. Sent after the join, it would delete the new row.
+        if leavePending { await sync() }
+        // Not sent by now (no connection): the join keeps the old row instead, so no sync
+        // may send the leave while the join is on its way. It's put back if the join fails.
+        let wasLeaving = leavePending
+        holiday.removeStored("leaderboard.leaving")
         do {
             let reply = try await source.join(name: clean)
-            holiday.removeStored("leaderboard.leaving")
             name = reply.name
             holiday.setStored(reply.name, "leaderboard.name")
             game.adopt(reply.counts)
@@ -193,14 +203,14 @@ public final class HolidayLeaderboard: ObservableObject {
             await sync()
             await refreshNow()
             return true
-        } catch let error as HolidaySantaError {
-            problem = Self.words(for: error)
-            return false
         } catch {
-            problem = Self.words(for: .unavailable)
+            if wasLeaving { holiday.setStored(true, "leaderboard.leaving") }
+            problem = Self.words(for: error as? HolidaySantaError ?? .unavailable)
             return false
         }
     }
+
+    private var leavePending: Bool { holiday.stored(Bool.self, "leaderboard.leaving") == true }
 
     /// Leaves the board. The row on the Worker is deleted (tried again until it is); the
     /// score stays on this Mac.
@@ -233,12 +243,34 @@ public final class HolidayLeaderboard: ObservableObject {
     /// Sends what's waiting: a leave, a grown score, the presents. With the update check (at
     /// launch, every three hours, at quit) and when the page opens. Failures are quiet and
     /// tried again next time.
+    ///
+    /// One at a time, in order: a call while one runs waits for it and then runs too, so a
+    /// leave set meanwhile still goes, and nothing (a join above all) overtakes it.
     func sync() async {
+        while let running = syncTask {
+            await Self.wait(for: running)
+            if Task.isCancelled { return }
+        }
+        syncGeneration += 1
+        let generation = syncGeneration
+        let task = Task { [weak self] in
+            await self?.syncNow()
+            // Cleared before anyone waiting on it resumes, so the next one can start.
+            if let self, self.syncGeneration == generation { self.syncTask = nil }
+        }
+        syncTask = task
+        await Self.wait(for: task)
+    }
+
+    /// Waits for `task`, and cancels it if the waiter is cancelled: the quit's time limit.
+    private static func wait(for task: Task<Void, Never>) async {
+        await withTaskCancellationHandler { await task.value } onCancel: { task.cancel() }
+    }
+
+    private func syncNow() async {
         // A leave still waiting goes out in the rest of January too: the Worker takes one any time.
-        guard let source, !syncing, holiday.storageYear != nil else { return }
-        syncing = true
-        defer { syncing = false }
-        if holiday.stored(Bool.self, "leaderboard.leaving") == true {
+        guard let source, holiday.storageYear != nil else { return }
+        if leavePending {
             do {
                 try await source.leave()
                 holiday.removeStored("leaderboard.leaving")
@@ -277,7 +309,7 @@ public final class HolidayLeaderboard: ObservableObject {
     /// Something to tell the Worker: a leave, or a score it hasn't stored.
     public var hasSomethingToSend: Bool {
         source != nil && holiday.storageYear != nil
-            && (holiday.stored(Bool.self, "leaderboard.leaving") == true || (joined && isAvailable && hasScoreToSend))
+            && (leavePending || (joined && isAvailable && hasScoreToSend))
     }
 
     /// At launch, like the update check: unthrottled.
@@ -310,24 +342,56 @@ public final class HolidayLeaderboard: ObservableObject {
         }
     }
 
+    /// How long the boxes wait for the Worker's picks before opening on the Mac's own.
+    static let presentsHold: Double = 3
+
     /// Dec 25 and 26 once joined: the Worker picks the three presents, so the board shows
-    /// what was really inside. Taken while no box is open yet; boxes opened go back to it.
+    /// what was really inside. Taken while no box is open yet. A box goes back to the Worker
+    /// only when it shows the Worker's own pick: one opened on the Mac's pick (offline, before
+    /// joining, or before the picks came) stays off the board rather than showing another
+    /// gift there. Your own row still shows it, from this Mac.
     func syncPresents() async {
+        // One request at a time; a box opened meanwhile goes once it's back.
+        guard !presentsSyncing else { presentsAgain = true; return }
+        presentsSyncing = true
+        defer { presentsSyncing = false }
+        repeat {
+            presentsAgain = false
+            await syncPresentsOnce()
+        } while presentsAgain
+    }
+
+    private func syncPresentsOnce() async {
         guard let source, joined, presents.stage == .open else { return }
-        // Only when there's something to say: the Worker's picks not here yet, or a box opened
-        // since it last heard. Not on every tick.
+        var picks = (holiday.stored([String].self, "leaderboard.presentsGifts") ?? []).compactMap(HolidayGift.init(rawValue:))
+        if picks.count != HolidayPresents.count {
+            // The boxes wait for the answer, a few seconds at most, so the first one opened
+            // already holds the Worker's pick.
+            if presents.opened.isEmpty { presents.awaitingPicks = true }
+            let release = Task { [weak self] in
+                // Cancelled once the answer is in: then a later request may hold them again.
+                guard (try? await Task.sleep(for: .seconds(Self.presentsHold))) != nil else { return }
+                self?.presents.awaitingPicks = false
+            }
+            let reply = try? await source.presents(opened: [])
+            release.cancel()
+            presents.awaitingPicks = false
+            guard let reply, reply.gifts.count == HolidayPresents.count else { return }
+            picks = reply.gifts
+            holiday.setStored(picks.map(\.rawValue), "leaderboard.presentsGifts")
+            presents.adopt(picks)
+        }
+        guard presents.gifts == picks else { return }
+        // Only when a box opened since the Worker last heard. Not on every tick.
         let sent = Set(holiday.stored([Int].self, "leaderboard.presentsSent") ?? [])
-        let picked = holiday.stored(Bool.self, "leaderboard.presentsPicked") == true
-        guard !picked || presents.opened != sent else { return }
-        guard let reply = try? await source.presents(opened: presents.opened) else { return }
-        presents.adopt(reply.gifts)
-        holiday.setStored(true, "leaderboard.presentsPicked")
+        guard !sent.isSuperset(of: presents.opened),
+              let reply = try? await source.presents(opened: presents.opened) else { return }
         holiday.setStored(reply.opened.sorted(), "leaderboard.presentsSent")
     }
 
     /// A new row on the Worker (after leaving) gets presents of its own.
     private func forgetPresentsSent() {
-        holiday.removeStored("leaderboard.presentsPicked")
+        holiday.removeStored("leaderboard.presentsGifts")
         holiday.removeStored("leaderboard.presentsSent")
     }
 

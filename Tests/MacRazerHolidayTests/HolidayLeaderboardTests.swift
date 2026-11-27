@@ -343,6 +343,96 @@ final class HolidayLeaderboardTests: XCTestCase {
         XCTAssertEqual(source.calls.filter { $0 == "presents" }.count, asked)
     }
 
+    func testABoxOpenedOnTheMacsOwnPickStaysOffTheBoard() async {
+        at(2026, 12, 25)
+        let source = FakeSource()
+        source.gifts = [.goldenMouse, .socks, .banana]
+        source.presentsFail = true
+        let parts = make(source)
+        await parts.board.join(as: "Jolly Sprout")
+        // No connection when the box is opened: the Mac picks.
+        let mine = parts.presents.open(0)
+        XCTAssertNotNil(mine)
+        source.presentsFail = false
+        await parts.board.syncPresents()
+        await parts.board.syncPresents()
+        XCTAssertEqual(parts.presents.gift(in: 0), mine, "A gift shown never changes")
+        if parts.presents.gifts != source.gifts {
+            XCTAssertEqual(source.openedSent, [], "The Worker never hears of a box it didn't fill")
+        }
+        XCTAssertEqual(parts.board.you?.gifts, [mine!], "Your own row shows what you opened")
+    }
+
+    func testTheBoxesWaitForTheWorkersPicks() async {
+        at(2026, 12, 25)
+        let source = FakeSource()
+        let parts = make(source)
+        await parts.board.join(as: "Jolly Sprout")
+        // The join's own sync got no picks: fresh ones now, and a slow answer.
+        source.gifts = [.goldenMouse, .socks, .banana]
+        source.presentsDelay = 0.3
+        let asking = Task { await parts.board.syncPresents() }
+        try? await Task.sleep(for: .seconds(0.1))
+        XCTAssertTrue(parts.presents.awaitingPicks)
+        XCTAssertNil(parts.presents.open(0), "Not while the picks are on their way")
+        await asking.value
+        XCTAssertFalse(parts.presents.awaitingPicks)
+        XCTAssertEqual(parts.presents.open(0), .goldenMouse)
+        await parts.board.syncPresents()
+        XCTAssertEqual(source.openedSent, [0])
+    }
+
+    func testTheBoxesStopWaitingAfterAFewSeconds() async {
+        at(2026, 12, 25)
+        let source = FakeSource()
+        let parts = make(source)
+        await parts.board.join(as: "Jolly Sprout")
+        source.gifts = [.goldenMouse, .socks, .banana]
+        source.presentsDelay = HolidayLeaderboard.presentsHold + 1
+        let asking = Task { await parts.board.syncPresents() }
+        try? await Task.sleep(for: .seconds(HolidayLeaderboard.presentsHold + 0.3))
+        XCTAssertFalse(parts.presents.awaitingPicks, "The boxes open on the Mac's own pick")
+        asking.cancel()
+        await asking.value
+    }
+
+    // MARK: Leaving and joining again
+
+    func testJoiningAgainWaitsForTheLeave() async {
+        let source = FakeSource()
+        let parts = make(source)
+        await parts.board.join(as: "Jolly Sprout")
+        source.leaveDelay = 0.3
+        parts.board.leave()
+        try? await Task.sleep(for: .seconds(0.05))
+        let rejoined = await parts.board.join(as: "Merry Robin")
+        XCTAssertTrue(rejoined)
+        try? await Task.sleep(for: .seconds(0.5))
+        let lastLeave = source.calls.lastIndex(of: "leave")!
+        let lastJoin = source.calls.lastIndex(of: "join")!
+        XCTAssertLessThan(lastLeave, lastJoin, "The leave can't delete the new row")
+        XCTAssertEqual(source.calls.filter { $0 == "leave" }.count, 1)
+        XCTAssertEqual(parts.board.name, "Merry Robin")
+    }
+
+    func testAJoinWhileOfflineKeepsTheLeaveIfItFails() async {
+        let source = FakeSource()
+        let parts = make(source)
+        await parts.board.join(as: "Jolly Sprout")
+        source.failing = true
+        parts.board.leave()
+        await parts.board.sync()
+        source.joinError = .unavailable
+        let offline = await parts.board.join(as: "Merry Robin")
+        XCTAssertFalse(offline)
+        XCTAssertTrue(parts.board.hasSomethingToSend, "The leave still waits")
+        source.failing = false
+        source.joinError = nil
+        let back = await parts.board.join(as: "Merry Robin")
+        XCTAssertTrue(back)
+        XCTAssertFalse(parts.board.hasSomethingToSend)
+    }
+
     // MARK: The Worker's wire format
 
     func testThePlayerKeyIsTheWorkersShape() {
@@ -457,6 +547,10 @@ private final class FakeSource: HolidayBoardSource {
     var sentCounts: [HolidayCharacter: Int]?
     var gifts: [HolidayGift] = []
     var openedSent: Set<Int> = []
+    var presentsFail = false
+    /// Seconds before the presents or a leave answer.
+    var presentsDelay: Double = 0
+    var leaveDelay: Double = 0
 
     func join(name: String) async throws -> HolidayJoinReply {
         calls.append("join")
@@ -475,6 +569,7 @@ private final class FakeSource: HolidayBoardSource {
 
     func leave() async throws {
         calls.append("leave")
+        if leaveDelay > 0 { try await Task.sleep(for: .seconds(leaveDelay)) }
         if failing { throw HolidaySantaError.unavailable }
     }
 
@@ -487,6 +582,8 @@ private final class FakeSource: HolidayBoardSource {
 
     func presents(opened: Set<Int>) async throws -> HolidayPresentsReply {
         calls.append("presents")
+        if presentsDelay > 0 { try await Task.sleep(for: .seconds(presentsDelay)) }
+        if presentsFail { throw HolidaySantaError.unavailable }
         openedSent = opened
         return HolidayPresentsReply(gifts: gifts, opened: opened)
     }
