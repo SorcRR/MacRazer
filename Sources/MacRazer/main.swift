@@ -282,12 +282,15 @@ func outputPath(_ args: ArraySlice<String>, default fallback: String) -> String 
     args.first { $0.lowercased().hasSuffix(".png") } ?? fallback
 }
 
-/// A remapper for renders, on scratch storage: a real one would settle the Configure
-/// Buttons tip note (`RemapTip`) in the person's own settings.
+/// Scratch storage for the remappers in renders: a real one would settle the Configure
+/// Buttons tip note (`RemapTip`) in the person's own settings. Cleared before a render
+/// (`clearRenderRemapSuite`) and after it.
+let renderRemapSuite = "MacRazer.render-remap"
+
+func clearRenderRemapSuite() { UserDefaults().removePersistentDomain(forName: renderRemapSuite) }
+
 func renderRemapper() -> ButtonRemapper {
-    let suite = "MacRazer.render-remap"
-    UserDefaults().removePersistentDomain(forName: suite)
-    return ButtonRemapper(defaults: UserDefaults(suiteName: suite) ?? .standard)
+    ButtonRemapper(defaults: UserDefaults(suiteName: renderRemapSuite) ?? .standard)
 }
 
 switch command {
@@ -396,6 +399,8 @@ case "render-ui":
     renderAppearance.glass = false
     renderAppearance.theme = renderTheme(args)
     // The same two remaps as `render-remap`, so the Buttons row reads "2 remapped" as it does in use.
+    clearRenderRemapSuite()
+    defer { clearRenderRemapSuite() }
     let popoverRemapper = renderRemapper()
     popoverRemapper.loadPreviewState()
     let rootView: AnyView = args.contains("color")
@@ -587,6 +592,8 @@ case "render-issue-report":
 case "render-remap":
     _ = NSApplication.shared
     let path = outputPath(args.dropFirst(), default: "remap-preview.png")
+    clearRenderRemapSuite()
+    defer { clearRenderRemapSuite() }
     let r = renderRemapper()
     r.loadPreviewState(gesture: args.contains("gesture"))
     // `wide`: the popover's two-column Buttons page, with the DPI button section.
