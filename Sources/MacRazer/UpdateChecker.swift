@@ -102,6 +102,12 @@ final class UpdateChecker: ObservableObject {
     static let checkInterval: TimeInterval = 3 * 60 * 60
 
     private static let dismissedKey = "dismissedUpdateVersion"
+    /// When `dismissedKey` was set. A dismissal lasts `dismissalLasts`, then the card is back.
+    private static let dismissedAtKey = "dismissedUpdateDate"
+    /// How long "not now" on the update card holds before the same version is offered again.
+    /// A week: long enough not to nag, short enough that a fix still reaches someone who
+    /// waved it away once.
+    nonisolated static let dismissalLasts: TimeInterval = 7 * 24 * 60 * 60
     private static let lastCheckKey = "lastUpdateCheckDate"
     private static let lastFoundKey = "lastFoundUpdateVersion"
     private static let autoInstallKey = "autoInstallUpdates"
@@ -276,7 +282,10 @@ final class UpdateChecker: ObservableObject {
             // Clearing it up front spent the user's decision even when the request then
             // failed, and `restoreLastFound()` would resurrect the very version they had
             // dismissed, having learned nothing.
-            if userRequested { defaults.removeObject(forKey: Self.dismissedKey) }
+            if userRequested {
+                defaults.removeObject(forKey: Self.dismissedKey)
+                defaults.removeObject(forKey: Self.dismissedAtKey)
+            }
             // Only a *successful* check counts against the throttle: a failed one
             // (offline right after wake is common) should retry on the next opportunity,
             // not silence update notices until the window passes.
@@ -285,8 +294,7 @@ final class UpdateChecker: ObservableObject {
             defaults.set(remote, forKey: Self.lastFoundKey)
             Self.cache(published, in: defaults)
             lastCheckedAt = checkedAt
-            let dismissed = defaults.string(forKey: Self.dismissedKey)
-            if Self.isNewer(remote, than: currentVersion), remote != dismissed {
+            if Self.isNewer(remote, than: currentVersion), !isDismissed(remote) {
                 latestVersion = remote
                 latestNotes = Self.parsed(ReleaseSpan.newer(than: currentVersion, in: published))
             } else {
@@ -312,8 +320,7 @@ final class UpdateChecker: ObservableObject {
     private func restoreLastFound() {
         guard latestVersion == nil,
               let found = defaults.string(forKey: Self.lastFoundKey) else { return }
-        let dismissed = defaults.string(forKey: Self.dismissedKey)
-        if Self.isNewer(found, than: currentVersion), found != dismissed {
+        if Self.isNewer(found, than: currentVersion), !isDismissed(found) {
             latestVersion = found
             latestNotes = Self.parsed(ReleaseSpan.newer(than: currentVersion,
                                                         in: Self.cachedReleases(defaults)))
@@ -322,8 +329,24 @@ final class UpdateChecker: ObservableObject {
 
     func dismiss(_ version: String) {
         defaults.set(version, forKey: Self.dismissedKey)
+        defaults.set(Date(), forKey: Self.dismissedAtKey)
         latestVersion = nil
         latestNotes = []
+    }
+
+    /// Whether the card for `version` was waved away less than `dismissalLasts` ago.
+    private func isDismissed(_ version: String, now: Date = Date()) -> Bool {
+        Self.isDismissed(version, dismissed: defaults.string(forKey: Self.dismissedKey),
+                         dismissedAt: defaults.object(forKey: Self.dismissedAtKey) as? Date, now: now)
+    }
+
+    /// Whether a dismissal still holds for `version`. Only for the version dismissed, and only
+    /// for `dismissalLasts`. A dismissal saved before dates were kept has no date and no
+    /// longer holds: it can only name a version at or below the one now running anyway.
+    nonisolated static func isDismissed(_ version: String, dismissed: String?, dismissedAt: Date?, now: Date,
+                            lasts: TimeInterval = dismissalLasts) -> Bool {
+        guard version == dismissed, let dismissedAt else { return false }
+        return now.timeIntervalSince(dismissedAt) < lasts
     }
 
     /// Works out whether this launch is the first on a new version, and loads the notes for
