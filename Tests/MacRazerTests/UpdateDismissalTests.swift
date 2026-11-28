@@ -40,6 +40,27 @@ final class UpdateDismissalTests: XCTestCase {
         XCTAssertFalse(UpdateChecker.isDismissed("0.11.0", dismissed: "0.11.0", dismissedAt: nil, now: now))
     }
 
+    /// The whole path, through the checker and its defaults: a known update whose card was
+    /// closed stays hidden within the week and is offered again after it. Inside the check
+    /// throttle, so nothing goes to the network.
+    @MainActor
+    func testTheCheckerOffersAClosedVersionAgainAfterAWeek() async {
+        for (ago, shown) in [(1.0, false), (8.0, true)] {
+            let suite = "MacRazerTests-\(UUID().uuidString)"
+            let defaults = UserDefaults(suiteName: suite)!
+            defer { defaults.removePersistentDomain(forName: suite) }
+            defaults.set(Date(), forKey: "lastUpdateCheckDate")
+            defaults.set(AppInfo.comparableVersion, forKey: "notesCheckedForVersion")
+            defaults.set("999.0.0", forKey: "lastFoundUpdateVersion")
+            defaults.set("999.0.0", forKey: "dismissedUpdateVersion")
+            defaults.set(Date().addingTimeInterval(-ago * day), forKey: "dismissedUpdateDate")
+            let checker = UpdateChecker(defaults: defaults)
+            await checker.checkForUpdatesIfDue()
+            XCTAssertEqual(checker.latestVersion, shown ? "999.0.0" : nil, "closed \(ago) days ago")
+            XCTAssertEqual(checker.dismissedVersion, "999.0.0", "auto-install still skips it")
+        }
+    }
+
     @MainActor
     func testDismissingRecordsTheDate() {
         let suite = "MacRazerTests-\(UUID().uuidString)"

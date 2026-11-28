@@ -1011,7 +1011,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
             // any window the app has open, because an install ends in a relaunch. Asked of
             // every window rather than a named one — enumerating them here is what left the
             // About window exposed the moment it was added.
-            popoverVisible: popover.isShown || isShowingAWindow)
+            popoverVisible: popover.isShown || isShowingAWindow,
+            dismissedVersion: updateChecker.dismissedVersion)
         // The policy returns the version it approved rather than a Bool: it records the
         // attempt as part of deciding, so a caller that had to re-unwrap afterwards could
         // silently drop a version already marked as spent.

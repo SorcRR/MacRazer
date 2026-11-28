@@ -83,8 +83,9 @@ expect rough edges until 1.0.
 
 ### Changed
 - **A closed update card comes back after a week.** Closing the "Update available" card used
-  to hide that version for good, until a newer one came out or you checked by hand. Now the
-  same version is offered again a week later.
+  to hide that version until a newer one came out or you checked by hand. Now the same version
+  is offered again a week later. With automatic updates on, a version you closed the card for
+  is never installed on its own: it waits for your click.
 - **Two columns by default on a smaller screen.** On a screen under 1000 points tall, the
   popover now starts in two columns, so it stays on the screen with a few sections open. Your
   own pick in Settings › Appearance still wins.

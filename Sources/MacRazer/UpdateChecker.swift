@@ -334,6 +334,10 @@ final class UpdateChecker: ObservableObject {
         latestNotes = []
     }
 
+    /// The version whose card was last closed, expired or not. Automatic installs skip it
+    /// (`AutoInstallPolicy`): the card comes back after a week, a silent install does not.
+    var dismissedVersion: String? { defaults.string(forKey: Self.dismissedKey) }
+
     /// Whether the card for `version` was waved away less than `dismissalLasts` ago.
     private func isDismissed(_ version: String, now: Date = Date()) -> Bool {
         Self.isDismissed(version, dismissed: defaults.string(forKey: Self.dismissedKey),
