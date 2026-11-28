@@ -6,6 +6,8 @@ expect rough edges until 1.0.
 
 ## [Unreleased]
 
+## [0.11.0] — 2026-11-28
+
 ### Added
 - **Holiday decorations, Dec 1 to Jan 6.** The popover gets pine branches with twinkling
   lights, a little snow, a tree in the menu bar and a countdown to Christmas, with a star from
