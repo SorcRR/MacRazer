@@ -282,6 +282,17 @@ func outputPath(_ args: ArraySlice<String>, default fallback: String) -> String 
     args.first { $0.lowercased().hasSuffix(".png") } ?? fallback
 }
 
+/// Scratch storage for the remappers in renders: a real one would settle the Configure
+/// Buttons tip note (`RemapTip`) in the person's own settings. Cleared before a render
+/// (`clearRenderRemapSuite`) and after it.
+let renderRemapSuite = "MacRazer.render-remap"
+
+func clearRenderRemapSuite() { UserDefaults().removePersistentDomain(forName: renderRemapSuite) }
+
+func renderRemapper() -> ButtonRemapper {
+    ButtonRemapper(defaults: UserDefaults(suiteName: renderRemapSuite) ?? .standard)
+}
+
 switch command {
 case "info":
     // List every HID interface the dongle exposes, so we can see which one is the control
@@ -388,8 +399,10 @@ case "render-ui":
     renderAppearance.glass = false
     renderAppearance.theme = renderTheme(args)
     // The same two remaps as `render-remap`, so the Buttons row reads "2 remapped" as it does in use.
-    let renderRemapper = ButtonRemapper()
-    renderRemapper.loadPreviewState()
+    clearRenderRemapSuite()
+    defer { clearRenderRemapSuite() }
+    let popoverRemapper = renderRemapper()
+    popoverRemapper.loadPreviewState()
     let rootView: AnyView = args.contains("color")
         ? AnyView(ColorPickerPage(color: .constant(.blue),
                                   device: accessoryPIDs.isEmpty ? nil
@@ -399,9 +412,9 @@ case "render-ui":
         : args.contains("usage")
         ? AnyView(UsageGraphView(controller: controller, onBack: {}))
         : args.contains("profiles")
-        ? AnyView(ProfilesView(controller: controller, remapper: ButtonRemapper(), onBack: {},
+        ? AnyView(ProfilesView(controller: controller, remapper: renderRemapper(), onBack: {},
                                 width: PopoverLayout.oneColumnWidth))
-        : AnyView(PopoverView(controller: controller, remapper: renderRemapper, updateChecker: updateChecker,
+        : AnyView(PopoverView(controller: controller, remapper: popoverRemapper, updateChecker: updateChecker,
                               launchAtLogin: launchAtLogin, appearance: renderAppearance,
                               onOpenSettings: {},
                               onOpenDeviceTest: {}, onTestAccessory: { _ in }, // no windows in a render
@@ -579,7 +592,9 @@ case "render-issue-report":
 case "render-remap":
     _ = NSApplication.shared
     let path = outputPath(args.dropFirst(), default: "remap-preview.png")
-    let r = ButtonRemapper()
+    clearRenderRemapSuite()
+    defer { clearRenderRemapSuite() }
+    let r = renderRemapper()
     r.loadPreviewState(gesture: args.contains("gesture"))
     // `wide`: the popover's two-column Buttons page, with the DPI button section.
     // `side-buttons`: the window with the notice for side buttons saved to other functions.

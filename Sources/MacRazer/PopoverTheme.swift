@@ -97,7 +97,8 @@ final class AppearanceSettings: ObservableObject {
     }
 
     /// `screenHeight` is the usable height of the screen with the menu bar, for the default.
-    init(defaults: UserDefaults = .standard, screenHeight: CGFloat? = NSScreen.main?.visibleFrame.height) {
+    /// `NSScreen.main` would be the screen with the key window, which at launch can be any.
+    init(defaults: UserDefaults = .standard, screenHeight: CGFloat? = NSScreen.screens.first?.visibleFrame.height) {
         self.defaults = defaults
         // An unknown stored value (a theme removed in a later version) falls back to System
         // rather than failing.
