@@ -29,6 +29,12 @@ final class UpdateDismissalTests: XCTestCase {
         XCTAssertFalse(UpdateChecker.isDismissed("0.11.0", dismissed: nil, dismissedAt: nil, now: now))
     }
 
+    /// A clock set ahead when the card was closed must not hide it for longer than a week.
+    func testADismissalDatedInTheFutureNoLongerHolds() {
+        XCTAssertFalse(UpdateChecker.isDismissed("0.11.0", dismissed: "0.11.0",
+                                                 dismissedAt: now.addingTimeInterval(365 * day), now: now))
+    }
+
     /// Saved by a version that kept no date: it can only name a version already installed.
     func testADismissalWithoutADateNoLongerHolds() {
         XCTAssertFalse(UpdateChecker.isDismissed("0.11.0", dismissed: "0.11.0", dismissedAt: nil, now: now))

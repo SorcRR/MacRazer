@@ -346,7 +346,9 @@ final class UpdateChecker: ObservableObject {
     nonisolated static func isDismissed(_ version: String, dismissed: String?, dismissedAt: Date?, now: Date,
                             lasts: TimeInterval = dismissalLasts) -> Bool {
         guard version == dismissed, let dismissedAt else { return false }
-        return now.timeIntervalSince(dismissedAt) < lasts
+        // A date ahead of now (the clock was wrong when it was saved) doesn't stretch the week.
+        let age = now.timeIntervalSince(dismissedAt)
+        return age >= 0 && age < lasts
     }
 
     /// Works out whether this launch is the first on a new version, and loads the notes for
