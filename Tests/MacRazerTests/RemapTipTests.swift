@@ -30,23 +30,35 @@ final class RemapTipTests: XCTestCase {
         XCTAssertEqual(RemapTip.state(defaults), .done)
     }
 
+    private func table(_ mappings: [Int: RemapAction]) -> Data {
+        try! JSONEncoder().encode(mappings)
+    }
+
     func testNeverForSomeoneWithMappingsAlready() {
-        defaults.set(Data(), forKey: RemapTip.mappingsPrefix + "1532-00DB")
+        defaults.set(table([3: .doubleClick]), forKey: RemapTip.mappingsPrefix + "1532-00DB")
         RemapTip.start(defaults)
         XCTAssertEqual(RemapTip.state(defaults), .done)
         XCTAssertFalse(RemapTip.fired(defaults))
     }
 
     func testTheNoDeviceKeyDoesNotCount() {
-        defaults.set(Data(), forKey: RemapTip.mappingsPrefix + "none")
+        defaults.set(table([3: .doubleClick]), forKey: RemapTip.mappingsPrefix + "none")
         RemapTip.start(defaults)
         XCTAssertEqual(RemapTip.state(defaults), .waiting, "old builds' junk under the no-device key isn't a mapping")
+    }
+
+    func testAnEmptyTableDoesNotCount() {
+        // Clearing every button saves an empty table: that person never had the moment.
+        defaults.set(table([:]), forKey: RemapTip.mappingsPrefix + "1532-00DB")
+        defaults.set(Data(), forKey: RemapTip.mappingsPrefix + "1532-00AB")
+        RemapTip.start(defaults)
+        XCTAssertEqual(RemapTip.state(defaults), .waiting)
     }
 
     func testDecidedOnce() {
         RemapTip.start(defaults)
         // A mapping saved after the first run doesn't take the note away.
-        defaults.set(Data(), forKey: RemapTip.mappingsPrefix + "1532-00DB")
+        defaults.set(table([3: .doubleClick]), forKey: RemapTip.mappingsPrefix + "1532-00DB")
         RemapTip.start(defaults)
         XCTAssertEqual(RemapTip.state(defaults), .waiting)
     }

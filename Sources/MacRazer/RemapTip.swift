@@ -25,11 +25,16 @@ enum RemapTip {
     }
 
     /// Decides once, on the first run with this version: someone who already saved mappings
-    /// has had the moment, so they never get the note.
+    /// has had the moment, so they never get the note. A table counts only with a mapping in
+    /// it: clearing every button saves an empty one, and that person never had the moment
+    /// either.
     static func start(_ defaults: UserDefaults) {
         guard defaults.string(forKey: stateKey) == nil else { return }
-        let hasMappings = defaults.dictionaryRepresentation().keys.contains {
-            $0.hasPrefix(mappingsPrefix) && $0 != mappingsPrefix + "none"
+        let hasMappings = defaults.dictionaryRepresentation().contains { key, value in
+            guard key.hasPrefix(mappingsPrefix), key != mappingsPrefix + "none",
+                  let data = value as? Data,
+                  let table = try? JSONDecoder().decode([Int: RemapAction].self, from: data) else { return false }
+            return !table.isEmpty
         }
         defaults.set((hasMappings ? State.done : .waiting).rawValue, forKey: stateKey)
     }

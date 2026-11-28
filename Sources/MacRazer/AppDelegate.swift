@@ -1057,10 +1057,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate, UNU
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         let mouse = deviceTestWindow.model, accessory = accessoryTestWindow.model
         let leaderboard = HolidayLeaderboard.shared
-        guard mouse.running || accessory.running || leaderboard.hasSomethingToSend else { return .terminateNow }
+        // Known to be offline, the score can't go: it waits for the next launch rather than
+        // holding the quit for the full time limit.
+        let sendFirst = leaderboard.hasSomethingToSend && wasOnline != false
+        guard mouse.running || accessory.running || sendFirst else { return .terminateNow }
         mouse.whenIdle {
             accessory.whenIdle {
-                leaderboard.syncBeforeQuit { NSApp.reply(toApplicationShouldTerminate: true) }
+                if sendFirst {
+                    leaderboard.syncBeforeQuit { NSApp.reply(toApplicationShouldTerminate: true) }
+                } else {
+                    NSApp.reply(toApplicationShouldTerminate: true)
+                }
             }
         }
         return .terminateLater

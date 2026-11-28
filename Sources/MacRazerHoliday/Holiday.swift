@@ -74,14 +74,15 @@ public final class Holiday: ObservableObject {
     /// `MACRAZER_HOLIDAY_DATE=YYYY-MM-DD` runs a debug build as if it were that day. Never in
     /// a release build: that one knows the real Worker and would count a made-up day.
     static func previewClock(_ environment: [String: String] = ProcessInfo.processInfo.environment) -> (() -> Date)? {
-        #if !DEBUG
-        return nil
-        #endif
+        #if DEBUG
         guard let text = environment["MACRAZER_HOLIDAY_DATE"] else { return nil }
         let parts = text.split(separator: "-").compactMap { Int($0) }
         guard parts.count == 3, let day = HolidaySeason.calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: parts[2])) else { return nil }
         let offset = day.timeIntervalSince(HolidaySeason.calendar.startOfDay(for: Date()))
         return { Date().addingTimeInterval(offset) }
+        #else
+        return nil
+        #endif
     }
 
     /// Today's phase, or nil outside the season.
