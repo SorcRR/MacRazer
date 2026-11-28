@@ -448,6 +448,7 @@ final class RazerDevicesTests: XCTestCase {
     func testMambaHyperFlux() {
         XCTAssertEqual(RazerDevices.connection(pid: 0x0068), .wired)
         XCTAssertFalse(RazerDevices.hasBattery(pid: 0x0068))
+        XCTAssertEqual(RazerDevices.notOnMouse(pid: 0x0068), [.battery], "the mat answers 0% and charging")
         XCTAssertTrue(RazerDevices.hasLighting(pid: 0x0068))
         XCTAssertEqual(RazerDevices.maxDPI(pid: 0x0068), 16000)
         XCTAssertEqual(RazerDevices.support(pid: 0x0068), .full)

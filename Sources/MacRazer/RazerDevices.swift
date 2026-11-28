@@ -743,7 +743,7 @@ enum RazerDevices {
         // dimming and turning red. Three dim misses to one pass, all on 0.10.0, which dims
         // neither side strip: lighting stays hidden until a report from the release that does.
         .init(pid: 0x006C, name: "Razer Mamba Elite", unverified: [.lighting], hasBattery: false, hasLighting: false, maxDPI: 16000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
-        // Mamba HyperFlux (one 0.10.0 report on firmware v1.0, 2026-11-28, owner roman):
+        // Mamba HyperFlux (one 0.10.0 report on firmware v1.0, 2026-11-28, no credit given):
         // the mouse has no battery, it runs on power from its Firefly HyperFlux mat, and the
         // mat is the USB device, so it shows up like a wired mouse. Battery reads answer 0%
         // and charging, which is the mat, not a cell, so battery is "not on this mouse". DPI,
