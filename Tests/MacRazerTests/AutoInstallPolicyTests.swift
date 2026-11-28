@@ -8,10 +8,23 @@ final class AutoInstallPolicyTests: XCTestCase {
     /// Everything permitting an install, so each test can deny exactly one thing.
     private func conditions(
         version: String? = "2.0.0", enabled: Bool = true, canInstall: Bool = true,
-        busy: Bool = false, popover: Bool = false
+        busy: Bool = false, popover: Bool = false, dismissed: String? = nil
     ) -> AutoInstallPolicy.Conditions {
         .init(availableVersion: version, enabled: enabled, canInstallInPlace: canInstall,
-              busy: busy, popoverVisible: popover)
+              busy: busy, popoverVisible: popover, dismissedVersion: dismissed)
+    }
+
+    /// The card comes back a week after it was closed. Installing that version stays a click.
+    func testADismissedVersionIsNeverInstalledAutomatically() {
+        var p = AutoInstallPolicy()
+        XCTAssertNil(p.versionToInstall(conditions(dismissed: "2.0.0")))
+        // Not spent by the refusal: once a manual check clears the dismissal, it can go.
+        XCTAssertEqual(p.versionToInstall(conditions()), "2.0.0")
+    }
+
+    func testADismissalOfAnOlderVersionDoesNotHoldBackANewerOne() {
+        var p = AutoInstallPolicy()
+        XCTAssertEqual(p.versionToInstall(conditions(dismissed: "1.9.0")), "2.0.0")
     }
 
     func testInstallsWhenEverythingPermitsIt() {

@@ -29,6 +29,11 @@ struct AutoInstallPolicy {
         /// The popover is on screen. An install ends in a relaunch, and pulling the window out
         /// from under someone mid-click is worse than waiting for the next opportunity.
         let popoverVisible: Bool
+        /// The version whose update card the user closed, however long ago. Closing it is a
+        /// "not this one" that the week-long expiry of the card must not turn into a silent
+        /// install: the card comes back, and installing stays the user's click. A manual
+        /// Check for Updates clears it.
+        var dismissedVersion: String? = nil
     }
 
     /// The version to install now, or nil to do nothing. Records the attempt, so asking twice
@@ -40,6 +45,7 @@ struct AutoInstallPolicy {
     mutating func versionToInstall(_ c: Conditions) -> String? {
         guard let version = c.availableVersion,
               c.enabled, c.canInstallInPlace, !c.busy, !c.popoverVisible,
+              version != c.dismissedVersion,
               !attempted.contains(version) else { return nil }
         attempted.insert(version)
         return version
