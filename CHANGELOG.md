@@ -77,6 +77,8 @@ expect rough edges until 1.0.
   - **Orochi V2 on its other dongle:** battery, DPI and polling all passed.
   - **Mamba 2015 Wireless on its dock:** battery, charging, DPI and polling work. Its
     lighting needs older commands the app doesn't send yet.
+  - **Mamba HyperFlux:** DPI, polling and lighting all passed. It runs on its mat's power,
+    so the popover shows no battery.
 - **Cynosa Lite tested.** It lost its UNTESTED tag after passing the lighting test.
 - **Joro keyboard.** It gets its own lighting card, with brightness and a static colour
   tested. Before, the app took it for a mouse.
@@ -87,6 +89,8 @@ expect rough edges until 1.0.
   own pick in Settings › Appearance still wins.
 
 ### Fixed
+- **The device test no longer asks which mouse is on the dock for a Mamba.** The Mamba
+  HyperFlux and the Mamba Wireless on its dock each report as the mouse itself.
 - **A remapped button is never left held down in an app.** A remapped button's release was
   swallowed whenever the button was still remapped, whatever had happened to its press. A
   press let through while the mouse was offline can bring the mapping back before the button

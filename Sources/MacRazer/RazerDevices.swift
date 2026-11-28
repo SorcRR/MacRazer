@@ -738,7 +738,18 @@ enum RazerDevices {
         // 0x10 and 0x11 too, the side strips the dim doesn't reach, so its zones are recorded
         // below and the next test dims them. Its side buttons are set on the mouse to type
         // Alt+Left and Alt+Right, so the button step saw keys, not buttons 4 and 5.
+        // 2026-11-27/28, firmware v1.1: one more red-but-no-dim (its logo was already off,
+        // so only the scroll wheel went dark) and the first full pass, logo and scroll both
+        // dimming and turning red. Three dim misses to one pass, all on 0.10.0, which dims
+        // neither side strip: lighting stays hidden until a report from the release that does.
         .init(pid: 0x006C, name: "Razer Mamba Elite", unverified: [.lighting], hasBattery: false, hasLighting: false, maxDPI: 16000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
+        // Mamba HyperFlux (one 0.10.0 report on firmware v1.0, 2026-11-28, no credit given):
+        // the mouse has no battery, it runs on power from its Firefly HyperFlux mat, and the
+        // mat is the USB device, so it shows up like a wired mouse. Battery reads answer 0%
+        // and charging, which is the mat, not a cell, so battery is "not on this mouse". DPI,
+        // polling and lighting passed with 0x1f, LOGO and SCROLL dimming and turning red.
+        // 16000 is the vendor spec. Its DPI buttons change the stage on the mouse.
+        .init(pid: 0x0068, name: "Razer Mamba HyperFlux", unverified: [], hasBattery: false, hasLighting: true, maxDPI: 16000, transactionId: 0x1f, matrixTransactionId: 0x1f, connection: .wired, silhouette: .cobra, dischargeCurveModelKey: nil, notOnMouse: [.battery]),
         // Basilisk Essential (two 0.10.0 reports on firmware v1.2, no credit given): polling
         // and lighting passed with 0x1f, LOGO and SCROLL dimming and turning red. No battery.
         // Its DPI read answers X with Y always 0. X read back every write, so DPI counts as

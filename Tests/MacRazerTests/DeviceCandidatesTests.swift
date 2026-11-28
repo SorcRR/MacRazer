@@ -50,6 +50,8 @@ final class DeviceCandidatesTests: XCTestCase {
         XCTAssertTrue(DeviceTestModel.isDock(name: "Razer HyperFlux V2"))
         XCTAssertTrue(DeviceTestModel.isDock(name: "Razer Mouse Dock"))
         XCTAssertFalse(DeviceTestModel.isDock(name: "Razer Cobra HyperSpeed"))
+        XCTAssertFalse(DeviceTestModel.isDock(name: "Razer Mamba Hyperflux"), "the mouse, not a mat")
+        XCTAssertFalse(DeviceTestModel.isDock(name: "Razer Mamba Dock"), "the Mamba Wireless, on its dock")
     }
 
     func testTheDocksMouseLeadsTheComment() {

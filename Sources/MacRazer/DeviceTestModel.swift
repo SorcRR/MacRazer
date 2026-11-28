@@ -313,9 +313,12 @@ final class DeviceTestModel: ObservableObject {
     }
 
     /// A dock or charging mat that passes commands to the mouse on it. Its product ID is the
-    /// dock's whatever mouse is on it, so the review asks which one.
+    /// dock's whatever mouse is on it, so the review asks which one. A Mamba is never one:
+    /// the Mamba HyperFlux and the Mamba Wireless on its dock ("Razer Mamba Dock") each
+    /// report as the one mouse they carry, so there is nothing to ask.
     nonisolated static func isDock(name: String) -> Bool {
         let lower = name.lowercased()
+        guard !lower.contains("mamba") else { return false }
         return lower.contains("dock") || lower.contains("hyperflux")
     }
     var testsDock: Bool { report.map { Self.isDock(name: $0.device.name) } ?? false }

@@ -444,6 +444,17 @@ final class RazerDevicesTests: XCTestCase {
                        "its cable mode has no row yet, so the test asks for it")
     }
 
+    /// The Mamba HyperFlux runs on its mat's power: no battery, but everything else passed.
+    func testMambaHyperFlux() {
+        XCTAssertEqual(RazerDevices.connection(pid: 0x0068), .wired)
+        XCTAssertFalse(RazerDevices.hasBattery(pid: 0x0068))
+        XCTAssertEqual(RazerDevices.notOnMouse(pid: 0x0068), [.battery], "the mat answers 0% and charging")
+        XCTAssertTrue(RazerDevices.hasLighting(pid: 0x0068))
+        XCTAssertEqual(RazerDevices.maxDPI(pid: 0x0068), 16000)
+        XCTAssertEqual(RazerDevices.support(pid: 0x0068), .full)
+        XCTAssertFalse(RazerDevices.ask(pid: 0x0068).needsReport)
+    }
+
     /// A polling_rate2 mouse is asked about polling like any other: the test sends the newer
     /// command there, so a report can confirm it.
     func testPollingRate2MiceAreAskedAboutPolling() {
